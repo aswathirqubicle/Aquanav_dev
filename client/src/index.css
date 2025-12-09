@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 11% 98%; /* #F5F7FA */
+  --foreground: 220 13% 15%; /* #1F2937 */
+  --muted: 210 6% 93%; /* #E5E7EB */
+  --muted-foreground: 220 9% 46%; /* #6B7280 */
+  --popover: 0 0% 100%; /* #FFFFFF */
+  --popover-foreground: 220 13% 15%; /* #1F2937 */
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 220 13% 15%; /* #1F2937 */
+  --border: 214 13% 91%; /* #D1D5DB */
+  --input: 214 13% 91%; /* #D1D5DB */
+  --primary: 207 90% 54%; /* #3B82F6 */
+  --primary-foreground: 210 100% 98%; /* #EFF6FF */
+  --secondary: 210 6% 93%; /* #E5E7EB */
+  --secondary-foreground: 220 13% 15%; /* #1F2937 */
+  --accent: 210 6% 93%; /* #E5E7EB */
+  --accent-foreground: 220 13% 15%; /* #1F2937 */
+  --destructive: 0 84% 60%; /* #EF4444 */
+  --destructive-foreground: 0 0% 98%; /* #FEFEFE */
+  --ring: 207 90% 54%; /* #3B82F6 */
+  --radius: 0.5rem;
+  
+  /* Marine theme colors */
+  --ocean-50: 207 100% 97%; /* #EFF6FF */
+  --ocean-100: 207 96% 94%; /* #DBEAFE */
+  --ocean-500: 207 90% 54%; /* #3B82F6 */
+  --ocean-600: 207 90% 47%; /* #2563EB */
+  --ocean-700: 207 90% 39%; /* #1D4ED8 */
+  --ocean-800: 207 90% 32%; /* #1E40AF */
+  --ocean-900: 207 89% 24%; /* #1E3A8A */
+  
+  --marine-50: 199 100% 96%; /* #F0F9FF */
+  --marine-100: 199 100% 89%; /* #E0F2FE */
+  --marine-500: 199 89% 48%; /* #0EA5E9 */
+  --marine-600: 199 89% 41%; /* #0284C7 */
+  --marine-700: 199 89% 34%; /* #0369A1 */
+  --marine-800: 199 84% 29%; /* #075985 */
+  --marine-900: 199 89% 23%; /* #0C4A6E */
+  
+  /* Sidebar colors */
+  --sidebar-background: 0 0% 100%; /* #FFFFFF */
+  --sidebar-foreground: 220 13% 15%; /* #1F2937 */
+  --sidebar-primary: 207 90% 54%; /* #3B82F6 */
+  --sidebar-primary-foreground: 210 100% 98%; /* #EFF6FF */
+  --sidebar-accent: 210 6% 93%; /* #E5E7EB */
+  --sidebar-accent-foreground: 220 13% 15%; /* #1F2937 */
+  --sidebar-border: 214 13% 91%; /* #D1D5DB */
+  --sidebar-ring: 207 90% 54%; /* #3B82F6 */
+}
+
+.dark {
+  --background: 220 13% 9%; /* #111827 */
+  --foreground: 210 11% 93%; /* #E5E7EB */
+  --muted: 220 13% 15%; /* #1F2937 */
+  --muted-foreground: 220 9% 64%; /* #9CA3AF */
+  --popover: 220 13% 9%; /* #111827 */
+  --popover-foreground: 210 11% 93%; /* #E5E7EB */
+  --card: 220 13% 9%; /* #111827 */
+  --card-foreground: 210 11% 93%; /* #E5E7EB */
+  --border: 220 13% 15%; /* #1F2937 */
+  --input: 220 13% 15%; /* #1F2937 */
+  --primary: 207 90% 54%; /* #3B82F6 */
+  --primary-foreground: 210 100% 98%; /* #EFF6FF */
+  --secondary: 220 13% 15%; /* #1F2937 */
+  --secondary-foreground: 210 11% 93%; /* #E5E7EB */
+  --accent: 220 13% 15%; /* #1F2937 */
+  --accent-foreground: 210 11% 93%; /* #E5E7EB */
+  --destructive: 0 62% 30%; /* #991B1B */
+  --destructive-foreground: 210 11% 93%; /* #E5E7EB */
+  --ring: 207 90% 54%; /* #3B82F6 */
+  
+  /* Dark sidebar */
+
+
+/* React Quill Custom Styles */
+.ql-toolbar {
+  border-top: 1px solid hsl(var(--border)) !important;
+  border-left: 1px solid hsl(var(--border)) !important;
+  border-right: 1px solid hsl(var(--border)) !important;
+  border-bottom: none !important;
+  border-top-left-radius: calc(var(--radius) - 2px);
+  border-top-right-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background));
+}
+
+.ql-container {
+  border-bottom: 1px solid hsl(var(--border)) !important;
+  border-left: 1px solid hsl(var(--border)) !important;
+  border-right: 1px solid hsl(var(--border)) !important;
+  border-top: none !important;
+  border-bottom-left-radius: calc(var(--radius) - 2px);
+  border-bottom-right-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background));
+  font-family: inherit;
+}
+
+.ql-editor {
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.ql-editor.ql-blank::before {
+  color: hsl(var(--muted-foreground));
+  font-style: normal;
+}
+
+.ql-toolbar .ql-stroke {
+  fill: none;
+  stroke: hsl(var(--foreground));
+}
+
+.ql-toolbar .ql-fill {
+  fill: hsl(var(--foreground));
+  stroke: none;
+}
+
+.ql-toolbar .ql-picker-label {
+  color: hsl(var(--foreground));
+}
+
+.ql-snow .ql-tooltip {
+  background-color: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.ql-snow .ql-tooltip input[type=text] {
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+/* Dark mode adjustments */
+.dark .ql-snow .ql-fill,
+.dark .ql-snow .ql-stroke.ql-fill {
+  fill: hsl(var(--foreground));
+}
+
+.dark .ql-snow .ql-stroke {
+  stroke: hsl(var(--foreground));
+}
+
+  --sidebar-background: 220 13% 9%; /* #111827 */
+  --sidebar-foreground: 210 11% 93%; /* #E5E7EB */
+  --sidebar-primary: 207 90% 54%; /* #3B82F6 */
+  --sidebar-primary-foreground: 210 100% 98%; /* #EFF6FF */
+  --sidebar-accent: 220 13% 15%; /* #1F2937 */
+  --sidebar-accent-foreground: 210 11% 93%; /* #E5E7EB */
+  --sidebar-border: 220 13% 15%; /* #1F2937 */
+  --sidebar-ring: 207 90% 54%; /* #3B82F6 */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Marine themed utilities */
+  .ocean-gradient {
+    background: linear-gradient(135deg, hsl(var(--ocean-500)) 0%, hsl(var(--marine-500)) 100%);
+  }
+  
+  .marine-card {
+    @apply bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 shadow-sm rounded-lg;
+  }
+  
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-in-progress {
+    @apply bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400;
+  }
+  
+  .status-completed {
+    @apply bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400;
+  }
+  
+  .status-on-hold {
+    @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400;
+  }
+  
+  .status-not-started {
+    @apply bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400;
+  }
+}

@@ -1,0 +1,2009 @@
+import { db } from "./db";
+import {
+  users,
+  companies,
+  customers,
+  suppliers,
+  employees,
+  projects,
+  projectEmployees,
+  inventoryItems,
+  inventoryTransactions,
+  assets,
+  dailyActivities,
+  projectPhotoGroups,
+  projectPhotos,
+  projectConsumables,
+  projectConsumableItems,
+  payrollEntries,
+  payrollAdditions,
+  payrollDeductions,
+  salesQuotations,
+  salesQuotationItems,
+  salesInvoices,
+  supplierInventoryItems,
+  type User,
+  type InsertUser,
+  type Company,
+  type InsertCompany,
+  type Customer,
+  type InsertCustomer,
+  type Employee,
+  type InsertEmployee,
+  type Project,
+  type InsertProject,
+  type InventoryItem,
+  type InsertInventoryItem,
+  type Asset,
+  type InsertAsset,
+  type DailyActivity,
+  type InsertDailyActivity,
+  type Supplier,
+  type InsertSupplier,
+  type SupplierInventoryItem,
+  type InsertSupplierInventoryItem,
+  type ProjectPhotoGroup,
+  type InsertProjectPhotoGroup,
+  type ProjectPhoto,
+  type InsertProjectPhoto,
+  type ProjectConsumable,
+  type InsertProjectConsumable,
+  type ProjectConsumableItem,
+  type InsertProjectConsumableItem,
+  type SalesQuotation,
+  type InsertSalesQuotation,
+  type SalesQuotationItem,
+  type InsertSalesQuotationItem,
+  type SalesInvoice,
+  type InsertSalesInvoice,
+  type PayrollEntry,
+  type InsertPayrollEntry,
+  type PayrollAddition,
+  type InsertPayrollAddition,
+  type PayrollDeduction,
+  type InsertPayrollDeduction,
+} from "@shared/schema";
+import { eq, and, desc } from "drizzle-orm";
+import bcrypt from "bcrypt";
+
+class Storage {
+  // User methods
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting user by username:", error);
+      throw error;
+    }
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting user:", error);
+      throw error;
+    }
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    return this.getUser(id);
+  }
+
+  async getUsers(): Promise<User[]> {
+    try {
+      return await db.select().from(users);
+    } catch (error) {
+      console.error("Error getting users:", error);
+      throw error;
+    }
+  }
+
+  async createUser(userData: InsertUser): Promise<User> {
+    try {
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const result = await db
+        .insert(users)
+        .values({
+          ...userData,
+          password: hashedPassword,
+        })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+  }
+
+  async updateUser(
+    id: number,
+    userData: Partial<InsertUser>,
+  ): Promise<User | undefined> {
+    try {
+      const result = await db
+        .update(users)
+        .set(userData)
+        .where(eq(users.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating user:", error);
+      throw error;
+    }
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(users).where(eq(users.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      throw error;
+    }
+  }
+
+  // Company methods
+  async getCompany(): Promise<Company | undefined> {
+    try {
+      const result = await db.select().from(companies).limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting company:", error);
+      throw error;
+    }
+  }
+
+  async updateCompany(companyData: InsertCompany): Promise<Company> {
+    try {
+      const existing = await this.getCompany();
+      if (existing) {
+        const result = await db
+          .update(companies)
+          .set(companyData)
+          .where(eq(companies.id, existing.id))
+          .returning();
+        return result[0];
+      } else {
+        const result = await db
+          .insert(companies)
+          .values(companyData)
+          .returning();
+        return result[0];
+      }
+    } catch (error) {
+      console.error("Error updating company:", error);
+      throw error;
+    }
+  }
+
+  // Customer methods
+  async getCustomers(): Promise<Customer[]> {
+    try {
+      return await db.select().from(customers);
+    } catch (error) {
+      console.error("Error getting customers:", error);
+      throw error;
+    }
+  }
+
+  async createCustomer(customerData: InsertCustomer): Promise<Customer> {
+    try {
+      const result = await db
+        .insert(customers)
+        .values(customerData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating customer:", error);
+      throw error;
+    }
+  }
+
+  async updateCustomer(
+    id: number,
+    customerData: Partial<InsertCustomer>,
+  ): Promise<Customer | undefined> {
+    try {
+      const result = await db
+        .update(customers)
+        .set(customerData)
+        .where(eq(customers.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating customer:", error);
+      throw error;
+    }
+  }
+
+  // Supplier methods
+  async getSuppliers(): Promise<Supplier[]> {
+    try {
+      return await db.select().from(suppliers);
+    } catch (error) {
+      console.error("Error getting suppliers:", error);
+      throw error;
+    }
+  }
+
+  async getSupplier(id: number): Promise<Supplier | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(suppliers)
+        .where(eq(suppliers.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting supplier:", error);
+      throw error;
+    }
+  }
+
+  async createSupplier(supplierData: InsertSupplier): Promise<Supplier> {
+    try {
+      const result = await db
+        .insert(suppliers)
+        .values(supplierData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating supplier:", error);
+      throw error;
+    }
+  }
+
+  async updateSupplier(
+    id: number,
+    supplierData: Partial<InsertSupplier>,
+  ): Promise<Supplier | undefined> {
+    try {
+      const result = await db
+        .update(suppliers)
+        .set(supplierData)
+        .where(eq(suppliers.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating supplier:", error);
+      throw error;
+    }
+  }
+
+  async deleteSupplier(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(suppliers).where(eq(suppliers.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting supplier:", error);
+      throw error;
+    }
+  }
+
+  // Employee methods
+  async getEmployees(): Promise<Employee[]> {
+    try {
+      return await db.select().from(employees);
+    } catch (error) {
+      console.error("Error getting employees:", error);
+      throw error;
+    }
+  }
+
+  async createEmployee(employeeData: InsertEmployee): Promise<Employee> {
+    try {
+      const result = await db
+        .insert(employees)
+        .values(employeeData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating employee:", error);
+      throw error;
+    }
+  }
+
+  async updateEmployee(
+    id: number,
+    employeeData: Partial<InsertEmployee>,
+  ): Promise<Employee | undefined> {
+    try {
+      const result = await db
+        .update(employees)
+        .set(employeeData)
+        .where(eq(employees.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating employee:", error);
+      throw error;
+    }
+  }
+
+  // Project methods
+  async getProjects(): Promise<Project[]> {
+    try {
+      return await db.select().from(projects);
+    } catch (error) {
+      console.error("Error getting projects:", error);
+      throw error;
+    }
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting project:", error);
+      throw error;
+    }
+  }
+
+  async getProjectsByCustomer(customerId: number): Promise<Project[]> {
+    try {
+      return await db
+        .select()
+        .from(projects)
+        .where(eq(projects.customerId, customerId));
+    } catch (error) {
+      console.error("Error getting projects by customer:", error);
+      throw error;
+    }
+  }
+
+  async createProject(projectData: InsertProject): Promise<Project> {
+    try {
+      const result = await db.insert(projects).values(projectData).returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating project:", error);
+      throw error;
+    }
+  }
+
+  async updateProject(
+    id: number,
+    data: Partial<Project>,
+  ): Promise<Project | undefined> {
+    try {
+      // Clean and validate date fields
+      const cleanedData = { ...data };
+
+      // Handle date fields properly
+      if (cleanedData.startDate !== undefined) {
+        if (cleanedData.startDate === null || cleanedData.startDate === "") {
+          cleanedData.startDate = null;
+        } else if (typeof cleanedData.startDate === "string") {
+          cleanedData.startDate = new Date(cleanedData.startDate);
+        } else if (!(cleanedData.startDate instanceof Date)) {
+          delete cleanedData.startDate;
+        }
+      }
+
+      if (cleanedData.plannedEndDate !== undefined) {
+        if (
+          cleanedData.plannedEndDate === null ||
+          cleanedData.plannedEndDate === ""
+        ) {
+          cleanedData.plannedEndDate = null;
+        } else if (typeof cleanedData.plannedEndDate === "string") {
+          cleanedData.plannedEndDate = new Date(cleanedData.plannedEndDate);
+        } else if (!(cleanedData.plannedEndDate instanceof Date)) {
+          delete cleanedData.plannedEndDate;
+        }
+      }
+
+      if (cleanedData.actualEndDate !== undefined) {
+        if (
+          cleanedData.actualEndDate === null ||
+          cleanedData.actualEndDate === ""
+        ) {
+          cleanedData.actualEndDate = null;
+        } else if (typeof cleanedData.actualEndDate === "string") {
+          cleanedData.actualEndDate = new Date(cleanedData.actualEndDate);
+        } else if (!(cleanedData.actualEndDate instanceof Date)) {
+          delete cleanedData.actualEndDate;
+        }
+      }
+
+      const [project] = await db
+        .update(projects)
+        .set(cleanedData)
+        .where(eq(projects.id, id))
+        .returning();
+      return project;
+    } catch (error) {
+      console.error("Error updating project:", error);
+      throw error;
+    }
+  }
+
+  // Project Employee methods
+  async getProjectEmployees(projectId: number): Promise<Employee[]> {
+    try {
+      const assignments = await db
+        .select()
+        .from(projectEmployees)
+        .where(eq(projectEmployees.projectId, projectId));
+      const employeeIds = assignments.map((a) => a.employeeId);
+
+      if (employeeIds.length === 0) {
+        return [];
+      }
+
+      // Get the actual employee data
+      const allEmployees = await db.select().from(employees);
+      return allEmployees.filter((emp) => employeeIds.includes(emp.id));
+    } catch (error) {
+      console.error("Error getting project employees:", error);
+      throw error;
+    }
+  }
+
+  async assignEmployeeToProject(
+    projectId: number,
+    employeeId: number,
+  ): Promise<any> {
+    try {
+      const result = await db
+        .insert(projectEmployees)
+        .values({
+          projectId: projectId,
+          employeeId: employeeId,
+        })
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error assigning employee to project:", error);
+      throw error;
+    }
+  }
+
+  async assignEmployeesToProject(
+    projectId: number,
+    employeeIds: number[],
+  ): Promise<any[]> {
+    try {
+      // First, remove all existing assignments for this project
+      await db
+        .delete(projectEmployees)
+        .where(eq(projectEmployees.projectId, projectId));
+
+      // Then add the new assignments
+      if (employeeIds.length === 0) {
+        // Recalculate project cost after removing all employees
+        await this.recalculateProjectCost(projectId);
+        return [];
+      }
+
+      const assignments = employeeIds.map((employeeId) => ({
+        projectId: projectId,
+        employeeId: employeeId,
+      }));
+
+      const result = await db
+        .insert(projectEmployees)
+        .values(assignments)
+        .returning();
+
+      // Recalculate project cost after assigning employees
+      await this.recalculateProjectCost(projectId);
+
+      return result;
+    } catch (error) {
+      console.error("Error assigning employees to project:", error);
+      throw error;
+    }
+  }
+
+  async recalculateProjectCost(projectId: number): Promise<void> {
+    try {
+      const project = await this.getProject(projectId);
+      if (!project) {
+        console.log(
+          `Project ${projectId} not found, skipping cost calculation`,
+        );
+        return;
+      }
+
+      const projectEmployeesList = await this.getProjectEmployees(projectId);
+      console.log(
+        `Recalculating cost for project ${projectId} with ${projectEmployeesList.length} employees`,
+      );
+
+      // Calculate labor costs
+      let totalLaborCost = 0;
+      if (projectEmployeesList.length > 0) {
+        // Use project start date or current date if no start date
+        const startDate = project.startDate
+          ? new Date(project.startDate)
+          : new Date();
+        const endDate = project.actualEndDate
+          ? new Date(project.actualEndDate)
+          : new Date();
+        const workingDays = this.calculateWorkingDays(startDate, endDate);
+
+        console.log(
+          `Project ${projectId}: ${workingDays} working days from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+        );
+
+        // Calculate total salary cost
+        for (const employee of projectEmployeesList) {
+          if (employee.salary && parseFloat(employee.salary) > 0) {
+            // Assuming salary is monthly, convert to daily rate (22 working days per month for better accuracy)
+            const monthlySalary = parseFloat(employee.salary);
+            const dailyRate = monthlySalary / 22; // More accurate working days per month
+            const employeeCost = dailyRate * workingDays;
+            totalLaborCost += employeeCost;
+
+            console.log(
+              `Employee ${employee.firstName} ${employee.lastName}: Monthly salary ${monthlySalary}, Daily rate ${dailyRate.toFixed(2)}, Total cost ${employeeCost.toFixed(2)}`,
+            );
+          }
+        }
+      }
+
+      // Calculate inventory/consumables costs
+      let totalInventoryCost = 0;
+
+      // Get consumables from project_consumables tables
+      const consumableRecords = await db
+        .select()
+        .from(projectConsumables)
+        .where(eq(projectConsumables.projectId, projectId));
+
+      for (const record of consumableRecords) {
+        const items = await db
+          .select({
+            inventoryItemId: projectConsumableItems.inventoryItemId,
+            quantity: projectConsumableItems.quantity,
+            unitCost: projectConsumableItems.unitCost,
+            itemName: inventoryItems.name,
+          })
+          .from(projectConsumableItems)
+          .leftJoin(
+            inventoryItems,
+            eq(projectConsumableItems.inventoryItemId, inventoryItems.id),
+          )
+          .where(eq(projectConsumableItems.consumableId, record.id));
+
+        for (const item of items) {
+          if (item.unitCost) {
+            const unitCost = parseFloat(item.unitCost);
+            const itemCost = unitCost * item.quantity;
+            totalInventoryCost += itemCost;
+
+            console.log(
+              `Consumable item ${item.itemName}: Unit cost ${unitCost.toFixed(4)}, Quantity ${item.quantity}, Total cost ${itemCost.toFixed(2)}`,
+            );
+          }
+        }
+      }
+
+      const totalProjectCost = totalLaborCost + totalInventoryCost;
+
+      console.log(`Project ${projectId} cost breakdown:`);
+      console.log(`- Labor cost: ${totalLaborCost.toFixed(2)}`);
+      console.log(`- Inventory cost: ${totalInventoryCost.toFixed(2)}`);
+      console.log(`- Total cost: ${totalProjectCost.toFixed(2)}`);
+
+      // Update project actual cost with proper formatting
+      await this.updateProject(projectId, {
+        actualCost: totalProjectCost.toFixed(2),
+      });
+    } catch (error) {
+      console.error("Error recalculating project cost:", error);
+      throw error;
+    }
+  }
+
+  private calculateWorkingDays(startDate: Date, endDate: Date): number {
+    // Ensure we have valid dates
+    if (!startDate || !endDate) {
+      return 0;
+    }
+
+    // If end date is before start date, return 0
+    if (endDate < startDate) {
+      return 0;
+    }
+
+    let workingDays = 0;
+    let currentDate = new Date(startDate.getTime()); // Create a copy to avoid modifying original
+
+    while (currentDate <= endDate) {
+      // Count only weekdays (Monday = 1, Sunday = 0)
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        // Not Sunday or Saturday
+        workingDays++;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return workingDays;
+  }
+
+  async updateProjectEndDateAndRecalculate(
+    projectId: number,
+    endDate: Date,
+  ): Promise<Project | undefined> {
+    try {
+      const result = await this.updateProject(projectId, {
+        actualEndDate: endDate,
+      });
+      if (result) {
+        await this.recalculateProjectCost(projectId);
+      }
+      return result;
+    } catch (error) {
+      console.error("Error updating project end date:", error);
+      throw error;
+    }
+  }
+
+  async removeEmployeeFromProject(
+    projectId: number,
+    employeeId: number,
+  ): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(projectEmployees)
+        .where(
+          and(
+            eq(projectEmployees.projectId, projectId),
+            eq(projectEmployees.employeeId, employeeId),
+          ),
+        );
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error removing employee from project:", error);
+      throw error;
+    }
+  }
+
+  // Inventory methods
+  async getInventoryItems(): Promise<InventoryItem[]> {
+    try {
+      return await db.select().from(inventoryItems);
+    } catch (error) {
+      console.error("Error getting inventory items:", error);
+      throw error;
+    }
+  }
+
+  async createInventoryItem(
+    itemData: InsertInventoryItem,
+  ): Promise<InventoryItem> {
+    try {
+      const result = await db
+        .insert(inventoryItems)
+        .values(itemData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating inventory item:", error);
+      throw error;
+    }
+  }
+
+  async updateInventoryItem(
+    id: number,
+    itemData: Partial<InventoryItem>,
+  ): Promise<InventoryItem | undefined> {
+    try {
+      const result = await db
+        .update(inventoryItems)
+        .set(itemData)
+        .where(eq(inventoryItems.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating inventory item:", error);
+      throw error;
+    }
+  }
+
+  // Asset methods
+  async getAssets(): Promise<Asset[]> {
+    try {
+      return await db.select().from(assets);
+    } catch (error) {
+      console.error("Error getting assets:", error);
+      throw error;
+    }
+  }
+
+  async createAsset(assetData: InsertAsset): Promise<Asset> {
+    try {
+      const result = await db.insert(assets).values(assetData).returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating asset:", error);
+      throw error;
+    }
+  }
+
+  // Daily Activity methods
+  async getDailyActivities(projectId: number): Promise<DailyActivity[]> {
+    try {
+      return await db
+        .select()
+        .from(dailyActivities)
+        .where(eq(dailyActivities.projectId, projectId));
+    } catch (error) {
+      console.error("Error getting daily activities:", error);
+      throw error;
+    }
+  }
+
+  async createDailyActivity(
+    activityData: InsertDailyActivity,
+  ): Promise<DailyActivity> {
+    try {
+      const result = await db
+        .insert(dailyActivities)
+        .values(activityData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating daily activity:", error);
+      throw error;
+    }
+  }
+
+  // Supplier-Inventory Item mapping methods
+  async getSupplierInventoryItems(
+    inventoryItemId?: number,
+    supplierId?: number,
+  ): Promise<SupplierInventoryItem[]> {
+    try {
+      let query = db.select().from(supplierInventoryItems);
+
+      if (inventoryItemId && supplierId) {
+        query = query.where(
+          and(
+            eq(supplierInventoryItems.inventoryItemId, inventoryItemId),
+            eq(supplierInventoryItems.supplierId, supplierId),
+          ),
+        );
+      } else if (inventoryItemId) {
+        query = query.where(
+          eq(supplierInventoryItems.inventoryItemId, inventoryItemId),
+        );
+      } else if (supplierId) {
+        query = query.where(eq(supplierInventoryItems.supplierId, supplierId));
+      }
+
+      return await query;
+    } catch (error) {
+      console.error("Error getting supplier inventory items:", error);
+      throw error;
+    }
+  }
+
+  async createSupplierInventoryItem(
+    data: InsertSupplierInventoryItem,
+  ): Promise<SupplierInventoryItem> {
+    try {
+      console.log("Storage: Creating supplier inventory item with data:", data);
+
+      // Validate required fields
+      if (!data.supplierId || !data.inventoryItemId) {
+        throw new Error("Supplier ID and Inventory Item ID are required");
+      }
+
+      // Ensure numeric fields are properly set and validated
+      const cleanData = {
+        supplierId: data.supplierId,
+        inventoryItemId: data.inventoryItemId,
+        supplierPartNumber: data.supplierPartNumber || null,
+        unitCost: typeof data.unitCost === "number" ? data.unitCost : 0,
+        minimumOrderQuantity:
+          typeof data.minimumOrderQuantity === "number"
+            ? data.minimumOrderQuantity
+            : 1,
+        leadTimeDays:
+          typeof data.leadTimeDays === "number" ? data.leadTimeDays : 0,
+        isPreferred: Boolean(data.isPreferred),
+      };
+
+      console.log("Storage: Clean data for insert:", cleanData);
+
+      const result = await db
+        .insert(supplierInventoryItems)
+        .values(cleanData)
+        .returning();
+      console.log(
+        "Storage: Successfully created supplier inventory item:",
+        result[0],
+      );
+      return result[0];
+    } catch (error) {
+      console.error("Error creating supplier inventory item:", error);
+      throw error;
+    }
+  }
+
+  async deleteSupplierInventoryItemsByInventoryId(
+    inventoryItemId: number,
+  ): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(supplierInventoryItems)
+        .where(eq(supplierInventoryItems.inventoryItemId, inventoryItemId));
+      return true;
+    } catch (error) {
+      console.error("Error deleting supplier inventory items:", error);
+      throw error;
+    }
+  }
+
+  async updateSupplierInventoryItem(
+    id: number,
+    data: Partial<InsertSupplierInventoryItem>,
+  ): Promise<SupplierInventoryItem | undefined> {
+    try {
+      const result = await db
+        .update(supplierInventoryItems)
+        .set(data)
+        .where(eq(supplierInventoryItems.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating supplier inventory item:", error);
+      throw error;
+    }
+  }
+
+  async deleteSupplierInventoryItem(id: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(supplierInventoryItems)
+        .where(eq(supplierInventoryItems.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting supplier inventory item:", error);
+      throw error;
+    }
+  }
+
+  async getSupplierInventoryItemsBySupplierId(
+    supplierId: number,
+  ): Promise<SupplierInventoryItem[]> {
+    try {
+      return await db
+        .select()
+        .from(supplierInventoryItems)
+        .where(eq(supplierInventoryItems.supplierId, supplierId));
+    } catch (error) {
+      console.error(
+        "Error getting supplier inventory items by supplier id:",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async getProductsBySupplier(supplierId: number): Promise<any[]> {
+    try {
+      const result = await db
+        .select({
+          id: inventoryItems.id,
+          name: inventoryItems.name,
+          description: inventoryItems.description,
+          category: inventoryItems.category,
+          unit: inventoryItems.unit,
+          currentStock: inventoryItems.currentStock,
+          minStockLevel: inventoryItems.minStockLevel,
+          avgCost: inventoryItems.avgCost,
+          supplierPartNumber: supplierInventoryItems.supplierPartNumber,
+          unitCost: supplierInventoryItems.unitCost,
+          minimumOrderQuantity: supplierInventoryItems.minimumOrderQuantity,
+          leadTimeDays: supplierInventoryItems.leadTimeDays,
+          isPreferred: supplierInventoryItems.isPreferred,
+        })
+        .from(inventoryItems)
+        .innerJoin(
+          supplierInventoryItems,
+          eq(inventoryItems.id, supplierInventoryItems.inventoryItemId),
+        )
+        .where(eq(supplierInventoryItems.supplierId, supplierId));
+
+      return result;
+    } catch (error) {
+      console.error("Error getting products by supplier:", error);
+      throw error;
+    }
+  }
+
+  // Project Photo Group methods
+  async getProjectPhotoGroups(projectId: number): Promise<ProjectPhotoGroup[]> {
+    try {
+      return await db
+        .select()
+        .from(projectPhotoGroups)
+        .where(eq(projectPhotoGroups.projectId, projectId));
+    } catch (error) {
+      console.error("Error getting project photo groups:", error);
+      throw error;
+    }
+  }
+
+  async createProjectPhotoGroup(
+    groupData: InsertProjectPhotoGroup,
+  ): Promise<ProjectPhotoGroup> {
+    try {
+      const result = await db
+        .insert(projectPhotoGroups)
+        .values(groupData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating project photo group:", error);
+      throw error;
+    }
+  }
+
+  async updateProjectPhotoGroup(
+    id: number,
+    groupData: Partial<InsertProjectPhotoGroup>,
+  ): Promise<ProjectPhotoGroup | undefined> {
+    try {
+      const result = await db
+        .update(projectPhotoGroups)
+        .set(groupData)
+        .where(eq(projectPhotoGroups.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating project photo group:", error);
+      throw error;
+    }
+  }
+
+  async deleteProjectPhotoGroup(id: number): Promise<boolean> {
+    try {
+      // First delete all photos in the group
+      await db.delete(projectPhotos).where(eq(projectPhotos.groupId, id));
+      // Then delete the group
+      const result = await db
+        .delete(projectPhotoGroups)
+        .where(eq(projectPhotoGroups.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Error deleting project photo group:", error);
+      throw error;
+    }
+  }
+
+  // Project Photo methods
+  async getProjectPhotos(groupId: number): Promise<ProjectPhoto[]> {
+    try {
+      return await db
+        .select()
+        .from(projectPhotos)
+        .where(eq(projectPhotos.groupId, groupId));
+    } catch (error) {
+      console.error("Error getting project photos:", error);
+      throw error;
+    }
+  }
+
+  async createProjectPhoto(
+    photoData: InsertProjectPhoto,
+  ): Promise<ProjectPhoto> {
+    try {
+      const result = await db
+        .insert(projectPhotos)
+        .values(photoData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating project photo:", error);
+      throw error;
+    }
+  }
+
+  async deleteProjectPhoto(photoId: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(projectPhotos)
+        .where(eq(projectPhotos.id, photoId))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error deleting project photo:", error);
+      throw error;
+    }
+  }
+
+  // Project Consumables methods
+  async getProjectConsumables(projectId: number): Promise<any[]> {
+    try {
+      // Get all consumable records for the project
+      const consumableRecords = await db
+        .select()
+        .from(projectConsumables)
+        .where(eq(projectConsumables.projectId, projectId));
+
+      // For each record, get the items and inventory details
+      const recordsWithItems = await Promise.all(
+        consumableRecords.map(async (record) => {
+          const items = await db
+            .select({
+              inventoryItemId: projectConsumableItems.inventoryItemId,
+              quantity: projectConsumableItems.quantity,
+              unitCost: projectConsumableItems.unitCost,
+              itemName: inventoryItems.name,
+            })
+            .from(projectConsumableItems)
+            .leftJoin(
+              inventoryItems,
+              eq(projectConsumableItems.inventoryItemId, inventoryItems.id),
+            )
+            .where(eq(projectConsumableItems.consumableId, record.id));
+
+          return {
+            id: record.id,
+            date: record.date,
+            items: items,
+          };
+        }),
+      );
+
+      return recordsWithItems;
+    } catch (error) {
+      console.error("Error getting project consumables:", error);
+      throw error;
+    }
+  }
+
+  async createProjectConsumables(
+    projectId: number,
+    date: string,
+    items: Array<{ inventoryItemId: number; quantity: number }>,
+  ): Promise<any> {
+    try {
+      // Validate stock availability and get inventory item names
+      const itemsWithNames = await Promise.all(
+        items.map(async (item) => {
+          const inventoryItem = await db
+            .select()
+            .from(inventoryItems)
+            .where(eq(inventoryItems.id, item.inventoryItemId))
+            .limit(1);
+
+          if (!inventoryItem[0]) {
+            throw new Error(
+              `Inventory item with ID ${item.inventoryItemId} not found`,
+            );
+          }
+
+          if (item.quantity > inventoryItem[0].currentStock) {
+            throw new Error(
+              `Insufficient stock for ${inventoryItem[0].name}. Available: ${inventoryItem[0].currentStock}, Requested: ${item.quantity}`,
+            );
+          }
+
+          return {
+            ...item,
+            itemName: inventoryItem[0].name,
+            unitCost: inventoryItem[0].avgCost,
+          };
+        }),
+      );
+
+      //      ```text
+      // Create a project consumables record
+      const consumableRecord = await db
+        .insert(projectConsumables)
+        .values({
+          projectId,
+          date: new Date(date),
+          recordedBy: 1, // TODO: Get from session
+        })
+        .returning();
+
+      // Create consumable items
+      const consumableItems = await Promise.all(
+        itemsWithNames.map(async (item) => {
+          return await db
+            .insert(projectConsumableItems)
+            .values({
+              consumableId: consumableRecord[0].id,
+              inventoryItemId: item.inventoryItemId,
+              quantity: item.quantity,
+              unitCost: item.unitCost || "0",
+            })
+            .returning();
+        }),
+      );
+
+      // Update inventory stock levels
+      for (const item of items) {
+        // Get current stock first
+        const currentItems = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, item.inventoryItemId))
+          .limit(1);
+
+        if (currentItems.length > 0) {
+          const currentStock = currentItems[0].currentStock;
+          const newStock = Math.max(0, currentStock - item.quantity);
+
+          await db
+            .update(inventoryItems)
+            .set({ currentStock: newStock })
+            .where(eq(inventoryItems.id, item.inventoryItemId));
+
+          console.log(
+            `Updated inventory item ${item.inventoryItemId}: ${currentStock} -> ${newStock} (consumed: ${item.quantity})`,
+          );
+        }
+      }
+
+      // Recalculate project cost to include the new consumables
+      await this.recalculateProjectCost(projectId);
+
+      return {
+        id: consumableRecord[0].id,
+        date: consumableRecord[0].date,
+        items: itemsWithNames,
+      };
+    } catch (error) {
+      console.error("Error creating project consumables:", error);
+      throw error;
+    }
+  }
+
+  // Payroll methods
+  async getPayrollEntries(
+    month?: number,
+    year?: number,
+    employeeId?: number,
+    projectId?: number,
+  ): Promise<PayrollEntry[]> {
+    try {
+      let query = db.select().from(payrollEntries);
+
+      const conditions = [];
+      if (month) conditions.push(eq(payrollEntries.month, month));
+      if (year) conditions.push(eq(payrollEntries.year, year));
+      if (employeeId)
+        conditions.push(eq(payrollEntries.employeeId, employeeId));
+      if (projectId) conditions.push(eq(payrollEntries.projectId, projectId));
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      return await query;
+    } catch (error) {
+      console.error("Error getting payroll entries:", error);
+      throw error;
+    }
+  }
+
+  async createPayrollEntry(
+    payrollData: InsertPayrollEntry,
+  ): Promise<PayrollEntry> {
+    try {
+      const result = await db
+        .insert(payrollEntries)
+        .values(payrollData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating payroll entry:", error);
+      throw error;
+    }
+  }
+
+  async generateMonthlyPayroll(
+    month: number,
+    year: number,
+  ): Promise<PayrollEntry[]> {
+    try {
+      const activeProjects = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.status, "in_progress"));
+
+      const payrollEntries: PayrollEntry[] = [];
+      const processedEmployees = new Set<number>(); // Track employees to avoid duplicates
+
+      for (const project of activeProjects) {
+        const projectEmployeesList = await this.getProjectEmployees(project.id);
+
+        for (const employee of projectEmployeesList) {
+          // Skip if employee already processed or has no salary
+          if (processedEmployees.has(employee.id) || !employee.salary) continue;
+
+          // Calculate calendar days worked in this project for the specified month
+          const projectCalendarDays = this.getProjectCalendarDaysInMonth(
+            project,
+            month,
+            year,
+          );
+
+          if (projectCalendarDays === 0) {
+            continue; // Skip if no days worked in this project for this month
+          }
+
+          const monthlySalary = parseFloat(employee.salary);
+          const totalCalendarDaysInMonth = this.getCalendarDaysInMonth(
+            month,
+            year,
+          );
+
+          // Calculate prorated salary based on calendar days worked in project
+          const dailyRate = monthlySalary / totalCalendarDaysInMonth;
+          const basicAmount = dailyRate * projectCalendarDays;
+
+          // Initialize default additions and deductions (can be customized later)
+          const additions: Array<{
+            description: string;
+            amount: number;
+            note?: string;
+          }> = [];
+          const deductions: Array<{
+            description: string;
+            amount: number;
+            note?: string;
+          }> = [];
+
+          // Calculate total additions and deductions
+          const totalAdditions = additions.reduce(
+            (sum, item) => sum + item.amount,
+            0,
+          );
+          const totalDeductions = deductions.reduce(
+            (sum, item) => sum + item.amount,
+            0,
+          );
+          const totalAmount = basicAmount + totalAdditions - totalDeductions;
+
+          const payrollEntry = await this.createPayrollEntry({
+            employeeId: employee.id,
+            projectId: project.id,
+            month,
+            year,
+            workingDays: projectCalendarDays, // Calendar days worked in this project
+            basicSalary: monthlySalary.toString(),
+            additions,
+            deductions,
+            totalAmount: totalAmount.toString(),
+            status: "draft",
+          });
+
+          payrollEntries.push(payrollEntry);
+          processedEmployees.add(employee.id); // Mark as processed
+        }
+      }
+
+      return payrollEntries;
+    } catch (error) {
+      console.error("Error generating monthly payroll:", error);
+      throw error;
+    }
+  }
+
+  private getCalendarDaysInMonth(month: number, year: number): number {
+    // Return the total number of calendar days in the month
+    return new Date(year, month, 0).getDate();
+  }
+
+  private getProjectCalendarDaysInMonth(
+    project: any,
+    month: number,
+    year: number,
+  ): number {
+    // Calculate calendar days that the project was active during the specified month
+    const monthStart = new Date(year, month - 1, 1); // First day of month
+    const monthEnd = new Date(year, month, 0); // Last day of month
+
+    // Project start date - use project start or month start, whichever is later
+    const projectStart = project.startDate
+      ? new Date(project.startDate)
+      : monthStart;
+    const effectiveStart = new Date(
+      Math.max(projectStart.getTime(), monthStart.getTime()),
+    );
+
+    // Project end date - use project end or month end, whichever is earlier
+    const projectEnd = project.actualEndDate
+      ? new Date(project.actualEndDate)
+      : project.plannedEndDate
+        ? new Date(project.plannedEndDate)
+        : monthEnd;
+    const effectiveEnd = new Date(
+      Math.min(projectEnd.getTime(), monthEnd.getTime()),
+    );
+
+    // If project wasn't active during this month, return 0
+    if (effectiveStart > monthEnd || effectiveEnd < monthStart) {
+      return 0;
+    }
+
+    // Calculate calendar days between effective start and end (inclusive)
+    const timeDiff = effectiveEnd.getTime() - effectiveStart.getTime();
+    const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+
+    return Math.max(0, daysDiff);
+  }
+
+  private getWorkingDaysInMonth(month: number, year: number): number {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    let workingDays = 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dayOfWeek = date.getDay();
+      // Count Monday (1) through Friday (5) as working days
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        workingDays++;
+      }
+    }
+
+    return workingDays;
+  }
+
+  async updatePayrollEntry(
+    id: number,
+    payrollData: Partial<InsertPayrollEntry>,
+  ): Promise<PayrollEntry | undefined> {
+    try {
+      const result = await db
+        .update(payrollEntries)
+        .set(payrollData)
+        .where(eq(payrollEntries.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating payroll entry:", error);
+      throw error;
+    }
+  }
+
+  async clearAllPayrollEntries(): Promise<number> {
+    try {
+      const result = await db.delete(payrollEntries);
+      return result.rowCount || 0;
+    } catch (error) {
+      console.error("Error clearing all payroll entries:", error);
+      throw error;
+    }
+  }
+
+  // Payroll Additions methods
+  async getPayrollAdditions(
+    payrollEntryId: number,
+  ): Promise<PayrollAddition[]> {
+    try {
+      return await db
+        .select()
+        .from(payrollAdditions)
+        .where(eq(payrollAdditions.payrollEntryId, payrollEntryId));
+    } catch (error) {
+      console.error("Error getting payroll additions:", error);
+      throw error;
+    }
+  }
+
+  async createPayrollAddition(
+    additionData: InsertPayrollAddition,
+  ): Promise<PayrollAddition> {
+    try {
+      const result = await db
+        .insert(payrollAdditions)
+        .values(additionData)
+        .returning();
+
+      // Update the payroll entry totals
+      await this.updatePayrollEntryTotals(additionData.payrollEntryId);
+
+      return result[0];
+    } catch (error) {
+      console.error("Error creating payroll addition:", error);
+      throw error;
+    }
+  }
+
+  async updatePayrollAddition(
+    id: number,
+    additionData: Partial<InsertPayrollAddition>,
+  ): Promise<PayrollAddition | undefined> {
+    try {
+      const result = await db
+        .update(payrollAdditions)
+        .set(additionData)
+        .where(eq(payrollAdditions.id, id))
+        .returning();
+
+      if (result[0]) {
+        // Update the payroll entry totals
+        await this.updatePayrollEntryTotals(result[0].payrollEntryId);
+      }
+
+      return result[0];
+    } catch (error) {
+      console.error("Error updating payroll addition:", error);
+      throw error;
+    }
+  }
+
+  async deletePayrollAddition(id: number): Promise<boolean> {
+    try {
+      const addition = await db
+        .select()
+        .from(payrollAdditions)
+        .where(eq(payrollAdditions.id, id))
+        .limit(1);
+
+      if (addition.length === 0) return false;
+
+      const payrollEntryId = addition[0].payrollEntryId;
+
+      const result = await db
+        .delete(payrollAdditions)
+        .where(eq(payrollAdditions.id, id));
+
+      if (result.rowCount && result.rowCount > 0) {
+        // Update the payroll entry totals
+        await this.updatePayrollEntryTotals(payrollEntryId);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error deleting payroll addition:", error);
+      throw error;
+    }
+  }
+
+  // Payroll Deductions methods
+  async getPayrollDeductions(
+    payrollEntryId: number,
+  ): Promise<PayrollDeduction[]> {
+    try {
+      return await db
+        .select()
+        .from(payrollDeductions)
+        .where(eq(payrollDeductions.payrollEntryId, payrollEntryId));
+    } catch (error) {
+      console.error("Error getting payroll deductions:", error);
+      throw error;
+    }
+  }
+
+  async createPayrollDeduction(
+    deductionData: InsertPayrollDeduction,
+  ): Promise<PayrollDeduction> {
+    try {
+      const result = await db
+        .insert(payrollDeductions)
+        .values(deductionData)
+        .returning();
+
+      // Update the payroll entry totals
+      await this.updatePayrollEntryTotals(deductionData.payrollEntryId);
+
+      return result[0];
+    } catch (error) {
+      console.error("Error creating payroll deduction:", error);
+      throw error;
+    }
+  }
+
+  async updatePayrollDeduction(
+    id: number,
+    deductionData: Partial<InsertPayrollDeduction>,
+  ): Promise<PayrollDeduction | undefined> {
+    try {
+      const result = await db
+        .update(payrollDeductions)
+        .set(deductionData)
+        .where(eq(payrollDeductions.id, id))
+        .returning();
+
+      if (result[0]) {
+        // Update the payroll entry totals
+        await this.updatePayrollEntryTotals(result[0].payrollEntryId);
+      }
+
+      return result[0];
+    } catch (error) {
+      console.error("Error updating payroll deduction:", error);
+      throw error;
+    }
+  }
+
+  async deletePayrollDeduction(id: number): Promise<boolean> {
+    try {
+      const deduction = await db
+        .select()
+        .from(payrollDeductions)
+        .where(eq(payrollDeductions.id, id))
+        .limit(1);
+
+      if (deduction.length === 0) return false;
+
+      const payrollEntryId = deduction[0].payrollEntryId;
+
+      const result = await db
+        .delete(payrollDeductions)
+        .where(eq(payrollDeductions.id, id));
+
+      if (result.rowCount && result.rowCount > 0) {
+        // Update the payroll entry totals
+        await this.updatePayrollEntryTotals(payrollEntryId);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error deleting payroll deduction:", error);
+      throw error;
+    }
+  }
+
+  // Get individual payroll addition
+  async getPayrollAddition(id: number): Promise<PayrollAddition | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(payrollAdditions)
+        .where(eq(payrollAdditions.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting payroll addition:", error);
+      throw error;
+    }
+  }
+
+  // Get individual payroll deduction
+  async getPayrollDeduction(id: number): Promise<PayrollDeduction | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(payrollDeductions)
+        .where(eq(payrollDeductions.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting payroll deduction:", error);
+      throw error;
+    }
+  }
+
+  // Helper method to update payroll entry totals
+  private async updatePayrollEntryTotals(
+    payrollEntryId: number,
+  ): Promise<void> {
+    try {
+      // Get all additions and deductions for this payroll entry
+      const additions = await this.getPayrollAdditions(payrollEntryId);
+      const deductions = await this.getPayrollDeductions(payrollEntryId);
+
+      // Calculate totals
+      const totalAdditions = additions.reduce(
+        (sum, addition) => sum + parseFloat(addition.amount),
+        0,
+      );
+      const totalDeductions = deductions.reduce(
+        (sum, deduction) => sum + parseFloat(deduction.amount),
+        0,
+      );
+
+      // Get the basic salary
+      const payrollEntry = await db
+        .select()
+        .from(payrollEntries)
+        .where(eq(payrollEntries.id, payrollEntryId))
+        .limit(1);
+
+      if (payrollEntry.length > 0) {
+        const basicSalary = parseFloat(payrollEntry[0].basicSalary || "0");
+        const totalAmount = basicSalary + totalAdditions - totalDeductions;
+
+        // Update the payroll entry
+        await db
+          .update(payrollEntries)
+          .set({
+            totalAdditions: totalAdditions.toString(),
+            totalDeductions: totalDeductions.toString(),
+            totalAmount: totalAmount.toString(),
+          })
+          .where(eq(payrollEntries.id, payrollEntryId));
+      }
+    } catch (error) {
+      console.error("Error updating payroll entry totals:", error);
+      throw error;
+    }
+  }
+
+  // Sales Quotation methods
+  async getSalesQuotations(): Promise<SalesQuotation[]> {
+    try {
+      const quotations = await db
+        .select()
+        .from(salesQuotations)
+        .orderBy(desc(salesQuotations.createdDate));
+
+      // For each quotation, get its items from the salesQuotationItems table
+      const quotationsWithItems = await Promise.all(
+        quotations.map(async (quotation) => {
+          const items = await db
+            .select()
+            .from(salesQuotationItems)
+            .where(eq(salesQuotationItems.quotationId, quotation.id));
+
+          // Convert the separate items back to the JSON format expected by the frontend
+          const formattedItems = items.map((item) => ({
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: parseFloat(item.unitPrice),
+            taxRate: parseFloat(item.taxRate || "0"),
+            taxAmount: parseFloat(item.taxAmount || "0"),
+          }));
+
+          return {
+            ...quotation,
+            items:
+              formattedItems.length > 0
+                ? formattedItems
+                : quotation.items || [],
+          };
+        }),
+      );
+
+      return quotationsWithItems;
+    } catch (error) {
+      console.error("Error getting sales quotations:", error);
+      throw error;
+    }
+  }
+
+  async createSalesQuotation(
+    quotationData: InsertSalesQuotation,
+  ): Promise<SalesQuotation> {
+    try {
+      // Generate quotation number
+      const quotationNumber = `QT-${Date.now()}`;
+
+      // Prepare the main quotation data with proper date handling
+      const insertData = {
+        ...quotationData,
+        quotationNumber,
+        createdDate: new Date(),
+        validUntil: quotationData.validUntil ? new Date(quotationData.validUntil) : null,
+      };
+
+      // Insert the main quotation record
+      const result = await db
+        .insert(salesQuotations)
+        .values(insertData)
+        .returning();
+
+      const quotation = result[0];
+
+      // If there are items, save them to the sales_quotation_items table
+      if (quotationData.items && quotationData.items.length > 0) {
+        const itemsToInsert = quotationData.items.map((item) => ({
+          quotationId: quotation.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice.toString(),
+          taxRate: (item.taxRate || 0).toString(),
+          taxAmount: (item.taxAmount || 0).toString(),
+          lineTotal: (
+            item.quantity * item.unitPrice +
+            (item.taxAmount || 0)
+          ).toString(),
+        }));
+
+        await db.insert(salesQuotationItems).values(itemsToInsert);
+      }
+
+      return quotation;
+    } catch (error) {
+      console.error("Error creating sales quotation:", error);
+      throw error;
+    }
+  }
+
+  async updateSalesQuotation(
+    id: number,
+    quotationData: Partial<InsertSalesQuotation>,
+  ): Promise<SalesQuotation | undefined> {
+    try {
+      // Prepare the update data with proper date handling
+      const updateData = {
+        ...quotationData,
+        validUntil: quotationData.validUntil ? new Date(quotationData.validUntil) : null,
+      };
+
+      // Update the main quotation record
+      const result = await db
+        .update(salesQuotations)
+        .set(updateData)
+        .where(eq(salesQuotations.id, id))
+        .returning();
+
+      const quotation = result[0];
+
+      // If there are items, update them
+      if (quotationData.items && quotationData.items.length > 0) {
+        // First, delete existing items for this quotation
+        await db.delete(salesQuotationItems).where(eq(salesQuotationItems.quotationId, id));
+
+        // Then insert the new items
+        const itemsToInsert = quotationData.items.map((item) => ({
+          quotationId: id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice.toString(),
+          taxRate: (item.taxRate || 0).toString(),
+          taxAmount: (item.taxAmount || 0).toString(),
+          lineTotal: (
+            item.quantity * item.unitPrice +
+            (item.taxAmount || 0)
+          ).toString(),
+        }));
+
+        await db.insert(salesQuotationItems).values(itemsToInsert);
+      }
+
+      return quotation;
+    } catch (error) {
+      console.error("Error updating sales quotation:", error);
+      throw error;
+    }
+  }
+
+  async deleteSalesQuotation(id: number): Promise<void> {
+    try {
+      await db.delete(salesQuotations).where(eq(salesQuotations.id, id));
+    } catch (error) {
+      console.error("Error deleting sales quotation:", error);
+      throw error;
+    }
+  }
+
+  // Sales Invoice methods
+  async getSalesInvoices(): Promise<SalesInvoice[]> {
+    try {
+      return await db.select().from(salesInvoices);
+    } catch (error) {
+      console.error("Error getting sales invoices:", error);
+      throw error;
+    }
+  }
+
+  async createSalesInvoice(
+    invoiceData: InsertSalesInvoice,
+  ): Promise<SalesInvoice> {
+    try {
+      const result = await db
+        .insert(salesInvoices)
+        .values(invoiceData)
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error creating sales invoice:", error);
+      throw error;
+    }
+  }
+
+  async updateSalesInvoice(
+    id: number,
+    invoiceData: Partial<InsertSalesInvoice>,
+  ): Promise<SalesInvoice | undefined> {
+    try {
+      const result = await db
+        .update(salesInvoices)
+        .set(invoiceData)
+        .where(eq(salesInvoices.id, id))
+        .returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating sales invoice:", error);
+      throw error;
+    }
+  }
+
+  async deleteSalesInvoice(id: number): Promise<void> {
+    try {
+      await db.delete(salesInvoices).where(eq(salesInvoices.id, id));
+    } catch (error) {
+      console.error("Error deleting sales invoice:", error);
+      throw error;
+    }
+  }
+}
+
+export interface IStorage {
+  // User methods
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserById(id: number): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
+  createUser(userData: InsertUser): Promise<User>;
+  updateUser(
+    id: number,
+    userData: Partial<InsertUser>,
+  ): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
+
+  // Company methods
+  getCompany(): Promise<Company | undefined>;
+  updateCompany(companyData: InsertCompany): Promise<Company>;
+
+  // Customer methods
+  getCustomers(): Promise<Customer[]>;
+  createCustomer(customerData: InsertCustomer): Promise<Customer>;
+  updateCustomer(
+    id: number,
+    customerData: Partial<InsertCustomer>,
+  ): Promise<Customer | undefined>;
+
+  // Supplier methods
+  getSuppliers(): Promise<Supplier[]>;
+  getSupplier(id: number): Promise<Supplier | undefined>;
+  createSupplier(supplierData: InsertSupplier): Promise<Supplier>;
+  updateSupplier(
+    id: number,
+    supplierData: Partial<InsertSupplier>,
+  ): Promise<Supplier | undefined>;
+  deleteSupplier(id: number): Promise<boolean>;
+
+  // Employee methods
+  getEmployees(): Promise<Employee[]>;
+  createEmployee(employeeData: InsertEmployee): Promise<Employee>;
+  updateEmployee(
+    id: number,
+    employeeData: Partial<InsertEmployee>,
+  ): Promise<Employee | undefined>;
+
+  // Project methods
+  getProjects(): Promise<Project[]>;
+  getProject(id: number): Promise<Project | undefined>;
+  getProjectsByCustomer(customerId: number): Promise<Project[]>;
+  createProject(projectData: InsertProject): Promise<Project>;
+  updateProject(
+    id: number,
+    data: Partial<Project>,
+  ): Promise<Project | undefined>;
+
+  // Project Employee methods
+  getProjectEmployees(projectId: number): Promise<Employee[]>;
+  assignEmployeeToProject(projectId: number, employeeId: number): Promise<any>;
+  assignEmployeesToProject(
+    projectId: number,
+    employeeIds: number[],
+  ): Promise<any[]>;
+  recalculateProjectCost(projectId: number): Promise<void>;
+  updateProjectEndDateAndRecalculate(
+    projectId: number,
+    endDate: Date,
+  ): Promise<Project | undefined>;
+  removeEmployeeFromProject(
+    projectId: number,
+    employeeId: number,
+  ): Promise<boolean>;
+
+  // Inventory methods
+  getInventoryItems(): Promise<InventoryItem[]>;
+  createInventoryItem(itemData: InsertInventoryItem): Promise<InventoryItem>;
+  updateInventoryItem(
+    id: number,
+    itemData: Partial<InventoryItem>,
+  ): Promise<InventoryItem | undefined>;
+
+  // Asset methods
+  getAssets(): Promise<Asset[]>;
+  createAsset(assetData: InsertAsset): Promise<Asset>;
+
+  // Daily Activity methods
+  getDailyActivities(projectId: number): Promise<DailyActivity[]>;
+  createDailyActivity(
+    activityData: InsertDailyActivity,
+  ): Promise<DailyActivity>;
+
+  // Supplier-Inventory Item mapping methods
+  getSupplierInventoryItems(
+    inventoryItemId?: number,
+    supplierId?: number,
+  ): Promise<SupplierInventoryItem[]>;
+  createSupplierInventoryItem(
+    data: InsertSupplierInventoryItem,
+  ): Promise<SupplierInventoryItem>;
+  updateSupplierInventoryItem(
+    id: number,
+    data: Partial<InsertSupplierInventoryItem>,
+  ): Promise<SupplierInventoryItem | undefined>;
+  deleteSupplierInventoryItem(id: number): Promise<boolean>;
+  deleteSupplierInventoryItemsByInventoryId(
+    inventoryItemId: number,
+  ): Promise<boolean>;
+  getSupplierInventoryItemsBySupplierId(
+    supplierId: number,
+  ): Promise<SupplierInventoryItem[]>;
+  getProductsBySupplier(supplierId: number): Promise<any[]>;
+
+  // Project Photo Group methods
+  getProjectPhotoGroups(projectId: number): Promise<ProjectPhotoGroup[]>;
+  createProjectPhotoGroup(
+    groupData: InsertProjectPhotoGroup,
+  ): Promise<ProjectPhotoGroup>;
+  updateProjectPhotoGroup(
+    id: number,
+    groupData: Partial<InsertProjectPhotoGroup>,
+  ): Promise<ProjectPhotoGroup | undefined>;
+  deleteProjectPhotoGroup(id: number): Promise<boolean>;
+
+  // Project Photo methods
+  getProjectPhotos(groupId: number): Promise<ProjectPhoto[]>;
+  createProjectPhoto(photoData: InsertProjectPhoto): Promise<ProjectPhoto>;
+  deleteProjectPhoto(photoId: number): Promise<boolean>;
+
+  // Project Consumables methods
+  getProjectConsumables(projectId: number): Promise<any[]>;
+  createProjectConsumables(
+    projectId: number,
+    date: string,
+    items: Array<{ inventoryItemId: number; quantity: number }>,
+  ): Promise<any>;
+
+  // Payroll
+  getPayrollEntries(
+    month?: number,
+    year?: number,
+    employeeId?: number,
+    projectId?: number,
+  ): Promise<PayrollEntry[]>;
+  generateMonthlyPayroll(month: number, year: number): Promise<PayrollEntry[]>;
+  updatePayrollEntry(
+    id: number,
+    payrollData: Partial<PayrollEntry>,
+  ): Promise<PayrollEntry | undefined>;
+
+  // Sales
+  getSalesQuotations(): Promise<SalesQuotation[]>;
+  getSalesInvoices(): Promise<SalesInvoice[]>;
+  createSalesQuotation(
+    insertQuotation: InsertSalesQuotation,
+  ): Promise<SalesQuotation>;
+  createSalesInvoice(insertInvoice: InsertSalesInvoice): Promise<SalesInvoice>;
+  updateSalesQuotation(
+    id: number,
+    quotation: Partial<InsertSalesQuotation>,
+  ): Promise<SalesQuotation>;
+  deleteSalesQuotation(id: number): Promise<void>;
+  updateSalesInvoice(
+    id: number,
+    invoice: Partial<InsertSalesInvoice>,
+  ): Promise<SalesInvoice>;
+  deleteSalesInvoice(id: number): Promise<void>;
+}
+
+export const storage: IStorage = new Storage();

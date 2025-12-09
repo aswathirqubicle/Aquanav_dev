@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1748607769189,
+      "tag": "0000_overrated_wild_pack",
+      "breakpoints": true
+    }
+  ]
+}
