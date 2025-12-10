@@ -59,7 +59,7 @@ const serviceItems = [
 ];
 
 function getRandomDate(start: Date, end: Date): Date {
-  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime())).toISOString();
 }
 
 function generatePhoneNumber(): string {
@@ -155,7 +155,7 @@ async function seedEmployees() {
 async function seedProjects(customers: any[]) {
   console.log('Seeding projects...');
   const projects = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 20; i++) {
     const startDate = getRandomDate(new Date(2024, 0, 1), now);
@@ -203,7 +203,7 @@ async function seedInventory() {
       minStockLevel: Math.floor(currentStock * 0.2),
       maxStockLevel: Math.floor(currentStock * 2),
       avgCost: avgCost.toString(),
-      lastUpdated: new Date(),
+      lastUpdated: new Date().toISOString(),
       location: `Warehouse ${String.fromCharCode(65 + (i % 5))}`,
       isActive: true
     });
@@ -217,7 +217,7 @@ async function seedInventory() {
 async function seedSalesQuotations(customers: any[], projects: any[]) {
   console.log('Seeding sales quotations...');
   const quotations = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 15; i++) {
     const items = serviceItems.slice(0, Math.floor(Math.random() * 3) + 2).map(item => ({
@@ -255,7 +255,7 @@ async function seedSalesQuotations(customers: any[], projects: any[]) {
 async function seedProformaInvoices(customers: any[], projects: any[], quotations: any[]) {
   console.log('Seeding proforma invoices...');
   const proformas = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 12; i++) {
     const items = serviceItems.slice(0, Math.floor(Math.random() * 3) + 2).map(item => ({
@@ -300,7 +300,7 @@ async function seedProformaInvoices(customers: any[], projects: any[], quotation
 async function seedSalesInvoices(customers: any[], projects: any[]) {
   console.log('Seeding sales invoices...');
   const invoices = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 18; i++) {
     const items = serviceItems.slice(0, Math.floor(Math.random() * 3) + 2).map(item => ({
@@ -342,7 +342,7 @@ async function seedSalesInvoices(customers: any[], projects: any[]) {
 async function seedCreditNotes(customers: any[], salesInvoices: any[]) {
   console.log('Seeding credit notes...');
   const creditNotes = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 8; i++) {
     const relatedInvoice = salesInvoices[i % salesInvoices.length];
@@ -388,7 +388,7 @@ async function seedCreditNotes(customers: any[], salesInvoices: any[]) {
 async function seedPurchaseRequests(suppliers: any[], projects: any[], inventoryItems: any[]) {
   console.log('Seeding purchase requests...');
   const requests = [];
-  const now = new Date();
+  const now = new Date().toISOString();
   
   for (let i = 0; i < 15; i++) {
     const requestItems = inventoryItems.slice(0, Math.floor(Math.random() * 4) + 2).map(item => ({

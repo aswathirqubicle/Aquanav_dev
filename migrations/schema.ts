@@ -113,7 +113,7 @@ export const customers = pgTable("customers", {
 	name: text().notNull(),
 	contactPerson: text("contact_person"),
 	email: text(),
-	phone: text(),
+	phone: text().notNull().unique(),
 	address: text(),
 	taxId: text("tax_id"),
 	userId: integer("user_id"),

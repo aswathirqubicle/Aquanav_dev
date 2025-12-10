@@ -50,46 +50,52 @@ const AssetInventoryIndex = lazy(() => import("./pages/asset-inventory/index"));
 
 function Router() {
   return (
-    <Layout>
-      <Suspense fallback={<div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ocean-600"></div></div>}>
-        <Switch>
-          <Route path="/" component={Login} />
-          <Route path="/login" component={Login} />
-          <Route path="/dashboard" component={Dashboard} />
-          <Route path="/projects" component={ProjectsIndex} />
-          <Route path="/projects/create" component={ProjectCreate} />
-          <Route path="/projects/:id" component={ProjectDetail} />
-          <Route path="/employees" component={EmployeesIndex} />
-          <Route path="/inventory" component={InventoryIndex} />
-          <Route path="/inventory/goods-receipt" component={GoodsReceipt} />
-          <Route path="/inventory/goods-issue" component={GoodsIssue} />
+    <Suspense fallback={<div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ocean-600"></div></div>}>
+      <Switch>
+        <Route path="/" component={Login} />
+        <Route path="/login" component={Login} />
 
-          <Route path="/asset-inventory" component={AssetInventoryIndex} />
-          <Route path="/sales" component={SalesIndex} />
-          <Route path="/proforma-invoices" component={() => <ProformaInvoicesIndex />} />
-          <Route path="/credit-notes" component={CreditNotesIndex} />
-          <Route path="/reports" component={ReportsIndex} />
-          <Route path="/reports/profit-loss" component={() => <ProfitLossReport />} />
-          <Route path="/reports/payables-receivables" component={PayablesReceivablesReport} />
-          <Route path="/general-ledger" component={GeneralLedgerIndex} />
-          <Route path="/general-ledger/receivable" component={GeneralLedgerReceivable} />
-          <Route path="/general-ledger/payable" component={GeneralLedgerPayable} />
-          <Route path="/error-logs" component={lazy(() => import("@/pages/error-logs"))} />
-          <Route path="/payroll" component={PayrollIndex} />
-          <Route path="/customers" component={CustomersIndex} />
-          <Route path="/suppliers" component={SuppliersIndex} />
-          <Route path="/suppliers/:id/orders" component={SupplierOrders} />
-          <Route path="/suppliers/:id/products" component={SupplierProducts} />
-          <Route path="/purchase-requests" component={PurchaseRequestsIndex} />
-          <Route path="/purchase-orders" component={PurchaseOrdersIndex} />
-          <Route path="/purchase-invoices" component={PurchaseInvoicesIndex} />
-          <Route path="/settings" component={SettingsIndex} />
-          <Route path="/settings/currency" component={CurrencySettings} />
-          <Route path="/users" component={UsersIndex} />
-          <Route component={NotFound} />
-        </Switch>
-      </Suspense>
-    </Layout>
+        <Route>
+          <Layout>
+            <Switch>
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/projects" component={ProjectsIndex} />
+              <Route path="/projects/create" component={ProjectCreate} />
+              <Route path="/projects/:id" component={ProjectDetail} />
+              <Route path="/employees" component={EmployeesIndex} />
+              <Route path="/inventory" component={InventoryIndex} />
+              <Route path="/inventory/goods-receipt" component={GoodsReceipt} />
+              <Route path="/inventory/goods-issue" component={GoodsIssue} />
+
+              <Route path="/asset-inventory" component={AssetInventoryIndex} />
+              <Route path="/sales" component={SalesIndex} />
+              <Route path="/proforma-invoices" component={() => <ProformaInvoicesIndex />} />
+              <Route path="/credit-notes" component={CreditNotesIndex} />
+              <Route path="/reports" component={ReportsIndex} />
+              <Route path="/reports/profit-loss" component={() => <ProfitLossReport />} />
+              <Route path="/reports/payables-receivables" component={PayablesReceivablesReport} />
+              <Route path="/general-ledger" component={GeneralLedgerIndex} />
+              <Route path="/general-ledger/receivable" component={GeneralLedgerReceivable} />
+              <Route path="/general-ledger/payable" component={GeneralLedgerPayable} />
+              <Route path="/error-logs" component={lazy(() => import("@/pages/error-logs"))} />
+              <Route path="/payroll" component={PayrollIndex} />
+              <Route path="/customers" component={CustomersIndex} />
+              <Route path="/suppliers" component={SuppliersIndex} />
+              <Route path="/suppliers/:id/orders" component={SupplierOrders} />
+              <Route path="/suppliers/:id/products" component={SupplierProducts} />
+              <Route path="/purchase-requests" component={PurchaseRequestsIndex} />
+              <Route path="/purchase-orders" component={PurchaseOrdersIndex} />
+              <Route path="/purchase-invoices" component={PurchaseInvoicesIndex} />
+              <Route path="/settings" component={SettingsIndex} />
+              <Route path="/settings/currency" component={CurrencySettings} />
+              <Route path="/users" component={UsersIndex} />
+              <Route component={NotFound} />
+
+            </Switch>
+          </Layout>
+        </Route>
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -119,7 +125,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <Router />
-            <ErrorDialog 
+            <ErrorDialog
               error={errorDialog}
               open={errorDialogOpen}
               onOpenChange={setErrorDialogOpen}

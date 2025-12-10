@@ -13,7 +13,7 @@ const purchaseItems = [
 ];
 
 function getRandomDate(start: Date, end: Date): Date {
-  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime())).toISOString();
 }
 
 async function seedPurchaseOrders() {
@@ -29,8 +29,8 @@ async function seedPurchaseOrders() {
   }
 
   const purchaseOrders = [];
-  const now = new Date();
-  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const now = new Date().toISOString();
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString();
 
   for (let i = 0; i < 20; i++) {
     const items = purchaseItems.slice(0, Math.floor(Math.random() * 3) + 2).map(item => ({
@@ -44,7 +44,7 @@ async function seedPurchaseOrders() {
     const totalAmount = subtotal + totalTaxAmount;
 
     const orderDate = getRandomDate(threeMonthsAgo, now);
-    const expectedDeliveryDate = new Date(orderDate.getTime() + (Math.random() * 30 + 7) * 24 * 60 * 60 * 1000);
+    const expectedDeliveryDate = new Date(orderDate.getTime() + (Math.random() * 30 + 7) * 24 * 60 * 60 * 1000).toISOString();
 
     purchaseOrders.push({
       orderNumber: `PO-${Date.now() + i}`,
@@ -77,7 +77,7 @@ async function seedPurchaseInvoices(purchaseOrders: any[]) {
   }
 
   const purchaseInvoices = [];
-  const now = new Date();
+  const now = new Date().toISOString();
 
   // Create invoices for 70% of purchase orders
   const ordersToInvoice = purchaseOrders.slice(0, Math.floor(purchaseOrders.length * 0.7));
@@ -85,7 +85,7 @@ async function seedPurchaseInvoices(purchaseOrders: any[]) {
   for (let i = 0; i < ordersToInvoice.length; i++) {
     const order = ordersToInvoice[i];
     const invoiceDate = getRandomDate(new Date(order.orderDate), now);
-    const dueDate = new Date(invoiceDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const dueDate = new Date(invoiceDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     // Use same items as the purchase order or create variation
     const orderItems = JSON.parse(order.items);

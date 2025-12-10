@@ -166,7 +166,7 @@ export function CustomPagination({ currentPage, totalPages, onPageChange, classN
       </Button>
 
       {getVisiblePages().map((page, index) => (
-        <React.Fragment key={index}>
+        <div key={index}>
           {page === "..." ? (
             <span className="px-3 py-2 text-slate-500">...</span>
           ) : (
@@ -178,7 +178,7 @@ export function CustomPagination({ currentPage, totalPages, onPageChange, classN
               {page}
             </Button>
           )}
-        </React.Fragment>
+        </div>
       ))}
 
       <Button

@@ -903,6 +903,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .status(400)
             .json({ message: "Invalid data", errors: error.errors });
         }
+        if (error instanceof Error && error.message) {
+          return res.status(500).json({
+            message: error.message,
+          });
+        }
         res.status(500).json({ message: "Failed to create customer" });
       }
     },
@@ -1549,7 +1554,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Project routes
   app.get("/api/projects", requireAuth, async (req, res) => {
     try {
-      let projects = await storage.getProjects();
+      const customerId = req.query.customer as string | undefined;
+      let projects;
+
+      // Case 1: Frontend requested /api/projects?customer=12
+      if (customerId) {
+        projects = await storage.getProjectsByCustomer(Number(customerId));
+        return res.json(projects);
+      }
+      
+      // let projects = await storage.getProjects();
 
       // Filter by customer for customer role
       if (req.session.userRole === "customer") {
@@ -1563,6 +1577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      projects = await storage.getProjects();
       res.json(projects);
     } catch (error) {
       res.status(500).json({ message: "Failed to get projects" });
@@ -5193,10 +5208,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Convert date strings to Date objects
       if (documentData.dateOfIssue && typeof documentData.dateOfIssue === 'string') {
-        documentData.dateOfIssue = new Date(documentData.dateOfIssue);
+        documentData.dateOfIssue = new Date(documentData.dateOfIssue).toISOString();
       }
       if (documentData.expiryDate && typeof documentData.expiryDate === 'string') {
-        documentData.expiryDate = new Date(documentData.expiryDate);
+        documentData.expiryDate = new Date(documentData.expiryDate).toISOString();
       }
       
       const parsedData = insertCustomerDocumentSchema.parse(documentData);
@@ -5225,10 +5240,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Convert date strings to Date objects
       if (documentData.dateOfIssue && typeof documentData.dateOfIssue === 'string') {
-        documentData.dateOfIssue = new Date(documentData.dateOfIssue);
+        documentData.dateOfIssue = new Date(documentData.dateOfIssue).toISOString();
       }
       if (documentData.expiryDate && typeof documentData.expiryDate === 'string') {
-        documentData.expiryDate = new Date(documentData.expiryDate);
+        documentData.expiryDate = new Date(documentData.expiryDate).toISOString();
       }
       
       const result = await storage.updateCustomerDocument(documentId, documentData);

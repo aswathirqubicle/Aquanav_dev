@@ -30,7 +30,7 @@ export const customers = pgTable("customers", {
   name: text("name").notNull(),
   contactPerson: text("contact_person"),
   email: text("email"),
-  phone: text("phone"),
+  phone: text("phone").notNull().unique(),
   address: text("address"),
   taxId: text("tax_id"),
   userId: integer("user_id").references(() => users.id),
@@ -974,8 +974,8 @@ export const insertGeneralLedgerEntrySchema = createInsertSchema(generalLedgerEn
 // Customer and Supplier Document Schemas
 export const insertCustomerDocumentSchema = createInsertSchema(customerDocuments).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   documentType: z.enum(["trade_license", "tax_registration", "vat_certificate", "commercial_license", "establishment_card", "chamber_membership", "iso_certificate", "insurance_certificate", "bank_guarantee", "other"]),
-  dateOfIssue: z.coerce.date().nullable().optional(),
-  expiryDate: z.coerce.date().nullable().optional(),
+  dateOfIssue: z.string().nullable().optional(),
+  expiryDate: z.string().nullable().optional(),
   status: z.enum(["active", "expired", "pending_renewal", "cancelled"]).default("active"),
 });
 
