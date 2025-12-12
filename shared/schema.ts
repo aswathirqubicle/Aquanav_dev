@@ -836,7 +836,7 @@ export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: tru
   isVatApplicable: z.boolean().default(true),
 });
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true }).extend({
-  hireDate: z.date().nullable().optional(),
+  hireDate: z.coerce.date().nullable().optional(),
   salary: z.string().nullable().optional(),
   category: z.enum(["permanent", "consultant", "contract"]).default("permanent"),
   grade: z.enum(["Grade 1", "Grade 2", "Grade 3", "Grade 4"]).nullable().optional(),
@@ -847,7 +847,7 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: tru
   userId: z.number().nullable().optional(),
   
   // Personal Particulars
-  dateOfBirth: z.date().nullable().optional(),
+  dateOfBirth: z.coerce.date().nullable().optional(),
   height: z.string().nullable().optional(),
   weight: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
@@ -866,6 +866,8 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: tru
   boilerSuitSize: z.string().nullable().optional(),
   safetyShoeSize: z.string().nullable().optional(),
 });
+
+export const updateEmployeeSchema = insertEmployeeSchema.partial();
 
 export const insertEmployeeNextOfKinSchema = createInsertSchema(employeeNextOfKin).omit({ id: true });
 export const insertEmployeeTrainingRecordSchema = createInsertSchema(employeeTrainingRecords).omit({ id: true }).extend({

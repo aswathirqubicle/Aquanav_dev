@@ -196,7 +196,7 @@ export default function EmployeesIndex() {
       };
 
       const response = await apiRequest(`/api/employees/${data.id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(processedData),
       });

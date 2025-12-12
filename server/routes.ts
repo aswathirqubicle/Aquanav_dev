@@ -12,6 +12,7 @@ import {
   insertProjectSchema,
   insertCustomerSchema,
   insertEmployeeSchema,
+  updateEmployeeSchema,
   insertEmployeeNextOfKinSchema,
   insertEmployeeTrainingRecordSchema,
   insertEmployeeDocumentSchema,
@@ -1240,43 +1241,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Update employee
-  app.put(
-    "/api/employees/:id",
-    requireAuth,
-    requireRole(["admin", "project_manager"]),
-    async (req, res) => {
-      try {
-        const employeeId = parseInt(req.params.id);
-        const updateData = req.body;
 
-        // Convert hireDate string to Date object if provided
-        if (updateData.hireDate && typeof updateData.hireDate === "string") {
-          updateData.hireDate = new Date(updateData.hireDate);
-        }
+app.patch(
+  "/api/employees/:id",
+  requireAuth,
+  requireRole(["admin", "project_manager"]),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const raw = { ...req.body };
 
-        // Remove undefined/null values to avoid overwriting with nulls
-        const cleanedData = Object.fromEntries(
-          Object.entries(updateData).filter(
-            ([_, value]) => value !== undefined,
-          ),
-        );
+      // First parse/coerce with Zod (this converts strings to Date for date fields)
+      const parsed = updateEmployeeSchema.parse(raw);
 
-        const updatedEmployee = await storage.updateEmployee(
-          employeeId,
-          cleanedData,
-        );
-        res.json(updatedEmployee);
-      } catch (error) {
-        console.error("Employee update error:", error);
-        if (error instanceof ZodError) {
-          return res
-            .status(400)
-            .json({ message: "Invalid data", errors: error.errors });
-        }
-        res.status(500).json({ message: "Failed to update employee" });
+      // Now format fields for DB:
+      // - For timestamp columns (hireDate) keep JS Date objects (drizzle accepts Date for timestamp)
+      // - For date-only columns (dateOfBirth) convert to "YYYY-MM-DD" string
+      const prepared: any = { ...parsed };
+
+      if (prepared.hireDate) {
+        // ensure it's a Date (z.coerce.date already made it Date) — keep as Date
+        // optionally: prepared.hireDate = new Date(prepared.hireDate);
       }
-    },
-  );
+
+      if (prepared.dateOfBirth) {
+        const d = new Date(prepared.dateOfBirth);
+        prepared.dateOfBirth = d.toISOString().split("T")[0]; // YYYY-MM-DD
+      }
+
+      // Remove undefined values to avoid accidental NULLs
+      Object.keys(prepared).forEach(
+        (k) => prepared[k] === undefined && delete prepared[k]
+      );
+
+      const result = await storage.updateEmployee(id, prepared);
+      if (!result) return res.status(404).json({ message: "Employee not found" });
+
+      res.json(result);
+    } catch (err) {
+      console.error("Update employee error:", err);
+      if (err instanceof ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      }
+      res.status(500).json({ message: "Failed to update employee" });
+    }
+  }
+);
+
 
   // Get single employee with full details
   app.get("/api/employees/:id", requireAuth, async (req, res) => {
