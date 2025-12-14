@@ -73,6 +73,13 @@ export default function AssetInventoryIndex() {
   const [isInstanceDetailOpen, setIsInstanceDetailOpen] = useState(false);
   const [selectedInstanceForDetail, setSelectedInstanceForDetail] = useState<any>(null);
 
+  const [isEditTypeDialogOpen, setIsEditTypeDialogOpen] = useState(false);
+  const [selectedAssetTypeForEdit, setSelectedAssetTypeForEdit] = useState<any>(null);
+
+  const [isAssetTypeViewOpen, setIsAssetTypeViewOpen] = useState(false);
+  const [selectedAssetTypeForView, setSelectedAssetTypeForView] = useState<any>(null);
+
+
   // Fetch asset types
   const { data: assetTypes = [], isLoading: isLoadingTypes } = useQuery({
     queryKey: ['asset-types'],
@@ -151,7 +158,7 @@ export default function AssetInventoryIndex() {
   const createAssetTypeMutation = useMutation({
     mutationFn: (data: any) => apiRequest('/api/asset-types', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(data.newAssetType),
       headers: { 'Content-Type': 'application/json' }
     }),
     onSuccess: () => {
@@ -174,6 +181,47 @@ export default function AssetInventoryIndex() {
       toast({ title: "Failed to create asset type", variant: "destructive" });
     }
   });
+
+    //Update Asset type mutation
+    const updateAssetTypeMutation = useMutation({
+    mutationFn: (data: any) =>
+      apiRequest(`/api/asset-types/${selectedAssetTypeForEdit.id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["asset-types"] });
+      setIsEditTypeDialogOpen(false);
+      setSelectedAssetTypeForEdit(null);
+      toast({ title: "Asset type updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update asset type", variant: "destructive" });
+    },
+  });
+
+  const handleViewAssetType = (type: any) => {
+    setSelectedAssetTypeForView(type);
+    setIsAssetTypeViewOpen(true);
+  };
+
+
+  const handleEditAssetType = (type: any) => {
+    setSelectedAssetTypeForEdit(type);
+    setNewAssetType({
+      name: type.name || "",
+      category: type.category || "",
+      manufacturer: type.manufacturer || "",
+      model: type.model || "",
+      description: type.description || "",
+      defaultMonthlyRentalRate: type.defaultMonthlyRentalRate?.toString() || "",
+      currency: type.currency || "AED",
+      warrantyPeriodMonths: type.warrantyPeriodMonths?.toString() || "12",
+      maintenanceIntervalDays: type.maintenanceIntervalDays?.toString() || "90",
+    });
+    setIsEditTypeDialogOpen(true);
+  };
 
   // Create asset instance mutation
   const createAssetInstanceMutation = useMutation({
@@ -350,24 +398,6 @@ export default function AssetInventoryIndex() {
     };
   }, [assetInstances]);
 
-  const handleAddAssetType = () => {
-    toast({
-      title: "Asset Type Added",
-      description: `${newAssetType.name} has been added to the asset catalog.`,
-    });
-    setIsAddTypeDialogOpen(false);
-    setNewAssetType({
-      name: "",
-      category: "",
-      manufacturer: "",
-      model: "",
-      description: "",
-      defaultMonthlyRentalRate: "",
-      currency: "AED",
-      warrantyPeriodMonths: "12",
-      maintenanceIntervalDays: "90",
-    });
-  };
 
   const handleAddAssetInstance = () => {
     if (selectedInstance) {
@@ -523,13 +553,274 @@ export default function AssetInventoryIndex() {
                   <Button variant="outline" onClick={() => setIsAddTypeDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={handleAddAssetType}>
-                    Add Asset Type
+                  {/* <Button onClick={handleAddAssetType} >
+                    
+                  </Button> */}
+                  <Button 
+                                  // onClick={() => createAssetTypeMutation.mutate(newAssetType )}
+                                  onClick={() => createAssetTypeMutation.mutate({ id: newAssetType!.id, newAssetType })}
+                                >Add Asset Type</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Asset Type Detail Modal */}
+          <Dialog open={isAssetTypeViewOpen} onOpenChange={setIsAssetTypeViewOpen}>
+            <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Asset Type Details</DialogTitle>
+              </DialogHeader>
+
+              {selectedAssetTypeForView && (
+                <div className="space-y-6">
+
+                  {/* Basic Information */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Basic Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Name</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.name}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Category</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {assetCategories.find(
+                            c => c.value === selectedAssetTypeForView.category
+                          )?.label || selectedAssetTypeForView.category}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Manufacturer</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.manufacturer || "Not specified"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Model</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.model || "Not specified"}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Description */}
+                  {selectedAssetTypeForView.description && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Description</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.description}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Financial Defaults */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Financial Defaults</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label>Default Monthly Rent</Label>
+                        <p className="text-sm text-muted-foreground">
+                          ${selectedAssetTypeForView.defaultMonthlyRentalRate
+                            ? parseFloat(selectedAssetTypeForView.defaultMonthlyRentalRate).toLocaleString()
+                            : "0.00"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Warranty Period</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.warrantyPeriodMonths || "0"} months
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Maintenance Interval</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.maintenanceIntervalDays || "0"} days
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Instance Summary */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Instance Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label>Total Instances</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.instanceCount || 0}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Available</Label>
+                        <p className="text-sm text-green-600">
+                          {selectedAssetTypeForView.availableCount || 0}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Total Value</Label>
+                        <p className="text-sm text-muted-foreground">
+                          ${(selectedAssetTypeForView.totalValue || 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Record Info */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Record Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Created At</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.createdAt
+                            ? new Date(selectedAssetTypeForView.createdAt).toLocaleString()
+                            : "Not available"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Last Updated</Label>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAssetTypeForView.updatedAt
+                            ? new Date(selectedAssetTypeForView.updatedAt).toLocaleString()
+                            : "Not available"}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAssetTypeViewOpen(false)}
+                    >
+                      Close
+                    </Button>
+
+                    <Button
+                      onClick={() => {
+                        setIsAssetTypeViewOpen(false);
+                        handleEditAssetType(selectedAssetTypeForView);
+                      }}
+                    >
+                      Edit Asset Type
+                    </Button>
+                  </div>
+
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Asset Type Dialog */}
+          <Dialog open={isEditTypeDialogOpen} onOpenChange={setIsEditTypeDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Edit Asset Type</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Name *</Label>
+                    <Input
+                      value={newAssetType.name}
+                      onChange={(e) =>
+                        setNewAssetType({ ...newAssetType, name: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Category *</Label>
+                    <Select
+                      value={newAssetType.category}
+                      onValueChange={(value) =>
+                        setNewAssetType({ ...newAssetType, category: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assetCategories.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    placeholder="Manufacturer"
+                    value={newAssetType.manufacturer}
+                    onChange={(e) =>
+                      setNewAssetType({ ...newAssetType, manufacturer: e.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="Model"
+                    value={newAssetType.model}
+                    onChange={(e) =>
+                      setNewAssetType({ ...newAssetType, model: e.target.value })
+                    }
+                  />
+                </div>
+
+                <Textarea
+                  placeholder="Description"
+                  value={newAssetType.description}
+                  onChange={(e) =>
+                    setNewAssetType({ ...newAssetType, description: e.target.value })
+                  }
+                />
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditTypeDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    onClick={() => updateAssetTypeMutation.mutate(newAssetType)}
+                  >
+                    Update Asset Type
                   </Button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
+
 
           <Dialog open={isAddInstanceDialogOpen} onOpenChange={setIsAddInstanceDialogOpen}>
             <DialogTrigger asChild>
@@ -1427,12 +1718,22 @@ export default function AssetInventoryIndex() {
                         </p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewAssetType(type)}
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditAssetType(type)}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
+
                       </div>
                     </div>
                   </div>
