@@ -91,7 +91,11 @@ export function MaintenanceManagement() {
   // Fetch maintenance records
   const { data: maintenanceRecordsData, isLoading: recordsLoading } = useQuery({
     queryKey: ['/api/maintenance-records'],
-    queryFn: () => apiRequest('/api/maintenance-records')
+    //queryFn: () => apiRequest('/api/maintenance-records')
+    queryFn: async () => {
+      const res = await apiRequest('/api/maintenance-records');
+      return await res.json(); // ✅ parse here
+    }
   });
 
   // Ensure maintenanceRecords is always an array
@@ -100,8 +104,12 @@ export function MaintenanceManagement() {
   // Fetch asset instances for dropdown
   const { data: assetInstancesData } = useQuery({
     queryKey: ['/api/asset-inventory/instances'],
-    queryFn: () => apiRequest('/api/asset-inventory/instances')
+    queryFn: async () => {
+      const res = await apiRequest('/api/asset-inventory/instances');
+      return await res.json(); // ✅ parse here
+    }
   });
+console.log("assetInstancesData", assetInstancesData);
 
   // Ensure assetInstances is always an array
   const assetInstances = Array.isArray(assetInstancesData) ? assetInstancesData : [];
