@@ -535,7 +535,7 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
-      const dataQueryBuilder = db.select().from(customers).where(conditions);
+      const dataQueryBuilder = db.select().from(customers).where(conditions).orderBy(customers.id);
       // Note: original count query had a simpler where clause `eq(customers.isArchived, showArchived)`
       // This should ideally be consistent. For now, using the combined `conditions` for count.
       const countQueryBuilder = db
@@ -585,15 +585,17 @@ class Storage {
 
   async createCustomer(customerData: InsertCustomer): Promise<Customer> {
     try {
-      const existing = await db
-        .select()
-        .from(customers)
-        .where(eq(customers.phone, customerData.phone));
+      if (customerData.phone && customerData.phone.trim() !== "") {
+        const existing = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.phone, customerData.phone));
 
-      if (existing.length > 0) {
-        throw new Error(
-          `Customer with phone ${customerData.phone} already exists`
-        );
+        if (existing.length > 0) {
+          throw new Error(
+            `Customer with phone ${customerData.phone} already exists`
+          );
+        }
       }
 
       const result = await db
@@ -635,6 +637,24 @@ class Storage {
     customerData: Partial<InsertCustomer>
   ): Promise<Customer | undefined> {
     try {
+
+        if (customerData.phone && customerData.phone.trim() !== "") {
+        const existing = await db
+          .select()
+          .from(customers)
+          .where(
+            and(
+              eq(customers.phone, customerData.phone),
+              ne(customers.id, id)
+            )
+          );
+
+        if (existing.length > 0) {
+          throw new Error(
+            `Customer with phone ${customerData.phone} already exists`
+          );
+        }
+      }
       const result = await db
         .update(customers)
         .set(customerData)

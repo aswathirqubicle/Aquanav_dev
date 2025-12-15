@@ -929,7 +929,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         res.json(customer);
-      } catch (error) {
+      } catch (error: any) {
+         if (error.message?.includes("already exists")) {
+          return res.status(409).json({
+            message: error.message,
+          });
+        }
         res.status(500).json({ message: "Failed to update customer" });
       }
     },
