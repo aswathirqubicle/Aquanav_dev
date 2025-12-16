@@ -2483,7 +2483,10 @@ class Storage {
   async createAssetInventoryMaintenanceRecord(maintenanceData: {
     instanceId: number;
     maintenanceCost: string;
+    maintenanceType: string;
     description?: string | null;
+    startDate?: Date;
+    completedDate?: Date;
     maintenanceDate?: Date;
     performedBy?: number | null;
   }): Promise<any> {
@@ -2494,7 +2497,10 @@ class Storage {
           instanceId: maintenanceData.instanceId,
           maintenanceCost: maintenanceData.maintenanceCost,
           description: maintenanceData.description || null,
+          startDate: maintenanceData.startDate || null,
+          completedDate: maintenanceData.completedDate || null,
           maintenanceDate: maintenanceData.maintenanceDate || new Date(),
+          maintenanceType: maintenanceData.maintenanceType || null,
           performedBy: maintenanceData.performedBy || null,
           createdAt: new Date(),
         })
