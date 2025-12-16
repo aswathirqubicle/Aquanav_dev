@@ -22,3 +22,9 @@ CREATE TABLE IF NOT EXISTS "asset_inventory_maintenance_files" (
 	"uploaded_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "asset_inventory_maintenance_files_maintenance_record_id_asset_inventory_maintenance_records_id_fk" FOREIGN KEY ("maintenance_record_id") REFERENCES "asset_inventory_maintenance_records"("id") ON DELETE cascade ON UPDATE no action
 );
+
+ALTER TABLE "asset_inventory_maintenance_records"
+ADD COLUMN IF NOT EXISTS "start_date" TIMESTAMP,
+ADD COLUMN IF NOT EXISTS "completed_date" TIMESTAMP,
+ADD COLUMN IF NOT EXISTS "maintenance_type" varchar(255)
+

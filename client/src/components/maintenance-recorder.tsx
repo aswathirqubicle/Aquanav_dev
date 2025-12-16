@@ -15,6 +15,7 @@ interface MaintenanceRecord {
   maintenanceType: string;
   description: string;
   performedBy: string;
+  startDate: string;
   completedDate: string;
   nextMaintenanceDate?: string;
   cost?: number;
@@ -44,6 +45,7 @@ export function MaintenanceRecorder({ assetInstance, onRecordSaved }: Maintenanc
     maintenanceType: '',
     description: '',
     performedBy: '',
+    startDate: '',
     completedDate: new Date().toISOString().split('T')[0],
     nextMaintenanceDate: '',
     cost: '',
@@ -109,6 +111,7 @@ export function MaintenanceRecorder({ assetInstance, onRecordSaved }: Maintenanc
       submitData.append('maintenanceType', formData.maintenanceType);
       submitData.append('description', formData.description);
       submitData.append('performedBy', formData.performedBy);
+      submitData.append('startDate', formData.startDate);
       submitData.append('completedDate', formData.completedDate);
       submitData.append('nextMaintenanceDate', formData.nextMaintenanceDate);
       submitData.append('cost', formData.cost);
@@ -121,7 +124,7 @@ export function MaintenanceRecorder({ assetInstance, onRecordSaved }: Maintenanc
         }
       }
 
-      const response = await fetch('/api/asset-maintenance-records', {
+      const response = await fetch('/api/maintenance-records', {
         method: 'POST',
         body: submitData,
       });
@@ -137,6 +140,7 @@ export function MaintenanceRecorder({ assetInstance, onRecordSaved }: Maintenanc
           maintenanceType: '',
           description: '',
           performedBy: '',
+          startDate: '',
           completedDate: new Date().toISOString().split('T')[0],
           nextMaintenanceDate: '',
           cost: '',
@@ -266,6 +270,16 @@ export function MaintenanceRecorder({ assetInstance, onRecordSaved }: Maintenanc
                     value={formData.performedBy}
                     onChange={(e) => handleInputChange('performedBy', e.target.value)}
                     placeholder="Technician name"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="startDate">Start Date *</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => handleInputChange('startDate', e.target.value)}
                   />
                 </div>
                 

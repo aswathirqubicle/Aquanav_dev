@@ -18,7 +18,7 @@ export async function apiRequest(
   const headers: HeadersInit = {};
   let processedBody = requestBody;
 
-  if (requestBody) {
+  if (requestBody && !(requestBody instanceof FormData))  {
     headers["Content-Type"] = "application/json";
     // Only stringify if it's an object and not FormData (FormData is used for file uploads and should not be stringified)
     if (typeof requestBody === 'object' && requestBody !== null && !(requestBody instanceof FormData)) {

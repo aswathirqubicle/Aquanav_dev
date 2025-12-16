@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, decimal, json, numeric, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp,varchar, decimal, json, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -456,6 +456,9 @@ export const assetInventoryMaintenanceRecords = pgTable("asset_inventory_mainten
   instanceId: integer("instance_id").references(() => assetInventoryInstances.id).notNull(),
   maintenanceCost: decimal("maintenance_cost", { precision: 10, scale: 2 }).notNull(),
   maintenanceDate: timestamp("maintenance_date").defaultNow().notNull(),
+  maintenanceType: varchar("maintenance_type", { length: 255 }),
+  startDate: timestamp("start_date", { withTimezone: false }),
+  completedDate: timestamp("completed_date", { withTimezone: false }),
   description: text("description"),
   performedBy: integer("performed_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
