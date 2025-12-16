@@ -304,7 +304,9 @@ export default function SuppliersIndex() {
         taxCategory: editingSupplier.taxCategory || "standard",
         paymentTerms: editingSupplier.paymentTerms || "30_days",
         currency: editingSupplier.currency || "AED",
-        creditLimit: editingSupplier.creditLimit || "",
+        creditLimit: editingSupplier.creditLimit && Number(editingSupplier.creditLimit) > 0
+        ? editingSupplier.creditLimit
+        : "",
         isVatApplicable: editingSupplier.isVatApplicable ?? true,
         notes: editingSupplier.notes || "",
       });
@@ -313,10 +315,17 @@ export default function SuppliersIndex() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+     const payload = {
+      ...formData,
+      creditLimit:
+        formData.creditLimit && Number(formData.creditLimit) > 0
+          ? formData.creditLimit
+          : "0.00",
+    };
     if (editingSupplier) {
-      updateSupplierMutation.mutate({ id: editingSupplier.id, data: formData });
+      updateSupplierMutation.mutate({ id: editingSupplier.id, data: payload });
     } else {
-      createSupplierMutation.mutate(formData);
+      createSupplierMutation.mutate(payload);
     }
   };
 
