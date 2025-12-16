@@ -723,7 +723,7 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
-      const dataQueryBuilder = db.select().from(suppliers).where(conditions);
+      const dataQueryBuilder = db.select().from(suppliers).where(conditions).orderBy(suppliers.id);;
       // Original count query for suppliers also only filtered by showArchived.
       // Sticking to applying all conditions for count for consistency in the helper.
       const countQueryBuilder = db
@@ -1005,8 +1005,8 @@ class Storage {
     try {
       const result = await db
         .delete(supplierDocuments)
-        .where(eq(supplierDocuments.id, id));
-      return result.rowCount > 0;
+        .where(eq(supplierDocuments.id, id)).returning();
+      return result.length > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
