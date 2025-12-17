@@ -325,6 +325,44 @@ assetRoutes.post(
   }
 );
 
+//Maintenance update
+assetRoutes.put(
+  "/api/maintenance-records/:id",
+  requireAuth,
+  upload.none(),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const {
+        maintenanceType,
+        description,
+        maintenanceDate,
+        startDate,
+        completedDate,
+        maintenanceCost,
+      } = req.body;
+
+      const record = await storage.updateAssetInventoryMaintenanceRecord(
+        id,
+        {
+          maintenanceType,
+          description,
+          maintenanceDate: maintenanceDate ? new Date(maintenanceDate) : undefined,
+          startDate: startDate ? new Date(startDate) : undefined,
+          completedDate: completedDate ? new Date(completedDate) : undefined,
+          maintenanceCost,
+        }
+      );
+
+      res.json(record);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to update record" });
+    }
+  }
+);
+
+
 // Maintenance File Upload Routes
 assetRoutes.post('/api/maintenance-records/:id/files', requireAuth, upload.single('file'), (req, res) => {
   console.log('Headers:', req.headers['content-type']);

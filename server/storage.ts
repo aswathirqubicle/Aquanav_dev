@@ -68,6 +68,7 @@ import {
   type InsertCustomer,
   type Employee,
   type InsertEmployee,
+  type insertAssetInventoryMaintenanceRecords,
   type EmployeeNextOfKin,
   type InsertEmployeeNextOfKin,
   type EmployeeTrainingRecord,
@@ -111,6 +112,7 @@ import {
   type PayrollDeduction,
   type InsertPayrollDeduction,
   type InvoicePayment,
+  type insertAssetInventoryMaintenanceRecord,
   type InsertInvoicePayment,
   type PaymentFile, // Ensure PaymentFile is imported
   type ErrorLog, // Will be used later
@@ -2482,7 +2484,7 @@ class Storage {
     }
   }
 
-  // Asset Inventory Maintenance Records
+  // Create Asset Inventory Maintenance Records
   async createAssetInventoryMaintenanceRecord(maintenanceData: {
     instanceId: number;
     maintenanceCost: string;
@@ -2521,6 +2523,33 @@ class Storage {
       throw error;
     }
   }
+
+  //Update Maintenance record
+  async updateAssetInventoryMaintenanceRecord(
+    id: number,
+    maintenanceData: Partial<insertAssetInventoryMaintenanceRecords>
+  ): Promise<any> {
+    try {
+      const result = await db
+        .update(assetInventoryMaintenanceRecords)
+        .set(maintenanceData)
+        .where(eq(assetInventoryMaintenanceRecords.id, id))
+        .returning();
+
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateAssetInventoryMaintenanceRecord (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateAssetInventoryMaintenanceRecord",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
 
   async getAssetInventoryMaintenanceRecords(
     instanceId: number

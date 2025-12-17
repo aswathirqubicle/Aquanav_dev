@@ -464,6 +464,9 @@ export const assetInventoryMaintenanceRecords = pgTable("asset_inventory_mainten
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const insertAssetInventoryMaintenanceRecords = createInsertSchema(assetInventoryMaintenanceRecords).omit({ id: true });
+export const updateAssetInventoryMaintenanceRecord = insertAssetInventoryMaintenanceRecords.partial();
+
 // Asset Inventory Maintenance Files
 export const assetInventoryMaintenanceFiles = pgTable("asset_inventory_maintenance_files", {
   id: serial("id").primaryKey(),
