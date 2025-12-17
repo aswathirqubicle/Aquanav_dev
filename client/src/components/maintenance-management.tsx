@@ -136,13 +136,13 @@ export function MaintenanceManagement() {
                 <div className="grid grid-cols-2 gap-4 text-sm mt-2">
                   <div>
                     <p><b>Type:</b> {record.maintenanceType}</p>
-                    <p><b>By:</b> {record.performedBy}</p>
+                    <p><b>Performed By:</b> {record.performedByName}</p>
                     <p><b>Start Date:</b> {safeFormatDate(record.startDate)}</p>
                     <p><b>Completed Date:</b> {safeFormatDate(record.completedDate)}</p>
                   </div>
                   <div>
                     <p><b>Description:</b> {record.description}</p>
-                    <p><b>Next Maintenance Date:</b> {safeFormatDate(record.nextMaintenanceDate)}</p>
+                    <p><b>Next Maintenance Date:</b> {safeFormatDate(record.maintenanceDate)}</p>
                   </div>
                 </div>
               </div>

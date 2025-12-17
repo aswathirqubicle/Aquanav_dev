@@ -140,6 +140,9 @@ export interface AssetMaintenanceRecordWithUser {
   instanceId: number;
   maintenanceCost: string;
   maintenanceDate: Date;
+  startDate: Date;
+  completedDate: Date;
+  maintenanceType: string | null;
   description: string | null;
   performedBy: number | null;
   createdAt: Date;
@@ -147,13 +150,13 @@ export interface AssetMaintenanceRecordWithUser {
 }
 
 // For createAssetMaintenanceRecord data parameter
-export interface CreateAssetMaintenanceRecordData {
-  assetId: number;
-  maintenanceCost: string;
-  description?: string | null;
-  maintenanceDate?: Date;
-  performedBy?: number | null;
-}
+// export interface CreateAssetMaintenanceRecordData {
+//   assetId: number;
+//   maintenanceCost: string;
+//   description?: string | null;
+//   maintenanceDate?: Date;
+//   performedBy?: number | null;
+// }
 
 // For createPaymentFile data parameter
 export interface CreatePaymentFileData {
@@ -2994,6 +2997,9 @@ class Storage {
         SELECT 
           amr.id,
           amr.instance_id as "instanceId",
+          amr.maintenance_type as "maintenanceType",
+          amr.start_date as "startDate",
+          amr.completed_date as "completedDate",
           amr.maintenance_cost as "maintenanceCost",
           amr.description,
           amr.performed_by as "performedBy",
