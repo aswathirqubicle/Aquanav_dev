@@ -2661,6 +2661,7 @@ class Storage {
           )
         )
         .orderBy(assetInventoryMaintenanceFiles.uploadedAt);
+        console.log(files,"files")
       return files;
     } catch (error: any) {
       await this.createErrorLog({

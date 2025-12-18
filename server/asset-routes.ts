@@ -417,12 +417,16 @@ assetRoutes.post('/api/maintenance-records/:id/files', requireAuth, upload.singl
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
+
+    const relativePath = req.file.path
+  .replace(/\\/g, "/")                 // Windows → URL-safe
+  .split("uploads/")[1]; 
     
     const fileRecord = storage.createAssetInventoryMaintenanceFile({
       maintenanceRecordId,
       fileName: req.file.filename,
       originalName: req.file.originalname,
-      filePath: req.file.path,
+      filePath: `uploads/${relativePath}`,
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
       uploadedBy: req.user.id,
@@ -435,16 +439,29 @@ assetRoutes.post('/api/maintenance-records/:id/files', requireAuth, upload.singl
   }
 });
 
-assetRoutes.get('/api/maintenance-records/:id/files', requireAuth, (req, res) => {
-  try {
-    const maintenanceRecordId = parseInt(req.params.id);
-    const files = assetInventoryStorage.getAssetInventoryMaintenanceFiles(maintenanceRecordId);
-    res.json(files);
-  } catch (error) {
-    console.error('Error fetching maintenance files:', error);
-    res.status(500).json({ message: 'Failed to fetch maintenance files' });
-  }
-});
+  assetRoutes.get(
+    '/api/maintenance-records/:id/files',
+    requireAuth,
+    async (req, res) => {
+      try {
+        const maintenanceRecordId = parseInt(req.params.id, 10);
+
+        if (isNaN(maintenanceRecordId)) {
+          return res.status(400).json({ message: 'Invalid maintenance record id' });
+        }
+
+        const files = await storage.getAssetInventoryMaintenanceFiles(
+          maintenanceRecordId
+        );
+
+        res.json(files);
+      } catch (error) {
+        console.error('Error fetching maintenance files:', error);
+        res.status(500).json({ message: 'Failed to fetch maintenance files' });
+      }
+    }
+  );
+
 
 assetRoutes.delete('/api/maintenance-records/:recordId/files/:fileId', requireAuth, (req, res) => {
   try {

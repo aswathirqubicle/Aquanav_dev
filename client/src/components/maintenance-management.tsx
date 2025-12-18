@@ -265,6 +265,14 @@ function MaintenanceRecorder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
 
+  const { data: existingFiles = [] } = useQuery<MaintenanceFile[]>({
+    queryKey: ['/api/maintenance-records', record?.id, 'files'],
+    enabled: !!record?.id, // 👈 only fetch on edit
+    queryFn: async () =>
+      (await apiRequest(`/api/maintenance-records/${record!.id}/files`)).json(),
+  });
+
+
   const [formData, setFormData] = useState({
     assetInstanceId: '',
     maintenanceType: '',
@@ -428,7 +436,44 @@ function MaintenanceRecorder({
       </div>
 
       {/* Files */}
-      
+        {/* Existing Files (Edit mode only) */}
+        {existingFiles.map((file: any) => {
+          const viewUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+          const downloadUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+
+          return (
+            <div
+              key={file.id}
+              className="flex items-center justify-between text-sm"
+            >
+              <span className="truncate max-w-[60%]">
+                {file.originalName}
+              </span>
+
+              <div className="flex gap-2">
+                {/* VIEW */}
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={viewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View
+                  </a>
+                </Button>
+
+                {/* DOWNLOAD */}
+                {/* <Button variant="outline" size="sm" asChild>
+                  <a href={downloadUrl}>
+                    Download
+                  </a>
+                </Button> */}
+              </div>
+            </div>
+          );
+        })}
+
+
         <div>
           <Label>Attachments</Label>
           <Input type="file" multiple onChange={e => setSelectedFiles(e.target.files)} />

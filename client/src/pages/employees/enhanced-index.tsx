@@ -61,6 +61,7 @@ export default function EmployeesIndex() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   
   // Tab states
   const [activeTab, setActiveTab] = useState("basic");
@@ -344,10 +345,22 @@ export default function EmployeesIndex() {
   // Document Management Mutations
   const createDocumentMutation = useMutation({
     mutationFn: async (data: CreateDocumentData) => {
+      const fd = new FormData();
+      // append normal fields
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          fd.append(key, String(value));
+        }
+      });
+      // append files
+      if (selectedFiles) {
+        Array.from(selectedFiles).forEach(file => {
+          fd.append("files", file); // MUST match multer field name
+        });
+      }
       const response = await apiRequest(`/api/employees/${selectedEmployee?.id}/documents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: fd, //formdata
       });
       if (!response.ok) throw new Error("Failed to create document");
       return response.json();
@@ -361,23 +374,71 @@ export default function EmployeesIndex() {
   });
 
   const updateDocumentMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<CreateDocumentData> }) => {
-      const response = await apiRequest(`/api/employees/documents/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<CreateDocumentData>;
+    }) => {
+      const fd = new FormData();
+
+      // Append document fields
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          fd.append(key, String(value));
+        }
       });
-      if (!response.ok) throw new Error("Failed to update document");
+
+      // Append files (if any)
+      if (selectedFiles && selectedFiles.length > 0) {
+        Array.from(selectedFiles).forEach((file) => {
+          fd.append("files", file); // MUST match multer field name
+        });
+      }
+
+      const response = await apiRequest(
+        `/api/employees/documents/${id}`,
+        {
+          method: "PUT",
+          body: fd, // ✅ FormData
+          // ❌ DO NOT set Content-Type
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err?.message || "Failed to update document");
+      }
+
       return response.json();
     },
+
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/employees/${selectedEmployee?.id}/documents`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/documents`],
+      });
+
+      setSelectedFiles(null);
       resetDocumentForm();
-      setIsDocumentDialogOpen(false);
       setEditingDocument(null);
-      toast({ title: "Success", description: "Document updated successfully." });
+      setIsDocumentDialogOpen(false);
+
+      toast({
+        title: "Success",
+        description: "Document updated successfully.",
+      });
+    },
+
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update document",
+        variant: "destructive",
+      });
     },
   });
+
 
   const deleteDocumentMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -1951,7 +2012,7 @@ export default function EmployeesIndex() {
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="documentType">Document Type</Label>
+                          <Label htmlFor="documentType">Document Typeee</Label>
                           <Select 
                             value={documentData.documentType} 
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, documentType: value as any }))}
@@ -2026,6 +2087,64 @@ export default function EmployeesIndex() {
                             value={documentData.notes || ""}
                             onChange={(e) => setDocumentData(prev => ({ ...prev, notes: e.target.value || null }))}
                           />
+                        </div>
+                        {/* Existing attachments (Edit mode only) */}
+                        {editingDocument?.attachmentPaths?.length > 0 && (
+                          <div className="col-span-2">
+                            <Label className="mb-2 block">Existing Attachments</Label>
+
+                            <div className="space-y-2 rounded-md border p-3 bg-gray-50">
+                              {editingDocument.attachmentPaths.map((file: any, index: number) => {
+                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between text-sm"
+                                  >
+                                    <span className="truncate max-w-[60%]">
+                                      {file.originalName}
+                                    </span>
+
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        asChild
+                                      >
+                                        <a
+                                          href={fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          View
+                                        </a>
+                                       </Button>
+
+                                      {/*<Button
+                                        variant="outline"
+                                        size="sm"
+                                        asChild
+                                      >
+                                        <a
+                                          href={fileUrl}
+                                          download
+                                        >
+                                          Download
+                                        </a>
+                                      </Button> */}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="col-span-2">
+                          <Label>Attachments</Label>
+
+                          <Input type="file" multiple onChange={e => setSelectedFiles(e.target.files)} />
                         </div>
                         <div className="col-span-2">
                           <Button
