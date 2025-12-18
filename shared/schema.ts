@@ -462,6 +462,7 @@ export const assetInventoryMaintenanceRecords = pgTable("asset_inventory_mainten
   description: text("description"),
   performedBy: integer("performed_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  isArchived: boolean("is_archived").notNull().default(false),
 });
 
 export const insertAssetInventoryMaintenanceRecords = createInsertSchema(assetInventoryMaintenanceRecords).omit({ id: true });

@@ -362,6 +362,51 @@ assetRoutes.put(
   }
 );
 
+//Maintenance archive
+assetRoutes.put(
+  "/api/maintenance-record/:id/archive",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      const record = await storage.updateAssetInventoryMaintenanceRecord(
+        id,
+        { isArchived: true }
+      );
+      if (!record) {
+          return res.status(404).json({ message: "Maintenance record not found" });
+        }
+      res.json({ message: "Maintenance record archived successfully", record });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to update record" });
+    }
+  }
+);
+
+//Maintenance unarchive
+assetRoutes.put(
+  "/api/maintenance-record/:id/unarchive",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      const record = await storage.updateAssetInventoryMaintenanceRecord(
+        id,
+        { isArchived: false }
+      );
+      if (!record) {
+          return res.status(404).json({ message: "Maintenance record not found" });
+        }
+      res.json({ message: "Maintenance record unarchived successfully", record });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to update record" });
+    }
+  }
+);
 
 // Maintenance File Upload Routes
 assetRoutes.post('/api/maintenance-records/:id/files', requireAuth, upload.single('file'), (req, res) => {

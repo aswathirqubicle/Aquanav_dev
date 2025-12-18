@@ -26,5 +26,6 @@ CREATE TABLE IF NOT EXISTS "asset_inventory_maintenance_files" (
 ALTER TABLE "asset_inventory_maintenance_records"
 ADD COLUMN IF NOT EXISTS "start_date" TIMESTAMP,
 ADD COLUMN IF NOT EXISTS "completed_date" TIMESTAMP,
-ADD COLUMN IF NOT EXISTS "maintenance_type" varchar(255)
+ADD COLUMN IF NOT EXISTS "maintenance_type" varchar(255),
+ADD COLUMN IF NOT EXISTS "is_archived" boolean DEFAULT false NOT NULL
 
