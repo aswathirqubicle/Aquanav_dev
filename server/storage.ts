@@ -2393,6 +2393,8 @@ class Storage {
       total: number;
       totalPages: number;
     };
+  lowStockTotal: number;
+  totalInventoryValue: number;
   }> {
     try {
       const whereClauses = [];
@@ -2413,18 +2415,47 @@ class Storage {
       const dataQueryBuilder = db
         .select()
         .from(inventoryItems)
-        .where(conditions);
+        .where(conditions).orderBy(inventoryItems.id);
       const countQueryBuilder = db
         .select({ count: sql<number>`count(*)` })
         .from(inventoryItems)
         .where(conditions);
 
-      return this._getPaginatedResults<InventoryItem>(
-        dataQueryBuilder,
-        countQueryBuilder,
-        page,
-        limit
+      const lowStockCountQuery = db
+      .select({ count: sql<number>`count(*)` })
+      .from(inventoryItems)
+      .where(
+        and(
+          conditions,
+          lte(inventoryItems.currentStock, inventoryItems.minStockLevel)
+        )
       );
+
+      const totalValueQuery = db
+      .select({
+        total: sql<number>`
+          COALESCE(SUM(${inventoryItems.currentStock} * ${inventoryItems.avgCost}), 0)
+        `,
+      })
+      .from(inventoryItems)
+      .where(conditions);
+
+    const paginatedResult = await this._getPaginatedResults<InventoryItem>(
+      dataQueryBuilder,
+      countQueryBuilder,
+      page,
+      limit
+    );
+
+    const [lowStockResult] = await lowStockCountQuery;
+    const [valueResult] = await totalValueQuery;
+
+    return {
+      ...paginatedResult,
+      lowStockTotal: lowStockResult?.count ?? 0,
+      totalInventoryValue: valueResult?.total ?? 0,
+    };
+
     } catch (error: any) {
       await this.createErrorLog({
         message:

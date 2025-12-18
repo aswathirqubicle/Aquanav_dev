@@ -19,7 +19,7 @@ import { z } from "zod";
 const createUserSchema = insertUserSchema;
 type CreateUserData = z.infer<typeof createUserSchema>;
 
-interface UserWithoutPassword extends Omit<User, 'password'> {}
+interface UserWithoutPassword extends Omit<User, 'password'> { }
 
 export default function UsersIndex() {
   const [, setLocation] = useLocation();
@@ -52,7 +52,19 @@ export default function UsersIndex() {
 
   const createUserMutation = useMutation({
     mutationFn: async (data: CreateUserData) => {
-      const response = await apiRequest("POST", "/api/users", data);
+      const response = await apiRequest("/api/users", {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to create user");
+      }
+
       return response.json();
     },
     onSuccess: () => {
@@ -67,15 +79,33 @@ export default function UsersIndex() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create user",
+        description: error.message,
         variant: "destructive",
       });
     },
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<CreateUserData> }) => {
-      const response = await apiRequest("PUT", `/api/users/${id}`, data);
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: Partial<CreateUserData>;
+    }) => {
+      const response = await apiRequest(`/api/users/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to update user");
+      }
+
       return response.json();
     },
     onSuccess: () => {
@@ -90,7 +120,7 @@ export default function UsersIndex() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update user",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -98,8 +128,16 @@ export default function UsersIndex() {
 
   const deleteUserMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await apiRequest("DELETE", `/api/users/${id}`, {});
-      return response.json();
+      const response = await apiRequest(`/api/users/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to delete user");
+      }
+
+      return true;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
@@ -111,11 +149,12 @@ export default function UsersIndex() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete user",
+        description: error.message,
         variant: "destructive",
       });
     },
   });
+
 
   const resetForm = () => {
     setFormData({
@@ -281,12 +320,12 @@ export default function UsersIndex() {
                 <Button type="button" variant="outline" onClick={resetForm}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={createUserMutation.isPending || updateUserMutation.isPending}
                 >
-                  {createUserMutation.isPending || updateUserMutation.isPending 
-                    ? (editingUser ? "Updating..." : "Creating...") 
+                  {createUserMutation.isPending || updateUserMutation.isPending
+                    ? (editingUser ? "Updating..." : "Creating...")
                     : (editingUser ? "Update User" : "Create User")
                   }
                 </Button>
@@ -388,16 +427,14 @@ export default function UsersIndex() {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${
-                      userItem.isActive 
-                        ? "bg-ocean-100 dark:bg-ocean-900/20" 
+                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${userItem.isActive
+                        ? "bg-ocean-100 dark:bg-ocean-900/20"
                         : "bg-gray-100 dark:bg-gray-900/20"
-                    }`}>
-                      <Users className={`h-6 w-6 ${
-                        userItem.isActive 
-                          ? "text-ocean-600 dark:text-ocean-400" 
+                      }`}>
+                      <Users className={`h-6 w-6 ${userItem.isActive
+                          ? "text-ocean-600 dark:text-ocean-400"
                           : "text-gray-400"
-                      }`} />
+                        }`} />
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">

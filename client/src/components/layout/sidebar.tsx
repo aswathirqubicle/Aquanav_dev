@@ -227,12 +227,12 @@ const navigation: NavItem[] = [
     icon: Users,
     roles: ["admin"],
   },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
-    roles: ["admin"],
-  },
+  // {
+  //   title: "Settings",
+  //   href: "/settings",
+  //   icon: Settings,
+  //   roles: ["admin"],
+  // },
   {
     title: "Error Logs",
     href: "/error-logs",

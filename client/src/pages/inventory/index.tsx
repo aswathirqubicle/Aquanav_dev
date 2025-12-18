@@ -31,6 +31,7 @@ import {
   InsertSupplierInventoryItem,
 } from "@shared/schema";
 import { z } from "zod";
+import { CustomPagination } from "@/components/ui/pagination";
 
 const createInventoryItemSchema = insertInventoryItemSchema.extend({
   minStockLevel: z.string().transform((val) => parseInt(val)),
@@ -82,6 +83,14 @@ export default function InventoryIndex() {
     isPreferred: false,
   });
 
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+
   useEffect(() => {
     if (!isAuthenticated) {
       setLocation("/login");
@@ -101,13 +110,41 @@ export default function InventoryIndex() {
       limit: number;
       total: number;
       totalPages: number;
-    };
+    },
+    lowStockTotal: number,
+    totalInventoryValue: number
   }>({
-    queryKey: ["/api/inventory"],
+    queryKey: ["/api/inventory", currentPage],
+    queryFn: async () => {
+      try {
+        const response = await apiRequest(
+          `/api/inventory?page=${currentPage}&limit=10`,
+          {
+            method: "GET",
+          }
+        );
+
+        const result = await response.json();
+        console.log("Inventory API response:", result);
+        return result;
+      } catch (error) {
+        console.error("Error fetching inventory:", error);
+        throw error;
+      }
+    },
     enabled: isAuthenticated,
   });
 
-  const items = inventoryResponse?.data;
+
+  const items = inventoryResponse?.data || [];
+
+
+  useEffect(() => {
+    if (inventoryResponse?.pagination) {
+      setPagination(inventoryResponse.pagination);
+    }
+  }, [inventoryResponse]);
+
 
   const { data: suppliersResponse } = useQuery<{
     data: Supplier[];
@@ -569,13 +606,20 @@ export default function InventoryIndex() {
     }).format(parseFloat(amount));
   };
 
-  const lowStockItems =
-    items?.filter((item) => item.currentStock <= item.minStockLevel) || [];
-  const totalValue =
-    items?.reduce(
-      (sum, item) => sum + item.currentStock * parseFloat(item.avgCost || "0"),
-      0,
-    ) || 0;
+  const lowStockItems = inventoryResponse?.lowStockTotal ?? 0;
+  const totalValue = inventoryResponse?.totalInventoryValue ?? 0;
+
+  // const lowStockItems =
+  //   items?.filter((item) => item.currentStock <= item.minStockLevel) || [];
+  // const totalValue =
+  //   items?.reduce(
+  //     (sum, item) => sum + item.currentStock * parseFloat(item.avgCost || "0"),
+  //     0,
+  //   ) || 0;
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
 
   return (
     <div className="p-4 md:p-6">
@@ -724,22 +768,21 @@ export default function InventoryIndex() {
                   onChange={(e) => handleChange("unitPrice", e.target.value)}
                   placeholder="0.00"
                   readOnly={!!editingItem}
-                  className={`w-full ${
-                    editingItem
-                      ? "bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
-                      : ""
-                  }`}
+                  className={`w-full ${editingItem
+                    ? "bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                    : ""
+                    }`}
                 />
               </div>
 
               {/* Supplier Mappings Section */}
-              <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              {/*<div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <Label className="text-base font-medium">
                   Supplier Mappings
-                </Label>
+                </Label>*/}
 
-                {/* Add Supplier Mapping Form - Mobile Responsive */}
-                <div className="space-y-4">
+              {/* Add Supplier Mapping Form - Mobile Responsive */}
+              {/* <div className="space-y-4">
                   <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 md:gap-3">
                     <div className="xl:col-span-2">
                       <Label className="text-sm font-medium">Supplier</Label>
@@ -839,10 +882,10 @@ export default function InventoryIndex() {
                   >
                     Add Supplier Mapping
                   </Button>
-                </div>
+                </div>*/}
 
-                {/* Supplier Mappings List - Mobile Responsive */}
-                {supplierMappings.length > 0 && (
+              {/* Supplier Mappings List - Mobile Responsive */}
+              {/*{supplierMappings.length > 0 && (
                   <div className="space-y-3">
                     <Label className="text-sm text-slate-600 dark:text-slate-400">
                       Mapped Suppliers
@@ -891,7 +934,7 @@ export default function InventoryIndex() {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>*/}
 
               <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-4">
                 <Button
@@ -1032,7 +1075,7 @@ export default function InventoryIndex() {
                 </div>
 
                 {/* Supplier Information */}
-                <div className="space-y-4">
+                {/*<div className="space-y-4">
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     Supplier Information
                   </h3>
@@ -1108,7 +1151,7 @@ export default function InventoryIndex() {
                       </p>
                     </div>
                   )}
-                </div>
+                </div>*/}
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-4 border-t border-slate-200 dark:border-slate-700">
@@ -1148,7 +1191,7 @@ export default function InventoryIndex() {
                   Total Items
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {items?.length || 0}
+                  {pagination?.total || 0}
                 </p>
               </div>
             </div>
@@ -1166,7 +1209,7 @@ export default function InventoryIndex() {
                   Low Stock Alerts
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {lowStockItems.length}
+                  {lowStockItems}
                 </p>
               </div>
             </div>
@@ -1227,7 +1270,7 @@ export default function InventoryIndex() {
                 <div className="flex flex-col space-y-4">
                   {/* Header Row */}
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between space-y-3 sm:space-y-0">
-                    <div 
+                    <div
                       className="flex items-start space-x-3 cursor-pointer flex-1"
                       onClick={() => openDetailsDialog(item)}
                     >
@@ -1249,11 +1292,11 @@ export default function InventoryIndex() {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Actions - Mobile/Desktop */}
                     <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2 sm:gap-0">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="w-full sm:w-auto text-xs"
                         onClick={(e) => {
@@ -1263,8 +1306,8 @@ export default function InventoryIndex() {
                       >
                         View Details
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         className="w-full sm:w-auto text-xs"
                         onClick={(e) => {
@@ -1278,7 +1321,7 @@ export default function InventoryIndex() {
                   </div>
 
                   {/* Stats Grid */}
-                  <div 
+                  <div
                     className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 pt-3 border-t border-slate-200 dark:border-slate-700 cursor-pointer"
                     onClick={() => openDetailsDialog(item)}
                   >
@@ -1313,6 +1356,17 @@ export default function InventoryIndex() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+
+      {pagination && pagination.totalPages > 1 && (
+        <div className="mt-6 flex justify-center">
+          <CustomPagination
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            onPageChange={handlePageChange}
+          />
         </div>
       )}
     </div>

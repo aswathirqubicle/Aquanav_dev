@@ -274,7 +274,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                 {editingDocument ? "Edit Document" : "Add New Document"}
               </DialogTitle>
             </DialogHeader>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="documentType">Document Type *</Label>
@@ -294,7 +294,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <Label htmlFor="documentName">Document Name *</Label>
                 <Input
@@ -304,7 +304,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   placeholder="Enter document name"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="documentNumber">Document Number</Label>
                 <Input
@@ -314,7 +314,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   placeholder="Enter document number"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="issuingAuthority">Issuing Authority</Label>
                 <Input
@@ -324,7 +324,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   placeholder="Enter issuing authority"
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="dateOfIssue">Date of Issue</Label>
                 <Input
@@ -334,7 +334,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   onChange={(e) => setDocumentData(prev => ({ ...prev, dateOfIssue: e.target.value }))}
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="expiryDate">Expiry Date</Label>
                 <Input
@@ -344,7 +344,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   onChange={(e) => setDocumentData(prev => ({ ...prev, expiryDate: e.target.value }))}
                 />
               </div>
-              
+
               <div>
                 <Label htmlFor="status">Status</Label>
                 <Select
@@ -363,7 +363,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <Label htmlFor="file">Upload File</Label>
                 <Input
@@ -373,7 +373,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 />
               </div>
-              
+
               <div className="col-span-2">
                 <Label htmlFor="notes">Notes</Label>
                 <Textarea
@@ -383,7 +383,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   placeholder="Enter any additional notes"
                 />
               </div>
-              
+
               <div className="col-span-2 flex justify-end gap-2">
                 <Button
                   variant="outline"
@@ -405,7 +405,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
           </DialogContent>
         </Dialog>
       </CardHeader>
-      
+
       <CardContent>
         {documents.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
@@ -456,8 +456,19 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4" />
                         <div className="text-sm">
-                          <div>{document.fileName}</div>
-                          <div className="text-gray-500">{formatFileSize(document.fileSize)}</div>
+                          {/* <div>{document.fileName}</div>
+                          <div className="text-gray-500">{formatFileSize(document.fileSize)}</div> */}
+                          <a
+                            href={`/${document.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:underline"
+                          >
+                            <div>{document.fileName}</div>
+                            <div className="text-gray-500">
+                              {formatFileSize(document.fileSize)}
+                            </div>
+                          </a>
                         </div>
                       </div>
                     ) : "No file"}

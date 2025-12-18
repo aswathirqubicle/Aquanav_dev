@@ -881,7 +881,7 @@ export default function CustomersIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8">
         <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
@@ -928,7 +928,7 @@ export default function CustomersIndex() {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
               <div className="p-2 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
@@ -946,7 +946,7 @@ export default function CustomersIndex() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
 
       {
@@ -1134,14 +1134,14 @@ export default function CustomersIndex() {
                     >
                       View Projects
                     </Button>
-                    <Button
+                    {/* <Button
                       variant="outline"
                       size="sm"
                       className="w-full sm:w-auto"
                       onClick={() => handleViewInvoices(customer)}
                     >
                       View Invoices
-                    </Button>
+                    </Button> */}
                     <Button
                       variant="outline"
                       size="sm"

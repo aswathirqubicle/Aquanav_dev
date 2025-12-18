@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import express from "express";
 import { storage } from "./storage";
 import { assetRoutes } from "./asset-routes";
 import bcrypt from "bcrypt";
@@ -502,9 +503,9 @@ const storage_multer = multer.diskStorage({
   destination: function (req, file, cb) {
     // Determine directory based on route
     let uploadDir = "uploads/payment-files";
-    if (req.route?.path?.includes('customer-documents')) {
+    if (req.route?.path?.includes('customers')) {
       uploadDir = "uploads/customer-documents";
-    } else if (req.route?.path?.includes('supplier-documents')) {
+    } else if (req.route?.path?.includes('suppliers')) {
       uploadDir = "uploads/supplier-documents";
     }
     
@@ -5363,6 +5364,11 @@ app.patch(
       res.status(500).json({ message: "Failed to delete supplier document" });
     }
   });
+
+  app.use(
+    "/uploads",
+    express.static(path.join(process.cwd(), "uploads"))
+  );
 
   // Asset routes
   app.use(assetRoutes);
