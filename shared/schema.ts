@@ -885,9 +885,24 @@ export const insertEmployeeTrainingRecordSchema = createInsertSchema(employeeTra
 
 export const insertEmployeeDocumentSchema = createInsertSchema(employeeDocuments).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   documentType: z.enum(["passport", "cdc", "covid_vaccination", "stcw_course", "sid", "ilo_medical", "us_visa", "schengen_visa", "uk_visa", "canada_visa", "australia_visa", "uae_visa", "saudi_visa", "singapore_visa", "work_permit", "residence_permit"]),
-  dateOfIssue: z.coerce.date().nullable().optional(),
-  expiryDate: z.coerce.date().nullable().optional(),
-  validTill: z.coerce.date().nullable().optional(),
+  dateOfIssue: z
+        .coerce
+        .date()
+        .nullable()
+        .optional()
+        .transform(d => d ? d.toISOString().slice(0, 10) : null),
+  expiryDate: z
+        .coerce
+        .date()
+        .nullable()
+        .optional()
+        .transform(d => d ? d.toISOString().slice(0, 10) : null),
+  validTill: z
+        .coerce
+        .date()
+        .nullable()
+        .optional()
+        .transform(d => d ? d.toISOString().slice(0, 10) : null),
   status: z.enum(["active", "expired", "pending_renewal"]).default("active"),
 });
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, actualCost: true }).extend({

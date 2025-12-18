@@ -1464,20 +1464,8 @@ app.patch(
 
   app.post("/api/employees/:id/documents", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
     try {
-      const employeeId = parseInt(req.params.id);
-      const documentData = { ...req.body, employeeId };
-      
-      // Convert date strings to Date objects
-      if (documentData.dateOfIssue) {
-        documentData.dateOfIssue = new Date(documentData.dateOfIssue);
-      }
-      if (documentData.expiryDate) {
-        documentData.expiryDate = new Date(documentData.expiryDate);
-      }
-      if (documentData.validTill) {
-        documentData.validTill = new Date(documentData.validTill);
-      }
-      
+      const employeeId = req.params.id;
+      const documentData = { ...req.body, employeeId:Number(employeeId) };
       const parsedData = insertEmployeeDocumentSchema.parse(documentData);
       const result = await storage.createEmployeeDocument(parsedData);
       res.status(201).json(result);
@@ -1485,7 +1473,7 @@ app.patch(
       if (error instanceof ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      res.status(500).json({ message: "Failed to create employee document" });
+      res.status(500).json({ message: "Failed to create employee document" ,error});
     }
   });
 
@@ -1495,15 +1483,15 @@ app.patch(
       const updateData = req.body;
       
       // Convert date strings to Date objects
-      if (updateData.dateOfIssue) {
-        updateData.dateOfIssue = new Date(updateData.dateOfIssue);
-      }
-      if (updateData.expiryDate) {
-        updateData.expiryDate = new Date(updateData.expiryDate);
-      }
-      if (updateData.validTill) {
-        updateData.validTill = new Date(updateData.validTill);
-      }
+      // if (updateData.dateOfIssue) {
+      //   updateData.dateOfIssue = new Date(updateData.dateOfIssue);
+      // }
+      // if (updateData.expiryDate) {
+      //   updateData.expiryDate = new Date(updateData.expiryDate);
+      // }
+      // if (updateData.validTill) {
+      //   updateData.validTill = new Date(updateData.validTill);
+      // }
       
       const result = await storage.updateEmployeeDocument(id, updateData);
       if (!result) {
