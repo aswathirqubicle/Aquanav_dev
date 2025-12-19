@@ -438,8 +438,8 @@ function MaintenanceRecorder({
       {/* Files */}
         {/* Existing Files (Edit mode only) */}
         {existingFiles.map((file: any) => {
-          const viewUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
-          const downloadUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+          const viewUrl = `${file.filePath}`;
+          const downloadUrl = `${file.filePath}`;
 
           return (
             <div

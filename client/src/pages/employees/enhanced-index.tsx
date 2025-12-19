@@ -2134,7 +2134,7 @@ export default function EmployeesIndex() {
 
                             <div className="space-y-2 rounded-md border p-3 bg-gray-50">
                               {editingDocument.attachmentPaths.map((file: any, index: number) => {
-                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+                                const fileUrl = `${file.filePath}`;
 
                                 return (
                                   <div
@@ -2418,7 +2418,7 @@ export default function EmployeesIndex() {
 
                             <div className="space-y-2 rounded-md border p-3 bg-gray-50">
                               {editingDocument.attachmentPaths.map((file: any, index: number) => {
-                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+                                const fileUrl = `${file.filePath}`;
 
                                 return (
                                   <div
