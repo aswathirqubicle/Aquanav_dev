@@ -28,10 +28,18 @@ const createEmployeeSchema = insertEmployeeSchema.extend({
 });
 
 const createNextOfKinSchema = insertEmployeeNextOfKinSchema.omit({ id: true, employeeId: true });
-const createTrainingRecordSchema = insertEmployeeTrainingRecordSchema.omit({ id: true, employeeId: true }).extend({
-  trainingDate: z.string(),
-  expiryDate: z.string().optional(),
-});
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)");
+
+  export const createTrainingRecordSchema =
+  insertEmployeeTrainingRecordSchema
+    .omit({ id: true, employeeId: true })
+    .extend({
+      trainingDate: isoDate,
+      expiryDate: isoDate.optional().nullable(),
+    });
+
 
 const createDocumentSchema = insertEmployeeDocumentSchema.omit({ id: true, employeeId: true }).extend({
   dateOfIssue: z.string().optional(),
@@ -104,6 +112,9 @@ export default function EmployeesIndex() {
     isPrimary: false,
   });
 
+  const [editingNextOfKin, setEditingNextOfKin] = useState<EmployeeNextOfKin | null>(null);
+
+
   const [trainingData, setTrainingData] = useState<CreateTrainingRecordData>({
     trainingName: "",
     trainingProvider: "Aquanav",
@@ -114,6 +125,9 @@ export default function EmployeesIndex() {
     notes: null,
     attachments: [],
   });
+
+  const [editingTraining, setEditingTraining] = useState<EmployeeTrainingRecord | null>(null);
+
 
   const [documentData, setDocumentData] = useState<CreateDocumentData>({
     documentType: "passport",
@@ -291,6 +305,61 @@ export default function EmployeesIndex() {
     },
   });
 
+  const updateNextOfKinMutation = useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: CreateNextOfKinData;
+    }) => {
+      const response = await apiRequest(
+        `/api/employees/next-of-kin/${id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err?.message || "Failed to update next of kin");
+      }
+
+      return response.json();
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/next-of-kin`],
+      });
+
+      setEditingNextOfKin(null);
+      setNextOfKinData({
+        name: "",
+        email: null,
+        phone: null,
+        relationship: "",
+        isPrimary: false,
+      });
+
+      toast({
+        title: "Success",
+        description: "Next of kin updated successfully.",
+      });
+    },
+
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update next of kin",
+        variant: "destructive",
+      });
+    },
+  });
+
+
   const deleteNextOfKinMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest(`/api/employees/next-of-kin/${id}`, {
@@ -339,6 +408,113 @@ export default function EmployeesIndex() {
         attachments: [],
       });
       toast({ title: "Success", description: "Training record created successfully." });
+    },
+  });
+
+  const updateTrainingRecordMutation = useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: CreateTrainingRecordData;
+    }) => {
+      const response = await apiRequest(
+        `/api/employees/training-records/${id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err?.message || "Failed to update training record");
+      }
+
+      return response.json();
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/training-records`],
+      });
+
+      setEditingTraining(null);
+      setTrainingData({
+        trainingName: "",
+        trainingProvider: "Aquanav",
+        certificationNumber: null,
+        trainingDate: "",
+        expiryDate: null,
+        status: "active",
+        notes: null,
+        attachments: [],
+      });
+
+      toast({
+        title: "Success",
+        description: "Training record updated successfully.",
+      });
+    },
+
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update training record",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteTrainingRecordMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest(
+        `/api/employees/training-records/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err?.message || "Failed to delete training record");
+      }
+
+      return response.json();
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/training-records`],
+      });
+
+      // If deleting the record currently being edited → reset form
+      setEditingTraining(null);
+      setTrainingData({
+        trainingName: "",
+        trainingProvider: "Aquanav",
+        certificationNumber: null,
+        trainingDate: "",
+        expiryDate: null,
+        status: "active",
+        notes: null,
+        attachments: [],
+      });
+
+      toast({
+        title: "Success",
+        description: "Training record deleted successfully.",
+      });
+    },
+
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete training record",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1494,11 +1670,33 @@ export default function EmployeesIndex() {
                       </div>
                       <div className="col-span-2">
                         <Button
-                          onClick={() => createNextOfKinMutation.mutate(nextOfKinData)}
-                          disabled={!nextOfKinData.name || !nextOfKinData.relationship || createNextOfKinMutation.isPending}
+                          onClick={() => {
+                            if (editingNextOfKin) {
+                              updateNextOfKinMutation.mutate({
+                                id: editingNextOfKin.id,
+                                data: nextOfKinData,
+                              });
+                            } else {
+                              createNextOfKinMutation.mutate(nextOfKinData);
+                            }
+                          }}
+                          disabled={
+                            !nextOfKinData.name ||
+                            !nextOfKinData.relationship ||
+                            createNextOfKinMutation.isPending ||
+                            updateNextOfKinMutation.isPending
+                          }
                         >
-                          {createNextOfKinMutation.isPending ? "Adding..." : "Add Next of Kin"}
+                          {createNextOfKinMutation.isPending ||
+                          updateNextOfKinMutation.isPending
+                            ? editingNextOfKin
+                              ? "Updating..."
+                              : "Adding..."
+                            : editingNextOfKin
+                            ? "Update Next of Kin"
+                            : "Add Next of Kin"}
                         </Button>
+
                       </div>
                     </div>
                   </CardContent>
@@ -1555,9 +1753,23 @@ export default function EmployeesIndex() {
                             </div>
                           </div>
                           <div className="flex space-x-2">
-                            <Button variant="outline" size="sm">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingNextOfKin(nok);
+                                setNextOfKinData({
+                                  name: nok.name,
+                                  email: nok.email,
+                                  phone: nok.phone,
+                                  relationship: nok.relationship,
+                                  isPrimary: nok.isPrimary,
+                                });
+                              }}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
+
                             <Button 
                               variant="outline" 
                               size="sm"
@@ -1579,6 +1791,7 @@ export default function EmployeesIndex() {
                   <h3 className="text-lg font-semibold">Training Records</h3>
                   <Button
                     onClick={() => {
+                      setEditingTraining(null),
                       setTrainingData({
                         trainingName: "",
                         trainingProvider: "Aquanav",
@@ -1670,11 +1883,33 @@ export default function EmployeesIndex() {
                       </div>
                       <div className="col-span-2">
                         <Button
-                          onClick={() => createTrainingRecordMutation.mutate(trainingData)}
-                          disabled={!trainingData.trainingName || !trainingData.trainingDate || createTrainingRecordMutation.isPending}
+                          onClick={() => {
+                            if (editingTraining) {
+                              updateTrainingRecordMutation.mutate({
+                                id: editingTraining.id,
+                                data: trainingData,
+                              });
+                            } else {
+                              createTrainingRecordMutation.mutate(trainingData);
+                            }
+                          }}
+                          disabled={
+                            !trainingData.trainingName ||
+                            !trainingData.trainingDate ||
+                            createTrainingRecordMutation.isPending ||
+                            updateTrainingRecordMutation.isPending
+                          }
                         >
-                          {createTrainingRecordMutation.isPending ? "Adding..." : "Add Training Record"}
+                          {createTrainingRecordMutation.isPending ||
+                          updateTrainingRecordMutation.isPending
+                            ? editingTraining
+                              ? "Updating..."
+                              : "Adding..."
+                            : editingTraining
+                            ? "Update Training Record"
+                            : "Add Training Record"}
                         </Button>
+
                       </div>
                     </div>
                   </CardContent>
@@ -1747,12 +1982,43 @@ export default function EmployeesIndex() {
                             )}
                           </div>
                           <div className="flex space-x-2">
-                            <Button variant="outline" size="sm">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingTraining(training);
+                                setTrainingData({
+                                  trainingName: training.trainingName,
+                                  trainingProvider: training.trainingProvider,
+                                  certificationNumber: training.certificationNumber,
+                                  trainingDate: training.trainingDate
+                                    ? new Date(training.trainingDate).toISOString().split("T")[0]
+                                    : "",
+                                  expiryDate: training.expiryDate
+                                    ? new Date(training.expiryDate).toISOString().split("T")[0]
+                                    : null,
+                                  status: training.status,
+                                  notes: training.notes,
+                                  attachments: [],
+                                });
+                              }}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="sm">
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm("Are you sure you want to delete this training record?")) {
+                                  deleteTrainingRecordMutation.mutate(training.id);
+                                }
+                              }}
+                              disabled={deleteTrainingRecordMutation.isPending}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+
                           </div>
                         </div>
                       </CardContent>
@@ -1860,6 +2126,63 @@ export default function EmployeesIndex() {
                             value={documentData.notes || ""}
                             onChange={(e) => setDocumentData(prev => ({ ...prev, notes: e.target.value || null }))}
                           />
+                        </div>
+                        {/* Existing attachments (Edit mode only) */}
+                        {editingDocument?.attachmentPaths?.length > 0 && (
+                          <div className="col-span-2">
+                            <Label className="mb-2 block">Existing Attachments</Label>
+
+                            <div className="space-y-2 rounded-md border p-3 bg-gray-50">
+                              {editingDocument.attachmentPaths.map((file: any, index: number) => {
+                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between text-sm"
+                                  >
+                                    <span className="truncate max-w-[60%]">
+                                      {file.originalName}
+                                    </span>
+
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        asChild
+                                      >
+                                        <a
+                                          href={fileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          View
+                                        </a>
+                                       </Button>
+
+                                      {/*<Button
+                                        variant="outline"
+                                        size="sm"
+                                        asChild
+                                      >
+                                        <a
+                                          href={fileUrl}
+                                          download
+                                        >
+                                          Download
+                                        </a>
+                                      </Button> */}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <div className="col-span-2">
+                          <Label>Attachments</Label>
+
+                          <Input type="file" multiple onChange={e => setSelectedFiles(e.target.files)} />
                         </div>
                         <div className="col-span-2">
                           <Button

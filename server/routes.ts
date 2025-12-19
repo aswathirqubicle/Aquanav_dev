@@ -1366,13 +1366,11 @@ app.patch(
   });
 
   app.delete("/api/employees/next-of-kin/:id", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
+     console.log("DELETE NOK API HIT"); // 👈 add this
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeNextOfKin(id);
       
-      if (!success) {
-        return res.status(404).json({ message: "Next of kin record not found" });
-      }
       res.json({ message: "Next of kin record deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete next of kin record" });
@@ -1396,14 +1394,14 @@ app.patch(
       const trainingData = { ...req.body, employeeId };
       
       // Convert date strings to Date objects and format them properly
-      if (trainingData.trainingDate) {
-        const date = new Date(trainingData.trainingDate);
-        trainingData.trainingDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      }
-      if (trainingData.expiryDate) {
-        const date = new Date(trainingData.expiryDate);
-        trainingData.expiryDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      }
+      // if (trainingData.trainingDate) {
+      //   const date = new Date(trainingData.trainingDate);
+      //   trainingData.trainingDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      // }
+      // if (trainingData.expiryDate) {
+      //   const date = new Date(trainingData.expiryDate);
+      //   trainingData.expiryDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      // }
       
       const parsedData = insertEmployeeTrainingRecordSchema.parse(trainingData);
       const result = await storage.createEmployeeTrainingRecord(parsedData);
@@ -1423,12 +1421,12 @@ app.patch(
       const updateData = req.body;
       
       // Convert date strings to Date objects
-      if (updateData.trainingDate) {
-        updateData.trainingDate = new Date(updateData.trainingDate);
-      }
-      if (updateData.expiryDate) {
-        updateData.expiryDate = new Date(updateData.expiryDate);
-      }
+      // if (updateData.trainingDate) {
+      //   updateData.trainingDate = new Date(updateData.trainingDate);
+      // }
+      // if (updateData.expiryDate) {
+      //   updateData.expiryDate = new Date(updateData.expiryDate);
+      // }
       
       const result = await storage.updateEmployeeTrainingRecord(id, updateData);
       if (!result) {
@@ -1444,10 +1442,6 @@ app.patch(
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeTrainingRecord(id);
-      
-      if (!success) {
-        return res.status(404).json({ message: "Training record not found" });
-      }
       res.json({ message: "Training record deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete training record" });
@@ -1525,10 +1519,6 @@ app.patch(
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeDocument(id);
-      
-      if (!success) {
-        return res.status(404).json({ message: "Employee document not found" });
-      }
       res.json({ message: "Employee document deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employee document" });
