@@ -222,7 +222,7 @@ export default function UsersIndex() {
       case "project_manager": return "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
       case "finance": return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
       case "employee": return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
-      case "customer": return "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400";
+      // case "customer": return "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400";
       default: return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
     }
   };
@@ -232,7 +232,7 @@ export default function UsersIndex() {
     project_manager: "Project Manager",
     finance: "Finance",
     employee: "Employee",
-    customer: "Customer",
+    // customer: "Customer",
   };
 
   return (
@@ -302,7 +302,7 @@ export default function UsersIndex() {
                     <SelectItem value="project_manager">Project Manager</SelectItem>
                     <SelectItem value="finance">Finance</SelectItem>
                     <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="customer">Customer</SelectItem>
+                    {/*<SelectItem value="customer">Customer</SelectItem>*/}
                   </SelectContent>
                 </Select>
               </div>
