@@ -507,6 +507,8 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/customer-documents";
     } else if (req.route?.path?.includes('suppliers')) {
       uploadDir = "uploads/supplier-documents";
+    } else if (req.route?.path?.includes('documents')) {
+      uploadDir = "uploads/employee-documents";
     }
     
     if (!fs.existsSync(uploadDir)) {
@@ -1364,13 +1366,11 @@ app.patch(
   });
 
   app.delete("/api/employees/next-of-kin/:id", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
+     console.log("DELETE NOK API HIT"); // 👈 add this
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeNextOfKin(id);
       
-      if (!success) {
-        return res.status(404).json({ message: "Next of kin record not found" });
-      }
       res.json({ message: "Next of kin record deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete next of kin record" });
@@ -1394,14 +1394,14 @@ app.patch(
       const trainingData = { ...req.body, employeeId };
       
       // Convert date strings to Date objects and format them properly
-      if (trainingData.trainingDate) {
-        const date = new Date(trainingData.trainingDate);
-        trainingData.trainingDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      }
-      if (trainingData.expiryDate) {
-        const date = new Date(trainingData.expiryDate);
-        trainingData.expiryDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      }
+      // if (trainingData.trainingDate) {
+      //   const date = new Date(trainingData.trainingDate);
+      //   trainingData.trainingDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      // }
+      // if (trainingData.expiryDate) {
+      //   const date = new Date(trainingData.expiryDate);
+      //   trainingData.expiryDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+      // }
       
       const parsedData = insertEmployeeTrainingRecordSchema.parse(trainingData);
       const result = await storage.createEmployeeTrainingRecord(parsedData);
@@ -1421,12 +1421,12 @@ app.patch(
       const updateData = req.body;
       
       // Convert date strings to Date objects
-      if (updateData.trainingDate) {
-        updateData.trainingDate = new Date(updateData.trainingDate);
-      }
-      if (updateData.expiryDate) {
-        updateData.expiryDate = new Date(updateData.expiryDate);
-      }
+      // if (updateData.trainingDate) {
+      //   updateData.trainingDate = new Date(updateData.trainingDate);
+      // }
+      // if (updateData.expiryDate) {
+      //   updateData.expiryDate = new Date(updateData.expiryDate);
+      // }
       
       const result = await storage.updateEmployeeTrainingRecord(id, updateData);
       if (!result) {
@@ -1442,10 +1442,6 @@ app.patch(
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeTrainingRecord(id);
-      
-      if (!success) {
-        return res.status(404).json({ message: "Training record not found" });
-      }
       res.json({ message: "Training record deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete training record" });
@@ -1463,10 +1459,24 @@ app.patch(
     }
   });
 
-  app.post("/api/employees/:id/documents", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
+  app.post("/api/employees/:id/documents", requireAuth, requireRole(["admin", "project_manager"]),
+    upload.array("files", 1), async (req, res) => {
     try {
       const employeeId = req.params.id;
       const documentData = { ...req.body, employeeId:Number(employeeId) };
+      var f=[];
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          for (const file of req.files) {            
+            f.push({
+              fileName: file.filename,
+              originalName: file.originalname,
+              filePath: file.path,
+              fileSize: file.size,
+              mimeType: file.mimetype,
+            });
+          }
+          documentData.attachmentPaths = f;
+        }
       const parsedData = insertEmployeeDocumentSchema.parse(documentData);
       const result = await storage.createEmployeeDocument(parsedData);
       res.status(201).json(result);
@@ -1478,22 +1488,23 @@ app.patch(
     }
   });
 
-  app.put("/api/employees/documents/:id", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
+  app.put("/api/employees/documents/:id", requireAuth, requireRole(["admin", "project_manager"]),upload.array("files", 1), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const updateData = req.body;
-      
-      // Convert date strings to Date objects
-      // if (updateData.dateOfIssue) {
-      //   updateData.dateOfIssue = new Date(updateData.dateOfIssue);
-      // }
-      // if (updateData.expiryDate) {
-      //   updateData.expiryDate = new Date(updateData.expiryDate);
-      // }
-      // if (updateData.validTill) {
-      //   updateData.validTill = new Date(updateData.validTill);
-      // }
-      
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          var f = [];
+          for (const file of req.files) {            
+            f.push({
+              fileName: file.filename,
+              originalName: file.originalname,
+              filePath: file.path,
+              fileSize: file.size,
+              mimeType: file.mimetype,
+            });
+          }
+          updateData.attachmentPaths = f;
+        }      
       const result = await storage.updateEmployeeDocument(id, updateData);
       if (!result) {
         return res.status(404).json({ message: "Employee document not found" });
@@ -1508,10 +1519,6 @@ app.patch(
     try {
       const id = parseInt(req.params.id);
       const success = await storage.deleteEmployeeDocument(id);
-      
-      if (!success) {
-        return res.status(404).json({ message: "Employee document not found" });
-      }
       res.json({ message: "Employee document deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employee document" });

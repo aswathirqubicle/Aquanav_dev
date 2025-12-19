@@ -1215,10 +1215,23 @@ class Storage {
   async createEmployeeTrainingRecord(
     data: InsertEmployeeTrainingRecord
   ): Promise<EmployeeTrainingRecord> {
+    console.log(data);
     try {
+      const normalizedData = {
+        ...data,
+        trainingDate:
+          data.trainingDate instanceof Date
+            ? data.trainingDate.toISOString().split("T")[0]
+            : data.trainingDate,
+
+        expiryDate:
+          data.expiryDate instanceof Date
+            ? data.expiryDate.toISOString().split("T")[0]
+            : data.expiryDate ?? null,
+      };
       const result = await db
         .insert(employeeTrainingRecords)
-        .values(data)
+        .values(normalizedData)
         .returning();
       return result[0];
     } catch (error: any) {
@@ -2661,6 +2674,7 @@ class Storage {
           )
         )
         .orderBy(assetInventoryMaintenanceFiles.uploadedAt);
+        console.log(files,"files")
       return files;
     } catch (error: any) {
       await this.createErrorLog({
