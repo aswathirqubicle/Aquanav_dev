@@ -625,7 +625,10 @@ export default function EmployeesIndex() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employees", selectedEmployee?.id, "documents"] });
+      // queryClient.invalidateQueries({ queryKey: ["/api/employees", selectedEmployee?.id, "documents"] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/documents`],
+      });
       toast({ title: "Success", description: "Document deleted successfully." });
     },
   });
