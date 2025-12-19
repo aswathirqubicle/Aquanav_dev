@@ -448,8 +448,8 @@ class Storage {
 
   async deleteUser(id: number): Promise<boolean> {
     try {
-      const result = await db.delete(users).where(eq(users.id, id));
-      return result.rowCount > 0;
+      const result = await db.delete(users).where(eq(users.id, id)).returning();
+      return result.length > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
