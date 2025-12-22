@@ -2249,11 +2249,28 @@ export default function EmployeesIndex() {
                     }
                     
                     return visaDocuments.map((document) => {
-                    const isExpiringSoon = document.expiryDate && 
-                      new Date(document.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    const expiryDate = document.expiryDate
+                      ? new Date(document.expiryDate)
+                      : null;
+
+                    const today = new Date();
+                    const thirtyDaysFromNow = new Date();
+                    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+                    const isExpired = expiryDate && expiryDate < today;
+
+                    const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
                     
                     return (
-                      <Card key={document.id} className={isExpiringSoon ? 'border-orange-300 bg-orange-50' : ''}>
+                      <Card
+                        key={document.id}
+                        className={
+                          isExpired
+                            ? "border-red-600 bg-red-100"
+                            : isExpiringSoon
+                            ? "border-orange-300 bg-orange-50"
+                            : "border-gray-200"
+                        }>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start">
                             <div className="grid grid-cols-3 gap-4 flex-1">
@@ -2278,7 +2295,14 @@ export default function EmployeesIndex() {
                               <div>
                                 <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
                                 <p className="font-semibold">{formatDate(document.expiryDate)}</p>
-                                {isExpiringSoon && (
+                                {isExpired && (
+                                  <Badge className="mt-1 bg-red-100 text-red-800">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Expired
+                                  </Badge>
+                                )}
+
+                                {!isExpired && isExpiringSoon && (
                                   <Badge className="mt-1 bg-orange-100 text-orange-800">
                                     <AlertTriangle className="h-3 w-3 mr-1" />
                                     Expiring Soon
@@ -2553,11 +2577,31 @@ export default function EmployeesIndex() {
                     }
                     
                     return maritimeDocuments.map((document) => {
-                    const isExpiringSoon = document.expiryDate && 
-                      new Date(document.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                    // const isExpiringSoon = document.expiryDate && 
+                    //   new Date(document.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                    const expiryDate = document.expiryDate
+                      ? new Date(document.expiryDate)
+                      : null;
+
+                    const today = new Date();
+                    const thirtyDaysFromNow = new Date();
+                    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+                    const isExpired = expiryDate && expiryDate < today;
+
+                    const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
                     
                     return (
-                      <Card key={document.id} className={isExpiringSoon ? 'border-orange-300 bg-orange-50' : ''}>
+                      <Card
+                        key={document.id}
+                        className={
+                          isExpired
+                            ? "border-red-600 bg-red-100"
+                            : isExpiringSoon
+                            ? "border-orange-300 bg-orange-50"
+                            : "border-gray-200"
+                        }>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start">
                             <div className="grid grid-cols-3 gap-4 flex-1">
@@ -2580,9 +2624,18 @@ export default function EmployeesIndex() {
                                 <p className="font-semibold">{formatDate(document.dateOfIssue)}</p>
                               </div>
                               <div>
-                                <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
+                                <Label
+                                
+                                 className="text-sm font-medium text-gray-600">Expiry Date</Label>
                                 <p className="font-semibold">{formatDate(document.expiryDate)}</p>
-                                {isExpiringSoon && (
+                                {isExpired && (
+                                  <Badge className="mt-1 bg-red-50 text-red-800">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    Expired
+                                  </Badge>
+                                )}
+
+                                {!isExpired && isExpiringSoon && (
                                   <Badge className="mt-1 bg-orange-100 text-orange-800">
                                     <AlertTriangle className="h-3 w-3 mr-1" />
                                     Expiring Soon
