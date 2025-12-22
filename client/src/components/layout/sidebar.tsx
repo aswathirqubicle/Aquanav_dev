@@ -73,24 +73,24 @@ const navigation: NavItem[] = [
   //   icon: Home,
   //   roles: ["admin", "project_manager", "finance", "customer", "employee"],
   // },
-  {
-    title: "All Projects",
-    href: "/projects",
-    icon: Ship,
-    roles: ["admin", "project_manager", "customer", "employee"],
-  },
-  {
-    title: "Daily Activities",
-    href: "/projects/activities",
-    icon: Calendar,
-    roles: ["admin", "project_manager", "employee"],
-  },
-  {
-    title: "Photo Management",
-    href: "/projects/photos",
-    icon: Camera,
-    roles: ["admin", "project_manager", "employee"],
-  },
+  // {
+  //   title: "All Projects",
+  //   href: "/projects",
+  //   icon: Ship,
+  //   roles: ["admin", "project_manager", "customer", "employee"],
+  // },
+  // {
+  //   title: "Daily Activities",
+  //   href: "/projects/activities",
+  //   icon: Calendar,
+  //   roles: ["admin", "project_manager", "employee"],
+  // },
+  // {
+  //   title: "Photo Management",
+  //   href: "/projects/photos",
+  //   icon: Camera,
+  //   roles: ["admin", "project_manager", "employee"],
+  // },
   // {
   //   title: "Sales",
   //   icon: FileText,
