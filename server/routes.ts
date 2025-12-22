@@ -1488,7 +1488,7 @@ app.patch(
     }
   });
 
-  app.put("/api/employees/documents/:id", requireAuth, requireRole(["admin", "project_manager"]),upload.array("files", 1), async (req, res) => {
+  app.put("/api/employees/documents/:id", requireAuth, requireRole(["admin", "project_manager"]),upload.array("files", 10), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const updateData = req.body;

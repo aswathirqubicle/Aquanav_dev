@@ -2034,9 +2034,27 @@ export default function EmployeesIndex() {
               <TabsContent value="visas" className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Visas & Permits</h3>
-                  <Dialog open={isDocumentDialogOpen} onOpenChange={setIsDocumentDialogOpen}>
+                  <Dialog
+                    open={isDocumentDialogOpen}
+                    onOpenChange={(open) => {
+                      setIsDocumentDialogOpen(open);
+
+                      if (!open) {
+                        setEditingDocument(null);
+                        setSelectedFiles(null);
+                        resetDocumentForm();
+                      }
+                    }}
+                  >
                     <DialogTrigger asChild>
-                      <Button>
+                      <Button
+                        onClick={() => {
+                          setEditingDocument(null);
+                          resetDocumentForm();
+                          setSelectedFiles(null);
+                          setIsDocumentDialogOpen(true);
+                        }}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         Add Visa/Permit
                       </Button>
@@ -2137,7 +2155,7 @@ export default function EmployeesIndex() {
 
                             <div className="space-y-2 rounded-md border p-3 bg-gray-50">
                               {editingDocument.attachmentPaths.map((file: any, index: number) => {
-                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+                                const fileUrl = `${file.filePath}`;
 
                                 return (
                                   <div
@@ -2322,9 +2340,28 @@ export default function EmployeesIndex() {
               <TabsContent value="documents" className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Maritime Documents</h3>
-                  <Dialog open={isDocumentDialogOpen} onOpenChange={setIsDocumentDialogOpen}>
+                  <Dialog
+                    open={isDocumentDialogOpen}
+                    onOpenChange={(open) => {
+                      setIsDocumentDialogOpen(open);
+
+                      if (!open) {
+                        setEditingDocument(null);
+                        setSelectedFiles(null);
+                        resetDocumentForm();
+                      }
+                    }}
+                  >
+
                     <DialogTrigger asChild>
-                      <Button>
+                      <Button
+                        onClick={() => {
+                          setEditingDocument(null);
+                          resetDocumentForm();
+                          setSelectedFiles(null);
+                          setIsDocumentDialogOpen(true);
+                        }}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         Add Document
                       </Button>
@@ -2338,7 +2375,7 @@ export default function EmployeesIndex() {
                       
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="documentType">Document Typeee</Label>
+                          <Label htmlFor="documentType">Document Type</Label>
                           <Select 
                             value={documentData.documentType} 
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, documentType: value as any }))}
@@ -2421,7 +2458,7 @@ export default function EmployeesIndex() {
 
                             <div className="space-y-2 rounded-md border p-3 bg-gray-50">
                               {editingDocument.attachmentPaths.map((file: any, index: number) => {
-                                const fileUrl = `${import.meta.env.VITE_API_BASE_URL}/${file.filePath}`;
+                                const fileUrl = `${file.filePath}`;
 
                                 return (
                                   <div
