@@ -73,12 +73,12 @@ const navigation: NavItem[] = [
   //   icon: Home,
   //   roles: ["admin", "project_manager", "finance", "customer", "employee"],
   // },
-  // {
-  //   title: "All Projects",
-  //   href: "/projects",
-  //   icon: Ship,
-  //   roles: ["admin", "project_manager", "customer", "employee"],
-  // },
+  {
+    title: "All Projects",
+    href: "/projects",
+    icon: Ship,
+    roles: ["admin", "project_manager", "customer", "employee"],
+  },
   // {
   //   title: "Daily Activities",
   //   href: "/projects/activities",
@@ -91,74 +91,74 @@ const navigation: NavItem[] = [
   //   icon: Camera,
   //   roles: ["admin", "project_manager", "employee"],
   // },
-  // {
-  //   title: "Sales",
-  //   icon: FileText,
-  //   roles: ["admin", "project_manager", "finance"],
-  //   subItems: [
-  //     {
-  //       title: "Sales & Invoicing",
-  //       href: "/sales",
-  //       icon: FileText,
-  //       roles: ["admin", "project_manager", "finance"],
-  //     },
-  //     {
-  //       title: "Proforma Invoices",
-  //       href: "/proforma-invoices",
-  //       icon: FileText,
-  //       roles: ["admin", "project_manager", "finance"],
-  //     },
-  //     {
-  //       title: "Credit Notes",
-  //       href: "/credit-notes",
-  //       icon: FileX,
-  //       roles: ["admin", "finance"],
-  //     },
-  //   ],
-  // },
+  {
+    title: "Sales",
+    icon: FileText,
+    roles: ["admin", "project_manager", "finance"],
+    subItems: [
+      {
+        title: "Sales & Invoicing",
+        href: "/sales",
+        icon: FileText,
+        roles: ["admin", "project_manager", "finance"],
+      },
+      {
+        title: "Proforma Invoices",
+        href: "/proforma-invoices",
+        icon: FileText,
+        roles: ["admin", "project_manager", "finance"],
+      },
+      {
+        title: "Credit Notes",
+        href: "/credit-notes",
+        icon: FileX,
+        roles: ["admin", "finance"],
+      },
+    ],
+  },
   // {
   //   title: "Payroll",
   //   href: "/payroll",
   //   icon: DollarSign,
   //   roles: ["admin", "finance"],
   // },
-  // {
-  //   title: "Purchase",
-  //   icon: ShoppingCart,
-  //   roles: ["admin", "project_manager", "finance", "employee"],
-  //   subItems: [
-  //     {
-  //       title: "Purchase Requests",
-  //       href: "/purchase-requests",
-  //       icon: ShoppingCart,
-  //       roles: ["admin", "project_manager", "finance", "employee"],
-  //     },
-  //     {
-  //       title: "Purchase Orders",
-  //       href: "/purchase-orders",
-  //       icon: FileText,
-  //       roles: ["admin", "project_manager", "finance"],
-  //     },
-  //     {
-  //       title: "Purchase Invoices",
-  //       href: "/purchase-invoices",
-  //       icon: FileText,
-  //       roles: ["admin", "project_manager", "finance"],
-  //     },
-  //   ],
-  // },
-  // {
-  //   title: "Goods Receipt",
-  //   href: "/inventory/goods-receipt",
-  //   icon: ArrowDownLeft,
-  //   roles: ["admin", "project_manager", "finance"],
-  // },
-  // {
-  //   title: "Goods Issue",
-  //   href: "/inventory/goods-issue",
-  //   icon: ArrowUpRight,
-  //   roles: ["admin", "project_manager", "finance"],
-  // },
+  {
+    title: "Purchase",
+    icon: ShoppingCart,
+    roles: ["admin", "project_manager", "finance", "employee"],
+    subItems: [
+      {
+        title: "Purchase Requests",
+        href: "/purchase-requests",
+        icon: ShoppingCart,
+        roles: ["admin", "project_manager", "finance", "employee"],
+      },
+      {
+        title: "Purchase Orders",
+        href: "/purchase-orders",
+        icon: FileText,
+        roles: ["admin", "project_manager", "finance"],
+      },
+      {
+        title: "Purchase Invoices",
+        href: "/purchase-invoices",
+        icon: FileText,
+        roles: ["admin", "project_manager", "finance"],
+      },
+    ],
+  },
+  {
+    title: "Goods Receipt",
+    href: "/inventory/goods-receipt",
+    icon: ArrowDownLeft,
+    roles: ["admin", "project_manager", "finance"],
+  },
+  {
+    title: "Goods Issue",
+    href: "/inventory/goods-issue",
+    icon: ArrowUpRight,
+    roles: ["admin", "project_manager", "finance"],
+  },
   {
     title: "Inventory",
     href: "/inventory",
