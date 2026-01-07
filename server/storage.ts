@@ -540,7 +540,11 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
-      const dataQueryBuilder = db.select().from(customers).where(conditions).orderBy(customers.id);
+      const dataQueryBuilder = db
+        .select()
+        .from(customers)
+        .where(conditions)
+        .orderBy(customers.id);
       // Note: original count query had a simpler where clause `eq(customers.isArchived, showArchived)`
       // This should ideally be consistent. For now, using the combined `conditions` for count.
       const countQueryBuilder = db
@@ -642,16 +646,12 @@ class Storage {
     customerData: Partial<InsertCustomer>
   ): Promise<Customer | undefined> {
     try {
-
-        if (customerData.phone && customerData.phone.trim() !== "") {
+      if (customerData.phone && customerData.phone.trim() !== "") {
         const existing = await db
           .select()
           .from(customers)
           .where(
-            and(
-              eq(customers.phone, customerData.phone),
-              ne(customers.id, id)
-            )
+            and(eq(customers.phone, customerData.phone), ne(customers.id, id))
           );
 
         if (existing.length > 0) {
@@ -728,7 +728,11 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
-      const dataQueryBuilder = db.select().from(suppliers).where(conditions).orderBy(suppliers.id);;
+      const dataQueryBuilder = db
+        .select()
+        .from(suppliers)
+        .where(conditions)
+        .orderBy(suppliers.id);
       // Original count query for suppliers also only filtered by showArchived.
       // Sticking to applying all conditions for count for consistency in the helper.
       const countQueryBuilder = db
@@ -924,7 +928,8 @@ class Storage {
     try {
       const result = await db
         .delete(customerDocuments)
-        .where(eq(customerDocuments.id, id)).returning();
+        .where(eq(customerDocuments.id, id))
+        .returning();
       return result.length > 0;
     } catch (error: any) {
       await this.createErrorLog({
@@ -1010,7 +1015,8 @@ class Storage {
     try {
       const result = await db
         .delete(supplierDocuments)
-        .where(eq(supplierDocuments.id, id)).returning();
+        .where(eq(supplierDocuments.id, id))
+        .returning();
       return result.length > 0;
     } catch (error: any) {
       await this.createErrorLog({
@@ -1753,7 +1759,7 @@ class Storage {
   // Project methods
   async getProjects(): Promise<Project[]> {
     try {
-      return await db.select().from(projects);
+      return await db.select().from(projects).orderBy(projects.id);
     } catch (error: any) {
       await this.createErrorLog({
         message: "Error in getProjects: " + (error?.message || "Unknown error"),
@@ -2406,8 +2412,8 @@ class Storage {
       total: number;
       totalPages: number;
     };
-  lowStockTotal: number;
-  totalInventoryValue: number;
+    lowStockTotal: number;
+    totalInventoryValue: number;
   }> {
     try {
       const whereClauses = [];
@@ -2428,47 +2434,47 @@ class Storage {
       const dataQueryBuilder = db
         .select()
         .from(inventoryItems)
-        .where(conditions).orderBy(inventoryItems.id);
+        .where(conditions)
+        .orderBy(inventoryItems.id);
       const countQueryBuilder = db
         .select({ count: sql<number>`count(*)` })
         .from(inventoryItems)
         .where(conditions);
 
       const lowStockCountQuery = db
-      .select({ count: sql<number>`count(*)` })
-      .from(inventoryItems)
-      .where(
-        and(
-          conditions,
-          lte(inventoryItems.currentStock, inventoryItems.minStockLevel)
-        )
-      );
+        .select({ count: sql<number>`count(*)` })
+        .from(inventoryItems)
+        .where(
+          and(
+            conditions,
+            lte(inventoryItems.currentStock, inventoryItems.minStockLevel)
+          )
+        );
 
       const totalValueQuery = db
-      .select({
-        total: sql<number>`
+        .select({
+          total: sql<number>`
           COALESCE(SUM(${inventoryItems.currentStock} * ${inventoryItems.avgCost}), 0)
         `,
-      })
-      .from(inventoryItems)
-      .where(conditions);
+        })
+        .from(inventoryItems)
+        .where(conditions);
 
-    const paginatedResult = await this._getPaginatedResults<InventoryItem>(
-      dataQueryBuilder,
-      countQueryBuilder,
-      page,
-      limit
-    );
+      const paginatedResult = await this._getPaginatedResults<InventoryItem>(
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit
+      );
 
-    const [lowStockResult] = await lowStockCountQuery;
-    const [valueResult] = await totalValueQuery;
+      const [lowStockResult] = await lowStockCountQuery;
+      const [valueResult] = await totalValueQuery;
 
-    return {
-      ...paginatedResult,
-      lowStockTotal: lowStockResult?.count ?? 0,
-      totalInventoryValue: valueResult?.total ?? 0,
-    };
-
+      return {
+        ...paginatedResult,
+        lowStockTotal: lowStockResult?.count ?? 0,
+        totalInventoryValue: valueResult?.total ?? 0,
+      };
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -2594,7 +2600,6 @@ class Storage {
     }
   }
 
-
   async getAssetInventoryMaintenanceRecords(
     instanceId: number
   ): Promise<any[]> {
@@ -2674,7 +2679,7 @@ class Storage {
           )
         )
         .orderBy(assetInventoryMaintenanceFiles.uploadedAt);
-        console.log(files,"files")
+      console.log(files, "files");
       return files;
     } catch (error: any) {
       await this.createErrorLog({
@@ -3405,161 +3410,161 @@ class Storage {
   }
 
   // Project Consumables methods
-  async getProjectConsumables(projectId: number): Promise<any[]> {
-    try {
-      const result = await db
-        .select({
-          id: projectConsumables.id,
-          projectId: projectConsumables.projectId,
-          date: projectConsumables.date,
-          recordedBy: projectConsumables.recordedBy,
-          recordedAt: projectConsumables.recordedAt,
-          items: sql<any>`
-            json_agg(
-              json_build_object(
-                'id', pci.id,
-                'inventoryItemId', pci.inventory_item_id,
-                'inventoryItemName', ii.name,
-                'quantity', pci.quantity,
-                'unitCost', pci.unit_cost,
-                'unit', ii.unit
-              )
-            )
-          `,
-        })
-        .from(projectConsumables)
-        .leftJoin(
-          projectConsumableItems,
-          eq(projectConsumables.id, projectConsumableItems.consumableId)
-        )
-        .leftJoin(
-          inventoryItems,
-          eq(projectConsumableItems.inventoryItemId, inventoryItems.id)
-        )
-        .where(eq(projectConsumables.projectId, projectId))
-        .groupBy(
-          projectConsumables.id,
-          projectConsumables.projectId,
-          projectConsumables.date,
-          projectConsumables.recordedBy,
-          projectConsumables.recordedAt
-        )
-        .orderBy(desc(projectConsumables.date));
+  // async getProjectConsumables(projectId: number): Promise<any[]> {
+  //   try {
+  //     const result = await db
+  //       .select({
+  //         id: projectConsumables.id,
+  //         projectId: projectConsumables.projectId,
+  //         date: projectConsumables.date,
+  //         recordedBy: projectConsumables.recordedBy,
+  //         recordedAt: projectConsumables.recordedAt,
+  //         items: sql<any>`
+  //           json_agg(
+  //             json_build_object(
+  //               'id', pci.id,
+  //               'inventoryItemId', pci.inventory_item_id,
+  //               'inventoryItemName', ii.name,
+  //               'quantity', pci.quantity,
+  //               'unitCost', pci.unit_cost,
+  //               'unit', ii.unit
+  //             )
+  //           )
+  //         `,
+  //       })
+  //       .from(projectConsumables)
+  //       .leftJoin(
+  //         projectConsumableItems,
+  //         eq(projectConsumables.id, projectConsumableItems.consumableId)
+  //       )
+  //       .leftJoin(
+  //         inventoryItems,
+  //         eq(projectConsumableItems.inventoryItemId, inventoryItems.id)
+  //       )
+  //       .where(eq(projectConsumables.projectId, projectId))
+  //       .groupBy(
+  //         projectConsumables.id,
+  //         projectConsumables.projectId,
+  //         projectConsumables.date,
+  //         projectConsumables.recordedBy,
+  //         projectConsumables.recordedAt
+  //       )
+  //       .orderBy(desc(projectConsumables.date));
 
-      return result;
-    } catch (error) {
-      console.error("Error getting project consumables:", error);
-      throw error;
-    }
-  }
+  //     return result;
+  //   } catch (error) {
+  //     console.error("Error getting project consumables:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async createProjectConsumables(
-    projectId: number,
-    date: string,
-    items: Array<{ inventoryItemId: number; quantity: number }>,
-    userId?: number
-  ): Promise<any> {
-    try {
-      // Validate project exists
-      const project = await this.getProject(projectId);
-      if (!project) {
-        throw new Error(`Project with ID ${projectId} not found`);
-      }
+  // async createProjectConsumables(
+  //   projectId: number,
+  //   date: string,
+  //   items: Array<{ inventoryItemId: number; quantity: number }>,
+  //   userId?: number
+  // ): Promise<any> {
+  //   try {
+  //     // Validate project exists
+  //     const project = await this.getProject(projectId);
+  //     if (!project) {
+  //       throw new Error(`Project with ID ${projectId} not found`);
+  //     }
 
-      // Create the project consumables record
-      const consumableRecord = await db
-        .insert(projectConsumables)
-        .values({
-          projectId,
-          date: new Date(date),
-          recordedBy: userId || null,
-        })
-        .returning();
+  //     // Create the project consumables record
+  //     const consumableRecord = await db
+  //       .insert(projectConsumables)
+  //       .values({
+  //         projectId,
+  //         date: new Date(date),
+  //         recordedBy: userId || null,
+  //       })
+  //       .returning();
 
-      const consumableId = consumableRecord[0].id;
+  //     const consumableId = consumableRecord[0].id;
 
-      // Create inventory transactions and consumable items
-      const createdItems = [];
-      let totalCost = 0;
+  //     // Create inventory transactions and consumable items
+  //     const createdItems = [];
+  //     let totalCost = 0;
 
-      for (const item of items) {
-        // Get inventory item details
-        const inventoryItem = await this.getInventoryItem(item.inventoryItemId);
-        if (!inventoryItem) {
-          throw new Error(
-            `Inventory item with ID ${item.inventoryItemId} not found`
-          );
-        }
+  //     for (const item of items) {
+  //       // Get inventory item details
+  //       const inventoryItem = await this.getInventoryItem(item.inventoryItemId);
+  //       if (!inventoryItem) {
+  //         throw new Error(
+  //           `Inventory item with ID ${item.inventoryItemId} not found`
+  //         );
+  //       }
 
-        // Check if there's enough stock
-        if (inventoryItem.currentStock < item.quantity) {
-          throw new Error(
-            `Insufficient stock for ${inventoryItem.name}. Available: ${inventoryItem.currentStock}, Required: ${item.quantity}`
-          );
-        }
+  //       // Check if there's enough stock
+  //       if (inventoryItem.currentStock < item.quantity) {
+  //         throw new Error(
+  //           `Insufficient stock for ${inventoryItem.name}. Available: ${inventoryItem.currentStock}, Required: ${item.quantity}`
+  //         );
+  //       }
 
-        // Use average cost as unit cost
-        const unitCost = parseFloat(inventoryItem.avgCost || "0");
-        const itemTotalCost = unitCost * item.quantity;
-        totalCost += itemTotalCost;
+  //       // Use average cost as unit cost
+  //       const unitCost = parseFloat(inventoryItem.avgCost || "0");
+  //       const itemTotalCost = unitCost * item.quantity;
+  //       totalCost += itemTotalCost;
 
-        // Create inventory transaction (outflow)
-        await db.insert(inventoryTransactions).values({
-          itemId: item.inventoryItemId,
-          type: "outflow",
-          quantity: item.quantity,
-          unitCost: unitCost.toString(),
-          remainingQuantity: 0, // For outflow, remaining is 0
-          projectId: projectId,
-          reference: `CONSUMABLES-${consumableId}`,
-          createdBy: userId || null,
-        });
+  //       // Create inventory transaction (outflow)
+  //       await db.insert(inventoryTransactions).values({
+  //         itemId: item.inventoryItemId,
+  //         type: "outflow",
+  //         quantity: item.quantity,
+  //         unitCost: unitCost.toString(),
+  //         remainingQuantity: 0, // For outflow, remaining is 0
+  //         projectId: projectId,
+  //         reference: `CONSUMABLES-${consumableId}`,
+  //         createdBy: userId || null,
+  //       });
 
-        // Update inventory stock
-        await this.updateInventoryItem(item.inventoryItemId, {
-          currentStock: inventoryItem.currentStock - item.quantity,
-        });
+  //       // Update inventory stock
+  //       await this.updateInventoryItem(item.inventoryItemId, {
+  //         currentStock: inventoryItem.currentStock - item.quantity,
+  //       });
 
-        // Create project consumable item record
-        const consumableItem = await db
-          .insert(projectConsumableItems)
-          .values({
-            consumableId: consumableId,
-            inventoryItemId: item.inventoryItemId,
-            quantity: item.quantity,
-            unitCost: unitCost.toString(),
-          })
-          .returning();
+  //       // Create project consumable item record
+  //       const consumableItem = await db
+  //         .insert(projectConsumableItems)
+  //         .values({
+  //           consumableId: consumableId,
+  //           inventoryItemId: item.inventoryItemId,
+  //           quantity: item.quantity,
+  //           unitCost: unitCost.toString(),
+  //         })
+  //         .returning();
 
-        createdItems.push({
-          ...consumableItem[0],
-          inventoryItemName: inventoryItem.name,
-          unit: inventoryItem.unit,
-        });
-      }
+  //       createdItems.push({
+  //         ...consumableItem[0],
+  //         inventoryItemName: inventoryItem.name,
+  //         unit: inventoryItem.unit,
+  //       });
+  //     }
 
-      // Update project cost
-      if (totalCost > 0) {
-        const currentCost = parseFloat(project.actualCost || "0");
-        const newCost = currentCost + totalCost;
-        await this.updateProject(projectId, {
-          actualCost: newCost.toFixed(2),
-        });
-      }
+  //     // Update project cost
+  //     if (totalCost > 0) {
+  //       const currentCost = parseFloat(project.actualCost || "0");
+  //       const newCost = currentCost + totalCost;
+  //       await this.updateProject(projectId, {
+  //         actualCost: newCost.toFixed(2),
+  //       });
+  //     }
 
-      return {
-        id: consumableId,
-        projectId,
-        date,
-        items: createdItems,
-        totalCost: totalCost.toFixed(2),
-        recordedBy: userId,
-      };
-    } catch (error) {
-      console.error("Error creating project consumables:", error);
-      throw error;
-    }
-  }
+  //     return {
+  //       id: consumableId,
+  //       projectId,
+  //       date,
+  //       items: createdItems,
+  //       totalCost: totalCost.toFixed(2),
+  //       recordedBy: userId,
+  //     };
+  //   } catch (error) {
+  //     console.error("Error creating project consumables:", error);
+  //     throw error;
+  //   }
+  // }
 
   // Supplier-Inventory Item mapping methods
   async getSupplierInventoryItems(
@@ -7810,11 +7815,26 @@ class Storage {
   // Project Photo Group methods
   async getProjectPhotoGroups(projectId: number): Promise<ProjectPhotoGroup[]> {
     try {
-      return await db
+      const groups = await db
         .select()
         .from(projectPhotoGroups)
         .where(eq(projectPhotoGroups.projectId, projectId))
         .orderBy(desc(projectPhotoGroups.createdAt));
+
+      const groupIds = groups.map((g) => g.id);
+      if (groupIds.length === 0) {
+        return [];
+      }
+
+      const photos = await db
+        .select()
+        .from(projectPhotos)
+        .where(inArray(projectPhotos.groupId, groupIds));
+
+      return groups.map((group) => ({
+        ...group,
+        photos: photos.filter((p) => p.groupId === group.id),
+      }));
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -7850,6 +7870,27 @@ class Storage {
     }
   }
 
+  async addPhotosToPhotoGroup(
+    groupId: number,
+    photosData: Omit<InsertProjectPhoto, "groupId">[]
+  ): Promise<ProjectPhoto[]> {
+    if (!photosData || photosData.length === 0) {
+      return [];
+    }
+
+    const photosToInsert = photosData.map((photo) => ({
+      ...photo,
+      groupId: groupId,
+    }));
+
+    const savedPhotos = await db
+      .insert(projectPhotos)
+      .values(photosToInsert)
+      .returning();
+
+    return savedPhotos;
+  }
+
   async updateProjectPhotoGroup(
     id: number,
     groupData: Partial<InsertProjectPhotoGroup>
@@ -7876,10 +7917,39 @@ class Storage {
 
   async deleteProjectPhotoGroup(id: number): Promise<boolean> {
     try {
-      const result = await db
-        .delete(projectPhotoGroups)
-        .where(eq(projectPhotoGroups.id, id));
-      return result.rowCount > 0;
+      await db.transaction(async (tx) => {
+        // 1. Get all photos in the group
+        const photosToDelete = await tx
+          .select()
+          .from(projectPhotos)
+          .where(eq(projectPhotos.groupId, id));
+
+        // 2. Delete photo files from the filesystem
+        for (const photo of photosToDelete) {
+          if (photo.filePath) {
+            // filePath is stored as '/uploads/...', remove leading '/' for fs operations
+            const filePath = photo.filePath.substring(1);
+            try {
+              await fs.unlink(filePath);
+            } catch (fileError: any) {
+              // If file not found, log it but don't block the deletion process
+              if (fileError.code !== "ENOENT") {
+                throw fileError; // Re-throw other file system errors
+              }
+              console.warn(`File not found, skipping deletion: ${filePath}`);
+            }
+          }
+        }
+
+        // 3. Delete photo records from the database
+        await tx.delete(projectPhotos).where(eq(projectPhotos.groupId, id));
+
+        // 4. Delete the photo group record
+        await tx
+          .delete(projectPhotoGroups)
+          .where(eq(projectPhotoGroups.id, id));
+      });
+      return true;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -9725,6 +9795,10 @@ export interface IStorage {
   createProjectPhotoGroup(
     groupData: InsertProjectPhotoGroup
   ): Promise<ProjectPhotoGroup>;
+  addPhotosToPhotoGroup(
+    groupId: number,
+    photosData: Omit<InsertProjectPhoto, "groupId">[]
+  ): Promise<ProjectPhoto[]>;
   updateProjectPhotoGroup(
     id: number,
     groupData: Partial<InsertProjectPhotoGroup>
