@@ -51,6 +51,7 @@ export default function ProjectCreate() {
     additionalField3Title: "",
     additionalField3Description: "",
   });
+  const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
 
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [newLocation, setNewLocation] = useState("");
@@ -86,74 +87,55 @@ export default function ProjectCreate() {
 
   const createProjectMutation = useMutation({
     mutationFn: async (data: CreateProjectData) => {
-      // Clean and validate data before sending
-      const processedData: Partial<CreateProjectData> & { locations: string[] } = {
-        title: data.title.trim(),
-        status: data.status || "not_started",
-        locations: Array.isArray(data.locations) ? data.locations.filter((loc: string) => loc.trim()) : [], // Ensure locations is an array and filter out empty strings
+      const formData = new FormData();
+
+      const appendIfExists = (key: string, value: string | number | null | undefined | string[]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (typeof value === 'string') {
+            formData.append(key, value.trim());
+          } else if (Array.isArray(value)) {
+            formData.append(key, JSON.stringify(value));
+          } else {
+            formData.append(key, String(value));
+          }
+        }
       };
 
-      // Only include fields with valid values
-      if (data.description && data.description.trim()) {
-        processedData.description = data.description.trim();
-      }
-      if (data.vesselName && data.vesselName.trim()) {
-        processedData.vesselName = data.vesselName.trim();
-      }
-      if (data.vesselImage && data.vesselImage.trim()) {
-        processedData.vesselImage = data.vesselImage.trim();
-      }
-      if (data.vesselImoNumber && data.vesselImoNumber.trim()) {
-        processedData.vesselImoNumber = data.vesselImoNumber.trim();
-      }
-      if (data.startDate && data.startDate.trim()) {
-        processedData.startDate = data.startDate;
-      }
-      if (data.plannedEndDate && data.plannedEndDate.trim()) {
-        processedData.plannedEndDate = data.plannedEndDate;
-      }
-      if (data.customerId && !isNaN(parseInt(data.customerId.toString()))) {
-        processedData.customerId = parseInt(data.customerId.toString());
-      }
-      if (data.ridgingCrewNos && data.ridgingCrewNos.trim()) {
-        processedData.ridgingCrewNos = data.ridgingCrewNos.trim();
-      }
-      if (data.modeOfContract && data.modeOfContract.trim()) {
-        processedData.modeOfContract = data.modeOfContract.trim();
-      }
-      if (data.workingHours && data.workingHours.trim()) {
-        processedData.workingHours = data.workingHours.trim();
-      }
-      if (data.ppe && data.ppe.trim()) {
-        processedData.ppe = data.ppe.trim();
-      }
-      if (data.additionalField1Title && data.additionalField1Title.trim()) {
-        processedData.additionalField1Title = data.additionalField1Title.trim();
-      }
-      if (data.additionalField1Description && data.additionalField1Description.trim()) {
-        processedData.additionalField1Description = data.additionalField1Description.trim();
-      }
-      if (data.additionalField2Title && data.additionalField2Title.trim()) {
-        processedData.additionalField2Title = data.additionalField2Title.trim();
-      }
-      if (data.additionalField2Description && data.additionalField2Description.trim()) {
-        processedData.additionalField2Description = data.additionalField2Description.trim();
-      }
-      if (data.additionalField3Title && data.additionalField3Title.trim()) {
-        processedData.additionalField3Title = data.additionalField3Title.trim();
-      }
-      if (data.additionalField3Description && data.additionalField3Description.trim()) {
-        processedData.additionalField3Description = data.additionalField3Description.trim();
+      appendIfExists("title", data.title);
+      appendIfExists("description", data.description);
+      appendIfExists("vesselName", data.vesselName);
+      appendIfExists("vesselImoNumber", data.vesselImoNumber);
+      appendIfExists("status", data.status);
+      appendIfExists("customerId", data.customerId);
+      appendIfExists("locations", data.locations);
+      appendIfExists("startDate", data.startDate);
+      appendIfExists("plannedEndDate", data.plannedEndDate);
+      appendIfExists("ridgingCrewNos", data.ridgingCrewNos);
+      appendIfExists("modeOfContract", data.modeOfContract);
+      appendIfExists("workingHours", data.workingHours);
+      appendIfExists("ppe", data.ppe);
+      appendIfExists("additionalField1Title", data.additionalField1Title);
+      appendIfExists("additionalField1Description", data.additionalField1Description);
+      appendIfExists("additionalField2Title", data.additionalField2Title);
+      appendIfExists("additionalField2Description", data.additionalField2Description);
+      appendIfExists("additionalField3Title", data.additionalField3Title);
+      appendIfExists("additionalField3Description", data.additionalField3Description);
+
+      if (vesselImageFile) {
+        formData.append("vesselImage", vesselImageFile);
       }
 
-      console.log('Sending project data:', processedData);
-      const response = await apiRequest("/api/projects", {
+      const response = await fetch("/api/projects", {
         method: "POST",
-        body: JSON.stringify(processedData),
-        headers: {
-          "Content-Type": "application/json",
-        },
-      } as RequestInit);
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to create project' }));
+        throw new Error(errorData.message);
+      }
+
       return response.json();
     },
     onSuccess: () => {
@@ -290,7 +272,7 @@ export default function ProjectCreate() {
                     toolbar: [
                       [{ 'header': [1, 2, 3, false] }],
                       ['bold', 'italic', 'underline', 'strike'],
-                      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                       [{ 'color': [] }, { 'background': [] }],
                       ['link'],
                       ['clean']
@@ -319,10 +301,12 @@ export default function ProjectCreate() {
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    // For now, we'll create a temporary URL for preview
-                    // In a real implementation, you'd upload to a file storage service
+                    setVesselImageFile(file);
                     const imageUrl = URL.createObjectURL(file);
                     handleChange("vesselImage", imageUrl);
+                  } else {
+                    setVesselImageFile(null);
+                    handleChange("vesselImage", "");
                   }
                 }}
               />
@@ -393,6 +377,7 @@ export default function ProjectCreate() {
                   id="plannedEndDate"
                   type="date"
                   value={formData.plannedEndDate}
+                  min={formData.startDate || undefined}
                   onChange={(e) => handleChange("plannedEndDate", e.target.value)}
                 />
               </div>
@@ -411,7 +396,8 @@ export default function ProjectCreate() {
                     <DialogHeader>
                       <DialogTitle>Add New Location</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={(e) => { e.preventDefault(); addLocation(); }} className="space-y-4">
+                    {/* <form onSubmit={(e) => { e.preventDefault(); addLocation(); }} className="space-y-4"> */}
+                    <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="newLocation">Location Name</Label>
                         <Input
@@ -427,11 +413,15 @@ export default function ProjectCreate() {
                         <Button type="button" variant="outline" onClick={() => setIsLocationDialogOpen(false)}>
                           Cancel
                         </Button>
-                        <Button type="submit">
+                        <Button
+                          type="button"
+                          onClick={addLocation}
+                        >
                           Add Location
                         </Button>
                       </div>
-                    </form>
+                    </div>
+                    {/* </form> */}
                   </DialogContent>
                 </Dialog>
               </div>
@@ -460,7 +450,7 @@ export default function ProjectCreate() {
             {/* New Fields Section */}
             <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-700">
               <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">Additional Project Details</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="ridgingCrewNos">Ridging Crew Numbers</Label>
@@ -530,7 +520,7 @@ export default function ProjectCreate() {
               {/* Additional Custom Fields */}
               <div className="space-y-6">
                 <h4 className="text-md font-medium text-slate-900 dark:text-slate-100">Custom Fields (Optional)</h4>
-                
+
                 {/* Additional Field 1 */}
                 <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
                   <div className="space-y-2">
@@ -554,7 +544,7 @@ export default function ProjectCreate() {
                           toolbar: [
                             [{ 'header': [1, 2, 3, false] }],
                             ['bold', 'italic', 'underline', 'strike'],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                             [{ 'color': [] }, { 'background': [] }],
                             ['link'],
                             ['clean']
@@ -598,7 +588,7 @@ export default function ProjectCreate() {
                           toolbar: [
                             [{ 'header': [1, 2, 3, false] }],
                             ['bold', 'italic', 'underline', 'strike'],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                             [{ 'color': [] }, { 'background': [] }],
                             ['link'],
                             ['clean']
@@ -642,7 +632,7 @@ export default function ProjectCreate() {
                           toolbar: [
                             [{ 'header': [1, 2, 3, false] }],
                             ['bold', 'italic', 'underline', 'strike'],
-                            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                             [{ 'color': [] }, { 'background': [] }],
                             ['link'],
                             ['clean']

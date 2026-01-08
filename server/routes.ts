@@ -2895,6 +2895,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // Asset Instance Assignment routes (NEW)
+  app.get(
+    "/api/projects/:id/asset-instance-assignments",
+    requireAuth,
+    async (req: any, res: any) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        const assignments = await storage.getProjectAssetInstanceAssignments(
+          projectId
+        );
+        res.json(assignments);
+      } catch (error) {
+        console.error(
+          "Error getting project asset instance assignments:",
+          error
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to get asset instance assignments" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/projects/:id/asset-instance-assignments",
+    requireAuth,
+    async (req: any, res: any) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        const { instanceId, startDate, endDate, notes, monthlyRate } = req.body;
+
+        if (!instanceId || !startDate || !monthlyRate) {
+          return res.status(400).json({
+            message: "Instance ID, start date and monthly rate are required",
+          });
+        }
+
+        // Get asset instance details
+        const instance = await storage.getAssetInventoryInstance(instanceId);
+        if (!instance) {
+          return res.status(404).json({ message: "Asset instance not found" });
+        }
+
+        // Validate dates if endDate is provided
+        if (endDate) {
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          if (end <= start) {
+            return res.status(400).json({
+              message: "End date must be after start date",
+            });
+          }
+        }
+
+        // Create assignment data
+        const assignmentData = {
+          projectId,
+          assetTypeId: instance.assetTypeId,
+          instanceId,
+          barcode: instance.barcode,
+          serialNumber: instance.serialNumber,
+          startDate: new Date(startDate),
+          endDate: endDate ? new Date(endDate) : null,
+          monthlyRate: monthlyRate.toString(),
+          status: "active",
+          assignedBy: req.session.userId,
+          notes: notes || null,
+        };
+
+        const assignment = await storage.createProjectAssetInstanceAssignment(
+          assignmentData
+        );
+        res.status(201).json(assignment);
+      } catch (error) {
+        console.error("Error creating asset instance assignment:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to create asset instance assignment" });
+      }
+    }
+  );
+
+  app.put(
+    "/api/projects/:projectId/asset-instance-assignments/:assignmentId",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const assignmentId = parseInt(req.params.assignmentId);
+        const { startDate, endDate, status, notes, monthlyRate } = req.body;
+
+        const updateData: any = {};
+
+        if (startDate) {
+          updateData.startDate = new Date(startDate);
+        }
+        if (endDate) {
+          updateData.endDate = new Date(endDate);
+        }
+        if (status) {
+          updateData.status = status;
+        }
+        if (notes !== undefined) {
+          updateData.notes = notes;
+        }
+        if (monthlyRate) {
+          updateData.monthlyRate = monthlyRate.toString();
+        }
+
+        // If status is being changed to completed, set returnedAt
+        if (status === "completed" && !updateData.returnedAt) {
+          updateData.returnedAt = new Date();
+        }
+
+        const updatedAssignment =
+          await storage.updateProjectAssetInstanceAssignment(
+            assignmentId,
+            updateData
+          );
+
+        if (!updatedAssignment) {
+          return res
+            .status(404)
+            .json({ message: "Asset instance assignment not found" });
+        }
+
+        res.json(updatedAssignment);
+      } catch (error) {
+        console.error("Error updating asset instance assignment:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to update asset instance assignment" });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/projects/:projectId/asset-instance-assignments/:assignmentId",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const assignmentId = parseInt(req.params.assignmentId);
+        const deleted = await storage.deleteProjectAssetInstanceAssignment(
+          assignmentId
+        );
+
+        if (!deleted) {
+          return res
+            .status(404)
+            .json({ message: "Asset instance assignment not found" });
+        }
+
+        res.json({ message: "Asset instance assignment deleted successfully" });
+      } catch (error) {
+        console.error("Error deleting asset instance assignment:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to delete asset instance assignment" });
+      }
+    }
+  );
+
   // Get all asset assignments for earnings calculation
   app.get("/api/asset-assignments", requireAuth, async (req, res) => {
     try {

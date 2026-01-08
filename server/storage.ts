@@ -6141,7 +6141,7 @@ class Storage {
         .delete(projectAssetAssignments)
         .where(eq(projectAssetAssignments.id, id));
 
-      if (result.rowCount && result.rowCount > 0) {
+      if (result.length && result.length > 0) {
         // Update asset status based on remaining assignments
         await this.updateAssetStatusBasedOnAssignments(assetId);
 
@@ -6350,6 +6350,208 @@ class Storage {
       throw error;
     }
   }
+
+  
+ // Project Asset Instance Assignment methods (new)
+  async getProjectAssetInstanceAssignments(projectId: number): Promise<any[]> {
+    try {
+      const assignments = await db
+        .select({
+          id: projectAssetInstanceAssignments.id,
+          projectId: projectAssetInstanceAssignments.projectId,
+          assetTypeId: projectAssetInstanceAssignments.assetTypeId,
+          instanceId: projectAssetInstanceAssignments.instanceId,
+          barcode: projectAssetInstanceAssignments.barcode,
+          serialNumber: projectAssetInstanceAssignments.serialNumber,
+          startDate: projectAssetInstanceAssignments.startDate,
+          endDate: projectAssetInstanceAssignments.endDate,
+          monthlyRate: projectAssetInstanceAssignments.monthlyRate,
+          totalCost: projectAssetInstanceAssignments.totalCost,
+          status: projectAssetInstanceAssignments.status,
+          assignedBy: projectAssetInstanceAssignments.assignedBy,
+          assignedAt: projectAssetInstanceAssignments.assignedAt,
+          returnedAt: projectAssetInstanceAssignments.returnedAt,
+          notes: projectAssetInstanceAssignments.notes,
+          assetTypeName: assetTypes.name,
+          assetTag: assetInventoryInstances.assetTag,
+        })
+        .from(projectAssetInstanceAssignments)
+        .leftJoin(assetInventoryInstances, eq(projectAssetInstanceAssignments.instanceId, assetInventoryInstances.id))
+        .leftJoin(assetTypes, eq(projectAssetInstanceAssignments.assetTypeId, assetTypes.id))
+        .where(eq(projectAssetInstanceAssignments.projectId, projectId))
+        .orderBy(desc(projectAssetInstanceAssignments.assignedAt));
+
+      return assignments;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getProjectAssetInstanceAssignments (projectId: ${projectId}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProjectAssetInstanceAssignments",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createProjectAssetInstanceAssignment(
+    assignmentData: InsertProjectAssetInstanceAssignment,
+  ): Promise<ProjectAssetInstanceAssignment> {
+    try {
+      const result = await db
+        .insert(projectAssetInstanceAssignments)
+        .values(assignmentData)
+        .returning();
+
+      const assignment = result[0];
+
+      // Calculate and update total cost if start and end dates are provided
+      if (assignment.startDate && assignment.endDate && assignment.monthlyRate) {
+        const totalCost = await this.calculateAssetRentalCost(
+          new Date(assignment.startDate),
+          new Date(assignment.endDate),
+          parseFloat(assignment.monthlyRate.toString()),
+        );
+
+        await db
+          .update(projectAssetInstanceAssignments)
+          .set({ totalCost: totalCost.toString() })
+          .where(eq(projectAssetInstanceAssignments.id, assignment.id));
+      }
+
+      // Update asset instance status to in_use
+      if (assignment.instanceId) {
+        await this.updateAssetInventoryInstance(assignment.instanceId, {
+          status: "in_use",
+          assignedProjectId: assignment.projectId,
+        });
+      }
+
+      // Recalculate project cost
+      await this.recalculateProjectCost(assignment.projectId);
+
+      return assignment;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in createProjectAssetInstanceAssignment: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createProjectAssetInstanceAssignment",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateProjectAssetInstanceAssignment(
+    id: number,
+    assignmentData: Partial<InsertProjectAssetInstanceAssignment>,
+  ): Promise<ProjectAssetInstanceAssignment | undefined> {
+    try {
+      const result = await db
+        .update(projectAssetInstanceAssignments)
+        .set(assignmentData)
+        .where(eq(projectAssetInstanceAssignments.id, id))
+        .returning();
+
+      const assignment = result[0];
+
+      if (assignment) {
+        // Recalculate total cost if dates or rate changed
+        if (
+          assignment.startDate &&
+          assignment.endDate &&
+          assignment.monthlyRate &&
+          (assignmentData.startDate ||
+            assignmentData.endDate ||
+            assignmentData.monthlyRate)
+        ) {
+          const totalCost = await this.calculateAssetRentalCost(
+            new Date(assignment.startDate),
+            new Date(assignment.endDate),
+            parseFloat(assignment.monthlyRate.toString()),
+          );
+
+          await db
+            .update(projectAssetInstanceAssignments)
+            .set({ totalCost: totalCost.toString() })
+            .where(eq(projectAssetInstanceAssignments.id, id));
+        }
+
+        // Recalculate project cost
+        await this.recalculateProjectCost(assignment.projectId);
+      }
+
+      return assignment;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in updateProjectAssetInstanceAssignment (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateProjectAssetInstanceAssignment",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteProjectAssetInstanceAssignment(id: number): Promise<boolean> {
+    try {
+      // Get assignment details before deleting
+      const assignment = await db
+        .select()
+        .from(projectAssetInstanceAssignments)
+        .where(eq(projectAssetInstanceAssignments.id, id))
+        .limit(1);
+
+      if (assignment.length === 0) {
+        return false;
+      }
+
+      const { projectId, instanceId } = assignment[0];
+
+      // Delete the assignment
+      const result = await db
+        .delete(projectAssetInstanceAssignments)
+        .where(eq(projectAssetInstanceAssignments.id, id))
+        .returning({ id: projectAssetInstanceAssignments.id });
+
+      if (result.length > 0) {
+        // Update asset instance status back to available if no other active assignments
+        if (instanceId) {
+          const activeAssignments = await db
+            .select()
+            .from(projectAssetInstanceAssignments)
+            .where(
+              and(
+                eq(projectAssetInstanceAssignments.instanceId, instanceId),
+                eq(projectAssetInstanceAssignments.status, "active"),
+              ),
+            );
+
+          if (activeAssignments.length === 0) {
+            await this.updateAssetInventoryInstance(instanceId, {
+              status: "available",
+              assignedProjectId: null,
+            });
+          }
+        }
+
+        // Recalculate project cost
+        await this.recalculateProjectCost(projectId);
+
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in deleteProjectAssetInstanceAssignment (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteProjectAssetInstanceAssignment",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
 
   // Proforma Invoice methods
   async getProformaInvoices(): Promise<any[]> {
@@ -7655,12 +7857,12 @@ class Storage {
             id: projectConsumables.id,
             projectId: projectConsumables.projectId,
             date: projectConsumables.date,
-            createdBy: projectConsumables.createdBy,
-            createdAt: projectConsumables.createdAt,
+            createdBy: projectConsumables.recordedBy,
+            createdAt: projectConsumables.recordedAt,
             createdByName: users.username,
           })
           .from(projectConsumables)
-          .leftJoin(users, eq(projectConsumables.createdBy, users.id))
+          .leftJoin(users, eq(projectConsumables.recordedBy, users.id))
           .where(eq(projectConsumables.projectId, projectId))
           .orderBy(desc(projectConsumables.date));
 
@@ -7675,8 +7877,6 @@ class Storage {
                 inventoryItemId: projectConsumableItems.inventoryItemId,
                 quantity: projectConsumableItems.quantity,
                 unitCost: projectConsumableItems.unitCost,
-                createdAt: projectConsumableItems.createdAt, // Ensure all fields from ProjectConsumableItem
-                updatedAt: projectConsumableItems.updatedAt, // Ensure all fields from ProjectConsumableItem
                 itemName: inventoryItems.name,
                 itemUnit: inventoryItems.unit,
               })
@@ -7728,7 +7928,7 @@ class Storage {
         .values({
           projectId: projectId,
           date: new Date(date),
-          createdBy: userId || null,
+          recordedBy: userId || null,
         })
         .returning();
 

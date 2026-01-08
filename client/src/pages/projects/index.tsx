@@ -19,26 +19,10 @@ export default function ProjectsIndex() {
     }
   }, [isAuthenticated, setLocation]);
 
-  const customer = new URLSearchParams(window.location.search).get("customer");
-
-  const { data: projects, isLoading } = useQuery({
-    queryKey: ["/api/projects", customer],
-    queryFn: async () => {
-      const url = customer
-        ? `/api/projects?customer=${customer}`
-        : `/api/projects`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Failed to fetch projects");
-      return res.json();
-    },
+  const { data: projects, isLoading } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
     enabled: isAuthenticated,
   });
-
-  // const { data: projects, isLoading } = useQuery<Project[]>({
-  //   queryKey: ["/api/projects"],
-  //   enabled: isAuthenticated,
-  // });
 
   if (!isAuthenticated) {
     return null;

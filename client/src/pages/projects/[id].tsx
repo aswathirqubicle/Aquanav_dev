@@ -92,7 +92,7 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
 
   const formatSpeed = (speed: number) => `${speed.toFixed(1)} knots`;
   const formatCourse = (course: number) => `${Math.round(course)}°`;
-  const formatCoordinates = (lat: number, lon: number) => 
+  const formatCoordinates = (lat: number, lon: number) =>
     `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
 
   if (loading && !vesselData) {
@@ -138,10 +138,10 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
             <span>Last updated: {lastUpdated.toLocaleString()}</span>
           )}
         </div>
-        <Button 
-          onClick={fetchVesselLocation} 
-          disabled={loading} 
-          size="sm" 
+        <Button
+          onClick={fetchVesselLocation}
+          disabled={loading}
+          size="sm"
           variant="outline"
         >
           {loading ? (
@@ -212,7 +212,7 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
         <CardContent>
           <div className="relative h-96 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
             <iframe
-              src={`https://www.openstreetmap.org/export/embed.html?bbox=${vesselData.lon-0.1},${vesselData.lat-0.1},${vesselData.lon+0.1},${vesselData.lat+0.1}&layer=mapnik&marker=${vesselData.lat},${vesselData.lon}`}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${vesselData.lon - 0.1},${vesselData.lat - 0.1},${vesselData.lon + 0.1},${vesselData.lat + 0.1}&layer=mapnik&marker=${vesselData.lat},${vesselData.lon}`}
               width="100%"
               height="100%"
               style={{ border: 0 }}
@@ -305,9 +305,11 @@ export default function ProjectDetail() {
   });
   const [isAssetAssignmentDialogOpen, setIsAssetAssignmentDialogOpen] = useState(false);
   const [assetAssignmentData, setAssetAssignmentData] = useState({
-    assetId: 0,
+    instanceId: 0,
     startDate: "",
     endDate: "",
+    monthlyRate: "",
+    notes: "",
   });
   const [editProjectData, setEditProjectData] = useState({
     title: "",
@@ -330,6 +332,7 @@ export default function ProjectDetail() {
     additionalField3Title: "",
     additionalField3Description: "",
   });
+  const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
 
   const [activityData, setActivityData] = useState<Partial<CreateActivityData>>({
     date: new Date().toISOString().split('T')[0],
@@ -349,6 +352,7 @@ export default function ProjectDetail() {
     location: "",
     tasks: "",
   });
+  const [isCustomCompletedLocation, setIsCustomCompletedLocation] = useState(false);
 
   const [isPlannedActivityDialogOpen, setIsPlannedActivityDialogOpen] = useState(false);
   const [plannedActivities, setPlannedActivities] = useState<Array<{
@@ -362,6 +366,7 @@ export default function ProjectDetail() {
     tasks: "",
     date: new Date().toISOString().split('T')[0],
   });
+  const [isCustomPlannedLocation, setIsCustomPlannedLocation] = useState(false);
 
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
@@ -540,7 +545,7 @@ export default function ProjectDetail() {
   const plannedActivitiesTotalPages = plannedActivitiesData ? Math.ceil(plannedActivitiesData.total / itemsPerPage) : 0;
 
   const { data: assets } = useQuery<any[]>({
-    queryKey: ["/api/asset-inventory/instances"],
+    queryKey: ["asset-instances"],
     queryFn: async () => {
       const response = await fetch("/api/asset-inventory/instances", {
         credentials: "include",
@@ -552,12 +557,12 @@ export default function ProjectDetail() {
   });
 
   const { data: projectAssets } = useQuery<any[]>({
-    queryKey: ["/api/projects", id, "asset-assignments"],
+    queryKey: ["/api/projects", id, "asset-instance-assignments"],
     queryFn: async () => {
-      const response = await fetch(`/api/projects/${id}/asset-assignments`, {
+      const response = await fetch(`/api/projects/${id}/asset-instance-assignments`, {
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to fetch project asset assignments");
+      if (!response.ok) throw new Error("Failed to fetch project asset instance assignments");
       return response.json();
     },
     enabled: isAuthenticated && !!id,
@@ -643,6 +648,7 @@ export default function ProjectDetail() {
       location: "",
       tasks: "",
     });
+    setIsCustomCompletedLocation(true);
   };
 
   const handleActivitySubmit = (e: React.FormEvent) => {
@@ -693,6 +699,7 @@ export default function ProjectDetail() {
       location: "",
       tasks: "",
     });
+    setIsCustomCompletedLocation(true);
   };
 
   const removeCompletedActivity = (index: number) => {
@@ -715,6 +722,7 @@ export default function ProjectDetail() {
       tasks: "",
       date: new Date().toISOString().split('T')[0],
     });
+    setIsCustomCompletedLocation(true);
   };
 
   const removePlannedActivity = (index: number) => {
@@ -885,34 +893,30 @@ export default function ProjectDetail() {
 
   const createPhotoGroupMutation = useMutation({
     mutationFn: async (data: { title: string; date: string; description?: string; photos?: File[] }) => {
-      const response = await apiRequest(`/api/projects/${id}/photo-groups`, {
-        method: 'POST',
-        body: {
-          title: data.title,
-          date: data.date, // Send the date string directly, let the server handle the conversion
-          description: data.description,
-        }
-      });
-      const group = await response.json();
-
-      // Upload photos if provided
-      if (data.photos && data.photos.length > 0) {
+      const formData = new FormData();
+      formData.append('title', data.title);
+      formData.append('date', data.date);
+      if (data.description) {
+        formData.append('description', data.description);
+      }
+      if (data.photos) {
         for (const file of data.photos) {
-          // For now, we'll simulate file upload with a placeholder path
-          // In a real implementation, you'd upload to a file storage service
-          const photoData = {
-            filename: `${Date.now()}_${file.name}`,
-            originalName: file.name,
-            filePath: `/uploads/projects/${id}/photos/${Date.now()}_${file.name}`,
-            fileSize: file.size,
-            mimeType: file.type,
-          };
-
-          await apiRequest(`/api/projects/${id}/photo-groups/${group.id}/photos`, { method: 'POST', body: photoData });
+          formData.append('photos', file);
         }
       }
 
-      return group;
+      const response = await fetch(`/api/projects/${id}/photo-groups`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to create photo group');
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "photo-groups"] });
@@ -935,7 +939,7 @@ export default function ProjectDetail() {
   const deletePhotoGroupMutation = useMutation({
     mutationFn: async (groupId: number) => {
       const response = await apiRequest(`/api/projects/${id}/photo-groups/${groupId}`, { method: "DELETE" });
-      return response.json();
+      return response;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "photo-groups"] });
@@ -994,8 +998,15 @@ export default function ProjectDetail() {
   };
 
   const editProjectMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await apiRequest(`/api/projects/${id}`, { method: "PUT", body: data });
+    mutationFn: async (data: FormData) => {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "PUT",
+        body: data,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update project");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -1181,16 +1192,16 @@ export default function ProjectDetail() {
   });
 
   const assignAssetMutation = useMutation({
-    mutationFn: async (data: { assetId: number; startDate: string; endDate: string; monthlyRate: number }) => {
-      const response = await apiRequest(`/api/projects/${id}/asset-assignments`, { method: "POST", body: data });
+    mutationFn: async (data: { instanceId: number; startDate: string; endDate: string; notes?: string, monthlyRate: string; }) => {
+      const response = await apiRequest(`/api/projects/${id}/asset-instance-assignments`, { method: "POST", body: data });
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-instance-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] }); // Refresh project cost
       toast({
-        title: "Asset Assigned",
-        description: "Asset has been assigned to the project successfully.",
+        title: "Asset Instance Assigned",
+        description: "Asset instance has been assigned to the project successfully.",
       });
       setIsAssetAssignmentDialogOpen(false);
       resetAssetAssignmentForm();
@@ -1198,7 +1209,7 @@ export default function ProjectDetail() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to assign asset",
+        description: error.message || "Failed to assign asset instance",
         variant: "destructive",
       });
     },
@@ -1206,21 +1217,21 @@ export default function ProjectDetail() {
 
   const removeAssetMutation = useMutation({
     mutationFn: async (assignmentId: number) => {
-      const response = await apiRequest(`/api/projects/${id}/asset-assignments/${assignmentId}`, { method: "DELETE" });
+      const response = await apiRequest(`/api/projects/${id}/asset-instance-assignments/${assignmentId}`, { method: "DELETE" });
       return response;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-instance-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] }); // Refresh project cost
       toast({
-        title: "Asset Removed",
-        description: "Asset has been removed from the project.",
+        title: "Asset Instance Removed",
+        description: "Asset instance has been removed from the project.",
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to remove asset",
+        description: error.message || "Failed to remove asset instance",
         variant: "destructive",
       });
     },
@@ -1240,74 +1251,64 @@ export default function ProjectDetail() {
 
   const resetAssetAssignmentForm = () => {
     setAssetAssignmentData({
-      assetId: 0,
+      instanceId: 0,
       startDate: project?.startDate ? new Date(project.startDate).toISOString().split('T')[0] : "",
       endDate: project?.plannedEndDate ? new Date(project.plannedEndDate).toISOString().split('T')[0] : "",
+      monthlyRate: "",
+      notes: "",
     });
   };
 
   const handleAssetAssignmentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!assetAssignmentData.assetId || !assetAssignmentData.startDate || !assetAssignmentData.endDate) {
+    if (!assetAssignmentData.instanceId || !assetAssignmentData.startDate || !assetAssignmentData.monthlyRate) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please select an asset instance, start date and monthly rate",
         variant: "destructive",
       });
       return;
     }
 
-    // Get the selected asset to access its monthly rental amount
-    const selectedAsset = assets?.find(asset => asset.id === assetAssignmentData.assetId);
-    if (!selectedAsset?.monthlyRentalAmount) {
-      toast({
-        title: "Error",
-        description: "Selected asset does not have a monthly rental rate configured",
-        variant: "destructive",
+    // Validate dates if end date is provided
+    if (assetAssignmentData.endDate) {
+      const startDate = new Date(assetAssignmentData.startDate);
+      const endDate = new Date(assetAssignmentData.endDate);
+
+      if (endDate <= startDate) {
+        toast({
+          title: "Error",
+          description: "End date must be after start date",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check if asset instance is already assigned during this period
+      const isOverlapping = projectAssets?.some(assignment => {
+        if (assignment.instanceId !== assetAssignmentData.instanceId) return false;
+
+        if (!assignment.endDate) return true; // Ongoing assignment
+
+        const existingStart = new Date(assignment.startDate);
+        const existingEnd = new Date(assignment.endDate);
+
+        return (startDate <= existingEnd && endDate >= existingStart);
       });
-      return;
+
+      if (isOverlapping) {
+        toast({
+          title: "Error",
+          description: "Asset instance is already assigned to this project during the selected period",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
-    // Validate dates
-    const startDate = new Date(assetAssignmentData.startDate);
-    const endDate = new Date(assetAssignmentData.endDate);
-
-    if (endDate <= startDate) {
-      toast({
-        title: "Error",
-        description: "End date must be after start date",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check if asset is already assigned during this period
-    const isOverlapping = projectAssets?.some(assignment => {
-      if (assignment.assetId !== assetAssignmentData.assetId) return false;
-      
-      const existingStart = new Date(assignment.startDate);
-      const existingEnd = new Date(assignment.endDate);
-      
-      return (startDate <= existingEnd && endDate >= existingStart);
-    });
-
-    if (isOverlapping) {
-      toast({
-        title: "Error",
-        description: "Asset is already assigned to this project during the selected period",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Include the monthly rate from the asset in the assignment data
-    const assignmentDataWithRate = {
-      ...assetAssignmentData,
-      monthlyRate: parseFloat(selectedAsset.monthlyRentalAmount)
-    };
-
-    assignAssetMutation.mutate(assignmentDataWithRate);
+    // Submit the assignment (backend will handle monthly rate from instance)
+    assignAssetMutation.mutate(assetAssignmentData);
   };
 
   const addConsumableItem = () => {
@@ -1431,43 +1432,43 @@ export default function ProjectDetail() {
       return;
     }
 
-    // Clean the data and properly handle dates
-    const cleanedData = { ...editProjectData };
+    const formData = new FormData();
 
-    // Remove any undefined or empty values and properly handle dates
-    Object.keys(cleanedData).forEach(key => {
-      if (cleanedData[key as keyof typeof cleanedData] === "" || cleanedData[key as keyof typeof cleanedData] === undefined) {
-        delete cleanedData[key as keyof typeof cleanedData];
+
+    // Helper to append if value is not null or undefined
+    const appendIfExists = (key: string, value: string | number | null | undefined) => {
+      if (value !== null && value !== undefined) {
+        formData.append(key, String(value));
       }
-    });
+    };
 
-    // Only include date fields if they have valid values
-    const updateData: any = { ...cleanedData };
 
-    if (editProjectData.startDate && editProjectData.startDate.trim()) {
-      updateData.startDate = new Date(editProjectData.startDate);
+    appendIfExists("title", editProjectData.title);
+    appendIfExists("description", editProjectData.description);
+    appendIfExists("vesselName", editProjectData.vesselName);
+    appendIfExists("vesselImoNumber", editProjectData.vesselImoNumber);
+    appendIfExists("status", editProjectData.status);
+    appendIfExists("startDate", editProjectData.startDate);
+    appendIfExists("plannedEndDate", editProjectData.plannedEndDate);
+    appendIfExists("actualEndDate", editProjectData.actualEndDate);
+    appendIfExists("ridgingCrewNos", editProjectData.ridgingCrewNos);
+    appendIfExists("modeOfContract", editProjectData.modeOfContract);
+    appendIfExists("workingHours", editProjectData.workingHours);
+    appendIfExists("ppe", editProjectData.ppe);
+    appendIfExists("additionalField1Title", editProjectData.additionalField1Title);
+    appendIfExists("additionalField1Description", editProjectData.additionalField1Description);
+    appendIfExists("additionalField2Title", editProjectData.additionalField2Title);
+    appendIfExists("additionalField2Description", editProjectData.additionalField2Description);
+    appendIfExists("additionalField3Title", editProjectData.additionalField3Title);
+    appendIfExists("additionalField3Description", editProjectData.additionalField3Description);
+
+
+    if (vesselImageFile) {
+      formData.append("vesselImage", vesselImageFile);
     }
 
-    if (editProjectData.plannedEndDate && editProjectData.plannedEndDate.trim()) {
-      updateData.plannedEndDate = new Date(editProjectData.plannedEndDate);
-    }
 
-    if (editProjectData.actualEndDate && editProjectData.actualEndDate.trim()) {
-      updateData.actualEndDate = new Date(editProjectData.actualEndDate);
-    }
-
-    // Remove any date fields that are empty strings to avoid sending them
-    if (!editProjectData.startDate || !editProjectData.startDate.trim()) {
-      delete updateData.startDate;
-    }
-    if (!editProjectData.plannedEndDate || !editProjectData.plannedEndDate.trim()) {
-      delete updateData.plannedEndDate;
-    }
-    if (!editProjectData.actualEndDate || !editProjectData.actualEndDate.trim()) {
-      delete updateData.actualEndDate;
-    }
-
-    editProjectMutation.mutate(updateData);
+    editProjectMutation.mutate(formData);
   };
 
   // Show loading state while authentication is being checked
@@ -1632,17 +1633,16 @@ export default function ProjectDetail() {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          // For now, we'll create a temporary URL for preview
-                          // In a real implementation, you'd upload to a file storage service
+                          setVesselImageFile(file);
                           const imageUrl = URL.createObjectURL(file);
                           setEditProjectData(prev => ({ ...prev, vesselImage: imageUrl }));
                         }
                       }}
                     />
-                    {(editProjectData.vesselImage || project?.vesselImage) && (
+                    {(editProjectData.vesselImage || (project?.vesselImage && !vesselImageFile)) && (
                       <div className="mt-2">
                         <img
-                          src={editProjectData.vesselImage || project?.vesselImage}
+                          src={vesselImageFile ? editProjectData.vesselImage : project?.vesselImage}
                           alt="Vessel preview"
                           className="h-32 w-48 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
                         />
@@ -1652,12 +1652,31 @@ export default function ProjectDetail() {
 
                   <div className="space-y-2">
                     <Label htmlFor="editDescription">Description</Label>
-                    <Textarea
-                      id="editDescription"
+                    <ReactQuill
+                      theme="snow"
                       value={editProjectData.description}
-                      onChange={(e) => setEditProjectData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Enter project description"
-                      rows={3}
+                      onChange={(value) => setEditProjectData(prev => ({ ...prev, description: value }))}
+                      placeholder="Detailed project description..."
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          [{ 'color': [] }, { 'background': [] }],
+                          ['link'],
+                          ['clean']
+                        ],
+                      }}
+                      formats={[
+                        'header',
+                        'bold', 'italic', 'underline', 'strike',
+                        'list', 'bullet',
+                        'color', 'background',
+                        'link'
+                      ]}
+                      style={{
+                        minHeight: '120px'
+                      }}
                     />
                   </div>
 
@@ -1695,6 +1714,7 @@ export default function ProjectDetail() {
                         id="editPlannedEndDate"
                         type="date"
                         value={editProjectData.plannedEndDate}
+                        min={editProjectData.startDate || undefined}
                         onChange={(e) => setEditProjectData(prev => ({ ...prev, plannedEndDate: e.target.value }))}
                       />
                     </div>
@@ -1704,6 +1724,7 @@ export default function ProjectDetail() {
                         id="editActualEndDate"
                         type="date"
                         value={editProjectData.actualEndDate}
+                        min={editProjectData.startDate || undefined}
                         onChange={(e) => setEditProjectData(prev => ({ ...prev, actualEndDate: e.target.value }))}
                       />
                     </div>
@@ -1712,7 +1733,7 @@ export default function ProjectDetail() {
                   {/* New Fields Section */}
                   <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-700">
                     <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">Additional Project Details</h3>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="editRidgingCrewNos">Ridging Crew Numbers</Label>
@@ -1767,7 +1788,7 @@ export default function ProjectDetail() {
                     {/* Additional Custom Fields */}
                     <div className="space-y-6">
                       <h4 className="text-md font-medium text-slate-900 dark:text-slate-100">Custom Fields</h4>
-                      
+
                       {/* Additional Field 1 */}
                       <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
                         <div className="space-y-2">
@@ -1791,7 +1812,7 @@ export default function ProjectDetail() {
                                 toolbar: [
                                   [{ 'header': [1, 2, 3, false] }],
                                   ['bold', 'italic', 'underline', 'strike'],
-                                  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                                   [{ 'color': [] }, { 'background': [] }],
                                   ['link'],
                                   ['clean']
@@ -1835,7 +1856,7 @@ export default function ProjectDetail() {
                                 toolbar: [
                                   [{ 'header': [1, 2, 3, false] }],
                                   ['bold', 'italic', 'underline', 'strike'],
-                                  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                                   [{ 'color': [] }, { 'background': [] }],
                                   ['link'],
                                   ['clean']
@@ -1879,7 +1900,7 @@ export default function ProjectDetail() {
                                 toolbar: [
                                   [{ 'header': [1, 2, 3, false] }],
                                   ['bold', 'italic', 'underline', 'strike'],
-                                  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                                   [{ 'color': [] }, { 'background': [] }],
                                   ['link'],
                                   ['clean']
@@ -2005,16 +2026,16 @@ export default function ProjectDetail() {
               {(project.additionalField1Title || project.additionalField2Title || project.additionalField3Title) && (
                 <div className="space-y-4">
                   <h4 className="font-medium text-slate-900 dark:text-slate-100">Additional Information</h4>
-                  
+
                   {project.additionalField1Title && (
                     <div className="border-l-4 border-blue-500 pl-4">
                       <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
                         {project.additionalField1Title}
                       </h5>
                       {project.additionalField1Description && (
-                        <div 
-                          className="text-sm text-slate-600 dark:text-slate-400" 
-                          dangerouslySetInnerHTML={{ __html: project.additionalField1Description }} 
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField1Description }}
                         />
                       )}
                     </div>
@@ -2026,9 +2047,9 @@ export default function ProjectDetail() {
                         {project.additionalField2Title}
                       </h5>
                       {project.additionalField2Description && (
-                        <div 
-                          className="text-sm text-slate-600 dark:text-slate-400" 
-                          dangerouslySetInnerHTML={{ __html: project.additionalField2Description }} 
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField2Description }}
                         />
                       )}
                     </div>
@@ -2040,9 +2061,9 @@ export default function ProjectDetail() {
                         {project.additionalField3Title}
                       </h5>
                       {project.additionalField3Description && (
-                        <div 
-                          className="text-sm text-slate-600 dark:text-slate-400" 
-                          dangerouslySetInnerHTML={{ __html: project.additionalField3Description }} 
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField3Description }}
                         />
                       )}
                     </div>
@@ -2108,11 +2129,10 @@ export default function ProjectDetail() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Net Profit/Loss</p>
-                  <p className={`text-lg font-bold ${
-                    parseFloat(projectRevenue.profit) >= 0
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                  }`}>
+                  <p className={`text-lg font-bold ${parseFloat(projectRevenue.profit) >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                    }`}>
                     {formatCurrency(projectRevenue.profit)}
                   </p>
                 </div>
@@ -2144,7 +2164,7 @@ export default function ProjectDetail() {
 
       {/* Tabs for Activities, Photos, etc. */}
       <Tabs defaultValue="activities" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 h-auto">
           <TabsTrigger value="activities" className="flex items-center justify-center text-xs sm:text-sm p-2">
             <Activity className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Daily Activities</span>
@@ -2166,6 +2186,10 @@ export default function ProjectDetail() {
           <TabsTrigger value="locations" className="flex items-center justify-center text-xs sm:text-sm p-2">
             <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             Locations
+          </TabsTrigger>
+          <TabsTrigger value="assets" className="flex items-center justify-center text-xs sm:text-sm p-2">
+            <Package className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            Assets
           </TabsTrigger>
           <TabsTrigger value="consumables" className="flex items-center justify-center text-xs sm:text-sm p-2">
             <Package className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -2240,7 +2264,13 @@ export default function ProjectDetail() {
                   )}
                 </div>
                 {canEdit && (
-                  <Dialog open={isActivityDialogOpen} onOpenChange={setIsActivityDialogOpen}>
+                  <Dialog open={isActivityDialogOpen} onOpenChange={(isOpen) => {
+                    setIsActivityDialogOpen(isOpen);
+                    if (isOpen) {
+                      setIsCustomCompletedLocation(true);
+                      setNewCompletedActivity({ location: "", tasks: "" });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button size="sm">
                         <Plus className="h-4 w-4 mr-2" />
@@ -2278,11 +2308,13 @@ export default function ProjectDetail() {
                               <div className="space-y-2">
                                 <Label>Location</Label>
                                 <Select
-                                  value={newCompletedActivity.location}
+                                  value={isCustomCompletedLocation ? "" : newCompletedActivity.location}
                                   onValueChange={(value) => {
                                     if (value === "custom") {
+                                      setIsCustomCompletedLocation(true);
                                       setNewCompletedActivity(prev => ({ ...prev, location: "" }));
                                     } else {
+                                      setIsCustomCompletedLocation(false);
                                       setNewCompletedActivity(prev => ({ ...prev, location: value }));
                                     }
                                   }}
@@ -2307,12 +2339,12 @@ export default function ProjectDetail() {
                                   </SelectContent>
                                 </Select>
 
-                                {(!project?.locations?.includes(newCompletedActivity.location || "") || newCompletedActivity.location === "") && (
+                                {isCustomCompletedLocation && (
                                   <Input
                                     value={newCompletedActivity.location}
                                     onChange={(e) => setNewCompletedActivity(prev => ({ ...prev, location: e.target.value }))}
                                     placeholder="Enter location"
-                                    className="w-full"
+                                    className="w-full mt-2"
                                   />
                                 )}
                               </div>
@@ -2541,7 +2573,13 @@ export default function ProjectDetail() {
               <div className="flex items-center justify-between">
                 <CardTitle>Planned Activities</CardTitle>
                 {canEdit && (
-                  <Dialog open={isPlannedActivityDialogOpen} onOpenChange={setIsPlannedActivityDialogOpen}>
+                  <Dialog open={isPlannedActivityDialogOpen} onOpenChange={(isOpen) => {
+                    setIsPlannedActivityDialogOpen(isOpen);
+                    if (isOpen) {
+                      setIsCustomPlannedLocation(true);
+                      setNewPlannedActivity({ location: "", tasks: "", date: new Date().toISOString().split('T')[0] });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button size="sm">
                         <Plus className="h-4 w-4 mr-2" />
@@ -2579,11 +2617,13 @@ export default function ProjectDetail() {
                               <div className="space-y-2">
                                 <Label>Location</Label>
                                 <Select
-                                  value={newPlannedActivity.location}
+                                  value={isCustomPlannedLocation ? "" : newPlannedActivity.location}
                                   onValueChange={(value) => {
                                     if (value === "custom") {
+                                      setIsCustomPlannedLocation(true);
                                       setNewPlannedActivity(prev => ({ ...prev, location: "" }));
                                     } else {
+                                      setIsCustomPlannedLocation(false);
                                       setNewPlannedActivity(prev => ({ ...prev, location: value }));
                                     }
                                   }}
@@ -2608,12 +2648,12 @@ export default function ProjectDetail() {
                                   </SelectContent>
                                 </Select>
 
-                                {(!project?.locations?.includes(newPlannedActivity.location || "") || newPlannedActivity.location === "") && (
+                                {isCustomPlannedLocation && (
                                   <Input
                                     value={newPlannedActivity.location}
                                     onChange={(e) => setNewPlannedActivity(prev => ({ ...prev, location: e.target.value }))}
                                     placeholder="Enter location"
-                                    className="w-full"
+                                    className="w-full mt-2"
                                   />
                                 )}
                               </div>
@@ -3028,7 +3068,7 @@ export default function ProjectDetail() {
                               onClick={() => handleDeletePhotoGroup(group.id)}
                               className="text-red-500 hover:text-red-700"
                             >
-                              Delete Group
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
                         </div>
@@ -3517,6 +3557,247 @@ export default function ProjectDetail() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="assets">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Assigned Assets</CardTitle>
+                {canEdit && (
+                  <Dialog open={isAssetAssignmentDialogOpen} onOpenChange={setIsAssetAssignmentDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" data-testid="button-assign-asset">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Assign Asset
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Assign Asset Instance to Project</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={handleAssetAssignmentSubmit} className="space-y-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="assetInstance">Asset Instance *</Label>
+                          <Select
+                            value={assetAssignmentData.instanceId?.toString() || ""}
+                            onValueChange={(value) => {
+                              setAssetAssignmentData(prev => ({
+                                ...prev,
+                                instanceId: parseInt(value)
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="w-full" data-testid="select-asset-instance">
+                              <SelectValue placeholder="Select asset instance" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assets?.filter(asset => asset.status === 'available').map((asset) => (
+                                <SelectItem key={asset.id} value={asset.id.toString()}>
+                                  {asset.assetTypeName || 'Unknown'} - {asset.tag}
+                                  {asset.serialNumber && ` (SN: ${asset.serialNumber})`}
+                                  {asset.monthlyRentalAmount && ` - ${asset.rentalCurrency} ${parseFloat(asset.monthlyRentalAmount).toFixed(2)}/month`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Only available asset instances are shown
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="assetStartDate">Start Date *</Label>
+                            <Input
+                              id="assetStartDate"
+                              type="date"
+                              value={assetAssignmentData.startDate}
+                              onChange={(e) => setAssetAssignmentData(prev => ({ ...prev, startDate: e.target.value }))}
+                              required
+                              className="w-full"
+                              data-testid="input-asset-start-date"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="assetEndDate">End Date</Label>
+                            <Input
+                              id="assetEndDate"
+                              type="date"
+                              value={assetAssignmentData.endDate}
+                              onChange={(e) => setAssetAssignmentData(prev => ({ ...prev, endDate: e.target.value }))}
+                              min={assetAssignmentData.startDate}
+                              className="w-full"
+                              data-testid="input-asset-end-date"
+                            />
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Leave empty for ongoing assignment
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="monthlyRate">Monthly Rent</Label>
+                          <Input
+                            id="monthlyRate"
+                            type="number"
+                            value={assetAssignmentData.monthlyRate}
+                            onChange={(e) => setAssetAssignmentData(prev => ({ ...prev, monthlyRate: e.target.value }))}
+                            placeholder="Enter monthly rent"
+                            required
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="assetNotes">Notes</Label>
+                          <Textarea
+                            id="assetNotes"
+                            value={assetAssignmentData.notes}
+                            onChange={(e) => setAssetAssignmentData(prev => ({ ...prev, notes: e.target.value }))}
+                            placeholder="Any notes about this asset assignment..."
+                            rows={3}
+                            className="w-full"
+                            data-testid="input-asset-notes"
+                          />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-6 border-t border-slate-200 dark:border-slate-700">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsAssetAssignmentDialogOpen(false)}
+                            className="w-full sm:w-auto"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            disabled={assignAssetMutation.isPending}
+                            className="w-full sm:w-auto"
+                            data-testid="button-submit-asset-assignment"
+                          >
+                            {assignAssetMutation.isPending ? "Assigning..." : "Assign Asset"}
+                          </Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!projectAssets || projectAssets.length === 0 ? (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                  <p className="text-slate-500 dark:text-slate-400">No assets assigned yet</p>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      onClick={() => setIsAssetAssignmentDialogOpen(true)}
+                      className="mt-4"
+                      data-testid="button-assign-first-asset"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Assign First Asset
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {projectAssets.map((assignment) => (
+                    <div
+                      key={assignment.id}
+                      className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+                      data-testid={`asset-assignment-${assignment.id}`}
+                    >
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <Package className="h-5 w-5 text-slate-400 mt-0.5 shrink-0" />
+                            <div className="flex-1">
+                              <h4 className="font-medium text-slate-900 dark:text-slate-100">
+                                {assignment.assetTypeName || 'Unknown Asset'}
+                              </h4>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs">
+                                  Tag: {assignment.tag}
+                                </Badge>
+                                {assignment.serialNumber && (
+                                  <Badge variant="outline" className="text-xs">
+                                    SN: {assignment.serialNumber}
+                                  </Badge>
+                                )}
+                                {assignment.barcode && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Barcode: {assignment.barcode}
+                                  </Badge>
+                                )}
+                                <Badge
+                                  variant={assignment.status === 'active' ? 'default' : 'secondary'}
+                                  className="text-xs"
+                                >
+                                  {assignment.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-600 dark:text-slate-400 ml-7">
+                            <div>
+                              <span className="font-medium">Start:</span> {formatDate(assignment.startDate)}
+                            </div>
+                            {assignment.endDate && (
+                              <div>
+                                <span className="font-medium">End:</span> {formatDate(assignment.endDate)}
+                              </div>
+                            )}
+                            {!assignment.endDate && (
+                              <div>
+                                <span className="font-medium">Status:</span> Ongoing
+                              </div>
+                            )}
+                          </div>
+
+                          {assignment.monthlyRate && (
+                            <div className="text-sm text-slate-600 dark:text-slate-400 ml-7">
+                              <span className="font-medium">Monthly Rate:</span> {assignment.currency || 'AED'} {parseFloat(assignment.monthlyRate).toFixed(2)}
+                              {assignment.totalCost && (
+                                <span className="ml-2">
+                                  | <span className="font-medium">Total Cost:</span> {assignment.currency || 'AED'} {parseFloat(assignment.totalCost).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {assignment.notes && (
+                            <div className="text-sm text-slate-600 dark:text-slate-400 ml-7">
+                              <span className="font-medium">Notes:</span> {assignment.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {canEdit && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeAssetMutation.mutate(assignment.id)}
+                            disabled={removeAssetMutation.isPending}
+                            className="text-red-500 hover:text-red-700 shrink-0"
+                            data-testid={`button-remove-asset-${assignment.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="consumables">
           <Card>
             <CardHeader>
@@ -3576,7 +3857,7 @@ export default function ProjectDetail() {
                                     <SelectValue placeholder="Select item" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {inventoryItems?.filter(item => item.category === 'consumables').map((item) => (
+                                    {inventoryItems?.filter(item => item.category === 'Consumables').map((item) => (
                                       <SelectItem key={item.id} value={item.id.toString()}>
                                         {item.name} (Stock: {item.currentStock} {item.unit})
                                       </SelectItem>
