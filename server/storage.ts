@@ -6565,9 +6565,13 @@ class Storage {
           projectId: proformaInvoices.projectId,
           status: proformaInvoices.status,
           createdDate: proformaInvoices.createdDate,
+          invoiceDate: proformaInvoices.invoiceDate,
           validUntil: proformaInvoices.validUntil,
           paymentTerms: proformaInvoices.paymentTerms,
           deliveryTerms: proformaInvoices.deliveryTerms,
+          billingAddress: proformaInvoices.billingAddress,
+          bankAccount: proformaInvoices.bankAccount,
+          termsAndConditions: proformaInvoices.termsAndConditions,
           remarks: proformaInvoices.remarks,
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
@@ -6608,6 +6612,9 @@ class Storage {
           validUntil: proformaInvoices.validUntil,
           paymentTerms: proformaInvoices.paymentTerms,
           deliveryTerms: proformaInvoices.deliveryTerms,
+          billingAddress: proformaInvoices.billingAddress,
+          bankAccount: proformaInvoices.bankAccount,
+          termsAndConditions: proformaInvoices.termsAndConditions,
           remarks: proformaInvoices.remarks,
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
@@ -6653,10 +6660,13 @@ class Storage {
         quotationId: proformaData.quotationId || null,
         status: proformaData.status || "draft",
         validUntil: proformaData.validUntil
-          ? new Date(proformaData.validUntil)
+          ? new Date(proformaData.validUntil).toISOString()
           : null,
+        billingAddress: proformaData.billingAddress,
         paymentTerms: proformaData.paymentTerms || null,
         deliveryTerms: proformaData.deliveryTerms || null,
+        bankAccount: proformaData.bankAccount || null,
+        termsAndConditions: proformaData.termsAndConditions || null,
         remarks: proformaData.remarks || null,
         items: JSON.stringify(proformaData.items || []),
         subtotal: proformaData.subtotal || null,
@@ -6720,18 +6730,24 @@ class Storage {
         updateData.status = proformaData.status;
       if (proformaData.invoiceDate !== undefined)
         updateData.invoiceDate = proformaData.invoiceDate
-          ? new Date(proformaData.invoiceDate)
+          ? new Date(proformaData.invoiceDate).toISOString()
           : null;
+      if (proformaData.billingAddress !== undefined)
+        updateData.billingAddress = proformaData.billingAddress || null;
       if (proformaData.validUntil !== undefined)
         updateData.validUntil = proformaData.validUntil
-          ? new Date(proformaData.validUntil)
-          : null;
+          ? new Date(proformaData.validUntil).toISOString()
+          : null;      
       if (proformaData.paymentTerms !== undefined)
         updateData.paymentTerms = proformaData.paymentTerms || null;
       if (proformaData.deliveryTerms !== undefined)
         updateData.deliveryTerms = proformaData.deliveryTerms || null;
+      if (proformaData.bankAccount !== undefined)
+        updateData.bankAccount = proformaData.bankAccount || null;
       if (proformaData.remarks !== undefined)
         updateData.remarks = proformaData.remarks || null;
+      if (proformaData.termsAndConditions !== undefined)
+        updateData.termsAndConditions = proformaData.termsAndConditions || null;
       if (proformaData.items !== undefined)
         updateData.items = JSON.stringify(proformaData.items || []);
       if (proformaData.subtotal !== undefined)
