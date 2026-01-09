@@ -178,6 +178,10 @@ export default function SalesIndex() {
       totalAmount: "0",
     });
 
+  const getDefaultTaxRate = () =>
+    customerVatTreatment === "standard" ? 5 : 0;
+
+  const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     description: "",
     quantity: 1,
@@ -569,7 +573,12 @@ export default function SalesIndex() {
         variant: "destructive",
       });
     },
-  });
+  });  
+
+  const openNewQuotationDialog = () => {
+    resetForm();              // clears form + editing state
+    setIsDialogOpen(true);    // then open dialog
+  };
 
   const resetForm = () => {
     setFormData({
@@ -578,13 +587,15 @@ export default function SalesIndex() {
       items: [],
       discount: "0",
     });
+
     setNewItem({
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: 0,
+      taxRate: 0,     // will be fixed by useEffect
       taxAmount: 0,
     });
+
     setIsEditingQuotation(false);
     setSelectedQuotation(null);
   };
@@ -613,7 +624,7 @@ export default function SalesIndex() {
       taxAmount: 0,
     });
   };
-
+  
   const resetPaymentForm = () => {
     setPaymentFormData({
       invoiceId: 0,
@@ -757,13 +768,13 @@ export default function SalesIndex() {
       items: [...prev.items, { ...item }],
     }));
 
-    setNewItem({
+    setNewItem(prev => ({
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: 0,
+      taxRate: prev.taxRate,
       taxAmount: 0,
-    });
+    }));
   };
 
   const removeItem = (index: number) => {
@@ -800,7 +811,7 @@ export default function SalesIndex() {
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: 0,
+      taxRate: getDefaultTaxRate(),
       taxAmount: 0,
     });
   };
@@ -1286,6 +1297,34 @@ export default function SalesIndex() {
     }>,
   });
 
+  useEffect(() => {
+    if (!formData.customerId || !customers) return;
+
+    const customer = customers.find(c => c.id === formData.customerId);
+    const vatTreatment = customer?.vatTreatment ?? null;
+    const taxRate = vatTreatment === "standard" ? 5 : 0;
+
+    // VAT state (for display / logic)
+    setCustomerVatTreatment(vatTreatment);
+
+    // Default VAT for NEW items
+    setNewItem(prev => ({
+      ...prev,
+      taxRate,
+    }));
+
+    // OPTIONAL: update EXISTING items
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => ({
+        ...item,
+        taxRate,
+        taxAmount: item.quantity * item.unitPrice * (taxRate / 100),
+      })),
+    }));
+  }, [formData.customerId, customers]);
+
+
   return (
     <div className="container mx-auto p-4 md:p-6">
       {/* Header */}
@@ -1302,11 +1341,15 @@ export default function SalesIndex() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={openNewQuotationDialog}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   New Quotation
                 </Button>
               </DialogTrigger>
+
               <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
@@ -1327,16 +1370,14 @@ export default function SalesIndex() {
                       <Select
                         value={formData.customerId?.toString() || ""}
                         onValueChange={(value) => {
-                          const selectedCustomer = customers?.find(
-                            (c) => c.id === parseInt(value)
-                          );
-                          startTransition(() =>
-                            setFormData((prev) => ({
+                          const customerId = parseInt(value);
+
+                          startTransition(() => {
+                            setFormData(prev => ({
                               ...prev,
-                              customerId: parseInt(value),
-                              billingAddress: selectedCustomer?.address || "",
-                            })),
-                          );
+                              customerId,
+                            }));
+                          });
                         }}
                       >
                         <SelectTrigger>

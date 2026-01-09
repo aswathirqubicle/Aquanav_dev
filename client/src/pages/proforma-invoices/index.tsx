@@ -132,7 +132,7 @@ export default function ProformaInvoicesIndex() {
   const [convertingProforma, setConvertingProforma] = useState<ProformaInvoice | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [archivedFilter, setArchivedFilter] = useState<string>("active");
-
+  const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateProformaInvoiceData>({
     customerId: 0,
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -173,6 +173,12 @@ export default function ProformaInvoicesIndex() {
     enabled: isAuthenticated,
   });
 
+  const toInputDate = (date?: string) => {
+    if (!date) return "";
+    return date.split(" ")[0]; // handles "YYYY-MM-DD HH:mm:ss"
+  };
+
+
   const { data: customersResponse } = useQuery<{
     data: Customer[];
     pagination: {
@@ -191,6 +197,13 @@ export default function ProformaInvoicesIndex() {
     },
     enabled: isAuthenticated,
   });
+
+  const openNewProformaDialog = () => {
+    resetForm();              // clear old data
+    setIsEditingProforma(false);
+    setSelectedProforma(null);
+    setIsDialogOpen(true);
+  };
 
   const customers = customersResponse?.data;
 
@@ -324,7 +337,7 @@ export default function ProformaInvoicesIndex() {
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: 0,
+      taxRate: customerVatTreatment === "standard" ? 5 : 0,
     });
     setIsEditingProforma(false);
   };
@@ -369,7 +382,7 @@ export default function ProformaInvoicesIndex() {
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: 0,
+      taxRate: customerVatTreatment === "standard" ? 5 : 0,
     });
   };
 
@@ -506,12 +519,16 @@ export default function ProformaInvoicesIndex() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
+                <Button onClick={openNewProformaDialog}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Proforma Invoice
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogContent
+                key={isEditingProforma ? selectedProforma?.id : "new"}
+                className="sm:max-w-4xl max-h-[90vh] overflow-y-auto"
+              >
+
                 <DialogHeader>
                   <DialogTitle>
                     {isEditingProforma ? "Edit Proforma Invoice" : "Create Proforma Invoice"}
@@ -532,13 +549,30 @@ export default function ProformaInvoicesIndex() {
                           const selectedCustomer = customers?.find(
                             (c) => c.id === parseInt(value)
                           );
-                          startTransition(() =>
+
+                          const vatTreatment = selectedCustomer?.vatTreatment || null;
+                          const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
+
+                          startTransition(() => {
+                            setCustomerVatTreatment(vatTreatment);
+
                             setFormData((prev) => ({
                               ...prev,
                               customerId: parseInt(value),
                               billingAddress: selectedCustomer?.address || "",
-                            })),
-                          );
+                              // 🔹 optional: update existing items taxRate
+                              items: prev.items.map(item => ({
+                                ...item,
+                                taxRate: defaultTaxRate,
+                              })),
+                            }));
+
+                            // 🔹 update newItem default tax
+                            setNewItem(prev => ({
+                              ...prev,
+                              taxRate: defaultTaxRate,
+                            }));
+                          });
                         }}
                       >
                         <SelectTrigger>
@@ -705,7 +739,6 @@ export default function ProformaInvoicesIndex() {
                   {/* Items Section */}
                   <div className="space-y-4">
                     <Label className="text-base font-medium">Items</Label>
-
                     {/* Add Item Form */}
                     <Card>
                       <CardContent className="p-4">
@@ -1476,13 +1509,21 @@ export default function ProformaInvoicesIndex() {
                   variant="outline"
                   onClick={() => {
                     if (selectedProforma) {
+                      const selectedCustomer = customers?.find(
+                        (c) => c.id === selectedProforma.customerId
+                      );
+
+                      const vatTreatment = selectedCustomer?.vatTreatment || null;
+                      const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
+
+                      setCustomerVatTreatment(vatTreatment);
                       // Populate form with existing data
                       setFormData({
                         customerId: selectedProforma.customerId,
                         projectId: selectedProforma.projectId,
                         quotationId: selectedProforma.quotationId,
-                        invoiceDate: selectedProforma.invoiceDate ? selectedProforma.invoiceDate.split('T')[0] : new Date().toISOString().split('T')[0],
-                        validUntil: selectedProforma.validUntil ? selectedProforma.validUntil.split('T')[0] : '',
+                        invoiceDate: toInputDate(selectedProforma.invoiceDate),
+                        validUntil: toInputDate(selectedProforma.validUntil),
                         paymentTerms: selectedProforma.paymentTerms || '',
                         deliveryTerms: selectedProforma.deliveryTerms || '',
                         bankAccount: selectedProforma.bankAccount || '',
@@ -1492,6 +1533,14 @@ export default function ProformaInvoicesIndex() {
                         items: selectedProforma.items || [],
                         discount: selectedProforma.discount || '0',
                       });
+                      // 🔹 ensure new item uses correct tax
+                      setNewItem({
+                        description: "",
+                        quantity: 1,
+                        unitPrice: 0,
+                        taxRate: defaultTaxRate,
+                      });
+                      
                       setIsEditingProforma(true);
                       setIsDetailsOpen(false);
                       setIsDialogOpen(true);
