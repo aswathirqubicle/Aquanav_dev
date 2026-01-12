@@ -5254,38 +5254,32 @@ class Storage {
     }
   }
 
-  async getReceivables(): Promise<any[]> {
-    try {
-      const result = await db
-        .select({
-          id: generalLedgerEntries.id,
-          description: generalLedgerEntries.description,
-          amount: generalLedgerEntries.debitAmount, // Aliasing debit_amount as amount
-          customerName: generalLedgerEntries.entityName, // Aliasing entity_name as customerName
-          projectId: generalLedgerEntries.projectId,
-          projectTitle: projects.title, // Selecting from joined projects table
-          invoiceNumber: generalLedgerEntries.invoiceNumber,
-          transactionDate: generalLedgerEntries.transactionDate,
-          dueDate: generalLedgerEntries.dueDate,
-          status: generalLedgerEntries.status,
-          createdAt: generalLedgerEntries.createdAt,
-        })
-        .from(generalLedgerEntries)
-        .leftJoin(projects, eq(generalLedgerEntries.projectId, projects.id))
-        .where(eq(generalLedgerEntries.entryType, "receivable"))
-        .orderBy(desc(generalLedgerEntries.transactionDate));
-
-      return result;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          "Error in getReceivables: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "getReceivables",
-        severity: "error",
-      });
-      throw error;
-    }
+  async getReceivables() {
+    return await db
+      .select({
+        invoiceId: salesInvoices.id,
+        invoiceNumber: salesInvoices.invoiceNumber,
+        customerName: customers.name,
+        totalAmount: salesInvoices.totalAmount,
+        paidAmount: sql<number>`COALESCE(SUM(${invoicePayments.amount}), 0)`,
+        outstandingAmount: sql<number>`
+          ${salesInvoices.totalAmount} -
+          COALESCE(SUM(${invoicePayments.amount}), 0)
+        `,
+        dueDate: salesInvoices.dueDate,
+        status: sql<string>`
+          CASE
+            WHEN COALESCE(SUM(${invoicePayments.amount}), 0) = 0 THEN 'unpaid'
+            WHEN COALESCE(SUM(${invoicePayments.amount}), 0) < ${salesInvoices.totalAmount} THEN 'partially_paid'
+            ELSE 'paid'
+          END
+        `,
+      })
+      .from(salesInvoices)
+      .leftJoin(invoicePayments, eq(invoicePayments.invoiceId, salesInvoices.id))
+      .leftJoin(customers, eq(customers.id, salesInvoices.customerId))
+      .groupBy(salesInvoices.id, customers.name)
+      .orderBy(desc(salesInvoices.dueDate));
   }
 
   // Sales Quotation methods

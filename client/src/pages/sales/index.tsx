@@ -533,7 +533,8 @@ export default function SalesIndex() {
       formData.append("paymentMethod", data.paymentMethod);
       formData.append("referenceNumber", data.referenceNumber || "");
       formData.append("notes", data.notes || "");
-
+      console.log("formData",formData);
+      
       // Append files
       if (data.files) {
         for (let i = 0; i < data.files.length; i++) {
@@ -551,7 +552,12 @@ export default function SalesIndex() {
           },
         },
       );
-      return response;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to record payment");
+      }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
@@ -624,7 +630,7 @@ export default function SalesIndex() {
       taxAmount: 0,
     });
   };
-  
+
   const resetPaymentForm = () => {
     setPaymentFormData({
       invoiceId: 0,
@@ -657,7 +663,6 @@ export default function SalesIndex() {
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!paymentFormData.amount || parseFloat(paymentFormData.amount) <= 0) {
       toast({
         title: "Error",
@@ -752,29 +757,33 @@ export default function SalesIndex() {
       return;
     }
 
+    // 🔥 Force correct tax rate here
+    const taxRate =
+      customerVatTreatment === "standard" ? 5 : 0;
+
     const lineSubtotal = newItem.quantity * newItem.unitPrice;
-    const calculatedTaxAmount = lineSubtotal * (newItem.taxRate / 100);
+    const calculatedTaxAmount = lineSubtotal * (taxRate / 100);
 
     const item = {
       description: newItem.description,
       quantity: newItem.quantity,
       unitPrice: newItem.unitPrice,
-      taxRate: newItem.taxRate,
+      taxRate,
       taxAmount: calculatedTaxAmount,
     };
 
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { ...item }],
+      items: [...prev.items, item],
     }));
 
-    setNewItem(prev => ({
+    setNewItem({
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: prev.taxRate,
+      taxRate, // keep VAT for next item
       taxAmount: 0,
-    }));
+    });
   };
 
   const removeItem = (index: number) => {
@@ -794,24 +803,31 @@ export default function SalesIndex() {
       return;
     }
 
+    // 🔥 FORCE VAT HERE
+    const taxRate =
+      customerVatTreatment === "standard" ? 5 : 0;
+
+    const lineSubtotal = newItem.quantity * newItem.unitPrice;
+    const taxAmount = lineSubtotal * (taxRate / 100);
+
     const item = {
       description: newItem.description,
       quantity: newItem.quantity,
       unitPrice: newItem.unitPrice,
-      taxRate: newItem.taxRate,
-      taxAmount: newItem.quantity * newItem.unitPrice * (newItem.taxRate / 100),
+      taxRate,
+      taxAmount,
     };
 
-    setInvoiceFormData((prev) => ({
+    setInvoiceFormData(prev => ({
       ...prev,
-      items: [...prev.items, { ...item }],
+      items: [...prev.items, item],
     }));
 
     setNewItem({
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate: getDefaultTaxRate(),
+      taxRate, // keep VAT for next item
       taxAmount: 0,
     });
   };
@@ -1296,6 +1312,35 @@ export default function SalesIndex() {
       unitPrice: number;
     }>,
   });
+
+  useEffect(() => {
+    if (!invoiceFormData.customerId || !customers) return;
+
+    const customer = customers.find(
+      c => c.id === invoiceFormData.customerId
+    );
+    const vatTreatment = customer?.vatTreatment ?? null;
+    const taxRate = vatTreatment === "standard" ? 5 : 0;
+
+    setCustomerVatTreatment(vatTreatment);
+
+    // Default VAT for new invoice items
+    setNewItem(prev => ({
+      ...prev,
+      taxRate,
+    }));
+
+    // OPTIONAL: update existing invoice items
+    setInvoiceFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => ({
+        ...item,
+        taxRate,
+        taxAmount:
+          item.quantity * item.unitPrice * (taxRate / 100),
+      })),
+    }));
+  }, [invoiceFormData.customerId, customers]);
 
   useEffect(() => {
     if (!formData.customerId || !customers) return;
@@ -4105,6 +4150,7 @@ export default function SalesIndex() {
                             {getInvoiceStatusBadge(receivable.status)}
                           </td>
                           <td className="text-center p-3">
+                            {receivable.invoiceNumber && receivable.status !== "paid" &&(
                             <Button
                               size="sm"
                               onClick={() => {
@@ -4119,6 +4165,7 @@ export default function SalesIndex() {
                             >
                               Record Payment
                             </Button>
+                            )}
                           </td>
                         </tr>
                       ))}
