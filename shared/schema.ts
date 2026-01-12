@@ -59,7 +59,7 @@ export const suppliers = pgTable("suppliers", {
   phone: text("phone"),
   address: text("address"),
   taxId: text("tax_id"),
-  bankInfo: text("bank_info"),
+  // bankInfo: text("bank_info"),
   isArchived: boolean("is_archived").notNull().default(false),
   // UAE VAT Compliance Fields
   vatNumber: text("vat_number"), // 15-digit VAT registration number
@@ -74,6 +74,12 @@ export const suppliers = pgTable("suppliers", {
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const supplierBankDetails = pgTable("supplier_bank_details", {
+  id: serial("id").primaryKey(),
+  supplierId: integer("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  accountDetails: text("account_details").notNull(),
 });
 
 // Employees
@@ -841,6 +847,14 @@ export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: tru
   currency: z.enum(["AED", "USD", "EUR", "GBP", "SAR"]).default("AED"),
   creditLimit: z.string().nullable().optional(),
   isVatApplicable: z.boolean().default(true),
+  bankAccountDetails: z
+    .array(
+      z.object({
+        id: z.number().optional(),
+        accountDetails: z.string(),
+      })
+    )
+    .optional(),
 });
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true }).extend({
   hireDate: z.coerce.date().nullable().optional(),
@@ -1019,6 +1033,8 @@ export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+export type SupplierBankDetails = typeof supplierBankDetails.$inferSelect;
+export type InsertSupplierBankDetails = typeof supplierBankDetails.$inferInsert;
 export type Employee = typeof employees.$inferSelect;
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type EmployeeNextOfKin = typeof employeeNextOfKin.$inferSelect;
@@ -1135,3 +1151,7 @@ export const dashboardStatsSchema = z.object({
 });
 
 export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
+
+export type SupplierWithBankDetails = Supplier & {
+  bankAccountDetails: SupplierBankDetails[];
+};
