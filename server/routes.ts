@@ -4543,11 +4543,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       for (const item of items) {
-        if (!item.inventoryItemId || !item.quantity || item.quantity <= 0) {
-          return res.status(400).json({
-            message:
-              "Invalid item data. Each item must have a valid inventory item ID and quantity greater than 0",
-          });
+        if (item.itemType === "service") {
+          if (!item.description || !item.quantity || item.quantity <= 0) {
+            return res.status(400).json({
+              message:
+                "Invalid service item: description and positive quantity are required",
+            });
+          }
+        } else {
+          if (!item.inventoryItemId || !item.quantity || item.quantity <= 0) {
+            return res.status(400).json({
+              message:
+                "Invalid product item: inventory item and positive quantity are required",
+            });
+          }
         }
       }
 
@@ -4589,7 +4598,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const request = await storage.updatePurchaseRequest(id, {
           status: "approved",
-          approvedBy: employee.id,
+          // approvedBy: employee.id,
+          approvedBy: employee ? employee.id : user.id,
           approvalDate: new Date(),
         });
 
@@ -4632,7 +4642,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const request = await storage.updatePurchaseRequest(id, {
           status: "rejected",
-          approvedBy: employee.id,
+          // approvedBy: employee.id,
+          approvedBy: employee ? employee.id : user.id,
           approvalDate: new Date(),
         });
 

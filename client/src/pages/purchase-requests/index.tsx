@@ -442,10 +442,10 @@ export default function PurchaseRequestsIndex() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex gap-2">
+                {/* <div className="flex gap-2">
                   <Button onClick={applyFilters} className="flex-1">Apply</Button>
                   <Button onClick={clearFilters} variant="outline" className="flex-1">Clear</Button>
-                </div>
+                </div> */}
               </div>
             </PopoverContent>
           </Popover>

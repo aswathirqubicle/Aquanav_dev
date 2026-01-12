@@ -7070,7 +7070,7 @@ class Storage {
         })
         .from(purchaseRequests)
         .leftJoin(employees, eq(purchaseRequests.requestedBy, employees.id))
-        .leftJoin(approver, eq(purchaseRequests.approvedBy, employees.id))
+        .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
         .orderBy(desc(purchaseRequests.requestDate));
 
       // Get items for each request
@@ -7080,10 +7080,13 @@ class Storage {
             .select({
               id: purchaseRequestItems.id,
               requestId: purchaseRequestItems.requestId,
+              itemType: purchaseRequestItems.itemType,
               inventoryItemId: purchaseRequestItems.inventoryItemId,
               inventoryItemName: inventoryItems.name,
               inventoryItemUnit: inventoryItems.unit,
+              description: purchaseRequestItems.description,
               quantity: purchaseRequestItems.quantity,
+              unitPrice: purchaseRequestItems.unitPrice,
               notes: purchaseRequestItems.notes,
             })
             .from(purchaseRequestItems)
@@ -7134,7 +7137,7 @@ class Storage {
         })
         .from(purchaseRequests)
         .leftJoin(emp, eq(purchaseRequests.requestedBy, emp.id))
-        .leftJoin(approver, eq(purchaseRequests.approvedBy, emp.id))
+        .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
         .where(eq(purchaseRequests.id, id));
 
       if (!request) return null;
@@ -7143,10 +7146,13 @@ class Storage {
         .select({
           id: purchaseRequestItems.id,
           requestId: purchaseRequestItems.requestId,
+          itemType: purchaseRequestItems.itemType,
           inventoryItemId: purchaseRequestItems.inventoryItemId,
           inventoryItemName: inventoryItems.name,
           inventoryItemUnit: inventoryItems.unit,
+          description: purchaseRequestItems.description,
           quantity: purchaseRequestItems.quantity,
+          unitPrice: purchaseRequestItems.unitPrice,
           notes: purchaseRequestItems.notes,
         })
         .from(purchaseRequestItems)
