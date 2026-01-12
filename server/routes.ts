@@ -1132,6 +1132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const supplierData = insertSupplierSchema.parse(req.body);
         const supplier = await storage.createSupplier(supplierData);
+        console.log("5=>",supplier);
         res.status(201).json(supplier);
       } catch (error) {
         if (error instanceof ZodError) {

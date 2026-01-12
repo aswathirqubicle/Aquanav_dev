@@ -19,6 +19,7 @@ import {
   companies,
   customers,
   suppliers,
+  supplierBankDetails,
   employees,
   employeeNextOfKin,
   employeeTrainingRecords,
@@ -87,6 +88,8 @@ import {
   type InsertDailyActivity,
   type Supplier,
   type InsertSupplier,
+  type SupplierWithBankDetails,
+  type SupplierBankDetails,
   type SupplierInventoryItem,
   type InsertSupplierInventoryItem,
   type ProjectPhotoGroup,
@@ -697,9 +700,30 @@ class Storage {
   }
 
   // Supplier methods
-  async getSuppliers(): Promise<Supplier[]> {
+  async getSuppliers(): Promise<SupplierWithBankDetails[]> {
     try {
-      return await db.select().from(suppliers);
+      const allSuppliers = await db.select().from(suppliers);
+      if (allSuppliers.length === 0) {
+        return [];
+      }
+      const supplierIds = allSuppliers.map((s) => s.id);
+      const bankDetails = await db
+        .select()
+        .from(supplierBankDetails)
+        .where(inArray(supplierBankDetails.supplierId, supplierIds));
+
+      const bankDetailsMap = new Map<number, SupplierBankDetails[]>();
+      for (const detail of bankDetails) {
+        if (!bankDetailsMap.has(detail.supplierId)) {
+          bankDetailsMap.set(detail.supplierId, []);
+        }
+        bankDetailsMap.get(detail.supplierId)!.push(detail);
+      }
+
+      return allSuppliers.map((supplier) => ({
+        ...supplier,
+        bankAccountDetails: bankDetailsMap.get(supplier.id) || [],
+      }));
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -717,7 +741,7 @@ class Storage {
     limit: number,
     search: string,
     showArchived: boolean
-  ): Promise<PaginatedResponse<Supplier>> {
+  ): Promise<PaginatedResponse<SupplierWithBankDetails>> {
     try {
       const whereClauses = [];
       if (search) {
@@ -728,24 +752,62 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
-      const dataQueryBuilder = db
-        .select()
-        .from(suppliers)
-        .where(conditions)
-        .orderBy(suppliers.id);
-      // Original count query for suppliers also only filtered by showArchived.
-      // Sticking to applying all conditions for count for consistency in the helper.
-      const countQueryBuilder = db
+      // 1. Get total count
+      const totalResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(suppliers)
         .where(conditions);
+      const total = Number(totalResult[0].count);
+      const totalPages = Math.ceil(total / limit);
 
-      return this._getPaginatedResults<Supplier>(
-        dataQueryBuilder,
-        countQueryBuilder,
-        page,
-        limit
-      );
+      // 2. Fetch paginated suppliers
+      const supplierData = await db
+        .select()
+        .from(suppliers)
+        .where(conditions)
+        .orderBy(suppliers.id)
+        .limit(limit)
+        .offset((page - 1) * limit);
+
+      if (supplierData.length === 0) {
+        return {
+          data: [],
+          pagination: { page, limit, total, totalPages },
+        };
+      }
+
+      // 3. Fetch bank details for these suppliers
+      const supplierIds = supplierData.map((s) => s.id);
+      const bankDetails = await db
+        .select()
+        .from(supplierBankDetails)
+        .where(inArray(supplierBankDetails.supplierId, supplierIds));
+
+      // 4. Map bank details back to suppliers
+      const bankDetailsMap = new Map<number, SupplierBankDetails[]>();
+      for (const detail of bankDetails) {
+        if (!bankDetailsMap.has(detail.supplierId)) {
+          bankDetailsMap.set(detail.supplierId, []);
+        }
+        bankDetailsMap.get(detail.supplierId)!.push(detail);
+      }
+
+      const dataWithDetails: SupplierWithBankDetails[] = supplierData.map((supplier) => {
+        return {
+          ...supplier,
+          bankAccountDetails: bankDetailsMap.get(supplier.id) || [],
+        };
+      });
+
+      return {
+        data: dataWithDetails,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+        },
+      };
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -759,14 +821,28 @@ class Storage {
     }
   }
 
-  async getSupplier(id: number): Promise<Supplier | undefined> {
+  async getSupplier(id: number): Promise<SupplierWithBankDetails | undefined> {
     try {
-      const result = await db
+      const [supplierData] = await db
         .select()
         .from(suppliers)
-        .where(eq(suppliers.id, id))
-        .limit(1);
-      return result[0];
+        .where(eq(suppliers.id, id));
+
+      if (!supplierData) {
+        return undefined;
+      }
+
+      const bankDetails = await db
+        .select()
+        .from(supplierBankDetails)
+        .where(eq(supplierBankDetails.supplierId, id));
+
+      const supplierWithDetails: SupplierWithBankDetails = {
+        ...supplierData,
+        bankAccountDetails: bankDetails,
+      };
+
+      return supplierWithDetails;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -780,53 +856,129 @@ class Storage {
     }
   }
 
-  async createSupplier(supplierData: InsertSupplier): Promise<Supplier> {
-    try {
-      const result = await db
+  async createSupplier(
+  supplierData: InsertSupplier
+): Promise<SupplierWithBankDetails> {
+  try {
+    const { bankAccountDetails, ...supplierInfo } = supplierData;
+
+    const newSupplierWithDetails = await db.transaction(async (tx) => {
+      console.log("1 => supplier entry");
+
+      const [newSupplier] = await tx
         .insert(suppliers)
-        .values(supplierData)
+        .values(supplierInfo)
         .returning();
 
-      const supplier = result[0];
+      if (!newSupplier) {
+        throw new Error("Supplier insert failed");
+      }
 
-      // Create general ledger account for the supplier
-      // await this.createGeneralLedgerEntry({
-      //   entryType: "payable",
-      //   referenceType: "manual",
-      //   accountName: `Supplier: ${supplier.name}`,
-      //   description: `Supplier account created: ${supplier.name}`,
-      //   debitAmount: "0",
-      //   creditAmount: "0",
-      //   entityId: supplier.id,
-      //   entityName: supplier.name,
-      //   transactionDate: new Date().toISOString().split("T")[0],
-      //   status: "active",
-      // });
+      console.log("2 =>", newSupplier);
 
-      return supplier;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          "Error in createSupplier: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "createSupplier",
-        severity: "error",
-      });
-      throw error;
-    }
+      let newBankDetails: SupplierBankDetails[] = [];
+
+      const cleanedBankDetails =
+        bankAccountDetails?.filter(
+          (detail) => detail.accountDetails?.trim() !== ""
+        ) ?? [];
+
+      if (cleanedBankDetails.length > 0) {
+        const detailsToInsert = cleanedBankDetails.map((detail) => ({
+          supplierId: newSupplier.id,
+          accountDetails: detail.accountDetails.trim(),
+        }));
+
+        console.log("3 =>", detailsToInsert);
+
+        newBankDetails = await tx
+          .insert(supplierBankDetails)
+          .values(detailsToInsert)
+          .returning();
+
+        console.log("4 =>", newBankDetails);
+      }
+
+      return {
+        ...newSupplier,
+        bankAccountDetails: newBankDetails,
+      };
+    });
+
+    return newSupplierWithDetails;
+  } catch (error: any) {
+    await this.createErrorLog({
+      message:
+        "Error in createSupplier: " + (error?.message || "Unknown error"),
+      stack: error?.stack,
+      component: "createSupplier",
+      severity: "error",
+    });
+    throw error;
   }
+}
 
   async updateSupplier(
     id: number,
     supplierData: Partial<InsertSupplier>
-  ): Promise<Supplier | undefined> {
+  ): Promise<SupplierWithBankDetails | undefined> {
     try {
-      const result = await db
-        .update(suppliers)
-        .set(supplierData)
-        .where(eq(suppliers.id, id))
-        .returning();
-      return result[0];
+      const { bankAccountDetails, ...supplierInfo } = supplierData;
+
+      const updatedSupplierWithDetails = await db.transaction(async (tx) => {
+        let updatedSupplier: Supplier | undefined;
+        if (Object.keys(supplierInfo).length > 0) {
+          [updatedSupplier] = await tx.update(suppliers).set(supplierInfo).where(eq(suppliers.id, id)).returning();
+        } else {
+          [updatedSupplier] = await tx.select().from(suppliers).where(eq(suppliers.id, id));
+        }
+
+        if (!updatedSupplier) {
+          // If the supplier doesn't exist, we can't proceed.
+          // Returning null from transaction will cause db.transaction to return null.
+          return null;
+        }
+
+        if (bankAccountDetails) {
+          const validDetails = bankAccountDetails.filter(
+            detail => detail.accountDetails.trim() !== ""
+          );
+
+          const existingDetails = await tx.select().from(supplierBankDetails).where(eq(supplierBankDetails.supplierId, id));
+          const existingIds = existingDetails.map(d => d.id);
+          const incomingIds = validDetails.map(d => d.id).filter((id): id is number => !!id);
+
+          // Delete details that are no longer present
+          const toDelete = existingIds.filter(id => !incomingIds.includes(id));
+          if (toDelete.length > 0) {
+            await tx.delete(supplierBankDetails).where(inArray(supplierBankDetails.id, toDelete));
+          }
+
+          // Update existing and insert new details
+          for (const detail of validDetails) {
+            if (detail.id && existingIds.includes(detail.id)) { // Update existing
+              await tx.update(supplierBankDetails)
+                .set({ accountDetails: detail.accountDetails })
+                .where(eq(supplierBankDetails.id, detail.id));
+            } else { // Insert new
+              await tx.insert(supplierBankDetails).values({
+                supplierId: id,
+                accountDetails: detail.accountDetails,
+              });
+            }
+          }
+        }
+
+        const finalBankDetails = await tx.select().from(supplierBankDetails).where(eq(supplierBankDetails.supplierId, id));
+        return { ...updatedSupplier, bankAccountDetails: finalBankDetails };
+      });
+
+      // If transaction returned null, it means supplier was not found.
+      if (!updatedSupplierWithDetails) {
+        return undefined;
+      }
+
+      return updatedSupplierWithDetails;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -9867,19 +10019,19 @@ export interface IStorage {
   deleteCustomer(id: number): Promise<boolean>;
 
   // Supplier methods
-  getSuppliers(): Promise<Supplier[]>;
+  getSuppliers(): Promise<SupplierWithBankDetails[]>;
   getSuppliersPaginated(
     page: number,
     limit: number,
     search: string,
     showArchived: boolean
-  ): Promise<PaginatedResponse<Supplier>>;
-  getSupplier(id: number): Promise<Supplier | undefined>;
-  createSupplier(supplierData: InsertSupplier): Promise<Supplier>;
+  ): Promise<PaginatedResponse<SupplierWithBankDetails>>;
+  getSupplier(id: number): Promise<SupplierWithBankDetails | undefined>;
+  createSupplier(supplierData: InsertSupplier): Promise<SupplierWithBankDetails>;
   updateSupplier(
     id: number,
     supplierData: Partial<InsertSupplier>
-  ): Promise<Supplier | undefined>;
+  ): Promise<SupplierWithBankDetails | undefined>;
   deleteSupplier(id: number): Promise<boolean>;
 
   // Employee methods
