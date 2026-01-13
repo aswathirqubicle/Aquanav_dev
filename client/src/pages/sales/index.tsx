@@ -1254,12 +1254,17 @@ export default function SalesIndex() {
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
         .toISOString()
         .split("T")[0],
+
+      // ✅ COPY FROM QUOTATION
+      billingAddress: quotation.billingAddress || "",
+
       items: quotation.items || [],
       discount: quotation.discount || "0",
       subtotal: quotation.subtotal,
       taxAmount: quotation.taxAmount,
       totalAmount: quotation.totalAmount,
     });
+
     setIsInvoiceDialogOpen(true);
   };
 
@@ -1416,11 +1421,13 @@ export default function SalesIndex() {
                         value={formData.customerId?.toString() || ""}
                         onValueChange={(value) => {
                           const customerId = parseInt(value);
+                          const selectedCustomer = customers?.find(c => c.id === customerId);
 
                           startTransition(() => {
                             setFormData(prev => ({
                               ...prev,
                               customerId,
+                              billingAddress: selectedCustomer?.address || "", // ✅ AUTO POPULATE
                             }));
                           });
                         }}

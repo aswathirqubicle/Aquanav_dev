@@ -41,11 +41,40 @@ const isoDate = z
     });
 
 
-const createDocumentSchema = insertEmployeeDocumentSchema.omit({ id: true, employeeId: true }).extend({
-  dateOfIssue: z.string().optional(),
-  expiryDate: z.string().optional(),
-  validTill: z.string().optional(),
-});
+const createDocumentSchema = insertEmployeeDocumentSchema
+  .omit({ id: true, employeeId: true })
+  .extend({
+    documentType: z.string().min(1, "Document type is required"),
+    documentNumber: z.string().min(1, "Document number is required"),
+
+    placeOfIssue: z.string().nullable().optional(),
+
+    dateOfIssue: isoDate,
+    expiryDate: isoDate.optional().nullable(),
+    validTill: isoDate.optional().nullable(),
+
+    status: z.enum(["active", "expired", "pending_renewal"]),
+    notes: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.expiryDate && data.dateOfIssue) {
+      if (new Date(data.expiryDate) <= new Date(data.dateOfIssue)) {
+        ctx.addIssue({
+          path: ["expiryDate"],
+          message: "Expiry date must be after Date of Issue",
+          code: z.ZodIssueCode.custom,
+        });
+      }
+    }
+
+    if (data.status === "expired" && !data.expiryDate) {
+      ctx.addIssue({
+        path: ["expiryDate"],
+        message: "Expiry date is required when status is Expired",
+        code: z.ZodIssueCode.custom,
+      });
+    }
+  });
 
 type CreateEmployeeData = z.infer<typeof createEmployeeSchema>;
 type CreateNextOfKinData = z.infer<typeof createNextOfKinSchema>;
@@ -646,6 +675,37 @@ export default function EmployeesIndex() {
       filePath: null,
     });
   };
+
+  const validateDocument = () => {
+  const normalized = {
+    ...documentData,
+    documentNumber: documentData.documentNumber ?? "",
+    dateOfIssue: documentData.dateOfIssue ?? "",
+  };
+
+  const parsed = createDocumentSchema.safeParse(normalized);
+
+  if (!parsed.success) {
+    toast({
+      title: "Validation Error",
+      description: parsed.error.errors[0].message,
+      variant: "destructive",
+    });
+    return null;
+  }
+
+  if (!selectedFiles && !editingDocument) {
+    toast({
+      title: "Attachment required",
+      description: "Please upload at least one document file",
+      variant: "destructive",
+    });
+    return null;
+  }
+
+  return parsed.data;
+};
+
 
   const resetForm = () => {
     setFormData({
@@ -2214,7 +2274,11 @@ export default function EmployeesIndex() {
                                   data: documentData 
                                 });
                               } else {
-                                createDocumentMutation.mutate(documentData);
+                                const validated = validateDocument();
+                                if (!validated) return;
+
+                                createDocumentMutation.mutate(validated);
+
                               }
                             }}
                             disabled={!documentData.documentType || createDocumentMutation.isPending || updateDocumentMutation.isPending}
@@ -2537,12 +2601,20 @@ export default function EmployeesIndex() {
                           <Button
                             onClick={() => {
                               if (editingDocument) {
-                                updateDocumentMutation.mutate({ 
-                                  id: editingDocument.id, 
-                                  data: documentData 
+                                const validated = validateDocument();
+                                if (!validated) return;
+
+                                updateDocumentMutation.mutate({
+                                  id: editingDocument.id,
+                                  data: validated,
                                 });
+
                               } else {
-                                createDocumentMutation.mutate(documentData);
+                                const validated = validateDocument();
+                                if (!validated) return;
+
+                                createDocumentMutation.mutate(validated);
+
                               }
                             }}
                             disabled={!documentData.documentType || createDocumentMutation.isPending || updateDocumentMutation.isPending}
