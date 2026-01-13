@@ -55,6 +55,7 @@ export default function InventoryIndex() {
 
   const [formData, setFormData] = useState({
     name: "",
+    sku: "",
     description: "",
     category: "consumables",
     unit: "",
@@ -270,6 +271,7 @@ export default function InventoryIndex() {
   const resetForm = () => {
     setFormData({
       name: "",
+      sku: "",
       description: "",
       category: "consumables",
       unit: "",
@@ -315,6 +317,7 @@ export default function InventoryIndex() {
     setEditingItem(item);
     setFormData({
       name: item.name,
+      sku: item.sku,
       description: item.description || "",
       category: item.category,
       unit: item.unit,
@@ -360,6 +363,7 @@ export default function InventoryIndex() {
         // Update existing item
         const updateData = {
           name: formData.name.trim(),
+          sku: formData.sku.trim(),
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
@@ -442,6 +446,7 @@ export default function InventoryIndex() {
         // Create new item
         const processedData = {
           name: formData.name.trim(),
+          sku: formData.sku.trim(),
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
@@ -652,16 +657,29 @@ export default function InventoryIndex() {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium">Item Name *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleChange("name", e.target.value)}
-                  placeholder="e.g., Marine Grade Paint"
-                  required
-                  className="w-full"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-medium">Item Nameee *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => handleChange("name", e.target.value)}
+                    placeholder="e.g., Marine Grade Paint"
+                    required
+                    className="w-full"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-medium">SKU *</Label>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => handleChange("sku", e.target.value)}
+                    placeholder="e.g., Marine Grade Paint"
+                    required
+                    className="w-full"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -982,7 +1000,7 @@ export default function InventoryIndex() {
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     Basic Information
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
                         Item Name
@@ -993,29 +1011,19 @@ export default function InventoryIndex() {
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        SKU
+                      </Label>
+                      <p className="text-slate-900 dark:text-slate-100 font-medium">
+                        {viewingItem.sku}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
                         Category
                       </Label>
                       <div className="mt-1">
                         {getCategoryBadge(viewingItem.category)}
                       </div>
-                    </div>
-                    {viewingItem.description && (
-                      <div className="md:col-span-2">
-                        <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                          Description
-                        </Label>
-                        <p className="text-slate-900 dark:text-slate-100">
-                          {viewingItem.description}
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                        Unit
-                      </Label>
-                      <p className="text-slate-900 dark:text-slate-100">
-                        {viewingItem.unit}
-                      </p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
@@ -1027,6 +1035,25 @@ export default function InventoryIndex() {
                           : "N/A"}
                       </p>
                     </div>
+                    
+                    <div>
+                      <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        Unit
+                      </Label>
+                      <p className="text-slate-900 dark:text-slate-100">
+                        {viewingItem.unit}
+                      </p>
+                    </div>
+                    {viewingItem.description && (
+                      <div className="md:col-span-2">
+                        <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                          Description
+                        </Label>
+                        <p className="text-slate-900 dark:text-slate-100">
+                          {viewingItem.description}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -206,6 +206,7 @@ export const projectEmployees = pgTable("project_employees", {
 export const inventoryItems = pgTable("inventory_items", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  sku: text("sku").notNull().unique(),
   description: text("description"),
   category: text("category").notNull(), // consumables, tools, equipment
   unit: text("unit").notNull(),
