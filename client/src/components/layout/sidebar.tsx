@@ -77,7 +77,7 @@ const navigation: NavItem[] = [
     title: "All Projects",
     href: "/projects",
     icon: Ship,
-    roles: ["admin", "project_manager", "customer", "employee"],
+    roles: ["admin", "project_manager", "finance", "employee"],
   },
   // {
   //   title: "Daily Activities",
@@ -94,19 +94,19 @@ const navigation: NavItem[] = [
   {
     title: "Sales",
     icon: FileText,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
     subItems: [
       {
         title: "Sales & Invoicing",
         href: "/sales",
         icon: FileText,
-        roles: ["admin", "project_manager", "finance"],
+        roles: ["admin", "finance"],
       },
       {
         title: "Proforma Invoices",
         href: "/proforma-invoices",
         icon: FileText,
-        roles: ["admin", "project_manager", "finance"],
+        roles: ["admin", "finance"],
       },
       {
         title: "Credit Notes",
@@ -125,25 +125,25 @@ const navigation: NavItem[] = [
   {
     title: "Purchase",
     icon: ShoppingCart,
-    roles: ["admin", "project_manager", "finance", "employee"],
+    roles: ["admin", "project_manager", "finance"],
     subItems: [
       {
         title: "Purchase Requests",
         href: "/purchase-requests",
         icon: ShoppingCart,
-        roles: ["admin", "project_manager", "finance", "employee"],
+        roles: ["admin", "project_manager", "finance",],
       },
       {
         title: "Purchase Orders",
         href: "/purchase-orders",
         icon: FileText,
-        roles: ["admin", "project_manager", "finance"],
+        roles: ["admin", "finance"],
       },
       {
         title: "Purchase Invoices",
         href: "/purchase-invoices",
         icon: FileText,
-        roles: ["admin", "project_manager", "finance"],
+        roles: ["admin", "finance"],
       },
     ],
   },
@@ -151,44 +151,44 @@ const navigation: NavItem[] = [
     title: "Goods Receipt",
     href: "/inventory/goods-receipt",
     icon: ArrowDownLeft,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
   },
   {
     title: "Goods Issue",
     href: "/inventory/goods-issue",
     icon: ArrowUpRight,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
   },
   {
     title: "Inventory",
     href: "/inventory",
     icon: Package,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
   },
 
   {
     title: "Asset Inventory",
     href: "/asset-inventory",
     icon: QrCode,
-    roles: ["admin", "project_manager"],
+    roles: ["admin"],
   },
   {
     title: "Employee Management",
     href: "/employees",
     icon: Users,
-    roles: ["admin", "project_manager"],
+    roles: ["admin"],
   },
   {
     title: "Customers",
     href: "/customers",
     icon: Users,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
   },
   {
     title: "Suppliers",
     href: "/suppliers",
     icon: Users,
-    roles: ["admin", "project_manager", "finance"],
+    roles: ["admin", "finance"],
   },
   // {
   //   title: "General Ledger",
@@ -227,12 +227,12 @@ const navigation: NavItem[] = [
     icon: Users,
     roles: ["admin"],
   },
-  // {
-  //   title: "Settings",
-  //   href: "/settings",
-  //   icon: Settings,
-  //   roles: ["admin"],
-  // },
+  {
+    title: "Settings",
+    href: "/settings",
+    icon: Settings,
+    roles: ["admin"],
+  },
   {
     title: "Error Logs",
     href: "/error-logs",
