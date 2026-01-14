@@ -213,6 +213,29 @@ export default function SalesIndex() {
     }
   }, [isAuthenticated, user, setLocation]);
 
+  const { data: company } = useQuery({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  useEffect(() => {
+    if (!isDialogOpen || !company?.bankAccount) return;
+
+    setFormData(prev => ({
+      ...prev,
+      bankAccount: prev.bankAccount || company.bankAccount, // ✅ default only
+    }));
+  }, [isDialogOpen, company]);
+
+  useEffect(() => {
+    if (!isInvoiceDialogOpen || !company?.bankAccount) return;
+
+    setInvoiceFormData(prev => ({
+      ...prev,
+      bankAccount: prev.bankAccount || company.bankAccount, // ✅ default only
+    }));
+  }, [isInvoiceDialogOpen, company]);
+
   const { data: quotationsResponse, isLoading: quotationsLoading } = useQuery<{
     data: SalesQuotation[];
     pagination?: any;
