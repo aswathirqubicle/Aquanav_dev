@@ -19,6 +19,7 @@ export const companies = pgTable("companies", {
   name: text("name").notNull(),
   logo: text("logo"),
   address: text("address"),
+  bankAccount: text("bank_account"),
   phone: text("phone"),
   email: text("email"),
   website: text("website"),

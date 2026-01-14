@@ -16,7 +16,11 @@ import { Settings, Building, Users, Mail, Bell, Shield, Database, Download } fro
 import { Company, insertCompanySchema } from "@shared/schema";
 import { z } from "zod";
 
-const updateCompanySchema = insertCompanySchema;
+const updateCompanySchema = insertCompanySchema.extend({
+  address: z.string().optional().nullable(),
+  bankAccount: z.string().optional().nullable(),
+});
+
 type UpdateCompanyData = z.infer<typeof updateCompanySchema>;
 
 export default function SettingsIndex() {
@@ -27,12 +31,14 @@ export default function SettingsIndex() {
 
   const [companyData, setCompanyData] = useState<UpdateCompanyData>({
     name: "",
-    logo: "",
     address: "",
+    bankAccount: "",
     phone: "",
     email: "",
     website: "",
   });
+
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [notifications, setNotifications] = useState({
     emailNotifications: true,
@@ -63,21 +69,52 @@ export default function SettingsIndex() {
 
   useEffect(() => {
     if (company) {
+      console.log("company",company)
       setCompanyData({
         name: company.name || "",
-        logo: company.logo || "",
         address: company.address || "",
+        bankAccount: company.bankAccount || "",
         phone: company.phone || "",
         email: company.email || "",
         website: company.website || "",
       });
+
+      // ✅ show existing logo
+      setLogoPreview(company.logo || null);
     }
   }, [company]);
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: UpdateCompanyData) => {
-      const response = await apiRequest("PUT", "/api/company", data);
+      console.log("data",data);
+      const formData = new FormData();
+
+      formData.append("name", data.name);
+      formData.append("email", data.email ?? "");
+      formData.append("phone", data.phone ?? "");
+      formData.append("address", data.address ?? "");
+      formData.append("bankAccount", data.bankAccount ?? "");
+      formData.append("website", data.website ?? "");
+
+      if (companyLogoFile) {
+        formData.append("companyLogo", companyLogoFile); // ✅ fixed
+      }
+
+      const response = await fetch("/api/company", {
+        method: "PUT",
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Update failed");
+      }
+
       return response.json();
+
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company"] });
@@ -115,6 +152,8 @@ export default function SettingsIndex() {
   const handleSecurityChange = (field: keyof typeof security, value: string | boolean) => {
     setSecurity(prev => ({ ...prev, [field]: value }));
   };
+
+  const [companyLogoFile, setCompanyLogoFile] = useState<File | null>(null);
 
   const handleBackupDownload = () => {
     toast({
@@ -189,26 +228,58 @@ export default function SettingsIndex() {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyLogo">Company Logo</Label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setCompanyLogoFile(file);
 
-                  <div className="space-y-2">
-                    <Label htmlFor="companyLogo">Company Logo URL</Label>
-                    <Input
-                      id="companyLogo"
-                      value={companyData.logo}
-                      onChange={(e) => handleCompanyChange("logo", e.target.value)}
-                      placeholder="https://example.com/logo.png"
-                    />
+                          if (file) {
+                            // ✅ show selected image immediately
+                            const previewUrl = URL.createObjectURL(file);
+                            setLogoPreview(previewUrl);
+                          } else {
+                            // 🔁 revert to original logo
+                            setLogoPreview(company?.logo || null);
+                          }
+                        }}
+                      />
+                      </div>
+                      <div className="space-y-2">
+                      {logoPreview && (
+                        <img
+                          src={logoPreview}
+                          alt="Company Logo Preview"
+                          className="h-20 object-contain mt-2 border rounded"
+                        />
+                      )}
+                    </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="companyAddress">Address</Label>
-                    <Textarea
-                      id="companyAddress"
-                      value={companyData.address}
-                      onChange={(e) => handleCompanyChange("address", e.target.value)}
-                      placeholder="Company address..."
-                      rows={3}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyAddress">Address</Label>
+                      <Textarea
+                        id="companyAddress"
+                        value={companyData.address}
+                        onChange={(e) => handleCompanyChange("address", e.target.value)}
+                        placeholder="Company address..."
+                        rows={3}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="bankAccount">Bank Account</Label>
+                      <Textarea
+                        id="bankAccount"
+                        value={companyData.bankAccount}
+                        onChange={(e) => handleCompanyChange("bankAccount", e.target.value)}
+                        rows={3}
+                        placeholder="Bank account details"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

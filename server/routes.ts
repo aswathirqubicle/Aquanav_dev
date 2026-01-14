@@ -578,6 +578,8 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/projects/vesselimage";
     } else if (req.originalUrl?.includes("/api/employees")) {
       uploadDir = "uploads/employee-documents";
+    }else if (req.originalUrl?.includes("/api/company")) {
+      uploadDir = "uploads/company";
     }
 
     if (!fs.existsSync(uploadDir)) {
@@ -978,9 +980,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/company",
     requireAuth,
     requireRole(["admin"]),
+    upload.single("companyLogo"),
     async (req, res) => {
       try {
         const companyData = req.body;
+        // ✅ Attach uploaded logo path if present
+        if (req.file) {
+          companyData.logo = `/uploads/company/${req.file.filename}`;
+        }
         const company = await storage.updateCompany(companyData);
         res.json(company);
       } catch (error) {
