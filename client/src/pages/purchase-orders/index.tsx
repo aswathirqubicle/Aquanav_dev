@@ -32,7 +32,7 @@ interface PurchaseOrder {
   poNumber: string;
   supplierId: number;
   supplierName: string;
-  status: "draft" | "sent" | "confirmed" | "partially_received" | "completed" | "cancelled";
+  status: "draft" | "pending_approval" | "approved" | "rejected" | "converted";
   orderDate: string;
   expectedDeliveryDate?: string;
   paymentTerms?: string;
@@ -43,6 +43,12 @@ interface PurchaseOrder {
   totalAmount: string;
   notes?: string;
   items?: PurchaseOrderItem[];
+  submittedById?: number;
+  submittedAt?: string;
+  approvedById?: number;
+  approvedAt?: string;
+  rejectionReason?: string;
+  convertedInvoiceId?: number;
 }
 
 interface PurchaseOrderItem {
@@ -64,9 +70,12 @@ export default function PurchaseOrdersIndex() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -213,6 +222,85 @@ export default function PurchaseOrdersIndex() {
     },
   });
 
+  const submitOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/submit`,{method:"POST"});
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to submit order");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Order Submitted",
+        description: "Purchase order has been submitted for approval.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const approveOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/approve`,{method:"PATCH"});
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to approve order");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Order Approved",
+        description: "Purchase order has been approved successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectOrderMutation = useMutation({
+    mutationFn: async ({ orderId, reason }: { orderId: number; reason: string }) => {
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/reject`,{method:"PATCH", body:{ reason }});
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to reject order");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Order Rejected",
+        description: "Purchase order has been rejected.",
+        variant: "destructive",
+      });
+      setIsRejectDialogOpen(false);
+      setRejectionReason("");
+      setViewingOrder(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject order",
+        variant: "destructive",
+      });
+    },
+  });
+
   const convertToInvoiceMutation = useMutation({
     mutationFn: async ({ orderId, invoiceData }: { orderId: number; invoiceData: any }) => {
       const response = await apiRequest(`/api/purchase-orders/${orderId}/convert-to-invoice`,{method:"POST", body:invoiceData});
@@ -242,6 +330,73 @@ export default function PurchaseOrdersIndex() {
     },
   });
 
+  const updateOrderMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const items = orderItems.map(item => {
+        const quantity = parseInt(item.quantity);
+        const unitPrice = parseFloat(item.unitPrice);
+        const taxRate = parseFloat(item.taxRate);
+        const taxAmount = (quantity * unitPrice * taxRate) / 100;
+
+        return {
+          itemType: item.itemType,
+          inventoryItemId: item.itemType === "product" ? parseInt(item.inventoryItemId!) : null,
+          description: item.itemType === "service" ? item.description : null,
+          quantity,
+          unitPrice,
+          taxRate,
+          taxAmount,
+        };
+      });
+
+      let subtotal = 0;
+      let taxAmount = 0;
+      items.forEach(item => {
+        subtotal += item.quantity * item.unitPrice;
+        taxAmount += item.taxAmount;
+      });
+      const totalAmount = subtotal + taxAmount;
+
+      const orderData = {
+        supplierId: parseInt(formData.supplierId),
+        orderDate: formData.orderDate,
+        expectedDeliveryDate: formData.expectedDeliveryDate || null,
+        paymentTerms: formData.paymentTerms || null,
+        deliveryTerms: formData.deliveryTerms || null,
+        bankAccount: formData.bankAccount || null,
+        notes: formData.notes || null,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        items,
+      };
+
+      const response = await apiRequest(`/api/purchase-orders/${editingOrder!.id}`,{method:"PUT", body:orderData});
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update purchase order");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Order Updated",
+        description: "Purchase order has been updated successfully.",
+      });
+      setIsDialogOpen(false);
+      resetForm();
+      setEditingOrder(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update purchase order",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       supplierId: "",
@@ -262,6 +417,33 @@ export default function PurchaseOrdersIndex() {
       taxRate: "0",
     });
     setSelectedFiles(null);
+    setEditingOrder(null);
+  };
+
+  const handleEditOrder = (order: PurchaseOrder) => {
+    setEditingOrder(order);
+    setFormData({
+      supplierId: order.supplierId.toString(),
+      orderDate: order.orderDate.split('T')[0],
+      expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.split('T')[0] : "",
+      paymentTerms: order.paymentTerms || "",
+      deliveryTerms: order.deliveryTerms || "",
+      bankAccount: order.bankAccount || "",
+      notes: order.notes || "",
+    });
+    
+    if (order.items && order.items.length > 0) {
+      setOrderItems(order.items.map(item => ({
+        itemType: item.itemType,
+        inventoryItemId: item.inventoryItemId?.toString() || "",
+        description: item.description || "",
+        quantity: item.quantity.toString(),
+        unitPrice: item.unitPrice,
+        taxRate: "0",
+      })));
+    }
+    
+    setIsDialogOpen(true);
   };
 
   const addItem = () => {
@@ -354,7 +536,11 @@ export default function PurchaseOrdersIndex() {
       return;
     }
 
-    createOrderMutation.mutate(formData);
+    if (editingOrder) {
+      updateOrderMutation.mutate(formData);
+    } else {
+      createOrderMutation.mutate(formData);
+    }
   };
 
   const viewOrder = (order: PurchaseOrder) => {
@@ -383,25 +569,23 @@ export default function PurchaseOrdersIndex() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "completed":
-        return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Completed</Badge>;
-      case "partially_received":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">Partially Received</Badge>;
-      case "confirmed":
-        return <Badge variant="default" className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">Confirmed</Badge>;
-      case "sent":
-        return <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">Sent</Badge>;
       case "draft":
-        return <Badge variant="outline">Draft</Badge>;
-      case "cancelled":
-        return <Badge variant="destructive">Cancelled</Badge>;
+        return <Badge variant="outline" className="bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">Draft</Badge>;
+      case "pending_approval":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">Pending Approval</Badge>;
+      case "approved":
+        return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Approved</Badge>;
+      case "rejected":
+        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Rejected</Badge>;
+      case "converted":
+        return <Badge variant="default" className="bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">Converted</Badge>;
       default:
-        return null;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
   const canCreateInvoice = (order: PurchaseOrder) => {
-    return order.status === "confirmed" || order.status === "partially_received";
+    return order.status === "approved";
   };
 
   const canEdit = user?.role === "admin" || user?.role === "finance";
@@ -490,11 +674,10 @@ export default function PurchaseOrdersIndex() {
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
                       <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="sent">Sent</SelectItem>
-                      <SelectItem value="confirmed">Confirmed</SelectItem>
-                      <SelectItem value="partially_received">Partially Received</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="pending_approval">Pending Approval</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="converted">Converted</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -558,10 +741,10 @@ export default function PurchaseOrdersIndex() {
               </div>
               <div className="ml-3 md:ml-4">
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Confirmed
+                  Approved
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {statusCounts.confirmed || 0}
+                  {statusCounts.approved || 0}
                 </p>
               </div>
             </div>
@@ -576,10 +759,10 @@ export default function PurchaseOrdersIndex() {
               </div>
               <div className="ml-3 md:ml-4">
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Pending
+                  Pending Approval
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {(statusCounts.draft || 0) + (statusCounts.sent || 0)}
+                  {statusCounts.pending_approval || 0}
                 </p>
               </div>
             </div>
@@ -688,10 +871,81 @@ export default function PurchaseOrdersIndex() {
                         }
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => viewOrder(order)} className="gap-1">
-                          <Eye className="w-4 h-4" />
-                          <span className="hidden sm:inline">View</span>
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => viewOrder(order)} className="gap-1" data-testid={`button-view-order-${order.id}`}>
+                            <Eye className="w-4 h-4" />
+                            <span className="hidden sm:inline">View</span>
+                          </Button>
+                          
+                          {/* Edit - Draft orders only */}
+                          {order.status === "draft" && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleEditOrder(order)}
+                              data-testid={`button-edit-order-${order.id}`}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                          
+                          {/* Submit for Approval - Draft orders, all roles */}
+                          {order.status === "draft" && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => submitOrderMutation.mutate(order.id)}
+                              disabled={submitOrderMutation.isPending}
+                              data-testid={`button-submit-order-${order.id}`}
+                            >
+                              {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
+                            </Button>
+                          )}
+
+                          {/* Approve - Pending orders, admin only */}
+                          {order.status === "pending_approval" && user?.role === "admin" && (
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              onClick={() => approveOrderMutation.mutate(order.id)}
+                              disabled={approveOrderMutation.isPending}
+                              data-testid={`button-approve-order-${order.id}`}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              {approveOrderMutation.isPending ? "Approving..." : "Approve"}
+                            </Button>
+                          )}
+
+                          {/* Reject - Pending orders, admin only */}
+                          {order.status === "pending_approval" && user?.role === "admin" && (
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => {
+                                setViewingOrder(order);
+                                setIsRejectDialogOpen(true);
+                              }}
+                              data-testid={`button-reject-order-${order.id}`}
+                            >
+                              <XCircle className="w-4 h-4 mr-1" />
+                              Reject
+                            </Button>
+                          )}
+
+                          {/* Convert to Invoice - Approved orders, admin/finance */}
+                          {order.status === "approved" && (user?.role === "admin" || user?.role === "finance") && (
+                            <Button 
+                              size="sm"
+                              onClick={() => {
+                                setViewingOrder(order);
+                                setIsInvoiceDialogOpen(true);
+                              }}
+                              data-testid={`button-convert-order-${order.id}`}
+                            >
+                              <FileText className="w-4 h-4 mr-1" />
+                              Convert
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -711,8 +965,12 @@ export default function PurchaseOrdersIndex() {
                 <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <DialogTitle className="text-xl font-semibold">Create Purchase Order</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">Create a new purchase order for your supplier</p>
+                <DialogTitle className="text-xl font-semibold">
+                  {editingOrder ? "Edit Purchase Order" : "Create Purchase Order"}
+                </DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {editingOrder ? `Editing ${editingOrder.poNumber}` : "Create a new purchase order for your supplier"}
+                </p>
               </div>
             </div>
           </DialogHeader>
@@ -1037,16 +1295,20 @@ export default function PurchaseOrdersIndex() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createOrderMutation.isPending} className="w-full sm:w-auto gap-2">
-                  {createOrderMutation.isPending ? (
+                <Button 
+                  type="submit" 
+                  disabled={createOrderMutation.isPending || updateOrderMutation.isPending} 
+                  className="w-full sm:w-auto gap-2"
+                >
+                  {(createOrderMutation.isPending || updateOrderMutation.isPending) ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Creating...
+                      {editingOrder ? "Updating..." : "Creating..."}
                     </>
                   ) : (
                     <>
                       <FileText className="w-4 h-4" />
-                      Create Order
+                      {editingOrder ? "Update Order" : "Create Order"}
                     </>
                   )}
                 </Button>
@@ -1132,6 +1394,62 @@ export default function PurchaseOrdersIndex() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Approval Information */}
+              {(viewingOrder.submittedAt || viewingOrder.approvedAt || viewingOrder.rejectionReason) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Approval Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {viewingOrder.submittedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</label>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingOrder.submittedById}</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</label>
+                            <p className="text-sm font-medium mt-1">
+                              {new Date(viewingOrder.submittedAt).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {viewingOrder.approvedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</label>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingOrder.approvedById}</p>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</label>
+                            <p className="text-sm font-medium mt-1">
+                              {new Date(viewingOrder.approvedAt).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {viewingOrder.rejectionReason && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
+                          <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
+                            <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
+                              {viewingOrder.rejectionReason}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Bank Account Details */}
               {viewingOrder.bankAccount && (
@@ -1295,6 +1613,66 @@ export default function PurchaseOrdersIndex() {
                 className="w-full sm:w-auto"
               >
                 {convertToInvoiceMutation.isPending ? "Converting..." : "Create Invoice"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Order Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Purchase Order</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="rejectionReason">Rejection Reason *</Label>
+              <Textarea
+                id="rejectionReason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Please provide a reason for rejecting this purchase order..."
+                className="mt-1"
+                rows={4}
+                data-testid="input-rejection-reason"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                This reason will be visible to the person who submitted the order.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsRejectDialogOpen(false);
+                  setRejectionReason("");
+                }}
+                className="w-full sm:w-auto"
+                data-testid="button-cancel-reject"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!rejectionReason.trim()) {
+                    toast({
+                      title: "Rejection Reason Required",
+                      description: "Please provide a reason for rejecting this order.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (viewingOrder) {
+                    rejectOrderMutation.mutate({ orderId: viewingOrder.id, reason: rejectionReason });
+                  }
+                }}
+                disabled={rejectOrderMutation.isPending || !rejectionReason.trim()}
+                className="w-full sm:w-auto"
+                data-testid="button-confirm-reject"
+              >
+                {rejectOrderMutation.isPending ? "Rejecting..." : "Reject Order"}
               </Button>
             </div>
           </div>
