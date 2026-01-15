@@ -355,7 +355,7 @@ export default function PurchaseRequestsIndex() {
     }
   };
 
-  const canApprove = user?.role === "admin" || user?.role === "finance";
+  const canApprove = user?.role === "admin";// || user?.role === "finance";
 
   // Filter requests based on search and filters
   const filteredRequests = requests?.filter(request => {

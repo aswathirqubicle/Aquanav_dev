@@ -383,6 +383,15 @@ export default function SuppliersIndex() {
   };
 
   const addBankAccountField = () => {
+    const lastDetail = formData.bankAccountDetails[formData.bankAccountDetails.length - 1];
+    if (lastDetail && lastDetail.accountDetails.trim() === "") {
+      toast({
+        title: "Please Fill Previous Bank Details",
+        description: "You must fill in the current bank account details before adding another.",
+        variant: "destructive",
+      });
+      return;
+    }
     handleChange("bankAccountDetails", [
       ...formData.bankAccountDetails,
       { accountDetails: "" },

@@ -3637,7 +3637,7 @@ export default function ProjectDetail() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="monthlyRate">Monthly Rent</Label>
+                          <Label htmlFor="monthlyRate">Monthly Rent *</Label>
                           <Input
                             id="monthlyRate"
                             type="number"

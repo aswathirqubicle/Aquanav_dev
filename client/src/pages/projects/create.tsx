@@ -206,6 +206,14 @@ export default function ProjectCreate() {
       });
       return;
     }
+    if (!formData.customerId) {
+      toast({
+        title: "Error",
+        description: "Customer is required",
+        variant: "destructive",
+      });
+      return;
+    }
 
     createProjectMutation.mutate(formData);
   };
@@ -323,7 +331,7 @@ export default function ProjectCreate() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="customerId">Customer</Label>
+                <Label htmlFor="customerId">Customer *</Label>
                 <Select
                   value={formData.customerId?.toString()}
                   onValueChange={(value) => handleChange("customerId", parseInt(value))}

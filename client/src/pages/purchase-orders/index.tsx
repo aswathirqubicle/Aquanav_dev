@@ -16,8 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer } from "lucide-react";
-import { InventoryItem } from "@shared/schema";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip } from "lucide-react";
+import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 
 interface Supplier {
   id: number;
@@ -25,6 +25,7 @@ interface Supplier {
   contactPerson?: string;
   email?: string;
   phone?: string;
+  bankAccountDetails?: SupplierBankDetails[];
 }
 
 interface PurchaseOrder {
@@ -43,6 +44,7 @@ interface PurchaseOrder {
   totalAmount: string;
   notes?: string;
   items?: PurchaseOrderItem[];
+  files?: PurchaseOrderFile[];
   submittedById?: number;
   submittedAt?: string;
   approvedById?: number;
@@ -62,6 +64,16 @@ interface PurchaseOrderItem {
   quantity: number;
   unitPrice: string;
   lineTotal: string;
+}
+
+interface PurchaseOrderFile {
+  id: number;
+  poId: number;
+  fileName: string;
+  originalName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
 }
 
 export default function PurchaseOrdersIndex() {
@@ -109,6 +121,7 @@ export default function PurchaseOrdersIndex() {
   });
 
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [existingFiles, setExistingFiles] = useState<PurchaseOrderFile[]>([]);
 
   const [invoiceData, setInvoiceData] = useState({
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -134,7 +147,7 @@ export default function PurchaseOrdersIndex() {
   });
 
   const { data: suppliersResponse } = useQuery<{ data: Supplier[] }>({
-    queryKey: ["/api/suppliers"],
+    queryKey: ["/api/suppliers/all"],
     enabled: isAuthenticated,
   });
 
@@ -143,8 +156,34 @@ export default function PurchaseOrdersIndex() {
     enabled: isAuthenticated,
   });
 
+
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
   const inventoryItems = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : [];
+
+  const bankAccountOptions = React.useMemo(() => {
+    const supplier = suppliers.find(s => s.id === parseInt(formData.supplierId));
+    let options = supplier?.bankAccountDetails?.map(detail => ({
+      id: detail.id,
+      accountDetails: detail.accountDetails
+    })) || [];
+
+    if (editingOrder?.bankAccount) {
+      const isBankAccountInOptions = options.some(option => option.accountDetails === editingOrder.bankAccount);
+      if (!isBankAccountInOptions) {
+        options.unshift({ id: 0, accountDetails: editingOrder.bankAccount });
+      }
+    }
+    return options;
+  }, [formData.supplierId, suppliers, editingOrder]);
+
+  useEffect(() => {
+    if (editingOrder) {
+      setFormData(prev => ({
+        ...prev,
+        bankAccount: editingOrder.bankAccount || "",
+      }));
+    }
+  }, [editingOrder]);
 
   // Auto-calculate total tax amount based on line items
   const calculateTotalTax = () => {
@@ -161,43 +200,14 @@ export default function PurchaseOrdersIndex() {
   
 
   const createOrderMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const items = orderItems.map(item => {
-        const quantity = parseInt(item.quantity);
-        const unitPrice = parseFloat(item.unitPrice);
-        const taxRate = parseFloat(item.taxRate);
-        const taxAmount = (quantity * unitPrice * taxRate) / 100;
-        
-        return {
-          itemType: item.itemType,
-          inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
-          description: item.description || null,
-          quantity,
-          unitPrice,
-          taxRate,
-          taxAmount,
-        };
+    mutationFn: async (formDataInstance: FormData) => {
+      // The body is already FormData, so we pass it directly
+      const response = await fetch("/api/purchase-orders", {
+        method: "POST",
+        body: formDataInstance,
+        credentials: 'same-origin',
+        // No 'Content-Type' header, browser sets it for FormData
       });
-
-      const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-      const taxAmount = calculateTotalTax();
-      const totalAmount = subtotal + taxAmount;
-
-      const orderData = {
-        supplierId: parseInt(formData.supplierId),
-        orderDate: formData.orderDate,
-        expectedDeliveryDate: formData.expectedDeliveryDate || null,
-        paymentTerms: formData.paymentTerms || null,
-        deliveryTerms: formData.deliveryTerms || null,
-        bankAccount: formData.bankAccount || null,
-        notes: formData.notes || null,
-        subtotal: subtotal.toFixed(2),
-        taxAmount: taxAmount.toFixed(2),
-        totalAmount: totalAmount.toFixed(2),
-        items,
-      };
-
-      const response = await apiRequest("/api/purchase-orders",{method:"POST", body:orderData});
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create purchase order");
@@ -286,7 +296,7 @@ export default function PurchaseOrdersIndex() {
       toast({
         title: "Order Rejected",
         description: "Purchase order has been rejected.",
-        variant: "destructive",
+        // variant: "destructive",
       });
       setIsRejectDialogOpen(false);
       setRejectionReason("");
@@ -331,47 +341,12 @@ export default function PurchaseOrdersIndex() {
   });
 
   const updateOrderMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const items = orderItems.map(item => {
-        const quantity = parseInt(item.quantity);
-        const unitPrice = parseFloat(item.unitPrice);
-        const taxRate = parseFloat(item.taxRate);
-        const taxAmount = (quantity * unitPrice * taxRate) / 100;
-
-        return {
-          itemType: item.itemType,
-          inventoryItemId: item.itemType === "product" ? parseInt(item.inventoryItemId!) : null,
-          description: item.itemType === "service" ? item.description : null,
-          quantity,
-          unitPrice,
-          taxRate,
-          taxAmount,
-        };
+    mutationFn: async ({ orderId, formDataInstance }: { orderId: number; formDataInstance: FormData }) => {
+      const response = await fetch(`/api/purchase-orders/${orderId}`, {
+        method: "PUT",
+        body: formDataInstance,
+        credentials: 'same-origin',
       });
-
-      let subtotal = 0;
-      let taxAmount = 0;
-      items.forEach(item => {
-        subtotal += item.quantity * item.unitPrice;
-        taxAmount += item.taxAmount;
-      });
-      const totalAmount = subtotal + taxAmount;
-
-      const orderData = {
-        supplierId: parseInt(formData.supplierId),
-        orderDate: formData.orderDate,
-        expectedDeliveryDate: formData.expectedDeliveryDate || null,
-        paymentTerms: formData.paymentTerms || null,
-        deliveryTerms: formData.deliveryTerms || null,
-        bankAccount: formData.bankAccount || null,
-        notes: formData.notes || null,
-        subtotal: subtotal.toFixed(2),
-        taxAmount: taxAmount.toFixed(2),
-        totalAmount: totalAmount.toFixed(2),
-        items,
-      };
-
-      const response = await apiRequest(`/api/purchase-orders/${editingOrder!.id}`,{method:"PUT", body:orderData});
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to update purchase order");
@@ -441,7 +416,11 @@ export default function PurchaseOrdersIndex() {
         unitPrice: item.unitPrice,
         taxRate: "0",
       })));
+    } else {
+      setOrderItems([]);
     }
+
+    setExistingFiles(order.files || []);
     
     setIsDialogOpen(true);
   };
@@ -536,10 +515,57 @@ export default function PurchaseOrdersIndex() {
       return;
     }
 
+    const formDataInstance = new FormData();
+
+    // Append main form data
+    formDataInstance.append("supplierId", formData.supplierId);
+    formDataInstance.append("orderDate", formData.orderDate);
+    formDataInstance.append("expectedDeliveryDate", formData.expectedDeliveryDate || "");
+    formDataInstance.append("paymentTerms", formData.paymentTerms || "");
+    formDataInstance.append("deliveryTerms", formData.deliveryTerms || "");
+    formDataInstance.append("bankAccount", formData.bankAccount || "");
+    formDataInstance.append("notes", formData.notes || "");
+
+    // Process and append items as a JSON string
+    const items = orderItems.map(item => {
+      const quantity = parseInt(item.quantity);
+      const unitPrice = parseFloat(item.unitPrice);
+      const taxRate = parseFloat(item.taxRate);
+      const taxAmount = (quantity * unitPrice * taxRate) / 100;
+
+      return {
+        itemType: item.itemType,
+        inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
+        description: item.description || null,
+        quantity,
+        unitPrice,
+        taxRate,
+        taxAmount,
+      };
+    });
+    formDataInstance.append("items", JSON.stringify(items));
+
+    // Calculate and append totals
+    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const taxAmount = calculateTotalTax();
+    const totalAmount = subtotal + taxAmount;
+    formDataInstance.append("subtotal", subtotal.toFixed(2));
+    formDataInstance.append("taxAmount", taxAmount.toFixed(2));
+    formDataInstance.append("totalAmount", totalAmount.toFixed(2));
+
+    // Append files
+    if (selectedFiles) {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        formDataInstance.append("files", selectedFiles[i]);
+      }
+    }
+
     if (editingOrder) {
-      updateOrderMutation.mutate(formData);
+      const keptFileIds = existingFiles.map((file) => file.id);
+      formDataInstance.append("existingFiles", JSON.stringify(keptFileIds));
+      updateOrderMutation.mutate({ orderId: editingOrder.id, formDataInstance });
     } else {
-      createOrderMutation.mutate(formData);
+      createOrderMutation.mutate(formDataInstance);
     }
   };
 
@@ -982,7 +1008,7 @@ export default function PurchaseOrdersIndex() {
                   <Label htmlFor="supplierId">Supplier *</Label>
                   <Select
                     value={formData.supplierId}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, supplierId: value }))}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "" }))}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select supplier" />
@@ -1043,14 +1069,26 @@ export default function PurchaseOrdersIndex() {
 
               <div>
                 <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
-                <Textarea
-                  id="bankAccount"
+                <Select
                   value={formData.bankAccount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, bankAccount: e.target.value }))}
-                  placeholder="Bank name, account number, SWIFT/IBAN, etc."
-                  className="mt-1"
-                  rows={3}
-                />
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccountOptions.map((detail, index) => (
+                      <React.Fragment key={detail.id}>
+                        <SelectItem value={detail.accountDetails}>
+                          <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
+                        </SelectItem>
+                        {index < bankAccountOptions.length - 1 && (
+                          <hr className="my-1" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
@@ -1087,6 +1125,43 @@ export default function PurchaseOrdersIndex() {
                           <span className="text-xs text-gray-400">
                             ({(file.size / 1024 / 1024).toFixed(2)} MB)
                           </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {editingOrder && existingFiles.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium mb-2">
+                      Currently Attached Files:
+                    </p>
+                    <ul className="space-y-2">
+                      {existingFiles.map((file) => (
+                        <li
+                          key={file.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
+                        >
+                          <a
+                            href={`/${file.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-600 hover:underline truncate"
+                          >
+                            {file.originalName}
+                          </a>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setExistingFiles(
+                                existingFiles.filter((f) => f.id !== file.id)
+                              )
+                            }
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -1437,12 +1512,14 @@ export default function PurchaseOrdersIndex() {
                       )}
 
                       {viewingOrder.rejectionReason && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
-                          <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
-                            <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
-                              {viewingOrder.rejectionReason}
-                            </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
+                            <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
+                              <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
+                                {viewingOrder.rejectionReason}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1479,6 +1556,41 @@ export default function PurchaseOrdersIndex() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">{viewingOrder.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Attachments */}
+              {viewingOrder.files && viewingOrder.files.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Paperclip className="w-4 h-4" />
+                      Attachments
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {viewingOrder.files.map((file) => (
+                        <li
+                          key={file.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-md"
+                        >
+                          <a
+                            href={`/${file.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:underline truncate"
+                          >
+                            <FileText className="w-4 h-4" />
+                            <span className="truncate">{file.originalName}</span>
+                          </a>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                            ({(file.fileSize / 1024).toFixed(2)} KB)
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </CardContent>
                 </Card>
               )}

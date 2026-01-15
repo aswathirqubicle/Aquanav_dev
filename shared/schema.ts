@@ -640,6 +640,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -655,6 +656,18 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   lineTotal: decimal("line_total", { precision: 10, scale: 2 }).notNull(),
+});
+
+// Purchase Order Files table
+export const purchaseOrderFiles = pgTable("purchase_order_files", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
 });
 
 // Purchase Invoices table

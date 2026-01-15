@@ -47,6 +47,7 @@ import {
   purchaseRequestItems,
   purchaseOrders,
   purchaseOrderItems,
+  purchaseOrderFiles,
   purchaseInvoices,
   purchaseInvoiceItems,
   purchaseCreditNotes,
@@ -792,12 +793,14 @@ class Storage {
         bankDetailsMap.get(detail.supplierId)!.push(detail);
       }
 
-      const dataWithDetails: SupplierWithBankDetails[] = supplierData.map((supplier) => {
-        return {
-          ...supplier,
-          bankAccountDetails: bankDetailsMap.get(supplier.id) || [],
-        };
-      });
+      const dataWithDetails: SupplierWithBankDetails[] = supplierData.map(
+        (supplier) => {
+          return {
+            ...supplier,
+            bankAccountDetails: bankDetailsMap.get(supplier.id) || [],
+          };
+        }
+      );
 
       return {
         data: dataWithDetails,
@@ -857,66 +860,66 @@ class Storage {
   }
 
   async createSupplier(
-  supplierData: InsertSupplier
-): Promise<SupplierWithBankDetails> {
-  try {
-    const { bankAccountDetails, ...supplierInfo } = supplierData;
+    supplierData: InsertSupplier
+  ): Promise<SupplierWithBankDetails> {
+    try {
+      const { bankAccountDetails, ...supplierInfo } = supplierData;
 
-    const newSupplierWithDetails = await db.transaction(async (tx) => {
-      console.log("1 => supplier entry");
+      const newSupplierWithDetails = await db.transaction(async (tx) => {
+        console.log("1 => supplier entry");
 
-      const [newSupplier] = await tx
-        .insert(suppliers)
-        .values(supplierInfo)
-        .returning();
-
-      if (!newSupplier) {
-        throw new Error("Supplier insert failed");
-      }
-
-      console.log("2 =>", newSupplier);
-
-      let newBankDetails: SupplierBankDetails[] = [];
-
-      const cleanedBankDetails =
-        bankAccountDetails?.filter(
-          (detail) => detail.accountDetails?.trim() !== ""
-        ) ?? [];
-
-      if (cleanedBankDetails.length > 0) {
-        const detailsToInsert = cleanedBankDetails.map((detail) => ({
-          supplierId: newSupplier.id,
-          accountDetails: detail.accountDetails.trim(),
-        }));
-
-        console.log("3 =>", detailsToInsert);
-
-        newBankDetails = await tx
-          .insert(supplierBankDetails)
-          .values(detailsToInsert)
+        const [newSupplier] = await tx
+          .insert(suppliers)
+          .values(supplierInfo)
           .returning();
 
-        console.log("4 =>", newBankDetails);
-      }
+        if (!newSupplier) {
+          throw new Error("Supplier insert failed");
+        }
 
-      return {
-        ...newSupplier,
-        bankAccountDetails: newBankDetails,
-      };
-    });
+        console.log("2 =>", newSupplier);
 
-    return newSupplierWithDetails;
-  } catch (error: any) {
-    await this.createErrorLog({
-      message:
-        "Error in createSupplier: " + (error?.message || "Unknown error"),
-      stack: error?.stack,
-      component: "createSupplier",
-      severity: "error",
-    });
-    throw error;
+        let newBankDetails: SupplierBankDetails[] = [];
+
+        const cleanedBankDetails =
+          bankAccountDetails?.filter(
+            (detail) => detail.accountDetails?.trim() !== ""
+          ) ?? [];
+
+        if (cleanedBankDetails.length > 0) {
+          const detailsToInsert = cleanedBankDetails.map((detail) => ({
+            supplierId: newSupplier.id,
+            accountDetails: detail.accountDetails.trim(),
+          }));
+
+          console.log("3 =>", detailsToInsert);
+
+          newBankDetails = await tx
+            .insert(supplierBankDetails)
+            .values(detailsToInsert)
+            .returning();
+
+          console.log("4 =>", newBankDetails);
+        }
+
+        return {
+          ...newSupplier,
+          bankAccountDetails: newBankDetails,
+        };
+      });
+
+      return newSupplierWithDetails;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in createSupplier: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createSupplier",
+        severity: "error",
+      });
+      throw error;
+    }
   }
-}
 
   async updateSupplier(
     id: number,
@@ -928,9 +931,16 @@ class Storage {
       const updatedSupplierWithDetails = await db.transaction(async (tx) => {
         let updatedSupplier: Supplier | undefined;
         if (Object.keys(supplierInfo).length > 0) {
-          [updatedSupplier] = await tx.update(suppliers).set(supplierInfo).where(eq(suppliers.id, id)).returning();
+          [updatedSupplier] = await tx
+            .update(suppliers)
+            .set(supplierInfo)
+            .where(eq(suppliers.id, id))
+            .returning();
         } else {
-          [updatedSupplier] = await tx.select().from(suppliers).where(eq(suppliers.id, id));
+          [updatedSupplier] = await tx
+            .select()
+            .from(suppliers)
+            .where(eq(suppliers.id, id));
         }
 
         if (!updatedSupplier) {
@@ -941,26 +951,38 @@ class Storage {
 
         if (bankAccountDetails) {
           const validDetails = bankAccountDetails.filter(
-            detail => detail.accountDetails.trim() !== ""
+            (detail) => detail.accountDetails.trim() !== ""
           );
 
-          const existingDetails = await tx.select().from(supplierBankDetails).where(eq(supplierBankDetails.supplierId, id));
-          const existingIds = existingDetails.map(d => d.id);
-          const incomingIds = validDetails.map(d => d.id).filter((id): id is number => !!id);
+          const existingDetails = await tx
+            .select()
+            .from(supplierBankDetails)
+            .where(eq(supplierBankDetails.supplierId, id));
+          const existingIds = existingDetails.map((d) => d.id);
+          const incomingIds = validDetails
+            .map((d) => d.id)
+            .filter((id): id is number => !!id);
 
           // Delete details that are no longer present
-          const toDelete = existingIds.filter(id => !incomingIds.includes(id));
+          const toDelete = existingIds.filter(
+            (id) => !incomingIds.includes(id)
+          );
           if (toDelete.length > 0) {
-            await tx.delete(supplierBankDetails).where(inArray(supplierBankDetails.id, toDelete));
+            await tx
+              .delete(supplierBankDetails)
+              .where(inArray(supplierBankDetails.id, toDelete));
           }
 
           // Update existing and insert new details
           for (const detail of validDetails) {
-            if (detail.id && existingIds.includes(detail.id)) { // Update existing
-              await tx.update(supplierBankDetails)
+            if (detail.id && existingIds.includes(detail.id)) {
+              // Update existing
+              await tx
+                .update(supplierBankDetails)
                 .set({ accountDetails: detail.accountDetails })
                 .where(eq(supplierBankDetails.id, detail.id));
-            } else { // Insert new
+            } else {
+              // Insert new
               await tx.insert(supplierBankDetails).values({
                 supplierId: id,
                 accountDetails: detail.accountDetails,
@@ -969,7 +991,10 @@ class Storage {
           }
         }
 
-        const finalBankDetails = await tx.select().from(supplierBankDetails).where(eq(supplierBankDetails.supplierId, id));
+        const finalBankDetails = await tx
+          .select()
+          .from(supplierBankDetails)
+          .where(eq(supplierBankDetails.supplierId, id));
         return { ...updatedSupplier, bankAccountDetails: finalBankDetails };
       });
 
@@ -5428,7 +5453,10 @@ class Storage {
         `,
       })
       .from(salesInvoices)
-      .leftJoin(invoicePayments, eq(invoicePayments.invoiceId, salesInvoices.id))
+      .leftJoin(
+        invoicePayments,
+        eq(invoicePayments.invoiceId, salesInvoices.id)
+      )
       .leftJoin(customers, eq(customers.id, salesInvoices.customerId))
       .groupBy(salesInvoices.id, customers.name)
       .orderBy(desc(salesInvoices.dueDate));
@@ -6497,8 +6525,7 @@ class Storage {
     }
   }
 
-  
- // Project Asset Instance Assignment methods (new)
+  // Project Asset Instance Assignment methods (new)
   async getProjectAssetInstanceAssignments(projectId: number): Promise<any[]> {
     try {
       const assignments = await db
@@ -6522,15 +6549,26 @@ class Storage {
           assetTag: assetInventoryInstances.assetTag,
         })
         .from(projectAssetInstanceAssignments)
-        .leftJoin(assetInventoryInstances, eq(projectAssetInstanceAssignments.instanceId, assetInventoryInstances.id))
-        .leftJoin(assetTypes, eq(projectAssetInstanceAssignments.assetTypeId, assetTypes.id))
+        .leftJoin(
+          assetInventoryInstances,
+          eq(
+            projectAssetInstanceAssignments.instanceId,
+            assetInventoryInstances.id
+          )
+        )
+        .leftJoin(
+          assetTypes,
+          eq(projectAssetInstanceAssignments.assetTypeId, assetTypes.id)
+        )
         .where(eq(projectAssetInstanceAssignments.projectId, projectId))
         .orderBy(desc(projectAssetInstanceAssignments.assignedAt));
 
       return assignments;
     } catch (error: any) {
       await this.createErrorLog({
-        message: `Error in getProjectAssetInstanceAssignments (projectId: ${projectId}): ` + (error?.message || "Unknown error"),
+        message:
+          `Error in getProjectAssetInstanceAssignments (projectId: ${projectId}): ` +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getProjectAssetInstanceAssignments",
         severity: "error",
@@ -6540,7 +6578,7 @@ class Storage {
   }
 
   async createProjectAssetInstanceAssignment(
-    assignmentData: InsertProjectAssetInstanceAssignment,
+    assignmentData: InsertProjectAssetInstanceAssignment
   ): Promise<ProjectAssetInstanceAssignment> {
     try {
       const result = await db
@@ -6551,11 +6589,15 @@ class Storage {
       const assignment = result[0];
 
       // Calculate and update total cost if start and end dates are provided
-      if (assignment.startDate && assignment.endDate && assignment.monthlyRate) {
+      if (
+        assignment.startDate &&
+        assignment.endDate &&
+        assignment.monthlyRate
+      ) {
         const totalCost = await this.calculateAssetRentalCost(
           new Date(assignment.startDate),
           new Date(assignment.endDate),
-          parseFloat(assignment.monthlyRate.toString()),
+          parseFloat(assignment.monthlyRate.toString())
         );
 
         await db
@@ -6578,7 +6620,9 @@ class Storage {
       return assignment;
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in createProjectAssetInstanceAssignment: " + (error?.message || "Unknown error"),
+        message:
+          "Error in createProjectAssetInstanceAssignment: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createProjectAssetInstanceAssignment",
         severity: "error",
@@ -6589,7 +6633,7 @@ class Storage {
 
   async updateProjectAssetInstanceAssignment(
     id: number,
-    assignmentData: Partial<InsertProjectAssetInstanceAssignment>,
+    assignmentData: Partial<InsertProjectAssetInstanceAssignment>
   ): Promise<ProjectAssetInstanceAssignment | undefined> {
     try {
       const result = await db
@@ -6613,7 +6657,7 @@ class Storage {
           const totalCost = await this.calculateAssetRentalCost(
             new Date(assignment.startDate),
             new Date(assignment.endDate),
-            parseFloat(assignment.monthlyRate.toString()),
+            parseFloat(assignment.monthlyRate.toString())
           );
 
           await db
@@ -6629,7 +6673,9 @@ class Storage {
       return assignment;
     } catch (error: any) {
       await this.createErrorLog({
-        message: `Error in updateProjectAssetInstanceAssignment (id: ${id}): ` + (error?.message || "Unknown error"),
+        message:
+          `Error in updateProjectAssetInstanceAssignment (id: ${id}): ` +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "updateProjectAssetInstanceAssignment",
         severity: "error",
@@ -6668,8 +6714,8 @@ class Storage {
             .where(
               and(
                 eq(projectAssetInstanceAssignments.instanceId, instanceId),
-                eq(projectAssetInstanceAssignments.status, "active"),
-              ),
+                eq(projectAssetInstanceAssignments.status, "active")
+              )
             );
 
           if (activeAssignments.length === 0) {
@@ -6689,7 +6735,9 @@ class Storage {
       return false;
     } catch (error: any) {
       await this.createErrorLog({
-        message: `Error in deleteProjectAssetInstanceAssignment (id: ${id}): ` + (error?.message || "Unknown error"),
+        message:
+          `Error in deleteProjectAssetInstanceAssignment (id: ${id}): ` +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "deleteProjectAssetInstanceAssignment",
         severity: "error",
@@ -6697,7 +6745,6 @@ class Storage {
       throw error;
     }
   }
-
 
   // Proforma Invoice methods
   async getProformaInvoices(): Promise<any[]> {
@@ -6883,7 +6930,7 @@ class Storage {
       if (proformaData.validUntil !== undefined)
         updateData.validUntil = proformaData.validUntil
           ? new Date(proformaData.validUntil).toISOString()
-          : null;      
+          : null;
       if (proformaData.paymentTerms !== undefined)
         updateData.paymentTerms = proformaData.paymentTerms || null;
       if (proformaData.deliveryTerms !== undefined)
@@ -7285,13 +7332,18 @@ class Storage {
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
         .orderBy(desc(purchaseOrders.createdAt));
 
-      // Get items for each purchase order
+      // Get items and files for each purchase order
       const ordersWithItems = await Promise.all(
         result.map(async (order) => {
           const items = await this.getPurchaseOrderItems(order.id);
+          const files = await db
+            .select()
+            .from(purchaseOrderFiles)
+            .where(eq(purchaseOrderFiles.poId, order.id));
           return {
             ...order,
             items,
+            files,
           };
         })
       );
@@ -7328,12 +7380,6 @@ class Storage {
           totalAmount: purchaseOrders.totalAmount,
           notes: purchaseOrders.notes,
           createdAt: purchaseOrders.createdAt,
-          submittedById: purchaseOrders.submittedById,
-          submittedAt: purchaseOrders.submittedAt,
-          approvedById: purchaseOrders.approvedById,
-          approvedAt: purchaseOrders.approvedAt,
-          rejectionReason: purchaseOrders.rejectionReason,
-          convertedInvoiceId: purchaseOrders.convertedInvoiceId,
         })
         .from(purchaseOrders)
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
@@ -7342,7 +7388,12 @@ class Storage {
       if (!order) return null;
 
       const items = await this.getPurchaseOrderItems(id);
-      return { ...order, items };
+      const files = await db
+        .select()
+        .from(purchaseOrderFiles)
+        .where(eq(purchaseOrderFiles.poId, id));
+
+      return { ...order, items, files };
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -7439,6 +7490,19 @@ class Storage {
         await db.insert(purchaseOrderItems).values(itemsToInsert);
       }
 
+      // Handle file attachments
+      if (orderData.files && orderData.files.length > 0) {
+        const filesToInsert = orderData.files.map((file: any) => ({
+          poId: order.id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        }));
+        await db.insert(purchaseOrderFiles).values(filesToInsert);
+      }
+
       return this.getPurchaseOrder(order.id);
     } catch (error: any) {
       await this.createErrorLog({
@@ -7524,6 +7588,19 @@ class Storage {
 
           await db.insert(purchaseOrderItems).values(itemsToInsert);
         }
+      }
+
+      // Handle file attachments
+      if (data.files && data.files.length > 0) {
+        const filesToInsert = data.files.map((file: any) => ({
+          poId: id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        }));
+        await db.insert(purchaseOrderFiles).values(filesToInsert);
       }
 
       return this.getPurchaseOrder(id);
@@ -7629,7 +7706,7 @@ class Storage {
         .update(purchaseOrders)
         .set({
           status: "rejected",
-          rejectionReason: reason || null,
+          rejectionReason: reason,
         })
         .where(eq(purchaseOrders.id, id));
 
@@ -7691,7 +7768,7 @@ class Storage {
       // Copy items from PO to invoice
       if (po.items && po.items.length > 0) {
         const invoiceItemsToInsert = po.items.map((item: any) => ({
-          purchaseInvoiceId: invoice.id,
+          invoiceId: invoice.id,
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
@@ -10337,7 +10414,9 @@ export interface IStorage {
     showArchived: boolean
   ): Promise<PaginatedResponse<SupplierWithBankDetails>>;
   getSupplier(id: number): Promise<SupplierWithBankDetails | undefined>;
-  createSupplier(supplierData: InsertSupplier): Promise<SupplierWithBankDetails>;
+  createSupplier(
+    supplierData: InsertSupplier
+  ): Promise<SupplierWithBankDetails>;
   updateSupplier(
     id: number,
     supplierData: Partial<InsertSupplier>
@@ -10677,7 +10756,11 @@ export interface IStorage {
   deletePurchaseOrder(id: number): Promise<boolean>;
   submitPurchaseOrderForApproval(id: number, userId: number): Promise<any>;
   approvePurchaseOrder(id: number, userId: number): Promise<any>;
-  rejectPurchaseOrder(id: number, userId: number, reason?: string): Promise<any>;
+  rejectPurchaseOrder(
+    id: number,
+    userId: number,
+    reason?: string
+  ): Promise<any>;
   convertPurchaseOrderToInvoice(id: number, userId: number): Promise<any>;
   getPurchaseInvoices(): Promise<any[]>;
   createPurchaseInvoiceFromPO(poId: number, invoiceData: any): Promise<any>;
