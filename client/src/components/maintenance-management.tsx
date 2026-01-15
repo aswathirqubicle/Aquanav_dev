@@ -297,6 +297,7 @@ function MaintenanceRecorder({
       });
     }
   }, [record]);
+  
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -358,7 +359,24 @@ function MaintenanceRecorder({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    // Validate required fields    
     try {
+      if (!formData.assetInstanceId) {
+        toast({
+          title: "Error",
+          description: "Please select Asset",
+          variant: "destructive",
+        });
+        return false;
+      }
+      else if (!formData.maintenanceType) {
+        toast({
+          title: "Error",
+          description: "Maintenance type is required field",
+          variant: "destructive",
+        });
+        return false;
+      }
       await mutation.mutateAsync();
     } finally {
       setIsSubmitting(false);

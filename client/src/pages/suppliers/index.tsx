@@ -504,7 +504,7 @@ export default function SuppliersIndex() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label htmlFor="category">Category</Label>
                   <Input
                     id="category"
@@ -512,7 +512,7 @@ export default function SuppliersIndex() {
                     onChange={(e) => handleChange("category", e.target.value)}
                     placeholder="e.g., Marine Equipment, Tools, Materials"
                   />
-                </div>
+                </div> */}
 
                 <div className="space-y-2">
                   <Label htmlFor="address">Address</Label>
@@ -749,7 +749,7 @@ export default function SuppliersIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 md:gap-6 mb-6 md:mb-8">
         <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
@@ -782,7 +782,7 @@ export default function SuppliersIndex() {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
               <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
@@ -796,7 +796,7 @@ export default function SuppliersIndex() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* <Card>
           <CardContent className="p-4 md:p-6">
@@ -910,7 +910,7 @@ export default function SuppliersIndex() {
                       </div>
                     )}
 
-                    <div className="flex items-start space-x-2">
+                    {/* <div className="flex items-start space-x-2">
                       <Package className="h-4 w-4 text-slate-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm font-medium text-slate-900 dark:text-slate-100">Category</p>
@@ -918,7 +918,7 @@ export default function SuppliersIndex() {
                           {supplier.category || "Uncategorized"}
                         </p>
                       </div>
-                    </div>
+                    </div> */}
                   </div>
 
                   {/* Bank Account Details */}
