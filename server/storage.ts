@@ -7033,69 +7033,69 @@ class Storage {
     }
   }
 
-  async createInvoicePaymentForCreditNote(
-    invoiceId: number,
-    creditNote: CreditNote
-  ): Promise<InvoicePayment> {
-    try {
-      const paymentData: InsertInvoicePayment = {
-        invoiceId: invoiceId,
-        amount: creditNote.totalAmount as string,
-        paymentDate: creditNote.creditNoteDate,
-        paymentMethod: "Credit Note",
-        referenceNumber: creditNote.creditNoteNumber,
-        notes: `Credit note applied: ${creditNote.reason || "N/A"}`,
-        paymentType: "credit_note",
-        creditNoteId: creditNote.id,
-        // recordedBy is optional in InsertInvoicePayment based on schema (nullable, no default)
-      };
+  // async createInvoicePaymentForCreditNote(
+  //   invoiceId: number,
+  //   creditNote: CreditNote
+  // ): Promise<InvoicePayment> {
+  //   try {
+  //     const paymentData: InsertInvoicePayment = {
+  //       invoiceId: invoiceId,
+  //       amount: creditNote.totalAmount as string,
+  //       paymentDate: creditNote.creditNoteDate,
+  //       paymentMethod: "Credit Note",
+  //       referenceNumber: creditNote.creditNoteNumber,
+  //       notes: `Credit note applied: ${creditNote.reason || "N/A"}`,
+  //       paymentType: "credit_note",
+  //       creditNoteId: creditNote.id,
+  //       // recordedBy is optional in InsertInvoicePayment based on schema (nullable, no default)
+  //     };
 
-      // Ensure createInvoicePayment is awaited as it's an async function
-      const payment = await this.createInvoicePayment(paymentData);
-      return payment;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          `Error in createInvoicePaymentForCreditNote (invoiceId: ${invoiceId}): ` +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "createInvoicePaymentForCreditNote",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
+  //     // Ensure createInvoicePayment is awaited as it's an async function
+  //     const payment = await this.createInvoicePayment(paymentData);
+  //     return payment;
+  //   } catch (error: any) {
+  //     await this.createErrorLog({
+  //       message:
+  //         `Error in createInvoicePaymentForCreditNote (invoiceId: ${invoiceId}): ` +
+  //         (error?.message || "Unknown error"),
+  //       stack: error?.stack,
+  //       component: "createInvoicePaymentForCreditNote",
+  //       severity: "error",
+  //     });
+  //     throw error;
+  //   }
+  // }
 
-  async updateSalesInvoiceFromCreditNote(
-    invoiceId: number,
-    creditNoteAmount: number
-  ): Promise<SalesInvoice | undefined> {
-    try {
-      const invoice = await this.getSalesInvoice(invoiceId);
-      if (!invoice) {
-        throw new Error(`Sales invoice ${invoiceId} not found`);
-      }
+  // async updateSalesInvoiceFromCreditNote(
+  //   invoiceId: number,
+  //   creditNoteAmount: number
+  // ): Promise<SalesInvoice | undefined> {
+  //   try {
+  //     const invoice = await this.getSalesInvoice(invoiceId);
+  //     if (!invoice) {
+  //       throw new Error(`Sales invoice ${invoiceId} not found`);
+  //     }
 
-      const currentPaidAmount = parseFloat(invoice.paidAmount || "0");
-      const newPaidAmount = currentPaidAmount + creditNoteAmount; // Credit note effectively "pays" this amount
+  //     const currentPaidAmount = parseFloat(invoice.paidAmount || "0");
+  //     const newPaidAmount = currentPaidAmount + creditNoteAmount; // Credit note effectively "pays" this amount
 
-      // Update invoice paid amount and status
-      await this.updateInvoicePaidAmount(invoiceId); // This will recalculate status
+  //     // Update invoice paid amount and status
+  //     await this.updateInvoicePaidAmount(invoiceId); // This will recalculate status
 
-      // Return the updated invoice
-      return this.getSalesInvoice(invoiceId);
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          `Error in updateSalesInvoiceFromCreditNote (invoiceId: ${invoiceId}): ` +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "updateSalesInvoiceFromCreditNote",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
+  //     // Return the updated invoice
+  //     return this.getSalesInvoice(invoiceId);
+  //   } catch (error: any) {
+  //     await this.createErrorLog({
+  //       message:
+  //         `Error in updateSalesInvoiceFromCreditNote (invoiceId: ${invoiceId}): ` +
+  //         (error?.message || "Unknown error"),
+  //       stack: error?.stack,
+  //       component: "updateSalesInvoiceFromCreditNote",
+  //       severity: "error",
+  //     });
+  //     throw error;
+  //   }
+  // }
 
   // Purchase Request methods
   async getPurchaseRequests(): Promise<any[]> {
