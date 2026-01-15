@@ -675,7 +675,7 @@ export default function InventoryIndex() {
                     id="sku"
                     value={formData.sku}
                     onChange={(e) => handleChange("sku", e.target.value)}
-                    placeholder="e.g., Marine Grade Paint"
+                    placeholder="e.g., SKU123"
                     required
                     className="w-full"
                   />
