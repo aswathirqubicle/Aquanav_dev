@@ -64,26 +64,17 @@ export default function ProjectCreate() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: customersResponse } = useQuery<{
-    data: Customer[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-    };
-  }>({
-    queryKey: ["/api/customers"],
+  const { data: customers } = useQuery<any[]>({
+    queryKey: ["/api/customers/all"],
     queryFn: async () => {
-      const response = await apiRequest("/api/customers", {
-        method: "GET"
+      const response = await fetch(`/api/customers/all`, {
+        credentials: "include",
       });
+      if (!response.ok) throw new Error("Failed to fetch customers");
       return response.json();
     },
     enabled: isAuthenticated,
   });
-
-  const customers = customersResponse?.data || [];
 
   const createProjectMutation = useMutation({
     mutationFn: async (data: CreateProjectData) => {

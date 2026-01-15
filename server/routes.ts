@@ -1019,6 +1019,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get customers" });
     }
   });
+  
+  app.get("/api/customers/all", requireAuth, async (req, res) => {
+    try {
+      const allCustomers = await storage.getCustomers();
+      res.json(allCustomers);
+    } catch (error) {
+      console.error("Get all customers error:", error);
+      res.status(500).json({ message: "Failed to get all customers" });
+    }
+  });
 
   app.post(
     "/api/customers",
