@@ -16,6 +16,10 @@ import { apiRequest } from "@/lib/queryClient";
 import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
+interface SupplierBankDetails {
+  id: number;
+  accountDetails: string;
+}
 interface Supplier {
   id: number;
   name: string;
@@ -23,8 +27,8 @@ interface Supplier {
   email?: string;
   phone?: string;
   vatTreatment?: "standard" | "zero_rated" | "exempt";
+  bankAccountDetails?: SupplierBankDetails[];
 }
-
 interface PurchaseInvoice {
   id: number;
   invoiceNumber: string;
@@ -208,6 +212,19 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
+  
+  const bankAccountOptions = React.useMemo(() => {
+    const supplier = suppliers.find(
+      s => s.id.toString() === formData.supplierId
+    );
+
+    return (
+      supplier?.bankAccountDetails?.map(detail => ({
+        id: detail.id,
+        accountDetails: detail.accountDetails,
+      })) || []
+    );
+  }, [formData.supplierId, suppliers]);
   const inventoryItems = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : [];
 
   // Calculate statistics
@@ -481,6 +498,15 @@ export default function PurchaseInvoicesIndex() {
       return;
     }
 
+    if (!formData.dueDate) {
+      toast({
+        title: "Error",
+        description: "Please select a due date",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (invoiceItems.length === 0) {
       toast({
         title: "Error",
@@ -677,7 +703,7 @@ export default function PurchaseInvoicesIndex() {
                         const supplier = suppliers.find(s => s.id.toString() === value);
                         const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
 
-                        setFormData(prev => ({ ...prev, supplierId: value }));
+                        setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "",}));
 
                         // Update existing items ONLY if user hasn’t overridden tax
                         setInvoiceItems(items =>
@@ -981,7 +1007,11 @@ export default function PurchaseInvoicesIndex() {
                             const supplier = suppliers.find(s => s.id.toString() === value);
                             const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
 
-                            setFormData(prev => ({ ...prev, supplierId: value }));
+                            setFormData(prev => ({
+                              ...prev,
+                              supplierId: value,
+                              bankAccount: "", // ✅ REQUIRED
+                            }));
 
                             // Update existing items (only if still 0)
                             setInvoiceItems(items =>
@@ -992,7 +1022,7 @@ export default function PurchaseInvoicesIndex() {
                               )
                             );
 
-                            // Set default tax for NEW items
+                            // Default tax for new items
                             setNewItem(prev => ({
                               ...prev,
                               taxRate: String(taxRate),
@@ -1082,7 +1112,10 @@ export default function PurchaseInvoicesIndex() {
                             id="dueDate"
                             type="date"
                             value={formData.dueDate}
-                            onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                            min={formData.invoiceDate} // ✅ important
+                            onChange={(e) =>
+                              setFormData(prev => ({ ...prev, dueDate: e.target.value }))
+                            }
                             className="h-10"
                           />
                           <Calendar className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -1104,13 +1137,33 @@ export default function PurchaseInvoicesIndex() {
 
                       <div className="space-y-2">
                         <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
-                        <Textarea
-                          id="bankAccount"
+                        <Select
                           value={formData.bankAccount}
-                          onChange={(e) => setFormData(prev => ({ ...prev, bankAccount: e.target.value }))}
-                          placeholder="Bank name, account number, SWIFT/IBAN, etc."
-                          className="min-h-[80px] resize-none"
-                        />
+                          onValueChange={(value) =>
+                            setFormData(prev => ({ ...prev, bankAccount: value }))
+                          }
+                          disabled={!formData.supplierId || bankAccountOptions.length === 0}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue
+                              placeholder={
+                                !formData.supplierId
+                                  ? "Select supplier first"
+                                  : "Select bank account"
+                              }
+                            />
+                          </SelectTrigger>
+
+                          <SelectContent>
+                            {bankAccountOptions.map((bank, index) => (
+                              <SelectItem key={bank.id} value={bank.accountDetails}>
+                                <div className="whitespace-pre-wrap text-sm leading-snug">
+                                  {bank.accountDetails}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       <div className="space-y-2">
@@ -1370,7 +1423,7 @@ export default function PurchaseInvoicesIndex() {
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={createInvoiceMutation.isPending || !formData.supplierId || invoiceItems.length === 0}
+                  disabled={createInvoiceMutation.isPending || !formData.supplierId || !formData.dueDate ||  invoiceItems.length === 0}
                   className="sm:w-auto order-1 sm:order-2"
                 >
                   {createInvoiceMutation.isPending ? (
