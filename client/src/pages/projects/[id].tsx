@@ -331,8 +331,23 @@ export default function ProjectDetail() {
     additionalField2Description: "",
     additionalField3Title: "",
     additionalField3Description: "",
+    customerId: "",
   });
+  const [isCustomContractMode, setIsCustomContractMode] = useState(false);
+  const [customContractMode, setCustomContractMode] = useState("");
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
+
+  const { data: customers } = useQuery<any[]>({
+    queryKey: ["/api/customers/all"],
+    queryFn: async () => {
+      const response = await fetch(`/api/customers/all`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch customers");
+      return response.json();
+    },
+    enabled: isAuthenticated,
+  });
 
   const [activityData, setActivityData] = useState<Partial<CreateActivityData>>({
     date: new Date().toISOString().split('T')[0],
@@ -441,6 +456,9 @@ export default function ProjectDetail() {
   // Initialize edit form data when project loads or dialog opens
   useEffect(() => {
     if (project && isEditProjectDialogOpen) {
+      const standardContractModes = ["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum"];
+      const isCustom = project.modeOfContract && !standardContractModes.includes(project.modeOfContract);
+
       setEditProjectData({
         title: project.title || "",
         description: project.description || "",
@@ -452,7 +470,7 @@ export default function ProjectDetail() {
         plannedEndDate: project.plannedEndDate ? new Date(project.plannedEndDate).toISOString().split('T')[0] : "",
         actualEndDate: project.actualEndDate ? new Date(project.actualEndDate).toISOString().split('T')[0] : "",
         ridgingCrewNos: project.ridgingCrewNos || "",
-        modeOfContract: project.modeOfContract || "",
+        modeOfContract: isCustom ? "custom" : project.modeOfContract || "",
         workingHours: project.workingHours || "",
         ppe: project.ppe || "",
         additionalField1Title: project.additionalField1Title || "",
@@ -461,7 +479,16 @@ export default function ProjectDetail() {
         additionalField2Description: project.additionalField2Description || "",
         additionalField3Title: project.additionalField3Title || "",
         additionalField3Description: project.additionalField3Description || "",
+        customerId: project.customerId?.toString() || "",
       });
+
+      if (isCustom) {
+        setIsCustomContractMode(true);
+        setCustomContractMode(project.modeOfContract || "");
+      } else {
+        setIsCustomContractMode(false);
+        setCustomContractMode("");
+      }
     }
   }, [project, isEditProjectDialogOpen]);
 
@@ -1199,6 +1226,8 @@ export default function ProjectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-instance-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] }); // Refresh project cost
+      queryClient.invalidateQueries({ queryKey: ["asset-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "revenue"] });
       toast({
         title: "Asset Instance Assigned",
         description: "Asset instance has been assigned to the project successfully.",
@@ -1223,6 +1252,8 @@ export default function ProjectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "asset-instance-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] }); // Refresh project cost
+      queryClient.invalidateQueries({ queryKey: ["asset-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "revenue"] });
       toast({
         title: "Asset Instance Removed",
         description: "Asset instance has been removed from the project.",
@@ -1452,7 +1483,11 @@ export default function ProjectDetail() {
     appendIfExists("plannedEndDate", editProjectData.plannedEndDate);
     appendIfExists("actualEndDate", editProjectData.actualEndDate);
     appendIfExists("ridgingCrewNos", editProjectData.ridgingCrewNos);
-    appendIfExists("modeOfContract", editProjectData.modeOfContract);
+    if (isCustomContractMode) {
+      appendIfExists("modeOfContract", customContractMode);
+    } else {
+      appendIfExists("modeOfContract", editProjectData.modeOfContract);
+    }
     appendIfExists("workingHours", editProjectData.workingHours);
     appendIfExists("ppe", editProjectData.ppe);
     appendIfExists("additionalField1Title", editProjectData.additionalField1Title);
@@ -1461,6 +1496,7 @@ export default function ProjectDetail() {
     appendIfExists("additionalField2Description", editProjectData.additionalField2Description);
     appendIfExists("additionalField3Title", editProjectData.additionalField3Title);
     appendIfExists("additionalField3Description", editProjectData.additionalField3Description);
+    appendIfExists("customerId", editProjectData.customerId);
 
 
     if (vesselImageFile) {
@@ -1680,22 +1716,43 @@ export default function ProjectDetail() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="editStatus">Status</Label>
-                    <Select
-                      value={editProjectData.status}
-                      onValueChange={(value) => setEditProjectData(prev => ({ ...prev, status: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="not_started">Not Started</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="on_hold">On Hold</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="editCustomer">Customer</Label>
+                      <Select
+                        value={editProjectData.customerId}
+                        onValueChange={(value) => setEditProjectData(prev => ({ ...prev, customerId: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a customer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customers?.map((customer) => (
+                            <SelectItem key={customer.id} value={customer.id.toString()}>
+                              {customer.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="editStatus">Status</Label>
+                      <Select
+                        value={editProjectData.status}
+                        onValueChange={(value) => setEditProjectData(prev => ({ ...prev, status: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="not_started">Not Started</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="on_hold">On Hold</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1749,7 +1806,15 @@ export default function ProjectDetail() {
                         <Label htmlFor="editModeOfContract">Mode of Contract</Label>
                         <Select
                           value={editProjectData.modeOfContract}
-                          onValueChange={(value) => setEditProjectData(prev => ({ ...prev, modeOfContract: value }))}
+                          onValueChange={(value) => {
+                            if (value === "custom") {
+                              setIsCustomContractMode(true);
+                              setEditProjectData(prev => ({ ...prev, modeOfContract: "custom" }));
+                            } else {
+                              setIsCustomContractMode(false);
+                              setEditProjectData(prev => ({ ...prev, modeOfContract: value }));
+                            }
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select contract mode" />
@@ -1760,8 +1825,17 @@ export default function ProjectDetail() {
                             <SelectItem value="cost_plus">Cost Plus</SelectItem>
                             <SelectItem value="day_rate">Day Rate</SelectItem>
                             <SelectItem value="lump_sum">Lump Sum</SelectItem>
+                            <SelectItem value="custom">Custom (Enter below)</SelectItem>
                           </SelectContent>
                         </Select>
+                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum"].includes(editProjectData.modeOfContract)) && (
+                          <Input
+                            className="mt-2"
+                            value={customContractMode}
+                            onChange={(e) => setCustomContractMode(e.target.value)}
+                            placeholder="Enter custom contract mode"
+                          />
+                        )}
                       </div>
 
                       <div className="space-y-2">
@@ -1988,10 +2062,16 @@ export default function ProjectDetail() {
               )}
 
               {/* Additional Project Details */}
-              {(project.ridgingCrewNos || project.modeOfContract || project.workingHours || project.ppe) && (
+              {(project.customerName && project.ridgingCrewNos || project.modeOfContract || project.workingHours || project.ppe) && (
                 <div className="mb-6 space-y-4">
                   <h4 className="font-medium text-slate-900 dark:text-slate-100">Project Details</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {project.customerName && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Customer Name</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">{project.customerName}</p>
+                      </div>
+                    )}
                     {project.ridgingCrewNos && (
                       <div>
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Ridging Crew Numbers</p>

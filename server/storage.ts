@@ -866,7 +866,6 @@ class Storage {
       const { bankAccountDetails, ...supplierInfo } = supplierData;
 
       const newSupplierWithDetails = await db.transaction(async (tx) => {
-        console.log("1 => supplier entry");
 
         const [newSupplier] = await tx
           .insert(suppliers)
@@ -876,8 +875,6 @@ class Storage {
         if (!newSupplier) {
           throw new Error("Supplier insert failed");
         }
-
-        console.log("2 =>", newSupplier);
 
         let newBankDetails: SupplierBankDetails[] = [];
 
@@ -892,14 +889,12 @@ class Storage {
             accountDetails: detail.accountDetails.trim(),
           }));
 
-          console.log("3 =>", detailsToInsert);
 
           newBankDetails = await tx
             .insert(supplierBankDetails)
             .values(detailsToInsert)
             .returning();
 
-          console.log("4 =>", newBankDetails);
         }
 
         return {
@@ -1951,11 +1946,39 @@ class Storage {
   async getProject(id: number): Promise<Project | undefined> {
     try {
       const result = await db
-        .select()
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          vesselName: projects.vesselName,
+          vesselImage: projects.vesselImage,
+          vesselImoNumber: projects.vesselImoNumber,
+          startDate: projects.startDate,
+          plannedEndDate: projects.plannedEndDate,
+          actualEndDate: projects.actualEndDate,
+          status: projects.status,
+          estimatedBudget: projects.estimatedBudget,
+          actualCost: projects.actualCost,
+          totalRevenue: projects.totalRevenue,
+          customerId: projects.customerId,
+          customerName: customers.name,
+          locations: projects.locations,
+          ridgingCrewNos: projects.ridgingCrewNos,
+          modeOfContract: projects.modeOfContract,
+          workingHours: projects.workingHours,
+          ppe: projects.ppe,
+          additionalField1Title: projects.additionalField1Title,
+          additionalField1Description: projects.additionalField1Description,
+          additionalField2Title: projects.additionalField2Title,
+          additionalField2Description: projects.additionalField2Description,
+          additionalField3Title: projects.additionalField3Title,
+          additionalField3Description: projects.additionalField3Description,
+        })
         .from(projects)
+        .leftJoin(customers, eq(projects.customerId, customers.id))
         .where(eq(projects.id, id))
         .limit(1);
-      return result[0];
+      return result[0] as Project;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -2390,7 +2413,8 @@ class Storage {
       // Project asset assignment costs
       let totalAssetRentalCost = 0;
 
-      const assetAssignments = await this.getProjectAssetAssignments(projectId);
+      // const assetAssignments = await this.getProjectAssetAssignments(projectId);
+      const assetAssignments = await this.getProjectAssetInstanceAssignments(projectId);
       for (const assignment of assetAssignments) {
         const rentalCost = await this.calculateAssetRentalCost(
           new Date(assignment.startDate),
@@ -6585,7 +6609,6 @@ class Storage {
         .insert(projectAssetInstanceAssignments)
         .values(assignmentData)
         .returning();
-
       const assignment = result[0];
 
       // Calculate and update total cost if start and end dates are provided
@@ -7805,156 +7828,154 @@ class Storage {
     }
   }
 
- async getPurchaseInvoicesFiltered(filters: {
-  startDate?: string;
-  endDate?: string;
-  supplierId?: number;
-  status?: string;
-}): Promise<any[]> {
-  try {
-    let query = db
-      .select({
-        id: purchaseInvoices.id,
-        invoiceNumber: purchaseInvoices.invoiceNumber,
-        supplierId: purchaseInvoices.supplierId,
-        supplierName: suppliers.name,
-        poId: purchaseInvoices.poId,
-        projectId: purchaseInvoices.projectId,
-        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-        status: purchaseInvoices.status,
-        approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
-        invoiceDate: purchaseInvoices.invoiceDate,
-        dueDate: purchaseInvoices.dueDate,
-        subtotal: purchaseInvoices.subtotal,
-        taxAmount: purchaseInvoices.taxAmount,
-        totalAmount: purchaseInvoices.totalAmount,
-        paidAmount: purchaseInvoices.paidAmount,
-        paymentTerms: purchaseInvoices.paymentTerms,
-        bankAccount: purchaseInvoices.bankAccount,
-        notes: purchaseInvoices.notes,
-        createdBy: purchaseInvoices.createdBy,
-        createdAt: purchaseInvoices.createdAt,
-        approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
-        approvedAt: purchaseInvoices.approvedAt,
-      })
-      .from(purchaseInvoices)
-      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
+  async getPurchaseInvoicesFiltered(filters: {
+    startDate?: string;
+    endDate?: string;
+    supplierId?: number;
+    status?: string;
+  }): Promise<any[]> {
+    try {
+      let query = db
+        .select({
+          id: purchaseInvoices.id,
+          invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierId: purchaseInvoices.supplierId,
+          supplierName: suppliers.name,
+          poId: purchaseInvoices.poId,
+          projectId: purchaseInvoices.projectId,
+          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          status: purchaseInvoices.status,
+          approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
+          invoiceDate: purchaseInvoices.invoiceDate,
+          dueDate: purchaseInvoices.dueDate,
+          subtotal: purchaseInvoices.subtotal,
+          taxAmount: purchaseInvoices.taxAmount,
+          totalAmount: purchaseInvoices.totalAmount,
+          paidAmount: purchaseInvoices.paidAmount,
+          paymentTerms: purchaseInvoices.paymentTerms,
+          bankAccount: purchaseInvoices.bankAccount,
+          notes: purchaseInvoices.notes,
+          createdBy: purchaseInvoices.createdBy,
+          createdAt: purchaseInvoices.createdAt,
+          approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+          approvedAt: purchaseInvoices.approvedAt,
+        })
+        .from(purchaseInvoices)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
 
-    const conditions = [];
+      const conditions = [];
 
-    if (filters.startDate) {
-      conditions.push(
-        gte(purchaseInvoices.invoiceDate, new Date(filters.startDate))
-      );
+      if (filters.startDate) {
+        conditions.push(
+          gte(purchaseInvoices.invoiceDate, new Date(filters.startDate))
+        );
+      }
+
+      if (filters.endDate) {
+        conditions.push(
+          lte(purchaseInvoices.invoiceDate, new Date(filters.endDate))
+        );
+      }
+
+      if (filters.supplierId) {
+        conditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
+      }
+
+      if (filters.status && filters.status !== "all") {
+        conditions.push(eq(purchaseInvoices.status, filters.status));
+      }
+
+      if (conditions.length) {
+        query = query.where(and(...conditions));
+      }
+
+      return await query.orderBy(desc(purchaseInvoices.createdAt));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getPurchaseInvoicesFiltered: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseInvoicesFiltered",
+        severity: "error",
+      });
+      throw error;
     }
-
-    if (filters.endDate) {
-      conditions.push(
-        lte(purchaseInvoices.invoiceDate, new Date(filters.endDate))
-      );
-    }
-
-    if (filters.supplierId) {
-      conditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
-    }
-
-    if (filters.status && filters.status !== "all") {
-      conditions.push(eq(purchaseInvoices.status, filters.status));
-    }
-
-    if (conditions.length) {
-      query = query.where(and(...conditions));
-    }
-
-    return await query.orderBy(desc(purchaseInvoices.createdAt));
-  } catch (error: any) {
-    await this.createErrorLog({
-      message:
-        "Error in getPurchaseInvoicesFiltered: " +
-        (error?.message || "Unknown error"),
-      stack: error?.stack,
-      component: "getPurchaseInvoicesFiltered",
-      severity: "error",
-    });
-    throw error;
   }
-}
 
-async getPurchaseInvoices(): Promise<any[]> {
-  try {
-    return await db
-      .select({
-        id: purchaseInvoices.id,
-        invoiceNumber: purchaseInvoices.invoiceNumber,
-        supplierId: purchaseInvoices.supplierId,
-        supplierName: suppliers.name,
-        poId: purchaseInvoices.poId,
-        projectId: purchaseInvoices.projectId,
-        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-        status: purchaseInvoices.status,
-        approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
-        invoiceDate: purchaseInvoices.invoiceDate,
-        dueDate: purchaseInvoices.dueDate,
-        subtotal: purchaseInvoices.subtotal,
-        taxAmount: purchaseInvoices.taxAmount,
-        totalAmount: purchaseInvoices.totalAmount,
-        paidAmount: purchaseInvoices.paidAmount,
-        paymentTerms: purchaseInvoices.paymentTerms,
-        bankAccount: purchaseInvoices.bankAccount,
-        notes: purchaseInvoices.notes,
-        createdBy: purchaseInvoices.createdBy,
-        createdAt: purchaseInvoices.createdAt,
-        approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
-        approvedAt: purchaseInvoices.approvedAt,
-      })
-      .from(purchaseInvoices)
-      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
-      .orderBy(desc(purchaseInvoices.createdAt));
-  } catch (error: any) {
-    await this.createErrorLog({
-      message:
-        "Error in getPurchaseInvoices: " +
-        (error?.message || "Unknown error"),
-      stack: error?.stack,
-      component: "getPurchaseInvoices",
-      severity: "error",
-    });
-    throw error;
+  async getPurchaseInvoices(): Promise<any[]> {
+    try {
+      return await db
+        .select({
+          id: purchaseInvoices.id,
+          invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierId: purchaseInvoices.supplierId,
+          supplierName: suppliers.name,
+          poId: purchaseInvoices.poId,
+          projectId: purchaseInvoices.projectId,
+          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          status: purchaseInvoices.status,
+          approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
+          invoiceDate: purchaseInvoices.invoiceDate,
+          dueDate: purchaseInvoices.dueDate,
+          subtotal: purchaseInvoices.subtotal,
+          taxAmount: purchaseInvoices.taxAmount,
+          totalAmount: purchaseInvoices.totalAmount,
+          paidAmount: purchaseInvoices.paidAmount,
+          paymentTerms: purchaseInvoices.paymentTerms,
+          bankAccount: purchaseInvoices.bankAccount,
+          notes: purchaseInvoices.notes,
+          createdBy: purchaseInvoices.createdBy,
+          createdAt: purchaseInvoices.createdAt,
+          approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+          approvedAt: purchaseInvoices.approvedAt,
+        })
+        .from(purchaseInvoices)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .orderBy(desc(purchaseInvoices.createdAt));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getPurchaseInvoices: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseInvoices",
+        severity: "error",
+      });
+      throw error;
+    }
   }
-}
-
 
   async getPurchaseInvoice(id: number): Promise<any> {
     try {
       const [invoice] = await db
-      .select({
-        id: purchaseInvoices.id,
-        invoiceNumber: purchaseInvoices.invoiceNumber,
-        supplierId: purchaseInvoices.supplierId,
-        supplierName: suppliers.name,
-        poId: purchaseInvoices.poId,
-        projectId: purchaseInvoices.projectId,
-        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-        status: purchaseInvoices.status,
-        approvalStatus: purchaseInvoices.approvalStatus, // ✅ correct
-        invoiceDate: purchaseInvoices.invoiceDate,
-        dueDate: purchaseInvoices.dueDate,
-        paymentTerms: purchaseInvoices.paymentTerms,
-        bankAccount: purchaseInvoices.bankAccount,
-        subtotal: purchaseInvoices.subtotal,
-        taxAmount: purchaseInvoices.taxAmount,
-        totalAmount: purchaseInvoices.totalAmount,
-        paidAmount: purchaseInvoices.paidAmount,
-        notes: purchaseInvoices.notes,
-        createdBy: purchaseInvoices.createdBy,
-        createdAt: purchaseInvoices.createdAt,
-        approvedBy: purchaseInvoices.approvedBy, // ✅ correct
-        approvedAt: purchaseInvoices.approvedAt,
-      })
-      .from(purchaseInvoices)
-      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
-      .where(eq(purchaseInvoices.id, id));
-
+        .select({
+          id: purchaseInvoices.id,
+          invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierId: purchaseInvoices.supplierId,
+          supplierName: suppliers.name,
+          poId: purchaseInvoices.poId,
+          projectId: purchaseInvoices.projectId,
+          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          status: purchaseInvoices.status,
+          approvalStatus: purchaseInvoices.approvalStatus, // ✅ correct
+          invoiceDate: purchaseInvoices.invoiceDate,
+          dueDate: purchaseInvoices.dueDate,
+          paymentTerms: purchaseInvoices.paymentTerms,
+          bankAccount: purchaseInvoices.bankAccount,
+          subtotal: purchaseInvoices.subtotal,
+          taxAmount: purchaseInvoices.taxAmount,
+          totalAmount: purchaseInvoices.totalAmount,
+          paidAmount: purchaseInvoices.paidAmount,
+          notes: purchaseInvoices.notes,
+          createdBy: purchaseInvoices.createdBy,
+          createdAt: purchaseInvoices.createdAt,
+          approvedBy: purchaseInvoices.approvedBy, // ✅ correct
+          approvedAt: purchaseInvoices.approvedAt,
+        })
+        .from(purchaseInvoices)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .where(eq(purchaseInvoices.id, id));
 
       if (!invoice) return null;
 
