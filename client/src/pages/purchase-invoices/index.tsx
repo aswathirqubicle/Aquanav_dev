@@ -22,6 +22,7 @@ interface Supplier {
   contactPerson?: string;
   email?: string;
   phone?: string;
+  vatTreatment?: "standard" | "zero_rated" | "exempt";
 }
 
 interface PurchaseInvoice {
@@ -460,7 +461,7 @@ export default function PurchaseInvoicesIndex() {
       description: "",
       quantity: "1",
       unitPrice: "0",
-      taxRate: "0",
+      taxRate: newItem.taxRate,
     });
   };
 
@@ -617,6 +618,12 @@ export default function PurchaseInvoicesIndex() {
     }).format(amount);
   };
 
+  const getTaxRateFromVatTreatment = (
+    vatTreatment?: string
+  ): number => {
+    return vatTreatment === "standard" ? 5 : 0;
+  };
+
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
       <div className="container mx-auto py-6 space-y-6">
@@ -666,10 +673,27 @@ export default function PurchaseInvoicesIndex() {
                         searchText: supplier.name
                       }))}
                       value={filters.supplierId?.toString() || ""}
-                      onValueChange={(value) => setFilters(prev => ({
-                        ...prev,
-                        supplierId: value ? parseInt(value) : undefined
-                      }))}
+                      onValueChange={(value) => {
+                        const supplier = suppliers.find(s => s.id.toString() === value);
+                        const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
+
+                        setFormData(prev => ({ ...prev, supplierId: value }));
+
+                        // Update existing items ONLY if user hasn’t overridden tax
+                        setInvoiceItems(items =>
+                          items.map(item =>
+                            item.taxRate === "0"
+                              ? { ...item, taxRate: String(taxRate) }
+                              : item
+                          )
+                        );
+
+                        // Default tax for new items
+                        setNewItem(prev => ({
+                          ...prev,
+                          taxRate: String(taxRate),
+                        }));
+                      }}
                       placeholder="Select supplier..."
                     />
                   </div>
@@ -953,7 +977,27 @@ export default function PurchaseInvoicesIndex() {
                         </Label>
                         <Select
                           value={formData.supplierId}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, supplierId: value }))}
+                          onValueChange={(value) => {
+                            const supplier = suppliers.find(s => s.id.toString() === value);
+                            const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
+
+                            setFormData(prev => ({ ...prev, supplierId: value }));
+
+                            // Update existing items (only if still 0)
+                            setInvoiceItems(items =>
+                              items.map(item =>
+                                item.taxRate === "0"
+                                  ? { ...item, taxRate: String(taxRate) }
+                                  : item
+                              )
+                            );
+
+                            // Set default tax for NEW items
+                            setNewItem(prev => ({
+                              ...prev,
+                              taxRate: String(taxRate),
+                            }));
+                          }}
                         >
                           <SelectTrigger className="h-10">
                             <SelectValue placeholder="Choose supplier..." />
