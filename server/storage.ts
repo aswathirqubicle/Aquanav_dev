@@ -7121,26 +7121,38 @@ class Storage {
   }
 
   // Purchase Request methods
-  async getPurchaseRequests(): Promise<any[]> {
+  async getPurchaseRequests(userId?: number, userRole?: string): Promise<any[]> {
     try {
-      const approver = alias(employees, "approver");
+      const approver = alias(users, "approver");
+      // const approver = alias(employees, "approver");
+      
+      const conditions = [];
+      if (userRole && userRole !== 'admin' && userRole !== 'finance' && userId) {
+        conditions.push(eq(purchaseRequests.requestedBy, userId));
+      }
+
       const result = await db
         .select({
           id: purchaseRequests.id,
           requestNumber: purchaseRequests.requestNumber,
           requestedBy: purchaseRequests.requestedBy,
-          requestedByName: sql<string>`COALESCE(CONCAT(employees.first_name, ' ', employees.last_name), 'Unknown')`,
+          // requestedByName: sql<string>`COALESCE(CONCAT(employees.first_name, ' ', employees.last_name), 'Unknown')`,
+          requestedByName: sql<string>`COALESCE(users.username, '')`,
           status: purchaseRequests.status,
           urgency: purchaseRequests.urgency,
           reason: purchaseRequests.reason,
           requestDate: purchaseRequests.requestDate,
           approvedBy: purchaseRequests.approvedBy,
-          approvedByName: sql<string>`COALESCE(CONCAT(approver.first_name, ' ', approver.last_name), '')`,
+          // approvedByName: sql<string>`COALESCE(CONCAT(approver.first_name, ' ', approver.last_name), '')`,
+          approvedByName: sql<string>`COALESCE(CONCAT(approver.username), '')`,
           approvalDate: purchaseRequests.approvalDate,
         })
         .from(purchaseRequests)
-        .leftJoin(employees, eq(purchaseRequests.requestedBy, employees.id))
+        // .leftJoin(employees, eq(purchaseRequests.requestedBy, employees.id))
+        // .leftJoin(approver, eq(purchaseRequests.approvedBy, employees.id))
+        .leftJoin(users, eq(purchaseRequests.requestedBy, users.id))
         .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(purchaseRequests.requestDate));
 
       // Get items for each request
@@ -7150,19 +7162,16 @@ class Storage {
             .select({
               id: purchaseRequestItems.id,
               requestId: purchaseRequestItems.requestId,
-              itemType: purchaseRequestItems.itemType,
               inventoryItemId: purchaseRequestItems.inventoryItemId,
               inventoryItemName: inventoryItems.name,
               inventoryItemUnit: inventoryItems.unit,
-              description: purchaseRequestItems.description,
               quantity: purchaseRequestItems.quantity,
-              unitPrice: purchaseRequestItems.unitPrice,
               notes: purchaseRequestItems.notes,
             })
             .from(purchaseRequestItems)
             .leftJoin(
               inventoryItems,
-              eq(purchaseRequestItems.inventoryItemId, inventoryItems.id)
+              eq(purchaseRequestItems.inventoryItemId, inventoryItems.id),
             )
             .where(eq(purchaseRequestItems.requestId, request.id));
 
@@ -7170,15 +7179,13 @@ class Storage {
             ...request,
             items,
           };
-        })
+        }),
       );
 
       return requestsWithItems;
     } catch (error: any) {
       await this.createErrorLog({
-        message:
-          "Error in getPurchaseRequests: " +
-          (error?.message || "Unknown error"),
+        message: "Error in getPurchaseRequests: " + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseRequests",
         severity: "error",

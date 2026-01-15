@@ -1019,7 +1019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get customers" });
     }
   });
-  
+
   app.get("/api/customers/all", requireAuth, async (req, res) => {
     try {
       const allCustomers = await storage.getCustomers();
@@ -4523,7 +4523,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Purchase Requests routes
   app.get("/api/purchase-requests", requireAuth, async (req, res) => {
     try {
-      const requests = await storage.getPurchaseRequests();
+      const { userId, userRole } = req.session;
+      const requests = await storage.getPurchaseRequests(userId, userRole);
       res.json(requests);
     } catch (error) {
       console.error("Get purchase requests error:", error);
