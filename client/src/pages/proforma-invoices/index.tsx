@@ -1085,7 +1085,7 @@ export default function ProformaInvoicesIndex() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="archivedFilter" className="text-sm font-medium">
+              {/* <Label htmlFor="archivedFilter" className="text-sm font-medium">
                 Archive Status
               </Label>
               <Select
@@ -1100,7 +1100,7 @@ export default function ProformaInvoicesIndex() {
                   <SelectItem value="active">Active Only</SelectItem>
                   <SelectItem value="archived">Archived Only</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select> */}
             </div>
             {(statusFilter !== "all" || archivedFilter !== "active") && (
               <div className="flex items-end">

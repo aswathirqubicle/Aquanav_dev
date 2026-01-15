@@ -400,6 +400,41 @@ export default function AssetInventoryIndex() {
 
 
   const handleAddAssetInstance = () => {
+    if (!newAssetInstance.assetTypeId) {
+      toast({
+        title: "Error",
+        description: "Asset Type is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newAssetInstance.assetTag) {
+      toast({
+        title: "Error",
+        description: "Asset Tag is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newAssetInstance.serialNumber) {
+      toast({
+        title: "Error",
+        description: "Serial Number is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newAssetInstance.barcode) {
+      toast({
+        title: "Error",
+        description: "Barcode is required",
+        variant: "destructive",
+      });
+      return;
+    }
     if (selectedInstance) {
       // Update existing instance
       const updateData = {
@@ -417,6 +452,55 @@ export default function AssetInventoryIndex() {
       };
       createAssetInstanceMutation.mutate(createData);
     }
+  };
+
+  const validateAssetType = () => {
+
+    if (!newAssetType.name) {
+      toast({
+        title: "Error",
+        description: "Name is required",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!newAssetType.category) {
+      toast({
+        title: "Error",
+        description: "Category is required",
+        variant: "destructive",
+      });
+      return false;;
+    }
+    return true;
+  };
+
+  const handleAddAssetType = () => {
+
+    if (!newAssetType.name) {
+      toast({
+        title: "Error",
+        description: "Name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newAssetType.category) {
+      toast({
+        title: "Error",
+        description: "Category is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createAssetTypeMutation.mutate({
+      newAssetType: {
+        ...newAssetType,
+      },
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -496,6 +580,7 @@ export default function AssetInventoryIndex() {
                     <Label htmlFor="typeName">Name *</Label>
                     <Input
                       id="typeName"
+                      required
                       value={newAssetType.name}
                       onChange={(e) => setNewAssetType({ ...newAssetType, name: e.target.value })}
                       placeholder="e.g., Marine Excavator"
@@ -557,8 +642,8 @@ export default function AssetInventoryIndex() {
                     
                   </Button> */}
                   <Button 
-                                  // onClick={() => createAssetTypeMutation.mutate(newAssetType )}
-                                  onClick={() => createAssetTypeMutation.mutate({ id: newAssetType!.id, newAssetType })}
+                                  onClick={handleAddAssetType}
+                                  // onClick={() => createAssetTypeMutation.mutate({ id: newAssetType!.id, newAssetType })}
                                 >Add Asset Type</Button>
                 </div>
               </div>
@@ -810,9 +895,12 @@ export default function AssetInventoryIndex() {
                   >
                     Cancel
                   </Button>
-
                   <Button
-                    onClick={() => updateAssetTypeMutation.mutate(newAssetType)}
+                  //onClick={() => updateAssetTypeMutation.mutate(newAssetType)}
+                    onClick={() => {
+                      if (!validateAssetType()) return;
+                      updateAssetTypeMutation.mutate(newAssetType);
+                    }}
                   >
                     Update Asset Type
                   </Button>

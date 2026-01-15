@@ -104,6 +104,12 @@ export default function InventoryIndex() {
     }
   }, [isAuthenticated, user, setLocation]);
 
+  const isEmptyNumber = (v: any) =>
+    v === undefined || v === null || Number.isNaN(v);
+  
+  const isEmptyInput = (v: string) =>
+    v === "" || v === undefined || v === null;
+  
   const { data: inventoryResponse, isLoading } = useQuery<{
     data: InventoryItem[];
     pagination: {
@@ -367,16 +373,54 @@ export default function InventoryIndex() {
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
-          minStockLevel: parseInt(formData.minStockLevel) || 0,
-          currentStock: parseInt(formData.initialQuantity) || 0,
+          minStockLevel: parseInt(formData.minStockLevel),
+          currentStock: parseInt(formData.initialQuantity),
           avgCost: formData.unitPrice,
         };
 
         // Validate required fields
-        if (!updateData.name || !updateData.unit) {
+        if (!updateData.name) {
           toast({
             title: "Error",
-            description: "Name and unit are required fields",
+            description: "Name is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!updateData.sku) {
+          toast({
+            title: "Error",
+            description: "SKU is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!updateData.category) {
+          toast({
+            title: "Error",
+            description: "Category is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!updateData.unit) {
+          toast({
+            title: "Error",
+            description: "Unit is required field",
+            variant: "destructive",
+          });
+          return;
+        }else if (isEmptyNumber(updateData.currentStock)) {
+          toast({
+            title: "Error",
+            description: "Current Stock is required field",
+            variant: "destructive",
+          });
+          return;
+        }else if (isEmptyNumber(updateData.minStockLevel)) {
+          toast({
+            title: "Error",
+            description: "Min Stock Level is required field",
             variant: "destructive",
           });
           return;
@@ -450,17 +494,54 @@ export default function InventoryIndex() {
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
-          minStockLevel: parseInt(formData.minStockLevel) || 0,
-          initialQuantity: parseInt(formData.initialQuantity) || 0,
+          minStockLevel: parseInt(formData.minStockLevel),
+          initialQuantity: parseInt(formData.initialQuantity),
           unitPrice: parseFloat(formData.unitPrice) || 0,
           supplierMappings: supplierMappings.filter((m) => m.supplierId),
         };
 
-        // Validate required fields
-        if (!processedData.name || !processedData.unit) {
+        if (!processedData.name) {
           toast({
             title: "Error",
-            description: "Name and unit are required fields",
+            description: "Name is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!processedData.sku) {
+          toast({
+            title: "Error",
+            description: "SKU is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!processedData.category) {
+          toast({
+            title: "Error",
+            description: "Category is required field",
+            variant: "destructive",
+          });
+          return;
+        }
+        else if (!processedData.unit) {
+          toast({
+            title: "Error",
+            description: "Unit is required field",
+            variant: "destructive",
+          });
+          return;
+        }else if (isEmptyInput(formData.initialQuantity)) {
+          toast({
+            title: "Error",
+            description: "Initial Quantity is required field",
+            variant: "destructive",
+          });
+          return;
+        }else if (isEmptyInput(formData.minStockLevel)) {
+          toast({
+            title: "Error",
+            description: "Min Stock Level is required field",
             variant: "destructive",
           });
           return;
@@ -659,13 +740,12 @@ export default function InventoryIndex() {
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-medium">Item Nameee *</Label>
+                  <Label htmlFor="name" className="text-sm font-medium">Item Name *</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => handleChange("name", e.target.value)}
                     placeholder="e.g., Marine Grade Paint"
-                    required
                     className="w-full"
                   />
                 </div>
@@ -676,7 +756,6 @@ export default function InventoryIndex() {
                     value={formData.sku}
                     onChange={(e) => handleChange("sku", e.target.value)}
                     placeholder="e.g., SKU123"
-                    required
                     className="w-full"
                   />
                 </div>
@@ -756,7 +835,6 @@ export default function InventoryIndex() {
                     onChange={(e) =>
                       handleChange("initialQuantity", e.target.value)
                     }
-                    required
                     className="w-full"
                   />
                 </div>
@@ -770,7 +848,6 @@ export default function InventoryIndex() {
                     onChange={(e) =>
                       handleChange("minStockLevel", e.target.value)
                     }
-                    required
                     className="w-full"
                   />
                 </div>
