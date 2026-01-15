@@ -580,6 +580,8 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/employee-documents";
     } else if (req.originalUrl?.includes("/api/company")) {
       uploadDir = "uploads/company";
+    } else if (req.originalUrl.includes("/api/purchase-orders")) {
+      uploadDir = "uploads/purchase-order";
     }
 
     if (!fs.existsSync(uploadDir)) {
@@ -4734,10 +4736,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/purchase-orders",
     requireAuth,
     requireRole(["admin", "finance"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const orderData = {
           ...req.body,
+          items: JSON.parse(req.body.items || "[]"),
+          files: req.files,
           createdBy: req.session.userId,
         };
 
@@ -4754,10 +4759,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/purchase-orders/:id",
     requireAuth,
     requireRole(["admin", "finance"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const orderData = req.body;
+        const orderData = {
+          ...req.body,
+          items: JSON.parse(req.body.items || "[]"),
+          files: req.files,
+        };
 
         const order = await storage.updatePurchaseOrder(id, orderData);
         if (!order) {
