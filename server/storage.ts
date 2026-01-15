@@ -7805,163 +7805,156 @@ class Storage {
     }
   }
 
-  async getPurchaseInvoices(): Promise<any[]> {
-    try {
-      const result = await db
-        .select({
-          id: purchaseInvoices.id,
-          invoiceNumber: purchaseInvoices.invoiceNumber,
-          supplierId: purchaseInvoices.supplierId,
-          supplierName: suppliers.name,
-          poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-          status: purchaseInvoices.status,
-          paymentStatus: purchaseInvoices.paymentStatus,
-          invoiceDate: purchaseInvoices.invoiceDate,
-          dueDate: purchaseInvoices.dueDate,
-          subtotal: purchaseInvoices.subtotal,
-          taxAmount: purchaseInvoices.taxAmount,
-          totalAmount: purchaseInvoices.totalAmount,
-          paidAmount: purchaseInvoices.paidAmount,
-          paymentTerms: purchaseInvoices.paymentTerms,
-          bankAccount: purchaseInvoices.bankAccount,
-          notes: purchaseInvoices.notes,
-          submittedById: purchaseInvoices.submittedById,
-          submittedAt: purchaseInvoices.submittedAt,
-          approvedById: purchaseInvoices.approvedById,
-          approvedAt: purchaseInvoices.approvedAt,
-          rejectionReason: purchaseInvoices.rejectionReason,
-          createdBy: purchaseInvoices.createdBy,
-          createdAt: purchaseInvoices.createdAt,
-        })
-        .from(purchaseInvoices)
-        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
-        .orderBy(desc(purchaseInvoices.createdAt));
+ async getPurchaseInvoicesFiltered(filters: {
+  startDate?: string;
+  endDate?: string;
+  supplierId?: number;
+  status?: string;
+}): Promise<any[]> {
+  try {
+    let query = db
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNumber: purchaseInvoices.invoiceNumber,
+        supplierId: purchaseInvoices.supplierId,
+        supplierName: suppliers.name,
+        poId: purchaseInvoices.poId,
+        projectId: purchaseInvoices.projectId,
+        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+        status: purchaseInvoices.status,
+        approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
+        invoiceDate: purchaseInvoices.invoiceDate,
+        dueDate: purchaseInvoices.dueDate,
+        subtotal: purchaseInvoices.subtotal,
+        taxAmount: purchaseInvoices.taxAmount,
+        totalAmount: purchaseInvoices.totalAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        paymentTerms: purchaseInvoices.paymentTerms,
+        bankAccount: purchaseInvoices.bankAccount,
+        notes: purchaseInvoices.notes,
+        createdBy: purchaseInvoices.createdBy,
+        createdAt: purchaseInvoices.createdAt,
+        approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+        approvedAt: purchaseInvoices.approvedAt,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
 
-      return result;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          "Error in getPurchaseInvoices: " +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "getPurchaseInvoices",
-        severity: "error",
-      });
-      throw error;
+    const conditions = [];
+
+    if (filters.startDate) {
+      conditions.push(
+        gte(purchaseInvoices.invoiceDate, new Date(filters.startDate))
+      );
     }
-  }
 
-  async getPurchaseInvoicesFiltered(filters: {
-    startDate?: string;
-    endDate?: string;
-    supplierId?: number;
-    status?: string;
-  }): Promise<any[]> {
-    try {
-      let query = db
-        .select({
-          id: purchaseInvoices.id,
-          invoiceNumber: purchaseInvoices.invoiceNumber,
-          supplierId: purchaseInvoices.supplierId,
-          supplierName: suppliers.name,
-          poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-          status: purchaseInvoices.status,
-          paymentStatus: purchaseInvoices.paymentStatus,
-          invoiceDate: purchaseInvoices.invoiceDate,
-          dueDate: purchaseInvoices.dueDate,
-          subtotal: purchaseInvoices.subtotal,
-          taxAmount: purchaseInvoices.taxAmount,
-          totalAmount: purchaseInvoices.totalAmount,
-          paidAmount: purchaseInvoices.paidAmount,
-          paymentTerms: purchaseInvoices.paymentTerms,
-          bankAccount: purchaseInvoices.bankAccount,
-          notes: purchaseInvoices.notes,
-          submittedById: purchaseInvoices.submittedById,
-          submittedAt: purchaseInvoices.submittedAt,
-          approvedById: purchaseInvoices.approvedById,
-          approvedAt: purchaseInvoices.approvedAt,
-          rejectionReason: purchaseInvoices.rejectionReason,
-          createdBy: purchaseInvoices.createdBy,
-          createdAt: purchaseInvoices.createdAt,
-        })
-        .from(purchaseInvoices)
-        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
-
-      const conditions = [];
-
-      if (filters.startDate) {
-        conditions.push(
-          gte(purchaseInvoices.invoiceDate, new Date(filters.startDate))
-        );
-      }
-      if (filters.endDate) {
-        conditions.push(
-          lte(purchaseInvoices.invoiceDate, new Date(filters.endDate))
-        );
-      }
-      if (filters.supplierId) {
-        conditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
-      }
-      if (filters.status && filters.status !== "all") {
-        conditions.push(eq(purchaseInvoices.status, filters.status));
-      }
-
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-
-      const result = await query.orderBy(desc(purchaseInvoices.createdAt));
-      return result;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          "Error in getPurchaseInvoicesFiltered: " +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "getPurchaseInvoicesFiltered",
-        severity: "error",
-      });
-      throw error;
+    if (filters.endDate) {
+      conditions.push(
+        lte(purchaseInvoices.invoiceDate, new Date(filters.endDate))
+      );
     }
+
+    if (filters.supplierId) {
+      conditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
+    }
+
+    if (filters.status && filters.status !== "all") {
+      conditions.push(eq(purchaseInvoices.status, filters.status));
+    }
+
+    if (conditions.length) {
+      query = query.where(and(...conditions));
+    }
+
+    return await query.orderBy(desc(purchaseInvoices.createdAt));
+  } catch (error: any) {
+    await this.createErrorLog({
+      message:
+        "Error in getPurchaseInvoicesFiltered: " +
+        (error?.message || "Unknown error"),
+      stack: error?.stack,
+      component: "getPurchaseInvoicesFiltered",
+      severity: "error",
+    });
+    throw error;
   }
+}
+
+async getPurchaseInvoices(): Promise<any[]> {
+  try {
+    return await db
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNumber: purchaseInvoices.invoiceNumber,
+        supplierId: purchaseInvoices.supplierId,
+        supplierName: suppliers.name,
+        poId: purchaseInvoices.poId,
+        projectId: purchaseInvoices.projectId,
+        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+        status: purchaseInvoices.status,
+        approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
+        invoiceDate: purchaseInvoices.invoiceDate,
+        dueDate: purchaseInvoices.dueDate,
+        subtotal: purchaseInvoices.subtotal,
+        taxAmount: purchaseInvoices.taxAmount,
+        totalAmount: purchaseInvoices.totalAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        paymentTerms: purchaseInvoices.paymentTerms,
+        bankAccount: purchaseInvoices.bankAccount,
+        notes: purchaseInvoices.notes,
+        createdBy: purchaseInvoices.createdBy,
+        createdAt: purchaseInvoices.createdAt,
+        approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+        approvedAt: purchaseInvoices.approvedAt,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+      .orderBy(desc(purchaseInvoices.createdAt));
+  } catch (error: any) {
+    await this.createErrorLog({
+      message:
+        "Error in getPurchaseInvoices: " +
+        (error?.message || "Unknown error"),
+      stack: error?.stack,
+      component: "getPurchaseInvoices",
+      severity: "error",
+    });
+    throw error;
+  }
+}
+
 
   async getPurchaseInvoice(id: number): Promise<any> {
     try {
       const [invoice] = await db
-        .select({
-          id: purchaseInvoices.id,
-          invoiceNumber: purchaseInvoices.invoiceNumber,
-          supplierId: purchaseInvoices.supplierId,
-          supplierName: suppliers.name,
-          poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
-          status: purchaseInvoices.status,
-          paymentStatus: purchaseInvoices.paymentStatus,
-          invoiceDate: purchaseInvoices.invoiceDate,
-          dueDate: purchaseInvoices.dueDate,
-          paymentTerms: purchaseInvoices.paymentTerms,
-          bankAccount: purchaseInvoices.bankAccount,
-          subtotal: purchaseInvoices.subtotal,
-          taxAmount: purchaseInvoices.taxAmount,
-          totalAmount: purchaseInvoices.totalAmount,
-          paidAmount: purchaseInvoices.paidAmount,
-          notes: purchaseInvoices.notes,
-          submittedById: purchaseInvoices.submittedById,
-          submittedAt: purchaseInvoices.submittedAt,
-          approvedById: purchaseInvoices.approvedById,
-          approvedAt: purchaseInvoices.approvedAt,
-          rejectionReason: purchaseInvoices.rejectionReason,
-          createdBy: purchaseInvoices.createdBy,
-          createdAt: purchaseInvoices.createdAt,
-        })
-        .from(purchaseInvoices)
-        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
-        .where(eq(purchaseInvoices.id, id));
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNumber: purchaseInvoices.invoiceNumber,
+        supplierId: purchaseInvoices.supplierId,
+        supplierName: suppliers.name,
+        poId: purchaseInvoices.poId,
+        projectId: purchaseInvoices.projectId,
+        assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+        status: purchaseInvoices.status,
+        approvalStatus: purchaseInvoices.approvalStatus, // ✅ correct
+        invoiceDate: purchaseInvoices.invoiceDate,
+        dueDate: purchaseInvoices.dueDate,
+        paymentTerms: purchaseInvoices.paymentTerms,
+        bankAccount: purchaseInvoices.bankAccount,
+        subtotal: purchaseInvoices.subtotal,
+        taxAmount: purchaseInvoices.taxAmount,
+        totalAmount: purchaseInvoices.totalAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        notes: purchaseInvoices.notes,
+        createdBy: purchaseInvoices.createdBy,
+        createdAt: purchaseInvoices.createdAt,
+        approvedBy: purchaseInvoices.approvedBy, // ✅ correct
+        approvedAt: purchaseInvoices.approvedAt,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+      .where(eq(purchaseInvoices.id, id));
+
 
       if (!invoice) return null;
 

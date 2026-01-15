@@ -5016,7 +5016,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ message: "Invoice is already approved" });
         }
 
-        if (invoice.status !== "pending_approval") {
+        if (invoice.status !== "pending") {
           return res
             .status(400)
             .json({ message: "Only pending invoices can be approved" });
