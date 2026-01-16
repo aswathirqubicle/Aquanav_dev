@@ -1030,6 +1030,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/customers/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getCustomerStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get customer stats error:", error);
+      res.status(500).json({ message: "Failed to get customer stats" });
+    }
+  });
+
   app.post(
     "/api/customers",
     requireAuth,
@@ -1866,18 +1876,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Project routes
   app.get("/api/projects", requireAuth, async (req, res) => {
     try {
-      let projects = await storage.getProjects();
+      const customerParam = req.query.customer;
+      let projects;
 
-      // Filter by customer for customer role
+      // CUSTOMER ROLE: force own projects only
       if (req.session.userRole === "customer") {
         const user = await storage.getUser(req.session.userId!);
-        if (user) {
-          const customers = await storage.getCustomers();
-          const customer = customers.find((c) => c.userId === user.id);
-          if (customer) {
-            projects = await storage.getProjectsByCustomer(customer.id);
-          }
+        if (!user) {
+          return res.status(403).json({ message: "Unauthorized" });
         }
+
+        const customers = await storage.getCustomers();
+        const customer = customers.find((c) => c.userId === user.id);
+
+        if (!customer) {
+          return res.json([]);
+        }
+
+        projects = await storage.getProjectsByCustomer(customer.id);
+      }
+      //NON-CUSTOMER ROLE + customer filter
+      else if (customerParam) {
+        projects = await storage.getProjectsByCustomer(Number(customerParam));
+      }
+      //NON-CUSTOMER ROLE + no filter
+      else {
+        projects = await storage.getProjects();
       }
 
       res.json(projects);

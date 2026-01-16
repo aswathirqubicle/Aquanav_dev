@@ -190,6 +190,10 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
       toast({ title: "Please fill in required fields", variant: "destructive" });
       return;
     }
+    if (!editingDocument && !selectedFile) {
+      toast({ title: "Please upload a file", variant: "destructive" });
+      return;
+    }
 
     const formData = new FormData();
     Object.entries(documentData).forEach(([key, value]) => {
@@ -365,7 +369,7 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
               </div>
 
               <div>
-                <Label htmlFor="file">Upload File</Label>
+                <Label htmlFor="file">Upload File *</Label>
                 <Input
                   id="file"
                   type="file"

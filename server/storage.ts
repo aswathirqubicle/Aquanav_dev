@@ -1,5 +1,6 @@
 import { db } from "./db";
 import {
+  getTableColumns,
   eq,
   desc,
   sql,
@@ -544,11 +545,19 @@ class Storage {
       const conditions =
         whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
+      const customerColumns = getTableColumns(customers);
+
       const dataQueryBuilder = db
-        .select()
+        .select({
+          ...customerColumns,
+          projectCount: sql<number>`COUNT(${projects.id})`.as("projectCount"),
+        })
         .from(customers)
+        .leftJoin(projects, eq(projects.customerId, customers.id))
         .where(conditions)
+        .groupBy(customers.id)
         .orderBy(customers.id);
+
       // Note: original count query had a simpler where clause `eq(customers.isArchived, showArchived)`
       // This should ideally be consistent. For now, using the combined `conditions` for count.
       const countQueryBuilder = db
@@ -590,6 +599,41 @@ class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getCustomer",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getCustomerStats(): Promise<{
+    totalCustomers: number;
+    activeCustomers: number;
+    totalProjects: number;
+  }> {
+    try {
+      const totalCustomers = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(customers);
+      const activeCustomers = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(customers)
+        .where(eq(customers.isArchived, false));
+      const totalProjects = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(projects)
+        .where(isNotNull(projects.customerId));
+
+      return {
+        totalCustomers: Number(totalCustomers[0].count),
+        activeCustomers: Number(activeCustomers[0].count),
+        totalProjects: Number(totalProjects[0].count),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getCustomerStats: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getCustomerStats",
         severity: "error",
       });
       throw error;
@@ -866,7 +910,6 @@ class Storage {
       const { bankAccountDetails, ...supplierInfo } = supplierData;
 
       const newSupplierWithDetails = await db.transaction(async (tx) => {
-
         const [newSupplier] = await tx
           .insert(suppliers)
           .values(supplierInfo)
@@ -889,12 +932,10 @@ class Storage {
             accountDetails: detail.accountDetails.trim(),
           }));
 
-
           newBankDetails = await tx
             .insert(supplierBankDetails)
             .values(detailsToInsert)
             .returning();
-
         }
 
         return {
@@ -2414,7 +2455,9 @@ class Storage {
       let totalAssetRentalCost = 0;
 
       // const assetAssignments = await this.getProjectAssetAssignments(projectId);
-      const assetAssignments = await this.getProjectAssetInstanceAssignments(projectId);
+      const assetAssignments = await this.getProjectAssetInstanceAssignments(
+        projectId
+      );
       for (const assignment of assetAssignments) {
         const rentalCost = await this.calculateAssetRentalCost(
           new Date(assignment.startDate),
@@ -7121,13 +7164,21 @@ class Storage {
   }
 
   // Purchase Request methods
-  async getPurchaseRequests(userId?: number, userRole?: string): Promise<any[]> {
+  async getPurchaseRequests(
+    userId?: number,
+    userRole?: string
+  ): Promise<any[]> {
     try {
       const approver = alias(users, "approver");
       // const approver = alias(employees, "approver");
-      
+
       const conditions = [];
-      if (userRole && userRole !== 'admin' && userRole !== 'finance' && userId) {
+      if (
+        userRole &&
+        userRole !== "admin" &&
+        userRole !== "finance" &&
+        userId
+      ) {
         conditions.push(eq(purchaseRequests.requestedBy, userId));
       }
 
@@ -7171,7 +7222,7 @@ class Storage {
             .from(purchaseRequestItems)
             .leftJoin(
               inventoryItems,
-              eq(purchaseRequestItems.inventoryItemId, inventoryItems.id),
+              eq(purchaseRequestItems.inventoryItemId, inventoryItems.id)
             )
             .where(eq(purchaseRequestItems.requestId, request.id));
 
@@ -7179,13 +7230,15 @@ class Storage {
             ...request,
             items,
           };
-        }),
+        })
       );
 
       return requestsWithItems;
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getPurchaseRequests: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getPurchaseRequests: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseRequests",
         severity: "error",
@@ -10419,6 +10472,11 @@ export interface IStorage {
     showArchived: boolean
   ): Promise<PaginatedResponse<Customer>>;
   getCustomer(id: number): Promise<Customer | undefined>;
+  getCustomerStats(): Promise<{
+    totalCustomers: number;
+    activeCustomers: number;
+    totalProjects: number;
+  }>;
   createCustomer(customerData: InsertCustomer): Promise<Customer>;
   updateCustomer(
     id: number,
