@@ -164,6 +164,7 @@ export default function CustomersIndex() {
     totalCustomers: number;
     activeCustomers: number;
     totalProjects: number;
+    totalArchivedCustomers: number;
   }>({
     queryKey: ["/api/customers/stats"],
     queryFn: async () => {
@@ -186,6 +187,7 @@ export default function CustomersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers/stats"] });
       toast({
         title: "Customer Created",
         description: "The customer has been added successfully.",
@@ -245,6 +247,7 @@ export default function CustomersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers/stats"] });
       toast({
         title: "Customer Archived",
         description: "The customer has been archived successfully.",
@@ -272,6 +275,7 @@ export default function CustomersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers/stats"] });
       toast({
         title: "Customer Unarchived",
         description: "The customer has been unarchived successfully.",
@@ -925,7 +929,7 @@ export default function CustomersIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
         <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
@@ -936,7 +940,7 @@ export default function CustomersIndex() {
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Total Customers</p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {/* {pagination?.total || 0} */}
-                   {stats?.totalCustomers || 0}
+                  {stats?.totalCustomers || 0}
                 </p>
               </div>
             </div>
@@ -969,6 +973,22 @@ export default function CustomersIndex() {
               <div className="ml-3 md:ml-4">
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Projects</p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">{stats?.totalProjects || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                <Archive className="h-5 w-5 md:h-6 md:w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="ml-3 md:ml-4">
+                <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Archived Customers</p>
+                <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                  {stats?.totalArchivedCustomers || 0}
+                </p>
               </div>
             </div>
           </CardContent>

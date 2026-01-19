@@ -169,6 +169,19 @@ export default function SuppliersIndex() {
     }
   }, [suppliersResponse]);
 
+  const { data: stats } = useQuery<{
+    totalSuppliers: number;
+    activeSuppliers: number;
+    totalArchivedSuppliers: number;
+  }>({
+    queryKey: ["/api/suppliers/stats"],
+    queryFn: async () => {
+      const response = await apiRequest("/api/suppliers/stats");
+      return response.json();
+    },
+    enabled: isAuthenticated,
+  });
+
   const createSupplierMutation = useMutation({
     mutationFn: async (data: CreateSupplierData) => {
       const response = await apiRequest("/api/suppliers", {
@@ -182,6 +195,7 @@ export default function SuppliersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/stats"] });
       toast({
         title: "Supplier Created",
         description: "The supplier has been added successfully.",
@@ -241,6 +255,7 @@ export default function SuppliersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/stats"] });
       toast({
         title: "Supplier Archived",
         description: "The supplier has been archived successfully.",
@@ -268,6 +283,7 @@ export default function SuppliersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/stats"] });
       toast({
         title: "Supplier Unarchived",
         description: "The supplier has been unarchived successfully.",
@@ -557,7 +573,7 @@ export default function SuppliersIndex() {
                   ))}
                   <Button
                     type="button"
-                    variant="outline"
+                    // variant="outline"
                     size="sm"
                     onClick={addBankAccountField}
                   >
@@ -749,7 +765,7 @@ export default function SuppliersIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 md:gap-6 mb-6 md:mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-6 md:mb-8">
         <Card>
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
@@ -759,7 +775,8 @@ export default function SuppliersIndex() {
               <div className="ml-3 md:ml-4">
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Total Suppliers</p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {pagination?.total || 0}
+                  {/* {pagination?.total || 0} */}
+                  {stats?.totalSuppliers || 0}
                 </p>
               </div>
             </div>
@@ -775,7 +792,24 @@ export default function SuppliersIndex() {
               <div className="ml-3 md:ml-4">
                 <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Active Suppliers</p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {showArchived ? 0 : (pagination?.total || 0)}
+                  {/* {showArchived ? 0 : (pagination?.total || 0)} */}
+                  {stats?.activeSuppliers || 0}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                <Archive className="h-5 w-5 md:h-6 md:w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="ml-3 md:ml-4">
+                <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400">Archived Suppliers</p>
+                <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                  {stats?.totalArchivedSuppliers || 0}
                 </p>
               </div>
             </div>

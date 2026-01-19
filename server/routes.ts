@@ -1162,6 +1162,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/suppliers/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getSupplierStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get supplier stats error:", error);
+      res.status(500).json({ message: "Failed to get supplier stats" });
+    }
+  });
+
   app.post(
     "/api/suppliers",
     requireAuth,
