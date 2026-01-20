@@ -67,12 +67,12 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  // {
-  //   title: "Dashboard",
-  //   href: "/dashboard",
-  //   icon: Home,
-  //   roles: ["admin", "project_manager", "finance", "customer", "employee"],
-  // },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: Home,
+    roles: ["admin", "project_manager", "finance", "customer", "employee"],
+  },
   {
     title: "All Projects",
     href: "/projects",
@@ -116,12 +116,12 @@ const navigation: NavItem[] = [
       },
     ],
   },
-  // {
-  //   title: "Payroll",
-  //   href: "/payroll",
-  //   icon: DollarSign,
-  //   roles: ["admin", "finance"],
-  // },
+  {
+    title: "Payroll",
+    href: "/payroll",
+    icon: DollarSign,
+    roles: ["admin", "finance"],
+  },
   {
     title: "Purchase",
     icon: ShoppingCart,
@@ -215,12 +215,12 @@ const navigation: NavItem[] = [
   //     },
   //   ],
   // },
-  // {
-  //   title: "Reports",
-  //   href: "/reports",
-  //   icon: TrendingUp,
-  //   roles: ["admin", "project_manager", "finance"],
-  // },
+  {
+    title: "Reports",
+    href: "/reports",
+    icon: TrendingUp,
+    roles: ["admin", "project_manager", "finance"],
+  },
   {
     title: "User Management",
     href: "/users",
