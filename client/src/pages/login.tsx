@@ -18,16 +18,16 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Only redirect on initial load if already authenticated
-  useEffect(() => {
-    if (isAuthenticated && !loading) {
-      // Only redirect if this is the initial authentication check
-      // This prevents redirects during periodic auth checks
-      const currentPath = window.location.pathname;
-      if (currentPath === "/" || currentPath === "/login") {
-        setLocation("/dashboard");
-      }
-    }
-  }, [isAuthenticated, loading, setLocation]);
+  // useEffect(() => {
+  //   if (isAuthenticated && !loading) {
+  //     // Only redirect if this is the initial authentication check
+  //     // This prevents redirects during periodic auth checks
+  //     const currentPath = window.location.pathname;
+  //     if (currentPath === "/" || currentPath === "/login") {
+  //       setLocation("/dashboard");
+  //     }
+  //   }
+  // }, [isAuthenticated, loading, setLocation]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
