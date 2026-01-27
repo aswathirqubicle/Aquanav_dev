@@ -651,6 +651,25 @@ export const payrollDeductions = pgTable("payroll_deductions", {
   note: text("note"),
 });
 
+// Employee Reimbursements
+export const reimbursements = pgTable("reimbursements", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull().references(() => employees.id),
+  userId: integer("user_id").notNull().references(() => users.id), // The user who submitted
+  projectId: integer("project_id").references(() => projects.id), // Optional project association
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  description: text("description").notNull(),
+  originalExpenseDate: date("original_expense_date").notNull(),
+  submissionTimestamp: timestamp("submission_timestamp").notNull().defaultNow(),
+  status: text("status").notNull().default("pending"), // pending, approved, rejected
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvalTimestamp: timestamp("approval_timestamp"),
+  rejectionReason: text("rejection_reason"),
+  payrollMonth: integer("payroll_month"), // Month for payroll integration (1-12)
+  payrollYear: integer("payroll_year"), // Year for payroll integration
+  attachments: text("attachments").array(), // Array of file paths for multiple attachments
+});
+
 // Proforma Invoices table
 export const proformaInvoices = pgTable("proforma_invoices", {
   id: serial("id").primaryKey(),
@@ -1578,3 +1597,16 @@ export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
 export type SupplierWithBankDetails = Supplier & {
   bankAccountDetails: SupplierBankDetails[];
 };
+
+
+// Reimbursement schemas and types
+export const insertReimbursementSchema = createInsertSchema(reimbursements).omit({ 
+  id: true, 
+  submissionTimestamp: true, 
+  approvedById: true, 
+  approvalTimestamp: true,
+  payrollMonth: true,
+  payrollYear: true,
+});
+export type Reimbursement = typeof reimbursements.$inferSelect;
+export type InsertReimbursement = z.infer<typeof insertReimbursementSchema>;

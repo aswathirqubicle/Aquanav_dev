@@ -123,6 +123,12 @@ const navigation: NavItem[] = [
     roles: ["admin", "finance"],
   },
   {
+    title: "Reimbursements",
+    href: "/reimbursements",
+    icon: Receipt,
+    roles: ["admin", "finance", "project_manager", "employee", "customer"],
+  },
+  {
     title: "Purchase",
     icon: ShoppingCart,
     roles: ["admin", "project_manager", "finance"],
@@ -256,6 +262,7 @@ const sections = [
     items: [
       "Sales",
       "Payroll",
+      "Reimbursements",
       "Purchase",
       "Goods Receipt",
       "Goods Issue",

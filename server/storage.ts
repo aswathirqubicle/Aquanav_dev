@@ -63,6 +63,9 @@ import {
   generalLedgerEntries,
   customerDocuments,
   supplierDocuments,
+  reimbursements,
+  type Reimbursement,
+  type InsertReimbursement,
   type User,
   type InsertUser,
   type Company,
@@ -9030,15 +9033,9 @@ class Storage {
     }
   }
 
-  async generateMonthlyPayroll(
-    month: number,
-    year: number,
-    userId?: number
-  ): Promise<PayrollEntryWithEmployeeDetails[]> {
+  async generateMonthlyPayroll(month: number, year: number, userId?: number): Promise<PayrollEntryWithEmployeeDetails[]> {
     try {
-      console.log(
-        `[Payroll] Starting generateMonthlyPayroll for month: ${month}, year: ${year}, userId: ${userId}`
-      );
+      console.log(`[Payroll] Starting generateMonthlyPayroll for month: ${month}, year: ${year}, userId: ${userId}`);
 
       // Validate required parameters
       if (!userId) {
@@ -9056,11 +9053,7 @@ class Storage {
       // Check if payroll already exists for this period
       const existingPayroll = await this.getPayrollEntries(month, year);
       if (existingPayroll.length > 0) {
-        throw new Error(
-          `Payroll for ${this.getMonthName(
-            month
-          )} ${year} already exists. Please clear it first if you want to regenerate.`
-        );
+        throw new Error(`Payroll for ${this.getMonthName(month)} ${year} already exists. Please clear it first if you want to regenerate.`);
       }
 
       // Get all active employees
@@ -9079,14 +9072,10 @@ class Storage {
         .where(eq(employees.isActive, true));
 
       if (activeEmployees.length === 0) {
-        throw new Error(
-          "No active employees found. Please add employees before generating payroll."
-        );
+        throw new Error("No active employees found. Please add employees before generating payroll.");
       }
 
-      console.log(
-        `[Payroll] Found ${activeEmployees.length} active employees.`
-      );
+      console.log(`[Payroll] Found ${activeEmployees.length} active employees.`);
       if (activeEmployees.length === 0) {
         throw new Error("No active employees found.");
       }
@@ -9115,9 +9104,7 @@ class Storage {
 
       for (const employee of activeEmployees) {
         if (!employee) {
-          console.error(
-            `Skipping null employee object during payroll generation for ${month}/${year}.`
-          );
+          console.error(`Skipping null employee object during payroll generation for ${month}/${year}.`);
           continue;
         }
 
@@ -9126,17 +9113,11 @@ class Storage {
         const logLastName = employee.lastName || "Employee";
 
         if (!employee.category) {
-          console.error(
-            `Skipping employee ID ${
-              employee.id || "N/A"
-            } due to missing category during payroll generation for ${month}/${year}.`
-          );
+          console.error(`Skipping employee ID ${employee.id || 'N/A'} due to missing category during payroll generation for ${month}/${year}.`);
           continue;
         }
 
-        console.log(
-          `Processing payroll for employee: ${logFirstName} ${logLastName} (${employee.category})`
-        );
+        console.log(`Processing payroll for employee: ${logFirstName} ${logLastName} (${employee.category})`);
 
         let basicSalary = parseFloat(employee.salary || "0").toString(); // Ensure consistent use of "0" default for salary
         let workingDays = this.getCalendarDaysInMonth(month, year);
@@ -9146,29 +9127,18 @@ class Storage {
 
         if (employee.category === "permanent") {
           // For permanent employees, use full monthly salary - already handled by initialization of basicSalary
-        } else if (
-          employee.category === "consultant" ||
-          employee.category === "contract"
-        ) {
+        } else if (employee.category === "consultant" || employee.category === "contract") {
           // For consultants/contractors, check project assignments
           let totalEarnings = 0;
 
           for (const project of activeProjects) {
             if (!project || project.id == null) {
-              console.error(
-                `Skipping null project or project with null ID during payroll calculation for employee ID ${
-                  employee.id
-                }. Project data: ${JSON.stringify(project)}`
-              );
+              console.error(`Skipping null project or project with null ID during payroll calculation for employee ID ${employee.id}. Project data: ${JSON.stringify(project)}`);
               continue;
             }
-            console.log(
-              `[Payroll] Getting project assignments for employee ID: ${employee.id} (${employee.firstName} ${employee.lastName}) for project ID: ${project.id}`
-            );
+            console.log(`[Payroll] Getting project assignments for employee ID: ${employee.id} (${employee.firstName} ${employee.lastName}) for project ID: ${project.id}`);
             const projectEmployees = await this.getProjectEmployees(project.id);
-            const isAssigned = projectEmployees.some(
-              (pe) => pe && pe.id != null && pe.id === employee.id
-            );
+            const isAssigned = projectEmployees.some((pe) => pe && pe.id != null && pe.id === employee.id);
 
             if (isAssigned) {
               let projectStartDate;
@@ -9176,13 +9146,7 @@ class Storage {
                 projectStartDate = new Date(project.startDate);
               } else {
                 projectStartDate = new Date(year, month - 1, 1);
-                console.warn(
-                  `Project ID ${
-                    project.id
-                  } has null startDate. Defaulting to ${projectStartDate.toDateString()} for payroll calculation for employee ID ${
-                    employee.id
-                  }.`
-                );
+                console.warn(`Project ID ${project.id} has null startDate. Defaulting to ${projectStartDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`);
               }
 
               let projectEndDate;
@@ -9190,38 +9154,21 @@ class Storage {
                 projectEndDate = new Date(project.actualEndDate);
               } else if (project.plannedEndDate) {
                 projectEndDate = new Date(project.plannedEndDate);
-                console.warn(
-                  `Project ID ${
-                    project.id
-                  } has null actualEndDate, using plannedEndDate ${projectEndDate.toDateString()} for payroll calculation for employee ID ${
-                    employee.id
-                  }.`
-                );
+                console.warn(`Project ID ${project.id} has null actualEndDate, using plannedEndDate ${projectEndDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`);
               } else {
                 projectEndDate = new Date(year, month, 0); // Last day of current payroll month
-                console.warn(
-                  `Project ID ${
-                    project.id
-                  } has null actualEndDate and plannedEndDate. Defaulting to ${projectEndDate.toDateString()} for payroll calculation for employee ID ${
-                    employee.id
-                  }.`
-                );
+                console.warn(`Project ID ${project.id} has null actualEndDate and plannedEndDate. Defaulting to ${projectEndDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`);
               }
 
               // Calculate working days in the month for this project
               const monthStart = new Date(year, month - 1, 1);
               const monthEnd = new Date(year, month, 0); // Corrected to last day of current month
 
-              const effectiveStart =
-                projectStartDate > monthStart ? projectStartDate : monthStart;
-              const effectiveEnd =
-                projectEndDate < monthEnd ? projectEndDate : monthEnd;
+              const effectiveStart = projectStartDate > monthStart ? projectStartDate : monthStart;
+              const effectiveEnd = projectEndDate < monthEnd ? projectEndDate : monthEnd;
 
               if (effectiveStart <= effectiveEnd) {
-                const projectWorkingDays = this.calculateWorkingDays(
-                  effectiveStart,
-                  effectiveEnd
-                );
+                const projectWorkingDays = this.calculateWorkingDays(effectiveStart, effectiveEnd);
                 const dailyRate = parseFloat(employee.salary || "0") / 22; // Assuming 22 working days per month
                 totalEarnings += dailyRate * projectWorkingDays;
                 projectId = project.id; // Assign to the last project for GL tracking
@@ -9265,11 +9212,7 @@ class Storage {
         }
 
         // Create consultant project addition if applicable
-        if (
-          (employee.category === "consultant" ||
-            employee.category === "contract") &&
-          parseFloat(basicSalary) > 0
-        ) {
+        if ((employee.category === "consultant" || employee.category === "contract") && parseFloat(basicSalary) > 0) {
           await db.insert(payrollAdditions).values({
             payrollEntryId: payrollEntry.id,
             description: "Project Consultant Fee",
@@ -9284,19 +9227,71 @@ class Storage {
             .where(eq(payrollEntries.id, payrollEntry.id));
         }
 
+        // Add approved reimbursements for this employee in this payroll period
+        const employeeReimbursements = await db
+          .select()
+          .from(reimbursements)
+          .where(
+            and(
+              eq(reimbursements.employeeId, employee.id),
+              eq(reimbursements.status, "approved"),
+              eq(reimbursements.payrollMonth, month),
+              eq(reimbursements.payrollYear, year)
+            )
+          );
+
+        let totalReimbursementAmount = 0;
+        for (const reimbursement of employeeReimbursements) {
+          const reimbursementAmount = parseFloat(reimbursement.amount || "0");
+          if (reimbursementAmount > 0) {
+            await db.insert(payrollAdditions).values({
+              payrollEntryId: payrollEntry.id,
+              description: `Reimbursement: ${reimbursement.description?.substring(0, 50) || "Expense claim"}`,
+              amount: reimbursementAmount.toFixed(2),
+              note: `Original expense date: ${reimbursement.originalExpenseDate}`,
+            });
+            totalReimbursementAmount += reimbursementAmount;
+          }
+        }
+
+        // Update payroll entry totals if reimbursements were added
+        if (totalReimbursementAmount > 0) {
+          // Get the current payroll entry to use its existing totalAmount as base
+          const currentEntry = await this.getPayrollEntry(payrollEntry.id);
+          if (currentEntry) {
+            // Get all additions for this payroll entry
+            const allAdditions = await db
+              .select()
+              .from(payrollAdditions)
+              .where(eq(payrollAdditions.payrollEntryId, payrollEntry.id));
+            
+            const newTotalAdditions = allAdditions.reduce((sum, add) => sum + parseFloat(add.amount || "0"), 0);
+            
+            // For the total amount, we add reimbursements to the existing totalAmount
+            // This avoids double-counting because the existing totalAmount was calculated correctly
+            // (basicSalary - deductions for consultants, or basicSalary + additions - deductions for permanent)
+            const currentTotal = parseFloat(currentEntry.totalAmount || "0");
+            const newTotalAmount = currentTotal + totalReimbursementAmount;
+            
+            await db
+              .update(payrollEntries)
+              .set({ 
+                totalAdditions: newTotalAdditions.toFixed(2),
+                totalAmount: newTotalAmount.toFixed(2)
+              })
+              .where(eq(payrollEntries.id, payrollEntry.id));
+          }
+        }
+
         // Create double-entry GL records for salary expense only if amount > 0
         if (calculatedTotalEarnings > 0) {
-          const transactionDate = `${year}-${month
-            .toString()
-            .padStart(2, "0")}-01`;
+          const transactionDate = `${year}-${month.toString().padStart(2, '0')}-01`;
 
           let glEmployeeFirstName = employee.firstName;
           let glEmployeeLastName = employee.lastName;
 
           if (!glEmployeeFirstName && !glEmployeeLastName) {
-            console.warn(
-              `Employee ID ${employee.id} has null first and last names. Using defaults for GL employee name.`
-            );
+            console.warn(`Employee ID ${employee.id} has null first and last names. Using defaults for GL employee name.`);
             glEmployeeFirstName = "Unknown";
             glEmployeeLastName = "Employee";
           } else if (!glEmployeeFirstName) {
@@ -9307,11 +9302,7 @@ class Storage {
           const employeeName = `${glEmployeeFirstName} ${glEmployeeLastName}`;
           const monthName = this.getMonthName(month);
 
-          console.log(
-            `Creating GL entries for ${employeeName} - ${monthName} ${year} - Amount: ${calculatedTotalEarnings.toFixed(
-              2
-            )}`
-          );
+          console.log(`Creating GL entries for ${employeeName} - ${monthName} ${year} - Amount: ${calculatedTotalEarnings.toFixed(2)}`);
 
           // 1. Debit: Salary Expense (increase expense)
           await this.createGeneralLedgerEntry({
@@ -9347,15 +9338,9 @@ class Storage {
             createdBy: userId,
           });
 
-          console.log(
-            `Successfully created payroll entry and GL records for ${employeeName}`
-          );
+          console.log(`Successfully created payroll entry and GL records for ${employeeName}`);
         } else {
-          console.log(
-            `Skipping GL entries for employee ${employee.firstName} ${
-              employee.lastName
-            } - no earnings for ${this.getMonthName(month)} ${year}`
-          );
+          console.log(`Skipping GL entries for employee ${employee.firstName} ${employee.lastName} - no earnings for ${this.getMonthName(month)} ${year}`);
         }
 
         generatedPayroll.push({
@@ -9374,26 +9359,21 @@ class Storage {
           status: payrollEntry.status,
           generatedDate: payrollEntry.generatedDate,
           projectId: payrollEntry.projectId,
-          employee: {
-            // Use potentially defaulted names for the final returned object as well
+          employee: { // Use potentially defaulted names for the final returned object as well
             id: employee.id,
             firstName: employee.firstName || "Unknown",
-            lastName: employee.lastName || "Employee",
+            lastName: employee.lastName || "Employee", 
             employeeCode: employee.employeeCode,
           },
         });
       }
 
-      console.log(
-        `Successfully generated payroll for ${generatedPayroll.length} employees`
-      );
+      console.log(`Successfully generated payroll for ${generatedPayroll.length} employees`);
       return generatedPayroll;
     } catch (error: any) {
       console.error("Original error in generateMonthlyPayroll:", error); // Keep original console.error
       await this.createErrorLog({
-        message:
-          `Error in generateMonthlyPayroll (month: ${month}, year: ${year}): ` +
-          (error?.message || "Unknown error"),
+        message: `Error in generateMonthlyPayroll (month: ${month}, year: ${year}): ` + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "generateMonthlyPayroll",
         severity: "error",
@@ -9988,6 +9968,289 @@ class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "deletePayrollDeduction",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // Reimbursement Methods
+  async getReimbursements(filters?: { userId?: number; status?: string; employeeId?: number }): Promise<any[]> {
+    try {
+      let query = db
+        .select({
+          id: reimbursements.id,
+          employeeId: reimbursements.employeeId,
+          employeeName: sql<string>`COALESCE(CONCAT(${employees.firstName}, ' ', ${employees.lastName}), 'Unknown')`,
+          userId: reimbursements.userId,
+          userName: users.username,
+          userRole: users.role,
+          projectId: reimbursements.projectId,
+          projectName: projects.title,
+          amount: reimbursements.amount,
+          description: reimbursements.description,
+          originalExpenseDate: reimbursements.originalExpenseDate,
+          submissionTimestamp: reimbursements.submissionTimestamp,
+          status: reimbursements.status,
+          approvedById: reimbursements.approvedById,
+          approvalTimestamp: reimbursements.approvalTimestamp,
+          rejectionReason: reimbursements.rejectionReason,
+          payrollMonth: reimbursements.payrollMonth,
+          payrollYear: reimbursements.payrollYear,
+          attachments: reimbursements.attachments,
+        })
+        .from(reimbursements)
+        .leftJoin(employees, eq(reimbursements.employeeId, employees.id))
+        .leftJoin(users, eq(reimbursements.userId, users.id))
+        .leftJoin(projects, eq(reimbursements.projectId, projects.id))
+        .orderBy(desc(reimbursements.submissionTimestamp));
+
+      const result = await query;
+
+      // Apply filters in-memory for simplicity
+      let filtered = result;
+      if (filters?.userId) {
+        filtered = filtered.filter((r: any) => r.userId === filters.userId);
+      }
+      if (filters?.status) {
+        filtered = filtered.filter((r: any) => r.status === filters.status);
+      }
+      if (filters?.employeeId) {
+        filtered = filtered.filter((r: any) => r.employeeId === filters.employeeId);
+      }
+
+      // Get approver names
+      const enriched = await Promise.all(
+        filtered.map(async (r: any) => {
+          if (r.approvedById) {
+            const [approver] = await db
+              .select({ username: users.username })
+              .from(users)
+              .where(eq(users.id, r.approvedById));
+            return { ...r, approvedByName: approver?.username || "Unknown" };
+          }
+          return { ...r, approvedByName: null };
+        })
+      );
+
+      return enriched;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getReimbursements: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getReimbursements",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getReimbursement(id: number): Promise<any | undefined> {
+    try {
+      const [result] = await db
+        .select({
+          id: reimbursements.id,
+          employeeId: reimbursements.employeeId,
+          userId: reimbursements.userId,
+          userRole: users.role,
+          projectId: reimbursements.projectId,
+          amount: reimbursements.amount,
+          description: reimbursements.description,
+          originalExpenseDate: reimbursements.originalExpenseDate,
+          submissionTimestamp: reimbursements.submissionTimestamp,
+          status: reimbursements.status,
+          approvedById: reimbursements.approvedById,
+          approvalTimestamp: reimbursements.approvalTimestamp,
+          rejectionReason: reimbursements.rejectionReason,
+          payrollMonth: reimbursements.payrollMonth,
+          payrollYear: reimbursements.payrollYear,
+          attachments: reimbursements.attachments,
+        })
+        .from(reimbursements)
+        .leftJoin(users, eq(reimbursements.userId, users.id))
+        .where(eq(reimbursements.id, id));
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getReimbursement (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getReimbursement",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createReimbursement(data: InsertReimbursement): Promise<Reimbursement> {
+    try {
+      const [result] = await db
+        .insert(reimbursements)
+        .values({
+          ...data,
+          status: "pending",
+        })
+        .returning();
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in createReimbursement: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createReimbursement",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateReimbursement(id: number, data: { amount?: string; description?: string; originalExpenseDate?: string; projectId?: number | null }): Promise<Reimbursement | undefined> {
+    try {
+      const [result] = await db
+        .update(reimbursements)
+        .set(data)
+        .where(eq(reimbursements.id, id))
+        .returning();
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in updateReimbursement (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateReimbursement",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async approveReimbursement(id: number, approverId: number): Promise<Reimbursement | undefined> {
+    try {
+      const reimbursement = await this.getReimbursement(id);
+      if (!reimbursement) {
+        throw new Error("Reimbursement not found");
+      }
+
+      // Calculate next upcoming payroll date
+      const now = new Date();
+      const dayOfMonth = now.getDate();
+      let payrollMonth: number;
+      let payrollYear: number;
+
+      // If today is before the 20th, assign to current month's payroll (end of month)
+      // Otherwise, assign to next month's payroll
+      if (dayOfMonth < 20) {
+        payrollMonth = now.getMonth() + 1; // 1-12
+        payrollYear = now.getFullYear();
+      } else {
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        payrollMonth = nextMonth.getMonth() + 1; // 1-12
+        payrollYear = nextMonth.getFullYear();
+      }
+
+      // If a project is selected, add the reimbursement amount to the project's actual cost
+      if (reimbursement.projectId) {
+        const project = await this.getProject(reimbursement.projectId);
+        if (project) {
+          const currentActualCost = parseFloat(String(project.actualCost || "0"));
+          const reimbursementAmount = parseFloat(String(reimbursement.amount || "0"));
+          const newActualCost = (currentActualCost + reimbursementAmount).toFixed(2);
+          
+          await db
+            .update(projects)
+            .set({ actualCost: newActualCost })
+            .where(eq(projects.id, reimbursement.projectId));
+        }
+      }
+
+      const [result] = await db
+        .update(reimbursements)
+        .set({
+          status: "approved",
+          approvedById: approverId,
+          approvalTimestamp: new Date(),
+          payrollMonth,
+          payrollYear,
+        })
+        .where(eq(reimbursements.id, id))
+        .returning();
+
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in approveReimbursement (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "approveReimbursement",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async rejectReimbursement(id: number, approverId: number, reason?: string): Promise<Reimbursement | undefined> {
+    try {
+      const [result] = await db
+        .update(reimbursements)
+        .set({
+          status: "rejected",
+          approvedById: approverId,
+          approvalTimestamp: new Date(),
+          rejectionReason: reason || "No reason provided",
+        })
+        .where(eq(reimbursements.id, id))
+        .returning();
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in rejectReimbursement (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "rejectReimbursement",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getReimbursementsForPayroll(month: number, year: number): Promise<any[]> {
+    try {
+      const result = await db
+        .select({
+          id: reimbursements.id,
+          employeeId: reimbursements.employeeId,
+          employeeName: sql<string>`COALESCE(CONCAT(${employees.firstName}, ' ', ${employees.lastName}), 'Unknown')`,
+          amount: reimbursements.amount,
+          description: reimbursements.description,
+          originalExpenseDate: reimbursements.originalExpenseDate,
+        })
+        .from(reimbursements)
+        .leftJoin(employees, eq(reimbursements.employeeId, employees.id))
+        .where(
+          and(
+            eq(reimbursements.status, "approved"),
+            eq(reimbursements.payrollMonth, month),
+            eq(reimbursements.payrollYear, year)
+          )
+        );
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getReimbursementsForPayroll (${month}/${year}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getReimbursementsForPayroll",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteReimbursement(id: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(reimbursements)
+        .where(eq(reimbursements.id, id));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in deleteReimbursement (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteReimbursement",
         severity: "error",
       });
       throw error;
@@ -10746,6 +11009,15 @@ export interface IStorage {
 
   // Helper method
   updatePayrollEntryTotals(payrollEntryId: number): Promise<void>;
+
+  // Reimbursement methods
+  getReimbursements(filters?: { userId?: number; status?: string; employeeId?: number }): Promise<any[]>;
+  getReimbursement(id: number): Promise<Reimbursement | undefined>;
+  createReimbursement(data: InsertReimbursement): Promise<Reimbursement>;
+  approveReimbursement(id: number, approverId: number): Promise<Reimbursement | undefined>;
+  rejectReimbursement(id: number, approverId: number, reason?: string): Promise<Reimbursement | undefined>;
+  getReimbursementsForPayroll(month: number, year: number): Promise<any[]>;
+  deleteReimbursement(id: number): Promise<boolean>;
 
   // Sales Quotation methods
   getSalesQuotations(): Promise<SalesQuotation[]>;
