@@ -529,6 +529,7 @@ export default function CreditNotesIndex() {
   }
 
   return (
+    <div className="container mx-auto p-4 md:p-6">
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Credit Notes</h1>
@@ -783,6 +784,7 @@ export default function CreditNotesIndex() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }
