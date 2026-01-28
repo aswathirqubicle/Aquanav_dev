@@ -1,6 +1,5 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
-import express from "express";
 import { storage } from "./storage";
 import { assetRoutes } from "./asset-routes";
 import bcrypt from "bcrypt";
@@ -580,8 +579,10 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/employee-documents";
     } else if (req.originalUrl?.includes("/api/company")) {
       uploadDir = "uploads/company";
-    } else if (req.originalUrl.includes("/api/purchase-orders")) {
+    } else if (req.originalUrl?.includes("/api/purchase-orders")) {
       uploadDir = "uploads/purchase-order";
+    }else if (req.originalUrl?.includes('reimbursements')) {
+      uploadDir = "uploads/reimbursements";
     }
 
     if (!fs.existsSync(uploadDir)) {
@@ -640,6 +641,9 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Serve uploaded files statically
+  app.use("/uploads", express.static("uploads"));
+  
   // Session middleware
   app.use(
     session({
@@ -786,8 +790,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(["admin"]),
     async (req, res) => {
       try {
-        const userData = insertUserSchema.parse(req.body);
-        const user = await storage.createUser(userData);
+        const { employeeId, ...userData } = req.body;
+        const parsedUserData = insertUserSchema.parse(userData);
+        
+        // Validate employeeId if provided
+        if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+          const empId = parseInt(employeeId);
+          if (isNaN(empId)) {
+            return res.status(400).json({ message: "Invalid employee ID format" });
+          }
+          const employee = await storage.getEmployee(empId);
+          if (!employee) {
+            return res.status(404).json({ message: "Employee not found" });
+          }
+          if (employee.userId) {
+            return res.status(400).json({ message: "This employee is already linked to another user" });
+          }
+        }
+        
+        const user = await storage.createUser(parsedUserData);
+        
+        // Link employee to user if employeeId provided
+        if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+          await storage.updateEmployee(parseInt(employeeId), { userId: user.id });
+        }
         const { password, ...userWithoutPassword } = user;
         res.status(201).json(userWithoutPassword);
       } catch (error) {
@@ -808,10 +834,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const userData = req.body;
+        const { employeeId, ...userData } = req.body;
 
         if (userData.password) {
           userData.password = await bcrypt.hash(userData.password, 10);
+        }
+
+        // Check if user already has a linked employee
+        const allEmployees = await storage.getEmployees();
+        const existingLinkedEmployee = allEmployees.find(e => e.userId === id);
+        
+        // If user already has a linked employee, reject any attempt to change it
+        if (existingLinkedEmployee) {
+          // Check if employeeId is provided and differs from existing link
+          if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+            const providedEmpId = parseInt(employeeId);
+            if (providedEmpId !== existingLinkedEmployee.id) {
+              return res.status(400).json({ message: "Cannot change employee link once established" });
+            }
+          }
+        } else if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+          // No existing link, validate and link new employee
+          const empId = parseInt(employeeId);
+          if (isNaN(empId)) {
+            return res.status(400).json({ message: "Invalid employee ID format" });
+          }
+          const employee = await storage.getEmployee(empId);
+          if (!employee) {
+            return res.status(404).json({ message: "Employee not found" });
+          }
+          if (employee.userId && employee.userId !== id) {
+            return res.status(400).json({ message: "This employee is already linked to another user" });
+          }
+          await storage.updateEmployee(empId, { userId: id });
         }
 
         const user = await storage.updateUser(id, userData);
@@ -3121,7 +3176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Get all asset assignments for earnings calculation
+  // Get all asset assignments for earnings calculation (legacy)
   app.get("/api/asset-assignments", requireAuth, async (req, res) => {
     try {
       const assignments = await storage.getAllAssetAssignments();
@@ -3129,6 +3184,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting all asset assignments:", error);
       res.json([]); // Return empty array instead of error to prevent reports from failing
+    }
+  });
+
+  // Get all asset instance assignments for reports
+  app.get("/api/asset-instance-assignments", requireAuth, async (req, res) => {
+    try {
+      const assignments = await storage.getAllAssetInstanceAssignments();
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error getting all asset instance assignments:", error);
+      res.json([]);
     }
   });
 
@@ -3570,6 +3636,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .json({ message: "Failed to unarchive sales quotation" });
       }
     }
+  );
+
+  // Chart of Accounts routes
+  app.get(
+    "/api/chart-of-accounts",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const accounts = await storage.getChartOfAccounts();
+        res.json(accounts);
+      } catch (error: any) {
+        console.error("Error fetching chart of accounts:", error);
+        res.status(500).json({ message: "Failed to fetch chart of accounts" });
+      }
+    },
   );
 
   // General Ledger routes
@@ -4493,7 +4575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-    // Reimbursement routes
+  // Reimbursement routes
   app.get("/api/reimbursements", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;

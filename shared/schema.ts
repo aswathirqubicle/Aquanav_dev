@@ -35,6 +35,10 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   email: text("email"),
   website: text("website"),
+  financialYearStartDay: integer("financial_year_start_day").default(1),
+  financialYearStartMonth: integer("financial_year_start_month").default(1),
+  financialYearEndDay: integer("financial_year_end_day").default(31),
+  financialYearEndMonth: integer("financial_year_end_month").default(12),
 });
 
 // Customers
@@ -642,10 +646,7 @@ export const payrollAdditions = pgTable("payroll_additions", {
 // Payroll Deductions
 export const payrollDeductions = pgTable("payroll_deductions", {
   id: serial("id").primaryKey(),
-  payrollEntryId: integer("payroll_entry_id").references(
-    () => payrollEntries.id,
-    { onDelete: "cascade" }
-  ),
+  payrollEntryId: integer("payroll_entry_id").references(() => payrollEntries.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   note: text("note"),
@@ -948,6 +949,21 @@ export const errorLogs = pgTable("error_logs", {
   severity: text("severity").notNull().default("error"),
   component: text("component"),
   resolved: boolean("resolved").notNull().default(false),
+});
+
+// Chart of Accounts table
+export const chartOfAccounts = pgTable("chart_of_accounts", {
+  id: serial("id").primaryKey(),
+  accountCode: text("account_code").notNull().unique(),
+  accountName: text("account_name").notNull().unique(),
+  accountType: text("account_type").notNull(), // asset, liability, equity, revenue, expense
+  accountCategory: text("account_category").notNull(), // current_assets, fixed_assets, current_liabilities, etc.
+  parentAccountId: integer("parent_account_id"),
+  isActive: boolean("is_active").default(true),
+  description: text("description"),
+  createdAt: timestamp("created_at", { mode: "string" }).defaultNow(),
+  entityType: text("entity_type"),
+  entityId: integer("entity_id"),
 });
 
 // General Ledger Entries table
@@ -1366,6 +1382,12 @@ export const insertGeneralLedgerEntrySchema = createInsertSchema(
   generalLedgerEntries
 ).omit({ id: true, createdAt: true });
 
+// Chart of Accounts Schema
+export const insertChartOfAccountsSchema = createInsertSchema(chartOfAccounts).omit({ id: true, createdAt: true }).extend({
+  accountType: z.enum(["asset", "liability", "equity", "revenue", "expense"]),
+  accountCategory: z.string(),
+});
+
 // Customer and Supplier Document Schemas
 export const insertCustomerDocumentSchema = createInsertSchema(
   customerDocuments
@@ -1533,6 +1555,8 @@ export type GeneralLedgerEntry = typeof generalLedgerEntries.$inferSelect;
 export type InsertGeneralLedgerEntry = z.infer<
   typeof insertGeneralLedgerEntrySchema
 >;
+export type ChartOfAccount = typeof chartOfAccounts.$inferSelect;
+export type InsertChartOfAccount = z.infer<typeof insertChartOfAccountsSchema>;
 
 // Customer and Supplier Document Types
 export type CustomerDocument = typeof customerDocuments.$inferSelect;

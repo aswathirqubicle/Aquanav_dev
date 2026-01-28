@@ -61,6 +61,7 @@ import {
   proformaInvoices,
   creditNotes,
   generalLedgerEntries,
+  chartOfAccounts,
   customerDocuments,
   supplierDocuments,
   reimbursements,
@@ -126,6 +127,7 @@ import {
   type ErrorLog, // Will be used later
   type AssetType,
   type InsertAssetType,
+  type ChartOfAccount,
 } from "@shared/schema";
 import bcrypt from "bcrypt";
 import fs from "fs/promises";
@@ -4096,6 +4098,68 @@ class Storage {
         .where(eq(salesInvoices.projectId, projectId))
         .orderBy(desc(invoicePayments.paymentDate));
 
+        // Get purchase invoice items linked to this project
+      const purchaseItemsData = await db
+        .select({
+          description: purchaseInvoiceItems.description,
+          quantity: purchaseInvoiceItems.quantity,
+          unitPrice: purchaseInvoiceItems.unitPrice,
+          taxAmount: purchaseInvoiceItems.taxAmount,
+          supplierName: suppliers.name,
+          invoiceNumber: purchaseInvoices.invoiceNumber,
+          invoiceDate: purchaseInvoices.invoiceDate,
+        })
+        .from(purchaseInvoiceItems)
+        .leftJoin(purchaseInvoices, eq(purchaseInvoiceItems.invoiceId, purchaseInvoices.id))
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .where(and(
+          eq(purchaseInvoiceItems.projectId, projectId),
+          eq(purchaseInvoices.status, "approved")
+        ))
+        .orderBy(desc(purchaseInvoices.invoiceDate));
+
+        const purchaseItems = purchaseItemsData.map(item => {
+        const quantity = parseFloat(String(item.quantity || "1"));
+        const unitPrice = parseFloat(String(item.unitPrice || "0"));
+        const taxAmount = parseFloat(String(item.taxAmount || "0"));
+        const totalAmount = (quantity * unitPrice) + taxAmount;
+        return {
+          description: item.description || "Unknown item",
+          amount: totalAmount.toFixed(2),
+          supplierName: item.supplierName,
+          invoiceNumber: item.invoiceNumber,
+          date: item.invoiceDate ? String(item.invoiceDate) : null,
+        };
+      });
+
+      // Get approved reimbursements linked to this project
+      const reimbursementsData = await db
+        .select({
+          description: reimbursements.description,
+          amount: reimbursements.amount,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+          approvalTimestamp: reimbursements.approvalTimestamp,
+        })
+        .from(reimbursements)
+        .leftJoin(employees, eq(reimbursements.employeeId, employees.id))
+        .where(and(
+          eq(reimbursements.projectId, projectId),
+          eq(reimbursements.status, "approved")
+        ))
+        .orderBy(desc(reimbursements.approvalTimestamp));
+
+      const reimbursementItems = reimbursementsData.map(item => ({
+        description: item.description || "Reimbursement",
+        amount: String(item.amount || "0"),
+        employeeName: item.firstName && item.lastName ? `${item.firstName} ${item.lastName}` : null,
+        date: item.approvalTimestamp ? new Date(item.approvalTimestamp).toISOString() : null,
+      }));
+
+      // Calculate totals
+      const purchaseTotal = purchaseItems.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+      const reimbursementTotal = reimbursementItems.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+
       // Calculate total revenue from payments
       const totalRevenue = projectInvoicePayments.reduce((sum, payment) => {
         return sum + parseFloat(payment.amount || "0");
@@ -4113,6 +4177,12 @@ class Storage {
         totalCost: totalCost.toFixed(2),
         profit: profit.toFixed(2),
         invoicePayments: projectInvoicePayments,
+        expenses: {
+          purchaseItems,
+          reimbursements: reimbursementItems,
+          purchaseTotal: purchaseTotal.toFixed(2),
+          reimbursementTotal: reimbursementTotal.toFixed(2),
+        },
       };
     } catch (error: any) {
       await this.createErrorLog({
@@ -5069,6 +5139,44 @@ class Storage {
     }
   }
 
+  // Chart of Accounts methods
+  async getChartOfAccounts(): Promise<ChartOfAccount[]> {
+    try {
+      const accounts = await db
+        .select()
+        .from(chartOfAccounts)
+        .where(eq(chartOfAccounts.isActive, true))
+        .orderBy(chartOfAccounts.accountCode);
+      return accounts;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getChartOfAccounts: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getChartOfAccounts",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getChartOfAccountByName(accountName: string): Promise<ChartOfAccount | undefined> {
+    try {
+      const accounts = await db
+        .select()
+        .from(chartOfAccounts)
+        .where(eq(chartOfAccounts.accountName, accountName))
+        .limit(1);
+      return accounts[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getChartOfAccountByName: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getChartOfAccountByName",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
   // General Ledger methods
   async getGeneralLedgerEntries(filters: {
     entryType?: string;
@@ -5531,35 +5639,76 @@ class Storage {
     }
   }
 
-  async getReceivables() {
-    return await db
-      .select({
-        invoiceId: salesInvoices.id,
-        invoiceNumber: salesInvoices.invoiceNumber,
-        customerName: customers.name,
-        totalAmount: salesInvoices.totalAmount,
-        paidAmount: sql<number>`COALESCE(SUM(${invoicePayments.amount}), 0)`,
-        outstandingAmount: sql<number>`
-          ${salesInvoices.totalAmount} -
-          COALESCE(SUM(${invoicePayments.amount}), 0)
-        `,
-        dueDate: salesInvoices.dueDate,
-        status: sql<string>`
-          CASE
-            WHEN COALESCE(SUM(${invoicePayments.amount}), 0) = 0 THEN 'unpaid'
-            WHEN COALESCE(SUM(${invoicePayments.amount}), 0) < ${salesInvoices.totalAmount} THEN 'partially_paid'
-            ELSE 'paid'
-          END
-        `,
-      })
-      .from(salesInvoices)
-      .leftJoin(
-        invoicePayments,
-        eq(invoicePayments.invoiceId, salesInvoices.id)
+    async getReceivables(): Promise<any[]> {
+    try {
+        // Get all invoices that could have receivables (exclude draft and rejected)
+        const invoicesList = await db
+        .select()
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .where(
+          and(
+            ne(salesInvoices.status, "draft"),
+            ne(salesInvoices.status, "rejected"),
+            ne(salesInvoices.status, "pending_approval"),
+            or(
+              eq(salesInvoices.status, "approved"),
+              eq(salesInvoices.status, "partially_paid"),
+              eq(salesInvoices.status, "paid"),
+              isNotNull(salesInvoices.invoiceNumber)
+            )
+        )
       )
-      .leftJoin(customers, eq(customers.id, salesInvoices.customerId))
-      .groupBy(salesInvoices.id, customers.name)
-      .orderBy(desc(salesInvoices.dueDate));
+        .orderBy(desc(salesInvoices.invoiceDate));
+      // Get all payments for sales invoices
+      const paymentsList = await db
+        .select()
+        .from(invoicePayments);
+
+      // Calculate outstanding amounts for each invoice
+      const receivables = invoicesList.map((row) => {
+        const invoice = row.sales_invoices;
+        const customer = row.customers;
+        
+        const totalAmount = parseFloat(invoice.totalAmount || "0");
+        // Use paidAmount from invoice or calculate from payments
+        const invoicePaidAmount = parseFloat(invoice.paidAmount || "0");
+        const paymentsPaidAmount = paymentsList
+          .filter((p) => p.invoiceId === invoice.id)
+          .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+        const paidAmount = Math.max(invoicePaidAmount, paymentsPaidAmount);
+        const outstandingAmount = totalAmount - paidAmount;
+        
+        // Check if overdue
+        const today = new Date();
+        const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+        const isOverdue = dueDate && dueDate < today && outstandingAmount > 0;
+
+        return {
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          customerId: invoice.customerId,
+          customerName: customer?.name || "Unknown Customer",
+          totalAmount: totalAmount.toFixed(2),
+          paidAmount: paidAmount.toFixed(2),
+          outstandingAmount: outstandingAmount.toFixed(2),
+          invoiceDate: invoice.invoiceDate,
+          dueDate: invoice.dueDate,
+          status: paidAmount >= totalAmount ? "paid" : (paidAmount > 0 ? "partial" : "unpaid"),
+          isOverdue,
+        };
+      }).filter((r) => parseFloat(r.outstandingAmount) > 0);
+
+      return receivables;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getReceivables: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getReceivables",
+        severity: "error",
+      });
+      throw error;
+    }
   }
 
   // Sales Quotation methods
@@ -6539,7 +6688,7 @@ class Storage {
           projectTitle: projects.title,
           assetId: projectAssetAssignments.assetId,
           assetName: assetTypes.name,
-          assetCode: assets.assetTag,
+          assetCode: assetInventoryInstances.barcode,
           startDate: projectAssetAssignments.startDate,
           endDate: projectAssetAssignments.endDate,
           monthlyRate: projectAssetAssignments.monthlyRate,
@@ -6548,8 +6697,8 @@ class Storage {
         })
         .from(projectAssetAssignments)
         .leftJoin(projects, eq(projectAssetAssignments.projectId, projects.id))
-        .leftJoin(assets, eq(projectAssetAssignments.assetId, assets.id))
-        .leftJoin(assetTypes, eq(assets.assetTypeId, assetTypes.id))
+        .leftJoin(assetInventoryInstances, eq(projectAssetAssignments.assetId, assetInventoryInstances.id))
+        .leftJoin(assetTypes, eq(assetInventoryInstances.assetTypeId, assetTypes.id))
         .orderBy(desc(projectAssetAssignments.assignedAt));
 
       return assignments;
@@ -6674,6 +6823,43 @@ class Storage {
         severity: "error",
       });
       throw error;
+    }
+  }
+
+  async getAllAssetInstanceAssignments(): Promise<any[]> {
+    try {
+      const assignments = await db
+        .select({
+          id: projectAssetInstanceAssignments.id,
+          projectId: projectAssetInstanceAssignments.projectId,
+          projectTitle: projects.title,
+          assetTypeId: projectAssetInstanceAssignments.assetTypeId,
+          instanceId: projectAssetInstanceAssignments.instanceId,
+          barcode: projectAssetInstanceAssignments.barcode,
+          serialNumber: projectAssetInstanceAssignments.serialNumber,
+          startDate: projectAssetInstanceAssignments.startDate,
+          endDate: projectAssetInstanceAssignments.endDate,
+          monthlyRate: projectAssetInstanceAssignments.monthlyRate,
+          totalCost: projectAssetInstanceAssignments.totalCost,
+          status: projectAssetInstanceAssignments.status,
+          assignedAt: projectAssetInstanceAssignments.assignedAt,
+          assetTypeName: assetTypes.name,
+          assetTypeCategory: assetTypes.category,
+          assetTag: assetInventoryInstances.assetTag,
+          instanceMonthlyRental: assetInventoryInstances.monthlyRentalAmount,
+          instanceAcquisitionCost: assetInventoryInstances.acquisitionCost,
+          instanceStatus: assetInventoryInstances.status,
+        })
+        .from(projectAssetInstanceAssignments)
+        .leftJoin(projects, eq(projectAssetInstanceAssignments.projectId, projects.id))
+        .leftJoin(assetInventoryInstances, eq(projectAssetInstanceAssignments.instanceId, assetInventoryInstances.id))
+        .leftJoin(assetTypes, eq(projectAssetInstanceAssignments.assetTypeId, assetTypes.id))
+        .orderBy(desc(projectAssetInstanceAssignments.assignedAt));
+
+      return assignments;
+    } catch (error: any) {
+      console.error("Error in getAllAssetInstanceAssignments:", error);
+      return [];
     }
   }
 
@@ -8354,6 +8540,57 @@ class Storage {
           });
         }
       }
+
+      // Create General Ledger entries for the approved purchase invoice
+      // Get supplier name
+      let supplierName = "Unknown Supplier";
+      if (invoice.supplierId) {
+        const [supplier] = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.id, invoice.supplierId));
+        if (supplier) {
+          supplierName = supplier.name;
+        }
+      }
+
+      // Create payable entry (Credit Accounts Payable)
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_invoice",
+        referenceId: id,
+        accountName: "Accounts Payable",
+        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        debitAmount: "0",
+        creditAmount: invoice.totalAmount || "0",
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: invoice.invoiceDate,
+        dueDate: invoice.dueDate,
+        status: "pending",
+      });
+
+      // Create expense entry (Debit Purchase Expense)
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_invoice",
+        referenceId: id,
+        accountName: "Purchase Expense",
+        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        debitAmount: invoice.totalAmount || "0",
+        creditAmount: "0",
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: invoice.invoiceDate,
+        dueDate: invoice.dueDate,
+        status: "pending",
+      });
+
+      console.log(`GL entries created for purchase invoice ${invoice.invoiceNumber}`);
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -8439,6 +8676,55 @@ class Storage {
           status: newStatus,
         })
         .where(eq(purchaseInvoices.id, paymentData.invoiceId));
+
+      // Create General Ledger entries for the payment
+      // Get supplier name
+      let supplierName = "Unknown Supplier";
+      if (invoice.supplierId) {
+        const [supplier] = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.id, invoice.supplierId));
+        if (supplier) {
+          supplierName = supplier.name;
+        }
+      }
+
+      // 1. Debit: Accounts Payable (reduce liability - we owe less)
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_payment",
+        referenceId: payment.id,
+        accountName: "Accounts Payable",
+        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        debitAmount: paymentData.amount,
+        creditAmount: "0",
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: paymentData.paymentDate,
+        status: "paid",
+      });
+
+      // 2. Credit: Cash/Bank (reduce asset - cash outflow)
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_payment",
+        referenceId: payment.id,
+        accountName: "Cash/Bank",
+        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        debitAmount: "0",
+        creditAmount: paymentData.amount,
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: paymentData.paymentDate,
+        status: "paid",
+      });
+
+      console.log(`GL entries created for purchase invoice payment ${payment.id}`);
 
       return payment;
     } catch (error: any) {
@@ -11068,6 +11354,12 @@ export interface IStorage {
     totalCost: string;
     profit: string;
     invoicePayments: InvoicePaymentWithCustomerName[];
+    expenses: {
+      purchaseItems: { description: string; amount: string; supplierName: string | null; invoiceNumber: string | null; date: string | null }[];
+      reimbursements: { description: string; amount: string; employeeName: string | null; date: string | null }[];
+      purchaseTotal: string;
+      reimbursementTotal: string;
+    };
   }>;
   updateProjectRevenue(projectId: number): Promise<void>;
   // updateInvoicePaidAmount(invoiceId: number): Promise<void>; // Already listed under Invoice Payments
@@ -11174,6 +11466,10 @@ export interface IStorage {
 
   // General Ledger methods
   createInvoiceGLEntries(invoiceId: number): Promise<void>;
+
+  // Chart of Accounts methods
+  getChartOfAccounts(): Promise<ChartOfAccount[]>;
+  getChartOfAccountByName(accountName: string): Promise<ChartOfAccount | undefined>;
 }
 
 import {
