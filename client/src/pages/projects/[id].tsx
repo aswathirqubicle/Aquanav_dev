@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,10 +28,254 @@ import {
   Plus,
   Upload,
   Package,
-  Trash2
+  Trash2,
+  Eye,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
 import { z } from "zod";
+
+const ITEMS_PER_PAGE = 5;
+
+
+function RevenueDetailsDialog({
+  payments,
+  totalRevenue,
+  formatCurrency
+}: {
+  payments: any[];
+  totalRevenue: string;
+  formatCurrency: (amount: string | number) => string;
+}) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.ceil(payments.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedPayments = payments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-xs">
+          <Eye className="h-3 w-3 mr-1" />
+          Details
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Revenue Details - Payments</DialogTitle>
+          <DialogDescription>
+            All payments received for this project
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 mt-4">
+          <div className="flex justify-between font-medium text-sm border-b pb-2">
+            <span>Total Payments: {payments.length}</span>
+            <span className="text-green-600 dark:text-green-400">
+              {formatCurrency(totalRevenue)}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {paginatedPayments.map((payment: any, index: number) => (
+              <div key={payment.id || startIndex + index} className="text-sm bg-green-50 dark:bg-green-900/20 p-3 rounded">
+                <div className="flex justify-between">
+                  <span className="font-medium">{payment.customerName}</span>
+                  <span className="font-bold text-green-600 dark:text-green-400">
+                    {formatCurrency(payment.amount)}
+                  </span>
+                </div>
+                <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
+                  <span>{payment.paymentMethod || 'Payment'}</span>
+                  <span>{new Date(payment.paymentDate).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-3 border-t">
+              <span className="text-xs text-slate-500">
+                Page {currentPage} of {totalPages}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ExpenseDetailsDialog({
+  expenses,
+  formatCurrency
+}: {
+  expenses: {
+    purchaseItems: any[];
+    reimbursements: any[];
+    purchaseTotal: string;
+    reimbursementTotal: string;
+  };
+  formatCurrency: (amount: string | number) => string;
+}) {
+  const [purchasePage, setPurchasePage] = useState(1);
+  const [reimbursementPage, setReimbursementPage] = useState(1);
+
+  const purchaseTotalPages = Math.ceil(expenses.purchaseItems.length / ITEMS_PER_PAGE);
+  const reimbursementTotalPages = Math.ceil(expenses.reimbursements.length / ITEMS_PER_PAGE);
+
+  const purchaseStartIndex = (purchasePage - 1) * ITEMS_PER_PAGE;
+  const reimbursementStartIndex = (reimbursementPage - 1) * ITEMS_PER_PAGE;
+
+  const paginatedPurchases = expenses.purchaseItems.slice(purchaseStartIndex, purchaseStartIndex + ITEMS_PER_PAGE);
+  const paginatedReimbursements = expenses.reimbursements.slice(reimbursementStartIndex, reimbursementStartIndex + ITEMS_PER_PAGE);
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-xs">
+          <Eye className="h-3 w-3 mr-1" />
+          Details
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Cost Details - Expenses</DialogTitle>
+          <DialogDescription>
+            Breakdown of all expenses for this project
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 mt-4">
+          <div className="grid grid-cols-2 gap-4 border-b pb-3">
+            <div>
+              <p className="text-xs text-slate-500">Purchase Items</p>
+              <p className="font-bold text-red-600 dark:text-red-400">
+                {formatCurrency(expenses.purchaseTotal)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Reimbursements</p>
+              <p className="font-bold text-orange-600 dark:text-orange-400">
+                {formatCurrency(expenses.reimbursementTotal)}
+              </p>
+            </div>
+          </div>
+          {expenses.purchaseItems.length > 0 && (
+            <div>
+              <p className="text-sm font-medium mb-2">Purchase Items ({expenses.purchaseItems.length})</p>
+              <div className="space-y-2">
+                {paginatedPurchases.map((item: any, index: number) => (
+                  <div key={`purchase-${purchaseStartIndex + index}`} className="text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded">
+                    <div className="flex justify-between">
+                      <span className="font-medium truncate max-w-[60%]">{item.description}</span>
+                      <span className="font-bold text-red-600 dark:text-red-400">
+                        {formatCurrency(item.amount)}
+                      </span>
+                    </div>
+                    <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
+                      <span>{item.supplierName || 'Unknown supplier'}</span>
+                      {item.date && <span>{new Date(item.date).toLocaleDateString()}</span>}
+                    </div>
+                    {item.invoiceNumber && (
+                      <div className="text-xs text-slate-400 mt-1">Invoice: {item.invoiceNumber}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {purchaseTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 mt-2">
+                  <span className="text-xs text-slate-500">
+                    Page {purchasePage} of {purchaseTotalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPurchasePage(p => Math.max(1, p - 1))}
+                      disabled={purchasePage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPurchasePage(p => Math.min(purchaseTotalPages, p + 1))}
+                      disabled={purchasePage === purchaseTotalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {expenses.reimbursements.length > 0 && (
+            <div>
+              <p className="text-sm font-medium mb-2">Reimbursements ({expenses.reimbursements.length})</p>
+              <div className="space-y-2">
+                {paginatedReimbursements.map((item: any, index: number) => (
+                  <div key={`reimb-${reimbursementStartIndex + index}`} className="text-sm bg-orange-50 dark:bg-orange-900/20 p-3 rounded">
+                    <div className="flex justify-between">
+                      <span className="font-medium truncate max-w-[60%]">{item.description}</span>
+                      <span className="font-bold text-orange-600 dark:text-orange-400">
+                        {formatCurrency(item.amount)}
+                      </span>
+                    </div>
+                    <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
+                      <span>{item.employeeName || 'Employee'}</span>
+                      {item.date && <span>{new Date(item.date).toLocaleDateString()}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {reimbursementTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 mt-2">
+                  <span className="text-xs text-slate-500">
+                    Page {reimbursementPage} of {reimbursementTotalPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReimbursementPage(p => Math.max(1, p - 1))}
+                      disabled={reimbursementPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setReimbursementPage(p => Math.min(reimbursementTotalPages, p + 1))}
+                      disabled={reimbursementPage === reimbursementTotalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // Vessel Location Tracker Component
 interface VesselLocationTrackerProps {
@@ -2195,47 +2439,43 @@ export default function ProjectDetail() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Total Revenue</p>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                    {formatCurrency(projectRevenue.totalRevenue)}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Total Revenue</p>
+                    <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(projectRevenue.totalRevenue)}
+                    </p>
+                  </div>
+                  {projectRevenue.invoicePayments.length > 0 && (
+                    <RevenueDetailsDialog
+                      payments={projectRevenue.invoicePayments}
+                      totalRevenue={projectRevenue.totalRevenue}
+                      formatCurrency={formatCurrency}
+                    />
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Total Cost</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                    {formatCurrency(projectRevenue.totalCost)}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Total Cost</p>
+                    <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                      {formatCurrency(projectRevenue.totalCost)}
+                    </p>
+                  </div>
+                  {projectRevenue.expenses && (parseFloat(projectRevenue.expenses.purchaseTotal) > 0 || parseFloat(projectRevenue.expenses.reimbursementTotal) > 0) && (
+                    <ExpenseDetailsDialog
+                      expenses={projectRevenue.expenses}
+                      formatCurrency={formatCurrency}
+                    />)}
                 </div>
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Net Profit/Loss</p>
                   <p className={`text-lg font-bold ${parseFloat(projectRevenue.profit) >= 0
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
                     }`}>
                     {formatCurrency(projectRevenue.profit)}
                   </p>
                 </div>
-                {projectRevenue.invoicePayments.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">
-                      Recent Payments ({projectRevenue.invoicePayments.length})
-                    </p>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {projectRevenue.invoicePayments.slice(0, 3).map((payment: any) => (
-                        <div key={payment.paymentId} className="text-xs bg-slate-50 dark:bg-slate-800 p-2 rounded">
-                          <div className="flex justify-between">
-                            <span>{payment.customerName}</span>
-                            <span className="font-medium">{formatCurrency(payment.amount)}</span>
-                          </div>
-                          <div className="text-slate-500 dark:text-slate-400">
-                            {new Date(payment.paymentDate).toLocaleDateString()}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}

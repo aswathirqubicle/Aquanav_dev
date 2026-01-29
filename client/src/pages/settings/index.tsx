@@ -36,6 +36,10 @@ export default function SettingsIndex() {
     phone: "",
     email: "",
     website: "",
+    financialYearStartDay: 1,
+    financialYearStartMonth: 1,
+    financialYearEndDay: 31,
+    financialYearEndMonth: 12,
   });
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -69,7 +73,7 @@ export default function SettingsIndex() {
 
   useEffect(() => {
     if (company) {
-      console.log("company",company)
+      console.log("company", company)
       setCompanyData({
         name: company.name || "",
         address: company.address || "",
@@ -77,6 +81,10 @@ export default function SettingsIndex() {
         phone: company.phone || "",
         email: company.email || "",
         website: company.website || "",
+        financialYearStartDay: company.financialYearStartDay || 1,
+        financialYearStartMonth: company.financialYearStartMonth || 1,
+        financialYearEndDay: company.financialYearEndDay || 31,
+        financialYearEndMonth: company.financialYearEndMonth || 12,
       });
 
       // ✅ show existing logo
@@ -86,7 +94,7 @@ export default function SettingsIndex() {
 
   const updateCompanyMutation = useMutation({
     mutationFn: async (data: UpdateCompanyData) => {
-      console.log("data",data);
+      console.log("data", data);
       const formData = new FormData();
 
       formData.append("name", data.name);
@@ -141,7 +149,7 @@ export default function SettingsIndex() {
     updateCompanyMutation.mutate(companyData);
   };
 
-  const handleCompanyChange = (field: keyof UpdateCompanyData, value: string) => {
+  const handleCompanyChange = (field: keyof UpdateCompanyData, value: string | number) => {
     setCompanyData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -248,8 +256,8 @@ export default function SettingsIndex() {
                           }
                         }}
                       />
-                      </div>
-                      <div className="space-y-2">
+                    </div>
+                    <div className="space-y-2">
                       {logoPreview && (
                         <img
                           src={logoPreview}
@@ -302,6 +310,97 @@ export default function SettingsIndex() {
                         onChange={(e) => handleCompanyChange("email", e.target.value)}
                         placeholder="info@yourcompany.com"
                       />
+                    </div>
+                  </div>
+
+                  <Separator className="my-6" />
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Financial Year Settings</h3>
+                    <p className="text-sm text-muted-foreground">Configure your organization's financial year period.</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4 p-4 border rounded-lg">
+                        <h4 className="font-medium text-sm">Financial Year Start</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="fyStartDay">Day</Label>
+                            <select
+                              id="fyStartDay"
+                              value={companyData.financialYearStartDay || 1}
+                              onChange={(e) => handleCompanyChange("financialYearStartDay", parseInt(e.target.value))}
+                              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                            >
+                              {Array.from({ length: 31 }, (_, i) => (
+                                <option key={i + 1} value={i + 1}>{i + 1}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="fyStartMonth">Month</Label>
+                            <select
+                              id="fyStartMonth"
+                              value={companyData.financialYearStartMonth || 1}
+                              onChange={(e) => handleCompanyChange("financialYearStartMonth", parseInt(e.target.value))}
+                              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                            >
+                              <option value={1}>January</option>
+                              <option value={2}>February</option>
+                              <option value={3}>March</option>
+                              <option value={4}>April</option>
+                              <option value={5}>May</option>
+                              <option value={6}>June</option>
+                              <option value={7}>July</option>
+                              <option value={8}>August</option>
+                              <option value={9}>September</option>
+                              <option value={10}>October</option>
+                              <option value={11}>November</option>
+                              <option value={12}>December</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 p-4 border rounded-lg">
+                        <h4 className="font-medium text-sm">Financial Year End</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="fyEndDay">Day</Label>
+                            <select
+                              id="fyEndDay"
+                              value={companyData.financialYearEndDay || 31}
+                              onChange={(e) => handleCompanyChange("financialYearEndDay", parseInt(e.target.value))}
+                              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                            >
+                              {Array.from({ length: 31 }, (_, i) => (
+                                <option key={i + 1} value={i + 1}>{i + 1}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="fyEndMonth">Month</Label>
+                            <select
+                              id="fyEndMonth"
+                              value={companyData.financialYearEndMonth || 12}
+                              onChange={(e) => handleCompanyChange("financialYearEndMonth", parseInt(e.target.value))}
+                              className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                            >
+                              <option value={1}>January</option>
+                              <option value={2}>February</option>
+                              <option value={3}>March</option>
+                              <option value={4}>April</option>
+                              <option value={5}>May</option>
+                              <option value={6}>June</option>
+                              <option value={7}>July</option>
+                              <option value={8}>August</option>
+                              <option value={9}>September</option>
+                              <option value={10}>October</option>
+                              <option value={11}>November</option>
+                              <option value={12}>December</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -599,7 +698,7 @@ export default function SettingsIndex() {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-sm text-slate-600 dark:text-slate-400">Storage Used:</span>
