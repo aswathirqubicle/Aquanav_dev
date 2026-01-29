@@ -33,6 +33,7 @@ export function Autocomplete({
   const [inputValue, setInputValue] = useState("")
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [isEditing, setIsEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
 
@@ -46,15 +47,16 @@ export function Autocomplete({
     )
   }, [options, inputValue])
 
-  // Set input value when value prop changes
+  // Set input value when value prop changes (only when not editing)
   useEffect(() => {
+    if (isEditing) return
     const selectedOption = options.find(option => option.value === value)
     if (selectedOption) {
       setInputValue(selectedOption.label)
     } else if (!value) {
       setInputValue("")
     }
-  }, [value, options])
+  }, [value, options, isEditing])
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,11 +64,7 @@ export function Autocomplete({
     setInputValue(newValue)
     setIsOpen(true)
     setHighlightedIndex(-1)
-    
-    // If input is cleared, clear selection
-    if (!newValue.trim()) {
-      onValueChange?.("")
-    }
+    setIsEditing(true)
   }
 
   // Handle option selection
@@ -74,7 +72,19 @@ export function Autocomplete({
     setInputValue(option.label)
     setIsOpen(false)
     setHighlightedIndex(-1)
+    setIsEditing(false)
     onValueChange?.(option.value)
+  }
+
+  // Reset input to current selection
+  const resetInputToSelection = () => {
+    const selectedOption = options.find(option => option.value === value)
+    if (selectedOption) {
+      setInputValue(selectedOption.label)
+    } else {
+      setInputValue("")
+    }
+    setIsEditing(false)
   }
 
   // Handle keyboard navigation
@@ -108,6 +118,7 @@ export function Autocomplete({
       case "Escape":
         setIsOpen(false)
         setHighlightedIndex(-1)
+        resetInputToSelection()
         inputRef.current?.blur()
         break
     }
@@ -120,12 +131,13 @@ export function Autocomplete({
           listRef.current && !listRef.current.contains(event.target as Node)) {
         setIsOpen(false)
         setHighlightedIndex(-1)
+        resetInputToSelection()
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+  }, [value, options])
 
   // Scroll highlighted option into view
   useEffect(() => {
@@ -154,22 +166,23 @@ export function Autocomplete({
       {isOpen && filteredOptions.length > 0 && (
         <ul
           ref={listRef}
-          className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"
+          className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg max-h-48 overflow-auto"
+          style={{ position: 'absolute', top: '100%', left: 0 }}
         >
           {filteredOptions.map((option, index) => (
             <li
               key={option.value}
               className={cn(
-                "px-3 py-2 cursor-pointer text-sm hover:bg-gray-100",
-                highlightedIndex === index && "bg-gray-100",
-                value === option.value && "bg-blue-50 text-blue-600"
+                "px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 dark:hover:bg-slate-700",
+                highlightedIndex === index && "bg-gray-100 dark:bg-slate-700",
+                value === option.value && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
               )}
               onClick={() => handleOptionSelect(option)}
             >
               <div className="flex items-center justify-between">
                 <span>{option.label}</span>
                 {value === option.value && (
-                  <Check className="h-4 w-4 text-blue-600" />
+                  <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 )}
               </div>
             </li>
@@ -178,8 +191,8 @@ export function Autocomplete({
       )}
       
       {isOpen && filteredOptions.length === 0 && inputValue.trim() && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-3">
-          <div className="text-sm text-gray-500">No items found</div>
+        <div className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg p-3">
+          <div className="text-sm text-gray-500 dark:text-gray-400">No items found</div>
         </div>
       )}
     </div>

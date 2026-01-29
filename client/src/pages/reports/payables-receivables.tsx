@@ -15,14 +15,12 @@ import {
   Calendar, 
   Filter, 
   Download, 
-  DollarSign, 
   TrendingUp, 
   TrendingDown,
-  FileText,
-  Users,
-  AlertCircle
+  AlertCircle,
+  ArrowLeft,
+  DollarSign
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface GeneralLedgerEntry {
   id: number;
@@ -60,19 +58,128 @@ interface Project {
   title: string;
 }
 
+interface CompanyInfo {
+  id: number;
+  name: string;
+  financialYearStartDay: number;
+  financialYearStartMonth: number;
+  financialYearEndDay: number;
+  financialYearEndMonth: number;
+}
+
 export default function PayablesReceivablesReport() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Fetch company info for financial year settings
+  const { data: companyInfo } = useQuery<CompanyInfo>({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  // Calculate financial year dates based on company settings
+  const getFYDates = (fyStartMonth: number, fyStartDay: number, fyEndMonth: number, fyEndDay: number) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-indexed
+    const currentDay = now.getDate();
+    
+    // Determine if we're in the current FY or if it started last year
+    let fyStartYear = currentYear;
+    if (currentMonth < fyStartMonth || (currentMonth === fyStartMonth && currentDay < fyStartDay)) {
+      fyStartYear = currentYear - 1;
+    }
+    
+    // Calculate end year
+    let fyEndYear = fyStartYear;
+    if (fyEndMonth < fyStartMonth) {
+      fyEndYear = fyStartYear + 1;
+    }
+    
+    return {
+      startDate: `${fyStartYear}-${String(fyStartMonth).padStart(2, '0')}-${String(fyStartDay).padStart(2, '0')}`,
+      endDate: `${fyEndYear}-${String(fyEndMonth).padStart(2, '0')}-${String(fyEndDay).padStart(2, '0')}`
+    };
+  };
+
+  // Get FY dates from company settings or use defaults
+  const getInitialFYDates = () => {
+    const fyStartMonth = companyInfo?.financialYearStartMonth || 1;
+    const fyStartDay = companyInfo?.financialYearStartDay || 1;
+    const fyEndMonth = companyInfo?.financialYearEndMonth || 12;
+    const fyEndDay = companyInfo?.financialYearEndDay || 31;
+    return getFYDates(fyStartMonth, fyStartDay, fyEndMonth, fyEndDay);
+  };
 
   const [filters, setFilters] = useState({
+    period: "current_fy" as string,
     startDate: "",
     endDate: "",
-    status: "",
     entityId: undefined as number | undefined,
     projectId: undefined as number | undefined,
     entryType: "" as "receivable" | "payable" | "",
   });
+
+  // Update dates when company info loads or period changes
+  React.useEffect(() => {
+    const fyStartMonth = companyInfo?.financialYearStartMonth || 1;
+    const fyStartDay = companyInfo?.financialYearStartDay || 1;
+    const fyEndMonth = companyInfo?.financialYearEndMonth || 12;
+    const fyEndDay = companyInfo?.financialYearEndDay || 31;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    
+    let startDate = "";
+    let endDate = "";
+    
+    switch (filters.period) {
+      case "current_fy": {
+        const fyDates = getFYDates(fyStartMonth, fyStartDay, fyEndMonth, fyEndDay);
+        startDate = fyDates.startDate;
+        endDate = fyDates.endDate;
+        break;
+      }
+      case "previous_fy": {
+        const currentFY = getFYDates(fyStartMonth, fyStartDay, fyEndMonth, fyEndDay);
+        const prevFyStartYear = parseInt(currentFY.startDate.substring(0, 4)) - 1;
+        const prevFyEndYear = parseInt(currentFY.endDate.substring(0, 4)) - 1;
+        startDate = `${prevFyStartYear}-${String(fyStartMonth).padStart(2, '0')}-${String(fyStartDay).padStart(2, '0')}`;
+        endDate = `${prevFyEndYear}-${String(fyEndMonth).padStart(2, '0')}-${String(fyEndDay).padStart(2, '0')}`;
+        break;
+      }
+      case "current_month": {
+        startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+        const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+        endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${lastDay}`;
+        break;
+      }
+      case "current_quarter": {
+        const quarterStart = Math.floor((currentMonth - 1) / 3) * 3 + 1;
+        const quarterEnd = quarterStart + 2;
+        startDate = `${currentYear}-${String(quarterStart).padStart(2, '0')}-01`;
+        const lastDayOfQuarter = new Date(currentYear, quarterEnd, 0).getDate();
+        endDate = `${currentYear}-${String(quarterEnd).padStart(2, '0')}-${lastDayOfQuarter}`;
+        break;
+      }
+      case "custom":
+        // Keep existing custom dates
+        return;
+      default:
+        break;
+    }
+    
+    if (filters.period !== "custom" && startDate && endDate) {
+      setFilters(prev => ({ ...prev, startDate, endDate }));
+    }
+  }, [filters.period, companyInfo]);
+
+  // Check if any filters are active
+  const hasActiveFilters = filters.period !== "current_fy" || 
+    filters.projectId !== undefined || filters.entryType !== "";
 
   React.useEffect(() => {
     if (!isAuthenticated) {
@@ -82,42 +189,48 @@ export default function PayablesReceivablesReport() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: receivableEntries, isLoading: receivablesLoading } = useQuery<GeneralLedgerEntry[]>({
+  const { data: receivableResponse, isLoading: receivablesLoading } = useQuery<{ data: GeneralLedgerEntry[] }>({
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
       const params = new URLSearchParams({ entryType: "receivable" });
-      if (filters.status) params.append("status", filters.status);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch receivable entries");
       return response.json();
     },
     enabled: isAuthenticated && (!filters.entryType || filters.entryType === "receivable"),
   });
 
-  const { data: payableEntries, isLoading: payablesLoading } = useQuery<GeneralLedgerEntry[]>({
+  const receivableEntries = Array.isArray(receivableResponse?.data) ? receivableResponse.data : [];
+
+  const { data: payableResponse, isLoading: payablesLoading } = useQuery<{ data: GeneralLedgerEntry[] }>({
     queryKey: ["/api/general-ledger", "payable", filters],
     queryFn: async () => {
       const params = new URLSearchParams({ entryType: "payable" });
-      if (filters.status) params.append("status", filters.status);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch payable entries");
       return response.json();
     },
     enabled: isAuthenticated && (!filters.entryType || filters.entryType === "payable"),
   });
 
+  const payableEntries = Array.isArray(payableResponse?.data) ? payableResponse.data : [];
+
   const { data: customersResponse } = useQuery<{ data: Customer[] }>({
     queryKey: ["/api/customers"],
+    queryFn: async () => {
+      const response = await fetch("/api/customers?limit=1000");
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -125,6 +238,10 @@ export default function PayablesReceivablesReport() {
 
   const { data: suppliersResponse } = useQuery<{ data: Supplier[] }>({
     queryKey: ["/api/suppliers"],
+    queryFn: async () => {
+      const response = await fetch("/api/suppliers?limit=1000");
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -137,10 +254,50 @@ export default function PayablesReceivablesReport() {
 
   const projects = Array.isArray(projectsResponse?.data) ? projectsResponse.data : [];
 
+  // Fetch chart of accounts to identify receivable and payable accounts
+  const { data: chartOfAccountsData } = useQuery<{
+    id: number;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+  }[]>({
+    queryKey: ["/api/chart-of-accounts"],
+    enabled: isAuthenticated,
+  });
+
+  // Get receivable and payable account names from chart of accounts
+  const receivableAccountNames = chartOfAccountsData
+    ?.filter(account => 
+      account.accountName?.toLowerCase().includes("receivable") ||
+      account.accountCode?.startsWith("1100") ||
+      account.accountCode?.startsWith("1110")
+    )
+    .map(account => account.accountName) || [];
+  
+  const payableAccountNames = chartOfAccountsData
+    ?.filter(account => 
+      account.accountName?.toLowerCase().includes("payable") ||
+      account.accountCode?.startsWith("2000") ||
+      account.accountCode?.startsWith("2010") ||
+      account.accountCode?.startsWith("2110")
+    )
+    .map(account => account.accountName) || [];
+
+  // Filter entries to only include actual receivable/payable accounts
+  const filteredReceivableEntries = receivableEntries.filter(entry =>
+    receivableAccountNames.includes(entry.accountName)
+  );
+
+  const filteredPayableEntries = payableEntries.filter(entry =>
+    payableAccountNames.includes(entry.accountName)
+  );
+
   const formatCurrency = (amount: string | number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(parseFloat(amount?.toString() || "0"));
   };
 
@@ -159,22 +316,65 @@ export default function PayablesReceivablesReport() {
     }
   };
 
-  // Calculate summary statistics
-  const receivableSummary = {
-    total: receivableEntries?.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0) || 0,
-    pending: receivableEntries?.filter(e => e.status === "pending").reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0) || 0,
-    overdue: receivableEntries?.filter(e => e.status === "overdue").reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0) || 0,
-    paid: receivableEntries?.filter(e => e.status === "paid").reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0) || 0,
-    count: receivableEntries?.length || 0,
-  };
+  // Calculate summary statistics using proper GL accounting logic
+  // For receivables: Debits = invoices issued, Credits = payments received
+  // Outstanding = Debits - Credits, Overdue = past due date with outstanding balance
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const payableSummary = {
-    total: payableEntries?.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0) || 0,
-    pending: payableEntries?.filter(e => e.status === "pending").reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0) || 0,
-    overdue: payableEntries?.filter(e => e.status === "overdue").reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0) || 0,
-    paid: payableEntries?.filter(e => e.status === "paid").reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0) || 0,
-    count: payableEntries?.length || 0,
-  };
+  const receivableSummary = (() => {
+    const totalDebits = filteredReceivableEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const totalCredits = filteredReceivableEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    const totalOutstanding = totalDebits - totalCredits;
+    
+    // Calculate overdue: entries with due date in the past that have debit amounts (invoices)
+    const overdueAmount = filteredReceivableEntries
+      .filter(e => {
+        if (!e.dueDate) return false;
+        const dueDate = new Date(e.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate < today && parseFloat(e.debitAmount || "0") > 0;
+      })
+      .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    
+    // Current = outstanding that is not overdue
+    const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
+    
+    return {
+      total: totalOutstanding,
+      current: currentAmount,
+      overdue: overdueAmount,
+      collected: totalCredits,
+      count: filteredReceivableEntries.length,
+    };
+  })();
+
+  const payableSummary = (() => {
+    const totalCredits = filteredPayableEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    const totalDebits = filteredPayableEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const totalOutstanding = totalCredits - totalDebits;
+    
+    // Calculate overdue: entries with due date in the past that have credit amounts (invoices)
+    const overdueAmount = filteredPayableEntries
+      .filter(e => {
+        if (!e.dueDate) return false;
+        const dueDate = new Date(e.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate < today && parseFloat(e.creditAmount || "0") > 0;
+      })
+      .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    
+    // Current = outstanding that is not overdue
+    const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
+    
+    return {
+      total: totalOutstanding,
+      current: currentAmount,
+      overdue: overdueAmount,
+      paid: totalDebits,
+      count: filteredPayableEntries.length,
+    };
+  })();
 
   const exportToCSV = (data: GeneralLedgerEntry[], type: "receivables" | "payables") => {
     const headers = [
@@ -221,126 +421,150 @@ export default function PayablesReceivablesReport() {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Payables & Receivables Report</h1>
-          <p className="text-muted-foreground">Comprehensive analysis of amounts owed and due</p>
+    <div className="container mx-auto py-6 px-4 sm:px-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+        <div className="flex items-start gap-3">
+          <Button variant="ghost" size="icon" onClick={() => setLocation("/reports")} className="mt-1">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">Payables & Receivables Report</h1>
+            <p className="text-sm text-muted-foreground">Analysis of amounts owed and due</p>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <Filter className="w-4 h-4 mr-2" />
-                Advanced Filters
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <div className="space-y-4">
-                <h4 className="font-medium">Filter Options</h4>
-                
-                <div>
-                  <Label htmlFor="entryType">Report Type</Label>
-                  <Select
-                    value={filters.entryType}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, entryType: value as any }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Types</SelectItem>
-                      <SelectItem value="receivable">Receivables Only</SelectItem>
-                      <SelectItem value="payable">Payables Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+          <Button 
+            variant={showFilters ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="w-4 h-4 mr-2" />
+            {showFilters ? "Hide Filters" : "Show Filters"}
+            {hasActiveFilters && <span className="ml-2 bg-primary-foreground text-primary rounded-full w-5 h-5 flex items-center justify-center text-xs">!</span>}
+          </Button>
+        </div>
+      </div>
 
-                <div className="grid grid-cols-2 gap-2">
+      {/* Inline Filters */}
+      {showFilters && (
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+              {/* Financial Year / Period */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Period</Label>
+                <Select
+                  value={filters.period}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, period: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="current_fy">Current Financial Year</SelectItem>
+                    <SelectItem value="previous_fy">Previous Financial Year</SelectItem>
+                    <SelectItem value="current_month">Current Month</SelectItem>
+                    <SelectItem value="current_quarter">Current Quarter</SelectItem>
+                    <SelectItem value="custom">Custom Date Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Date Range - only show for custom period */}
+              {filters.period === "custom" && (
+                <>
                   <div>
-                    <Label htmlFor="startDate">Start Date</Label>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">From</Label>
                     <Input
-                      id="startDate"
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="endDate">End Date</Label>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">To</Label>
                     <Input
-                      id="endDate"
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
                     />
                   </div>
-                </div>
+                </>
+              )}
 
-                <div>
-                  <Label htmlFor="statusFilter">Status</Label>
-                  <Select
-                    value={filters.status}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, status: value === "all" ? "" : value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="projectFilter">Project</Label>
-                  <Select
-                    value={filters.projectId?.toString() || ""}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, projectId: value === "all" ? undefined : parseInt(value) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Projects</SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()}>
-                          {project.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button onClick={() => setIsFilterOpen(false)} className="flex-1">Apply</Button>
-                  <Button 
-                    onClick={() => {
-                      setFilters({ 
-                        startDate: "", 
-                        endDate: "", 
-                        status: "", 
-                        entityId: undefined, 
-                        projectId: undefined,
-                        entryType: ""
-                      });
-                      setIsFilterOpen(false);
-                    }} 
-                    variant="outline" 
-                    className="flex-1"
-                  >
-                    Clear
-                  </Button>
-                </div>
+              {/* Report Type */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Report Type</Label>
+                <Select
+                  value={filters.entryType || "all"}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, entryType: value === "all" ? "" : value as any }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="receivable">Receivables Only</SelectItem>
+                    <SelectItem value="payable">Payables Only</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+
+              {/* Project */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1.5 block">Project</Label>
+                <Select
+                  value={filters.projectId?.toString() || "all"}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, projectId: value === "all" ? undefined : parseInt(value) }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Filter Actions */}
+            <div className="flex justify-between items-center mt-4 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {filters.startDate && filters.endDate 
+                    ? `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`
+                    : "All dates"}
+                </span>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  const fyDates = getInitialFYDates();
+                  setFilters({ 
+                    period: "current_fy",
+                    startDate: fyDates.startDate, 
+                    endDate: fyDates.endDate, 
+                    entityId: undefined, 
+                    projectId: undefined,
+                    entryType: ""
+                  });
+                }}
+                className="text-muted-foreground"
+              >
+                Reset Filters
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -412,9 +636,10 @@ export default function PayablesReceivablesReport() {
                 </p>
               </div>
               <Button 
-                onClick={() => receivableEntries && exportToCSV(receivableEntries, "receivables")}
+                onClick={() => exportToCSV(filteredReceivableEntries, "receivables")}
                 variant="outline"
                 size="sm"
+                disabled={filteredReceivableEntries.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export CSV
@@ -424,19 +649,19 @@ export default function PayablesReceivablesReport() {
               {/* Summary Stats */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Pending</p>
-                  <p className="text-lg font-semibold text-orange-600">{formatCurrency(receivableSummary.pending)}</p>
+                  <p className="text-sm text-muted-foreground">Current</p>
+                  <p className="text-lg font-semibold text-blue-600">{formatCurrency(receivableSummary.current)}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Overdue</p>
                   <p className="text-lg font-semibold text-red-600">{formatCurrency(receivableSummary.overdue)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Paid</p>
-                  <p className="text-lg font-semibold text-green-600">{formatCurrency(receivableSummary.paid)}</p>
+                  <p className="text-sm text-muted-foreground">Collected</p>
+                  <p className="text-lg font-semibold text-green-600">{formatCurrency(receivableSummary.collected)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className="text-sm text-muted-foreground">Outstanding</p>
                   <p className="text-lg font-semibold">{formatCurrency(receivableSummary.total)}</p>
                 </div>
               </div>
@@ -445,9 +670,9 @@ export default function PayablesReceivablesReport() {
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                 </div>
-              ) : !receivableEntries || receivableEntries.length === 0 ? (
+              ) : filteredReceivableEntries.length === 0 ? (
                 <div className="text-center py-8">
-                  <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <AlertCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">No receivable entries found</p>
                 </div>
               ) : (
@@ -456,6 +681,7 @@ export default function PayablesReceivablesReport() {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Account</th>
                         <th className="text-left p-2">Description</th>
                         <th className="text-left p-2">Customer</th>
                         <th className="text-left p-2">Project</th>
@@ -466,9 +692,10 @@ export default function PayablesReceivablesReport() {
                       </tr>
                     </thead>
                     <tbody>
-                      {receivableEntries.map((entry) => (
+                      {filteredReceivableEntries.map((entry) => (
                         <tr key={entry.id} className="border-b hover:bg-gray-50">
                           <td className="p-2">{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                          <td className="p-2 text-xs text-muted-foreground">{entry.accountName}</td>
                           <td className="p-2">{entry.description}</td>
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>
@@ -496,9 +723,10 @@ export default function PayablesReceivablesReport() {
                 </p>
               </div>
               <Button 
-                onClick={() => payableEntries && exportToCSV(payableEntries, "payables")}
+                onClick={() => exportToCSV(filteredPayableEntries, "payables")}
                 variant="outline"
                 size="sm"
+                disabled={filteredPayableEntries.length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export CSV
@@ -508,8 +736,8 @@ export default function PayablesReceivablesReport() {
               {/* Summary Stats */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Pending</p>
-                  <p className="text-lg font-semibold text-orange-600">{formatCurrency(payableSummary.pending)}</p>
+                  <p className="text-sm text-muted-foreground">Current</p>
+                  <p className="text-lg font-semibold text-blue-600">{formatCurrency(payableSummary.current)}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground">Overdue</p>
@@ -520,7 +748,7 @@ export default function PayablesReceivablesReport() {
                   <p className="text-lg font-semibold text-green-600">{formatCurrency(payableSummary.paid)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className="text-sm text-muted-foreground">Outstanding</p>
                   <p className="text-lg font-semibold">{formatCurrency(payableSummary.total)}</p>
                 </div>
               </div>
@@ -529,9 +757,9 @@ export default function PayablesReceivablesReport() {
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                 </div>
-              ) : !payableEntries || payableEntries.length === 0 ? (
+              ) : filteredPayableEntries.length === 0 ? (
                 <div className="text-center py-8">
-                  <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <AlertCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">No payable entries found</p>
                 </div>
               ) : (
@@ -540,6 +768,7 @@ export default function PayablesReceivablesReport() {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Account</th>
                         <th className="text-left p-2">Description</th>
                         <th className="text-left p-2">Supplier</th>
                         <th className="text-left p-2">Project</th>
@@ -550,9 +779,10 @@ export default function PayablesReceivablesReport() {
                       </tr>
                     </thead>
                     <tbody>
-                      {payableEntries.map((entry) => (
+                      {filteredPayableEntries.map((entry) => (
                         <tr key={entry.id} className="border-b hover:bg-gray-50">
                           <td className="p-2">{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                          <td className="p-2 text-xs text-muted-foreground">{entry.accountName}</td>
                           <td className="p-2">{entry.description}</td>
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>

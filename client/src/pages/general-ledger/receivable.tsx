@@ -7,13 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, DollarSign, Filter, Calendar, TrendingUp } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, FileText, DollarSign, Calendar, TrendingUp, X, Search } from "lucide-react";
 
 interface GeneralLedgerEntry {
   id: number;
@@ -40,16 +39,71 @@ export default function GeneralLedgerReceivable() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const [filters, setFilters] = useState({
-    status: "",
     startDate: "",
     endDate: "",
     entityId: undefined as number | undefined,
+    search: "",
+    financialYear: "",
     page: 1,
     limit: 20,
   });
+
+  const [pendingFilters, setPendingFilters] = useState({
+    startDate: "",
+    endDate: "",
+    search: "",
+    financialYear: "",
+  });
+
+  const clearFilters = () => {
+    setPendingFilters({
+      startDate: "",
+      endDate: "",
+      search: "",
+      financialYear: "",
+    });
+    setFilters({
+      startDate: "",
+      endDate: "",
+      entityId: undefined,
+      search: "",
+      financialYear: "",
+      page: 1,
+      limit: 20,
+    });
+  };
+
+  const applyFilters = () => {
+    setFilters(prev => ({
+      ...prev,
+      ...pendingFilters,
+      page: 1,
+    }));
+  };
+
+  const hasActiveFilters = filters.startDate || filters.endDate || filters.search || filters.financialYear;
+
+  const currentYear = new Date().getFullYear();
+  const financialYears = [
+    { value: `${currentYear - 2}-${currentYear - 1}`, label: `FY ${currentYear - 2}-${currentYear - 1}` },
+    { value: `${currentYear - 1}-${currentYear}`, label: `FY ${currentYear - 1}-${currentYear}` },
+    { value: `${currentYear}-${currentYear + 1}`, label: `FY ${currentYear}-${currentYear + 1}` },
+    { value: `${currentYear + 1}-${currentYear + 2}`, label: `FY ${currentYear + 1}-${currentYear + 2}` },
+  ];
+
+  const handleFinancialYearChange = (value: string) => {
+    if (value === "all") {
+      setPendingFilters(prev => ({ ...prev, financialYear: "", startDate: "", endDate: "" }));
+    } else {
+      const [startYear] = value.split("-").map(Number);
+      const startDate = `${startYear}-01-01`;
+      const endDate = `${startYear}-12-31`;
+      setPendingFilters(prev => ({ ...prev, financialYear: value, startDate, endDate }));
+    }
+  };
 
   const [formData, setFormData] = useState({
     accountName: "Accounts Receivable",
@@ -86,14 +140,14 @@ export default function GeneralLedgerReceivable() {
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
       const params = new URLSearchParams({ entryType: "receivable" });
-      if (filters.status) params.append("status", filters.status);
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
+      if (filters.search) params.append("search", filters.search);
       params.append("page", filters.page.toString());
       params.append("limit", filters.limit.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch receivable entries");
       return response.json();
     },
@@ -105,6 +159,10 @@ export default function GeneralLedgerReceivable() {
 
   const { data: customersResponse } = useQuery<{ data: any[] }>({
     queryKey: ["/api/customers"],
+    queryFn: async () => {
+      const response = await fetch("/api/customers?limit=1000");
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -153,7 +211,7 @@ export default function GeneralLedgerReceivable() {
         ],
       };
 
-      const response = await apiRequest("POST", "/api/general-ledger/journal", journalEntryData);
+      const response = await apiRequest("/api/general-ledger/journal", { method: "POST", body: journalEntryData });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create receivable journal entry");
@@ -173,31 +231,6 @@ export default function GeneralLedgerReceivable() {
       toast({
         title: "Error",
         description: error.message || "Failed to create receivable entry",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateEntryMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await apiRequest("PUT", `/api/general-ledger/${id}`, data);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update entry");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
-      toast({
-        title: "Entry Updated",
-        description: "Entry has been updated successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update entry",
         variant: "destructive",
       });
     },
@@ -240,46 +273,43 @@ export default function GeneralLedgerReceivable() {
     createEntryMutation.mutate(submitData);
   };
 
-  const handleStatusUpdate = (entry: GeneralLedgerEntry, newStatus: string) => {
-    updateEntryMutation.mutate({
-      id: entry.id,
-      data: { status: newStatus },
-    });
-  };
-
   const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-AE", {
       style: "currency",
-      currency: "USD",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(parseFloat(amount || "0"));
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge variant="success">Received</Badge>;
-      case "pending":
-        return <Badge variant="secondary">Pending</Badge>;
-      case "overdue":
-        return <Badge variant="destructive">Overdue</Badge>;
-      case "cancelled":
-        return <Badge variant="outline">Cancelled</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const totalReceivable = entries?.reduce((sum, entry) => {
+  // Total debits (invoices) minus total credits (payments) = net receivable
+  const totalDebits = entries?.reduce((sum, entry) => {
     return sum + parseFloat(entry.debitAmount || "0");
   }, 0) || 0;
 
-  const pendingReceivable = entries?.filter(e => e.status === "pending").reduce((sum, entry) => {
+  const totalCredits = entries?.reduce((sum, entry) => {
+    return sum + parseFloat(entry.creditAmount || "0");
+  }, 0) || 0;
+
+  const totalReceivable = totalDebits - totalCredits;
+
+  // Overdue: invoice entries (debitAmount > 0) that are past due and not fully paid
+  const overdueReceivable = entries?.filter(e => {
+    if (!e.dueDate) return false;
+    if (parseFloat(e.debitAmount || "0") <= 0) return false; // Only invoice entries, not payments
+    const dueDate = new Date(e.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const isPastDue = dueDate < today;
+    const isNotPaid = e.status !== "paid";
+    return isPastDue && isNotPaid;
+  }).reduce((sum, entry) => {
     return sum + parseFloat(entry.debitAmount || "0");
   }, 0) || 0;
 
-  const overdueReceivable = entries?.filter(e => e.status === "overdue").reduce((sum, entry) => {
-    return sum + parseFloat(entry.debitAmount || "0");
-  }, 0) || 0;
+  const pendingReceivable = totalReceivable - overdueReceivable;
 
   if (!isAuthenticated) {
     return null;
@@ -293,76 +323,97 @@ export default function GeneralLedgerReceivable() {
           <p className="text-muted-foreground">Track all amounts owed by customers</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <div className="space-y-4">
-                <h4 className="font-medium">Filter Entries</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label htmlFor="startDate">Start Date</Label>
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={filters.startDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="endDate">End Date</Label>
-                    <Input
-                      id="endDate"
-                      type="date"
-                      value={filters.endDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="statusFilter">Status</Label>
-                  <Select
-                    value={filters.status}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, status: value === "all" ? "" : value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="paid">Received</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => setIsFilterOpen(false)} className="flex-1">Apply</Button>
-                  <Button 
-                    onClick={() => {
-                      setFilters({ status: "", startDate: "", endDate: "", entityId: undefined });
-                      setIsFilterOpen(false);
-                    }} 
-                    variant="outline" 
-                    className="flex-1"
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <Button 
+            variant={showFilters ? "default" : "outline"} 
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Search className="w-4 h-4 mr-2" />
+            {showFilters ? "Hide Filters" : "Show Filters"}
+            {hasActiveFilters && <span className="ml-2 bg-primary-foreground text-primary rounded-full w-5 h-5 flex items-center justify-center text-xs">!</span>}
+          </Button>
           <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Manual Entry
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="search">Search</Label>
+                <Input
+                  id="search"
+                  placeholder="Search description, customer..."
+                  value={pendingFilters.search}
+                  onChange={(e) => setPendingFilters(prev => ({ ...prev, search: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="financialYear">Financial Year</Label>
+                <Select
+                  value={pendingFilters.financialYear || "all"}
+                  onValueChange={handleFinancialYearChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Years" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Years</SelectItem>
+                    {financialYears.map((fy) => (
+                      <SelectItem key={fy.value} value={fy.value}>
+                        {fy.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={pendingFilters.startDate}
+                  onChange={(e) => setPendingFilters(prev => ({ ...prev, startDate: e.target.value, financialYear: "" }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endDate">End Date</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={pendingFilters.endDate}
+                  onChange={(e) => setPendingFilters(prev => ({ ...prev, endDate: e.target.value, financialYear: "" }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="invisible">Actions</Label>
+                <Button 
+                  onClick={applyFilters}
+                  className="w-full"
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <Label className="invisible">Actions</Label>
+                <Button 
+                  variant="outline" 
+                  onClick={clearFilters}
+                  className="w-full"
+                  disabled={!hasActiveFilters}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -439,8 +490,6 @@ export default function GeneralLedgerReceivable() {
                     <th className="text-left p-2">Invoice #</th>
                     <th className="text-right p-2">Amount</th>
                     <th className="text-left p-2">Due Date</th>
-                    <th className="text-left p-2">Status</th>
-                    <th className="text-left p-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -452,29 +501,6 @@ export default function GeneralLedgerReceivable() {
                       <td className="p-2">{entry.invoiceNumber || "-"}</td>
                       <td className="p-2 text-right font-medium">{formatCurrency(entry.debitAmount)}</td>
                       <td className="p-2">{entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : "-"}</td>
-                      <td className="p-2">{getStatusBadge(entry.status)}</td>
-                      <td className="p-2">
-                        <div className="flex gap-1">
-                          {entry.status === "pending" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleStatusUpdate(entry, "paid")}
-                              >
-                                Mark Received
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleStatusUpdate(entry, "overdue")}
-                              >
-                                Mark Overdue
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -560,25 +560,16 @@ export const projectConsumableItems = pgTable("project_consumable_items", {
 ]);
 
 export const errorLogs = pgTable("error_logs", {
-	id: serial().primaryKey().notNull(),
-	message: text().notNull(),
-	stack: text(),
-	url: text(),
-	userAgent: text("user_agent"),
-	userId: integer("user_id"),
-	timestamp: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	severity: text().default('error').notNull(),
-	component: text(),
-	resolved: boolean().default(false).notNull(),
-}, (table) => [
-	foreignKey({
-		columns: [table.userId],
-		foreignColumns: [users.id],
-		name: "error_logs_user_id_users_id_fk"
-	}),
-	index("error_logs_timestamp_idx").on(table.timestamp),
-	index("error_logs_user_id_idx").on(table.userId),
-	index("error_logs_severity_idx").on(table.severity),
+        id: serial().primaryKey().notNull(),
+        message: text().notNull(),
+        stack: text(),
+        url: text(),
+        userAgent: text("user_agent"),
+        userId: integer("user_id"),
+        timestamp: timestamp({ mode: 'string' }).defaultNow().notNull(),
+        severity: text().default('error').notNull(),
+        component: text(),
+        resolved: boolean().default(false).notNull(),
 });
 
 export const generalLedgerEntries = pgTable("general_ledger_entries", {

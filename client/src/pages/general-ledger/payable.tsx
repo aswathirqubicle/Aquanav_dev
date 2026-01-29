@@ -7,13 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, DollarSign, Filter, Calendar, Edit } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, FileText, DollarSign, Calendar, X, Search } from "lucide-react";
 import { Autocomplete } from "@/components/ui/autocomplete";
 
 interface GeneralLedgerEntry {
@@ -43,7 +42,7 @@ export default function GeneralLedgerPayable() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerEntry | null>(null);
 
   const [filters, setFilters] = useState({
@@ -52,9 +51,46 @@ export default function GeneralLedgerPayable() {
     endDate: "",
     entityId: undefined as number | undefined,
     projectId: undefined as number | undefined,
+    search: "",
+    financialYear: "",
     page: 1,
     limit: 20,
   });
+
+  const clearFilters = () => {
+    setFilters({
+      status: "",
+      startDate: "",
+      endDate: "",
+      entityId: undefined,
+      projectId: undefined,
+      search: "",
+      financialYear: "",
+      page: 1,
+      limit: 20,
+    });
+  };
+
+  const hasActiveFilters = filters.status || filters.startDate || filters.endDate || filters.search || filters.projectId || filters.financialYear;
+
+  const currentYear = new Date().getFullYear();
+  const financialYears = [
+    { value: `${currentYear - 2}-${currentYear - 1}`, label: `FY ${currentYear - 2}-${currentYear - 1}` },
+    { value: `${currentYear - 1}-${currentYear}`, label: `FY ${currentYear - 1}-${currentYear}` },
+    { value: `${currentYear}-${currentYear + 1}`, label: `FY ${currentYear}-${currentYear + 1}` },
+    { value: `${currentYear + 1}-${currentYear + 2}`, label: `FY ${currentYear + 1}-${currentYear + 2}` },
+  ];
+
+  const handleFinancialYearChange = (value: string) => {
+    if (value === "all") {
+      setFilters(prev => ({ ...prev, financialYear: "", startDate: "", endDate: "", page: 1 }));
+    } else {
+      const [startYear] = value.split("-").map(Number);
+      const startDate = `${startYear}-01-01`;
+      const endDate = `${startYear}-12-31`;
+      setFilters(prev => ({ ...prev, financialYear: value, startDate, endDate, page: 1 }));
+    }
+  };
 
   const [formData, setFormData] = useState({
     accountName: "Accounts Payable",
@@ -96,10 +132,11 @@ export default function GeneralLedgerPayable() {
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
+      if (filters.search) params.append("search", filters.search);
       params.append("page", filters.page.toString());
       params.append("limit", filters.limit.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch payable entries");
       return response.json();
     },
@@ -119,7 +156,7 @@ export default function GeneralLedgerPayable() {
   const { data: projectsResponse } = useQuery<any[]>({
     queryKey: ["/api/projects"],
     queryFn: async () => {
-      const response = await apiRequest("GET", "/api/projects");
+      const response = await apiRequest("/api/projects");
       if (!response.ok) throw new Error("Failed to fetch projects");
       return response.json();
     },
@@ -284,9 +321,11 @@ export default function GeneralLedgerPayable() {
   };
 
   const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-AE", {
       style: "currency",
-      currency: "USD",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(parseFloat(amount || "0"));
   };
 
@@ -305,11 +344,30 @@ export default function GeneralLedgerPayable() {
     }
   };
 
-  const totalPayable = entries?.reduce((sum, entry) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Total credits (invoices) minus total debits (payments) = net payable
+  const totalCredits = entries?.reduce((sum, entry) => {
     return sum + parseFloat(entry.creditAmount || "0");
   }, 0) || 0;
 
-  const pendingPayable = entries?.filter(e => e.status === "pending").reduce((sum, entry) => {
+  const totalDebits = entries?.reduce((sum, entry) => {
+    return sum + parseFloat(entry.debitAmount || "0");
+  }, 0) || 0;
+
+  const totalPayable = totalCredits - totalDebits;
+
+  // Overdue: invoice entries (creditAmount > 0) that are past due and not fully paid
+  const totalOverdue = entries?.filter(e => {
+    if (!e.dueDate) return false;
+    if (parseFloat(e.creditAmount || "0") <= 0) return false; // Only invoice entries, not payments
+    const dueDate = new Date(e.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const isPastDue = dueDate < today;
+    const isNotPaid = e.status !== "paid";
+    return isPastDue && isNotPaid;
+  }).reduce((sum, entry) => {
     return sum + parseFloat(entry.creditAmount || "0");
   }, 0) || 0;
 
@@ -325,97 +383,126 @@ export default function GeneralLedgerPayable() {
           <p className="text-muted-foreground">Track all amounts owed to suppliers</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 max-w-[90vw]">
-              <div className="space-y-4">
-                <h4 className="font-medium">Filter Entries</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="startDate">Start Date</Label>
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={filters.startDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="endDate">End Date</Label>
-                    <Input
-                      id="endDate"
-                      type="date"
-                      value={filters.endDate}
-                      onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="statusFilter">Status</Label>
-                  <Select
-                    value={filters.status || "all"}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, status: value === "all" ? "" : value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="projectFilter">Project</Label>
-                  <Select
-                    value={filters.projectId?.toString() || "all"}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, projectId: value === "all" ? undefined : parseInt(value) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Projects</SelectItem>
-                      {projects
-                        .filter(project => project.id && project.title)
-                        .map((project) => (
-                          <SelectItem key={project.id} value={project.id.toString()}>
-                            {project.title}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                  <Button onClick={() => setIsFilterOpen(false)} className="flex-1">Apply</Button>
-                  <Button 
-                    onClick={() => {
-                      setFilters({ status: "", startDate: "", endDate: "", entityId: undefined, projectId: undefined });
-                      setIsFilterOpen(false);
-                    }} 
-                    variant="outline" 
-                    className="flex-1"
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <Button 
+            variant={showFilters ? "default" : "outline"} 
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Search className="w-4 h-4 mr-2" />
+            {showFilters ? "Hide Filters" : "Show Filters"}
+            {hasActiveFilters && <span className="ml-2 bg-primary-foreground text-primary rounded-full w-5 h-5 flex items-center justify-center text-xs">!</span>}
+          </Button>
           <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Manual Entry
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="search">Search</Label>
+                <Input
+                  id="search"
+                  placeholder="Search description, supplier..."
+                  value={filters.search}
+                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="financialYear">Financial Year</Label>
+                <Select
+                  value={filters.financialYear || "all"}
+                  onValueChange={handleFinancialYearChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Years" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Years</SelectItem>
+                    {financialYears.map((fy) => (
+                      <SelectItem key={fy.value} value={fy.value}>
+                        {fy.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value, financialYear: "", page: 1 }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endDate">End Date</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value, financialYear: "", page: 1 }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="statusFilter">Status</Label>
+                <Select
+                  value={filters.status || "all"}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, status: value === "all" ? "" : value, page: 1 }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="projectFilter">Project</Label>
+                <Select
+                  value={filters.projectId?.toString() || "all"}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, projectId: value === "all" ? undefined : parseInt(value), page: 1 }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects
+                      .filter(project => project.id && project.title)
+                      .map((project) => (
+                        <SelectItem key={project.id} value={project.id.toString()}>
+                          {project.title}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="invisible">Actions</Label>
+                <Button 
+                  variant="outline" 
+                  onClick={clearFilters}
+                  className="w-full"
+                  disabled={!hasActiveFilters}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Clear Filters
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -430,11 +517,11 @@ export default function GeneralLedgerPayable() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Overdue</CardTitle>
+            <Calendar className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(pendingPayable.toString())}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalOverdue.toString())}</div>
           </CardContent>
         </Card>
         <Card>
