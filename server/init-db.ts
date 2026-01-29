@@ -82,7 +82,8 @@ export async function initializeDatabase() {
         unit: 'gallon',
         currentStock: 25,
         minStockLevel: 10,
-        avgCost: '89.99'
+        avgCost: '89.99',
+        sku:'sku-1'
       });
       console.log('✓ Sample inventory item created');
     }
