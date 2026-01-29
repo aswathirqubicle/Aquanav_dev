@@ -212,7 +212,7 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
-  
+
   const bankAccountOptions = React.useMemo(() => {
     const supplier = suppliers.find(
       s => s.id.toString() === formData.supplierId
@@ -638,10 +638,7 @@ export default function PurchaseInvoicesIndex() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
+    return `AED ${amount.toFixed(2)}`;
   };
 
   const getTaxRateFromVatTreatment = (
@@ -703,7 +700,7 @@ export default function PurchaseInvoicesIndex() {
                         const supplier = suppliers.find(s => s.id.toString() === value);
                         const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
 
-                        setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "",}));
+                        setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "", }));
 
                         // Update existing items ONLY if user hasn’t overridden tax
                         setInvoiceItems(items =>
@@ -781,7 +778,7 @@ export default function PurchaseInvoicesIndex() {
               <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-900 dark:text-green-100">${stats.totalAmount}</div>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">AED {stats.totalAmount}</div>
               <p className="text-xs text-green-600 dark:text-green-400">Approved invoices</p>
             </CardContent>
           </Card>
@@ -792,7 +789,7 @@ export default function PurchaseInvoicesIndex() {
               <TrendingUp className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">${stats.pendingAmount}</div>
+              <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">AED {stats.pendingAmount}</div>
               <p className="text-xs text-yellow-600 dark:text-yellow-400">Outstanding payments</p>
             </CardContent>
           </Card>
@@ -804,7 +801,7 @@ export default function PurchaseInvoicesIndex() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-900 dark:text-red-100">{stats.overdueCount}</div>
-              <p className="text-xs text-red-600 dark:text-red-400">${stats.overdueAmount} overdue</p>
+              <p className="text-xs text-red-600 dark:text-red-400">AED {stats.overdueAmount} overdue</p>
             </CardContent>
           </Card>
 
@@ -884,10 +881,10 @@ export default function PurchaseInvoicesIndex() {
                               <div className="text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</div>
                             </td>
                             <td className="p-4 text-right">
-                              <div className="font-semibold">${invoice.totalAmount}</div>
+                              <div className="font-semibold">AED {invoice.totalAmount}</div>
                             </td>
                             <td className="p-4 text-right">
-                              <div className="font-medium text-green-600">${invoice.paidAmount}</div>
+                              <div className="font-medium text-green-600">AED {invoice.paidAmount}</div>
                             </td>
                             <td className="p-4 text-center">
                               {getStatusBadge(invoice.status)}
@@ -955,11 +952,11 @@ export default function PurchaseInvoicesIndex() {
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Amount:</span>
-                          <p className="font-semibold text-lg">${invoice.totalAmount}</p>
+                          <p className="font-semibold text-lg">AED {invoice.totalAmount}</p>
                         </div>
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Paid:</span>
-                          <p className="font-semibold text-green-600">${invoice.paidAmount}</p>
+                          <p className="font-semibold text-green-600">AED {invoice.paidAmount}</p>
                         </div>
                       </div>
                     </div>
@@ -1203,8 +1200,8 @@ export default function PurchaseInvoicesIndex() {
                           <Label className="text-xs font-medium text-muted-foreground">ITEM TYPE</Label>
                           <Select
                             value={newItem.itemType}
-                            onValueChange={(value: "product" | "service") => setNewItem(prev => ({ 
-                              ...prev, 
+                            onValueChange={(value: "product" | "service") => setNewItem(prev => ({
+                              ...prev,
                               itemType: value,
                               inventoryItemId: "",
                               description: "",
@@ -1335,13 +1332,13 @@ export default function PurchaseInvoicesIndex() {
                                 <span className="font-medium">{item.quantity}</span>
                               </div>
                               <div className="col-span-2 text-right">
-                                <span className="font-medium">${parseFloat(item.unitPrice).toFixed(2)}</span>
+                                <span className="font-medium">AED {parseFloat(item.unitPrice).toFixed(2)}</span>
                               </div>
                               <div className="col-span-1 text-center">
                                 <Badge variant="outline" className="text-xs">{item.taxRate}%</Badge>
                               </div>
                               <div className="col-span-2 text-right">
-                                <span className="font-semibold text-green-600">${lineTotal.toFixed(2)}</span>
+                                <span className="font-semibold text-green-600">AED {lineTotal.toFixed(2)}</span>
                               </div>
                               <div className="col-span-1 flex justify-end">
                                 <Button
@@ -1373,7 +1370,7 @@ export default function PurchaseInvoicesIndex() {
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span className="font-medium">${invoiceItems.reduce((sum, item) => {
+                            <span className="font-medium">AED {invoiceItems.reduce((sum, item) => {
                               const quantity = parseInt(item.quantity) || 0;
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               return sum + (quantity * unitPrice);
@@ -1381,7 +1378,7 @@ export default function PurchaseInvoicesIndex() {
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Tax Amount:</span>
-                            <span className="font-medium">${invoiceItems.reduce((sum, item) => {
+                            <span className="font-medium">AED {invoiceItems.reduce((sum, item) => {
                               const quantity = parseInt(item.quantity) || 0;
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               const taxRate = parseFloat(item.taxRate) || 0;
@@ -1392,7 +1389,7 @@ export default function PurchaseInvoicesIndex() {
                           <div className="border-t pt-2">
                             <div className="flex justify-between text-lg font-bold">
                               <span>Total Amount:</span>
-                              <span className="text-green-600">${invoiceItems.reduce((sum, item) => {
+                              <span className="text-green-600">AED {invoiceItems.reduce((sum, item) => {
                                 const quantity = parseInt(item.quantity) || 0;
                                 const unitPrice = parseFloat(item.unitPrice) || 0;
                                 const taxRate = parseFloat(item.taxRate) || 0;
@@ -1423,7 +1420,7 @@ export default function PurchaseInvoicesIndex() {
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={createInvoiceMutation.isPending || !formData.supplierId || !formData.dueDate ||  invoiceItems.length === 0}
+                  disabled={createInvoiceMutation.isPending || !formData.supplierId || !formData.dueDate || invoiceItems.length === 0}
                   className="sm:w-auto order-1 sm:order-2"
                 >
                   {createInvoiceMutation.isPending ? (
@@ -1464,17 +1461,17 @@ export default function PurchaseInvoicesIndex() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 print:hidden w-full sm:w-auto">
-                    <Badge 
+                    <Badge
                       variant={
                         viewingInvoice.approvalStatus === "approved" ? "default" :
-                        viewingInvoice.approvalStatus === "rejected" ? "destructive" :
-                        "secondary"
+                          viewingInvoice.approvalStatus === "rejected" ? "destructive" :
+                            "secondary"
                       }
                       className="text-xs sm:text-sm flex-1 sm:flex-none justify-center"
                     >
                       {viewingInvoice.approvalStatus === "approved" ? "✓ Approved" :
-                      viewingInvoice.approvalStatus === "rejected" ? "✗ Rejected" :
-                      "⏳ Pending"}
+                        viewingInvoice.approvalStatus === "rejected" ? "✗ Rejected" :
+                          "⏳ Pending"}
                     </Badge>
                     <Button
                       variant="outline"
@@ -1636,9 +1633,9 @@ export default function PurchaseInvoicesIndex() {
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
                                   {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                                 </td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">${item.unitPrice}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">${item.taxAmount || "0.00"}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">${item.lineTotal}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.unitPrice}</td>
+                              <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.taxAmount || "0.00"}</td>
+                              <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">AED {item.lineTotal}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1657,24 +1654,24 @@ export default function PurchaseInvoicesIndex() {
                   <div className="space-y-2 sm:space-y-3">
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Subtotal:</span>
-                      <span className="text-lg font-semibold">${viewingInvoice.subtotal}</span>
+                      <span className="text-lg font-semibold">AED {viewingInvoice.subtotal}</span>
                     </div>
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Tax:</span>
-                      <span className="text-lg font-semibold">${viewingInvoice.taxAmount}</span>
+                      <span className="text-lg font-semibold">AED {viewingInvoice.taxAmount}</span>
                     </div>
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">${viewingInvoice.totalAmount}</span>
+                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">AED {viewingInvoice.totalAmount}</span>
                     </div>
                     <div className="flex justify-between items-center text-green-700 dark:text-green-400 print:text-green-700">
                       <span className="font-medium">Paid Amount:</span>
-                      <span className="text-lg font-semibold">${viewingInvoice.paidAmount}</span>
+                      <span className="text-lg font-semibold">AED {viewingInvoice.paidAmount}</span>
                     </div>
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-red-700 dark:text-red-400 print:text-red-700">Balance Due:</span>
                       <span className="text-2xl font-bold text-red-700 dark:text-red-400 print:text-red-700">
-                        ${(parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)).toFixed(2)}
+                        AED {(parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)).toFixed(2)}
                       </span>
                     </div>
                   </div>

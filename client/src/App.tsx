@@ -25,6 +25,8 @@ import SupplierOrders from "./pages/suppliers/orders";
 import SupplierProducts from "./pages/suppliers/products";
 import ReportsIndex from "@/pages/reports/index";
 import ProfitLossReport from "@/pages/reports/profit-loss";
+import CustomerStatementPage from "@/pages/reports/customer-statement";
+import SupplierStatementPage from "@/pages/reports/supplier-statement";
 import SettingsIndex from "@/pages/settings/index";
 import CurrencySettings from "@/pages/settings/CurrencySettings";
 import UsersIndex from "@/pages/users/index";
@@ -74,6 +76,8 @@ function Router() {
               <Route path="/credit-notes" component={CreditNotesIndex} />
               <Route path="/reports" component={ReportsIndex} />
               <Route path="/reports/profit-loss" component={() => <ProfitLossReport />} />
+              <Route path="/reports/customer-statement" component={() => <CustomerStatementPage />} />
+              <Route path="/reports/supplier-statement" component={() => <SupplierStatementPage />} />
               <Route path="/reports/payables-receivables" component={PayablesReceivablesReport} />
               <Route path="/general-ledger" component={GeneralLedgerIndex} />
               <Route path="/general-ledger/receivable" component={GeneralLedgerReceivable} />

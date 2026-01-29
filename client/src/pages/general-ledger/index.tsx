@@ -131,7 +131,7 @@ export default function GeneralLedger() {
         }
       });
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch general ledger entries");
       return response.json();
     },
@@ -143,18 +143,26 @@ export default function GeneralLedger() {
 
   const { data: customersResponse } = useQuery<{ data: Customer[] }>({
     queryKey: ["/api/customers"],
+    queryFn: async () => {
+      const response = await fetch("/api/customers?limit=1000");
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
   const { data: suppliersResponse } = useQuery<{ data: Supplier[] }>({
     queryKey: ["/api/suppliers"],
+    queryFn: async () => {
+      const response = await fetch("/api/suppliers?limit=1000");
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
   const { data: projectsResponse } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
     queryFn: async () => {
-      const response = await apiRequest("GET", "/api/projects");
+      const response = await apiRequest("/api/projects");
       if (!response.ok) throw new Error("Failed to fetch projects");
       return response.json();
     },
@@ -165,48 +173,25 @@ export default function GeneralLedger() {
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
   const projects = Array.isArray(projectsResponse) ? projectsResponse : [];
 
-  // Common chart of accounts for autocomplete
-  const accountOptions = [
-    // Assets
-    { value: "Cash", label: "Cash", searchText: "cash money bank" },
-    { value: "Accounts Receivable", label: "Accounts Receivable", searchText: "receivable ar customer debt" },
-    { value: "Inventory", label: "Inventory", searchText: "inventory stock goods" },
-    { value: "Prepaid Expenses", label: "Prepaid Expenses", searchText: "prepaid advance payment" },
-    { value: "Equipment", label: "Equipment", searchText: "equipment machinery tools" },
-    { value: "Vehicles", label: "Vehicles", searchText: "vehicles cars trucks" },
-    
-    // Liabilities
-    { value: "Accounts Payable", label: "Accounts Payable", searchText: "payable ap supplier debt" },
-    { value: "Accrued Expenses", label: "Accrued Expenses", searchText: "accrued expenses liability" },
-    { value: "Short-term Debt", label: "Short-term Debt", searchText: "debt loan liability" },
-    { value: "Long-term Debt", label: "Long-term Debt", searchText: "debt loan liability mortgage" },
-    
-    // Equity
-    { value: "Owner's Equity", label: "Owner's Equity", searchText: "equity capital ownership" },
-    { value: "Retained Earnings", label: "Retained Earnings", searchText: "retained earnings profit" },
-    
-    // Revenue
-    { value: "Service Revenue", label: "Service Revenue", searchText: "revenue income service" },
-    { value: "Sales Revenue", label: "Sales Revenue", searchText: "sales revenue income" },
-    { value: "Rental Income", label: "Rental Income", searchText: "rental income revenue" },
-    { value: "Interest Income", label: "Interest Income", searchText: "interest income revenue" },
-    { value: "Commission Income", label: "Commission Income", searchText: "commission income revenue" },
-    { value: "Consulting Fees", label: "Consulting Fees", searchText: "consulting fees revenue" },
-    
-    // Expenses
-    { value: "Office Expenses", label: "Office Expenses", searchText: "office expenses supplies" },
-    { value: "Utilities", label: "Utilities", searchText: "utilities electricity water" },
-    { value: "Professional Services", label: "Professional Services", searchText: "professional services legal accounting" },
-    { value: "Insurance", label: "Insurance", searchText: "insurance coverage premium" },
-    { value: "Maintenance & Repairs", label: "Maintenance & Repairs", searchText: "maintenance repairs upkeep" },
-    { value: "Travel Expenses", label: "Travel Expenses", searchText: "travel expenses transportation" },
-    { value: "Equipment Rental", label: "Equipment Rental", searchText: "equipment rental lease" },
-    { value: "Fuel Expenses", label: "Fuel Expenses", searchText: "fuel gas diesel expenses" },
-    { value: "Employee Benefits", label: "Employee Benefits", searchText: "benefits health insurance" },
-    { value: "Training Expenses", label: "Training Expenses", searchText: "training education development" },
-    { value: "Marketing Expenses", label: "Marketing Expenses", searchText: "marketing advertising promotion" },
-    { value: "Depreciation Expense", label: "Depreciation Expense", searchText: "depreciation expense asset" },
-  ];
+  // Fetch chart of accounts from database
+  const { data: chartOfAccountsData } = useQuery<{
+    id: number;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    accountCategory: string;
+    description: string | null;
+  }[]>({
+    queryKey: ["/api/chart-of-accounts"],
+    enabled: isAuthenticated,
+  });
+
+  // Convert chart of accounts to autocomplete options
+  const accountOptions = (chartOfAccountsData || []).map(account => ({
+    value: account.accountName,
+    label: `${account.accountCode} - ${account.accountName}`,
+    searchText: `${account.accountCode} ${account.accountName} ${account.accountType} ${account.accountCategory} ${account.description || ""}`,
+  }));
 
   const createEntryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -226,7 +211,7 @@ export default function GeneralLedger() {
         projectId: data.projectId,
       };
 
-      const response = await apiRequest("POST", "/api/general-ledger", entryData);
+      const response = await apiRequest("/api/general-ledger", { method: "POST", body: entryData });
       if (!response.ok) throw new Error("Failed to create entry");
       return response.json();
     },
@@ -243,7 +228,7 @@ export default function GeneralLedger() {
 
   const updateEntryMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await apiRequest("PUT", `/api/general-ledger/${id}`, data);
+      const response = await apiRequest(`/api/general-ledger/${id}`, { method: "PUT", body: data });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to update entry");
@@ -729,8 +714,6 @@ export default function GeneralLedger() {
                       <TableHead>Invoice #</TableHead>
                       <TableHead className="text-right">Debit</TableHead>
                       <TableHead className="text-right">Credit</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -752,24 +735,10 @@ export default function GeneralLedger() {
                         <TableCell>{entry.projectTitle || "-"}</TableCell>
                         <TableCell>{entry.invoiceNumber || "-"}</TableCell>
                         <TableCell className="text-right">
-                          {parseFloat(entry.debitAmount) > 0 ? `$${parseFloat(entry.debitAmount).toFixed(2)}` : "-"}
+                          {parseFloat(entry.debitAmount) > 0 ? `AED ${parseFloat(entry.debitAmount).toFixed(2)}` : "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {parseFloat(entry.creditAmount) > 0 ? `$${parseFloat(entry.creditAmount).toFixed(2)}` : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(entry.status)}>
-                            {entry.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(entry)}
-                          >
-                            Edit
-                          </Button>
+                          {parseFloat(entry.creditAmount) > 0 ? `AED ${parseFloat(entry.creditAmount).toFixed(2)}` : "-"}
                         </TableCell>
                       </TableRow>
                     ))}

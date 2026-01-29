@@ -142,7 +142,7 @@ export default function SalesIndex() {
   // Invoice filters
   const [invoiceSearchFilter, setInvoiceSearchFilter] = useState<string>("");
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
-    useState<string>("unpaid");
+    useState<string>("all");
   const [invoiceCustomerFilter, setInvoiceCustomerFilter] =
     useState<string>("all");
   const [invoiceProjectFilter, setInvoiceProjectFilter] =
@@ -967,10 +967,7 @@ export default function SalesIndex() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const formatDate = (date: string | Date) => {
@@ -1699,16 +1696,16 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        ${item.unitPrice.toFixed(2)}
+                                         AED {item.unitPrice.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        ${taxAmount.toFixed(2)}
+                                        AED {taxAmount.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
-                                        ${lineTotal.toFixed(2)}
+                                        AED {lineTotal.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <Button
@@ -2179,16 +2176,16 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        ${item.unitPrice.toFixed(2)}
+                                        AED {item.unitPrice.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        ${taxAmount.toFixed(2)}
+                                        AED {taxAmount.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
-                                        ${lineTotal.toFixed(2)}
+                                        AED {lineTotal.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <Button

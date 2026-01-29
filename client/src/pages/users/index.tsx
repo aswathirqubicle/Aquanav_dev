@@ -12,12 +12,13 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Users, Plus, Mail, Shield, Edit, Trash2, UserCheck, UserX } from "lucide-react";
-import { User, insertUserSchema } from "@shared/schema";
+import { Users, Plus, Mail, Shield, Edit, Trash2, UserCheck, UserX, Briefcase, Search } from "lucide-react";
+import { Autocomplete } from "@/components/ui/autocomplete";
+import { User, insertUserSchema, Employee } from "@shared/schema";
 import { z } from "zod";
 
 const createUserSchema = insertUserSchema;
-type CreateUserData = z.infer<typeof createUserSchema>;
+type CreateUserData = z.infer<typeof createUserSchema> & { employeeId?: string };
 
 interface UserWithoutPassword extends Omit<User, 'password'> { }
 
@@ -35,6 +36,7 @@ export default function UsersIndex() {
     password: "",
     role: "employee",
     isActive: true,
+    employeeId: "",
   });
 
   useEffect(() => {
@@ -47,6 +49,11 @@ export default function UsersIndex() {
 
   const { data: users, isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/users"],
+    enabled: isAuthenticated && user?.role === "admin",
+  });
+
+  const { data: employees = [] } = useQuery<Employee[]>({
+    queryKey: ["/api/employees"],
     enabled: isAuthenticated && user?.role === "admin",
   });
 
@@ -69,6 +76,7 @@ export default function UsersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       toast({
         title: "User Created",
         description: "The user has been created successfully.",
@@ -110,6 +118,7 @@ export default function UsersIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       toast({
         title: "User Updated",
         description: "The user has been updated successfully.",
@@ -163,9 +172,20 @@ export default function UsersIndex() {
       password: "",
       role: "employee",
       isActive: true,
+      employeeId: "",
     });
     setIsDialogOpen(false);
     setEditingUser(null);
+  };
+
+  // Find employee linked to a user
+  const getLinkedEmployee = (userId: number) => {
+    return employees.find(e => e.userId === userId);
+  };
+
+  // Get available employees (not linked to any user, or linked to current editing user)
+  const getAvailableEmployees = () => {
+    return employees.filter(e => !e.userId || (editingUser && e.userId === editingUser.id));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -189,12 +209,14 @@ export default function UsersIndex() {
 
   const handleEdit = (userToEdit: UserWithoutPassword) => {
     setEditingUser(userToEdit);
+    const linkedEmployee = getLinkedEmployee(userToEdit.id);
     setFormData({
       username: userToEdit.username,
       email: userToEdit.email,
       password: "",
       role: userToEdit.role,
       isActive: userToEdit.isActive,
+      employeeId: linkedEmployee?.id?.toString() || "",
     });
     setIsDialogOpen(true);
   };
@@ -236,11 +258,11 @@ export default function UsersIndex() {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-3 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">User Management</h1>
-          <p className="text-slate-600 dark:text-slate-400">Manage user accounts and access permissions</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">User Management</h1>
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage user accounts and access permissions</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -307,6 +329,34 @@ export default function UsersIndex() {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="employeeId">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4" />
+                    Link to Employee
+                  </div>
+                </Label>
+                {editingUser && getLinkedEmployee(editingUser.id) ? (
+                  <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-md text-sm">
+                    <p className="font-medium">Linked to: {getLinkedEmployee(editingUser.id)?.firstName} {getLinkedEmployee(editingUser.id)?.lastName}</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+                      Employee cannot be changed once linked
+                    </p>
+                  </div>
+                ) : (
+                  <Autocomplete
+                    options={getAvailableEmployees().map((emp) => ({
+                      value: emp.id.toString(),
+                      label: `${emp.firstName} ${emp.lastName} (${emp.employeeCode})`,
+                      searchText: `${emp.firstName} ${emp.lastName} ${emp.employeeCode}`,
+                    }))}
+                    value={formData.employeeId || ""}
+                    onValueChange={(value) => handleChange("employeeId", value)}
+                    placeholder="Search by name or code..."
+                  />
+                )}
+              </div>
+
               <div className="flex items-center space-x-2">
                 <Switch
                   id="isActive"
@@ -336,16 +386,16 @@ export default function UsersIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-1.5 sm:p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                <Users className="h-4 w-4 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Users</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              <div className="ml-2 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Total Users</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {users?.length || 0}
                 </p>
               </div>
@@ -354,14 +404,14 @@ export default function UsersIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                <UserCheck className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="p-1.5 sm:p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
+                <UserCheck className="h-4 w-4 sm:h-6 sm:w-6 text-green-600 dark:text-green-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Active Users</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              <div className="ml-2 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Active</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {users?.filter(u => u.isActive).length || 0}
                 </p>
               </div>
@@ -370,14 +420,14 @@ export default function UsersIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                <UserX className="h-6 w-6 text-red-600 dark:text-red-400" />
+              <div className="p-1.5 sm:p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                <UserX className="h-4 w-4 sm:h-6 sm:w-6 text-red-600 dark:text-red-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Inactive Users</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              <div className="ml-2 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Inactive</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {users?.filter(u => !u.isActive).length || 0}
                 </p>
               </div>
@@ -386,14 +436,14 @@ export default function UsersIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                <Shield className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              <div className="p-1.5 sm:p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                <Shield className="h-4 w-4 sm:h-6 sm:w-6 text-purple-600 dark:text-purple-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Administrators</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              <div className="ml-2 sm:ml-4">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">Admins</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {users?.filter(u => u.role === "admin").length || 0}
                 </p>
               </div>
@@ -421,43 +471,43 @@ export default function UsersIndex() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6">
+        <div className="grid gap-3 sm:gap-6">
           {users.map((userItem) => (
             <Card key={userItem.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className={`h-12 w-12 rounded-full flex items-center justify-center ${userItem.isActive
-                        ? "bg-ocean-100 dark:bg-ocean-900/20"
-                        : "bg-gray-100 dark:bg-gray-900/20"
+              <CardContent className="p-3 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                  <div className="flex items-start space-x-3 sm:space-x-4">
+                    <div className={`h-10 w-10 sm:h-12 sm:w-12 rounded-full flex items-center justify-center flex-shrink-0 ${userItem.isActive
+                      ? "bg-ocean-100 dark:bg-ocean-900/20"
+                      : "bg-gray-100 dark:bg-gray-900/20"
                       }`}>
-                      <Users className={`h-6 w-6 ${userItem.isActive
-                          ? "text-ocean-600 dark:text-ocean-400"
-                          : "text-gray-400"
+                      <Users className={`h-5 w-5 sm:h-6 sm:w-6 ${userItem.isActive
+                        ? "text-ocean-600 dark:text-ocean-400"
+                        : "text-gray-400"
                         }`} />
                     </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                        <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">
                           {userItem.username}
                         </h3>
-                        <Badge className={getRoleBadgeColor(userItem.role)}>
+                        <Badge className={`text-xs ${getRoleBadgeColor(userItem.role)}`}>
                           {roleDisplayNames[userItem.role] || userItem.role}
                         </Badge>
                         {!userItem.isActive && (
-                          <Badge variant="outline" className="border-red-300 text-red-600">
+                          <Badge variant="outline" className="text-xs border-red-300 text-red-600">
                             Inactive
                           </Badge>
                         )}
                       </div>
-                      <div className="flex items-center space-x-4 mt-1">
-                        <div className="flex items-center space-x-1">
-                          <Mail className="h-4 w-4 text-slate-400" />
-                          <span className="text-sm text-slate-600 dark:text-slate-400">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 mt-1">
+                        <div className="flex items-center space-x-1 min-w-0">
+                          <Mail className="h-3 w-3 sm:h-4 sm:w-4 text-slate-400 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 truncate">
                             {userItem.email}
                           </span>
                         </div>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                        <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
                           ID: {userItem.id}
                         </span>
                       </div>
@@ -466,22 +516,25 @@ export default function UsersIndex() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => toggleUserStatus(userItem)}
                       disabled={updateUserMutation.isPending}
+                      className="text-xs sm:text-sm"
                     >
-                      {userItem.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                      {userItem.isActive ? "Deactivate" : "Activate"}
+                      {userItem.isActive ? <UserX className="h-3 w-3 sm:h-4 sm:w-4 mr-1" /> : <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />}
+                      <span className="hidden sm:inline">{userItem.isActive ? "Deactivate" : "Activate"}</span>
+                      <span className="sm:hidden">{userItem.isActive ? "Off" : "On"}</span>
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleEdit(userItem)}
+                      className="text-xs sm:text-sm"
                     >
-                      <Edit className="h-4 w-4" />
+                      <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                       Edit
                     </Button>
                     <Button
@@ -489,10 +542,10 @@ export default function UsersIndex() {
                       size="sm"
                       onClick={() => handleDelete(userItem.id)}
                       disabled={deleteUserMutation.isPending}
-                      className="text-red-600 hover:text-red-700 border-red-300"
+                      className="text-xs sm:text-sm text-red-600 hover:text-red-700 border-red-300"
                     >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
+                      <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      <span className="hidden sm:inline">Delete</span>
                     </Button>
                   </div>
                 </div>

@@ -650,10 +650,7 @@ export default function PurchaseOrdersIndex() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   if (!isAuthenticated) {
@@ -1315,9 +1312,9 @@ export default function PurchaseOrdersIndex() {
                                   <TableCell>
                                     {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
                                   </TableCell>
-                                  <TableCell>${item.unitPrice}</TableCell>
+                                  <TableCell>AED {item.unitPrice}</TableCell>
                                   <TableCell>{item.taxRate}%</TableCell>
-                                  <TableCell className="font-semibold">${lineTotal.toFixed(2)}</TableCell>
+                                  <TableCell className="font-semibold">AED {lineTotal.toFixed(2)}</TableCell>
                                   <TableCell>
                                     <Button
                                       type="button"
@@ -1342,7 +1339,7 @@ export default function PurchaseOrdersIndex() {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
-                          <span>${orderItems.reduce((sum, item) => {
+                          <span>AED {orderItems.reduce((sum, item) => {
                             const quantity = parseInt(item.quantity) || 0;
                             const unitPrice = parseFloat(item.unitPrice) || 0;
                             return sum + (quantity * unitPrice);
@@ -1350,11 +1347,11 @@ export default function PurchaseOrdersIndex() {
                         </div>
                         <div className="flex justify-between">
                           <span>Total Tax:</span>
-                          <span>${calculateTotalTax().toFixed(2)}</span>
+                          <span>AED {calculateTotalTax().toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between font-bold border-t pt-2">
                           <span>Total Amount:</span>
-                          <span>${(orderItems.reduce((sum, item) => {
+                          <span>AED {(orderItems.reduce((sum, item) => {
                             const quantity = parseInt(item.quantity) || 0;
                             const unitPrice = parseFloat(item.unitPrice) || 0;
                             return sum + (quantity * unitPrice);
@@ -1637,8 +1634,8 @@ export default function PurchaseOrdersIndex() {
                             <TableCell className="text-right">
                               {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                             </TableCell>
-                            <TableCell className="text-right">${item.unitPrice}</TableCell>
-                            <TableCell className="text-right font-semibold">${item.lineTotal}</TableCell>
+                            <TableCell className="text-right">AED {item.unitPrice}</TableCell>
+                            <TableCell className="text-right font-semibold">AED {item.lineTotal}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1650,17 +1647,17 @@ export default function PurchaseOrdersIndex() {
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-medium">${viewingOrder.subtotal}</span>
+                        <span className="font-medium">AED {viewingOrder.subtotal}</span>
                       </div>
                       <div className="flex justify-between items-center text-sm mt-2">
                         <span className="text-muted-foreground">Tax</span>
-                        <span className="font-medium">${viewingOrder.taxAmount}</span>
+                        <span className="font-medium">AED {viewingOrder.taxAmount}</span>
                       </div>
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between items-center">
                         <span className="text-base font-semibold">Total Amount</span>
-                        <span className="text-xl font-bold text-primary">${viewingOrder.totalAmount}</span>
+                        <span className="text-xl font-bold text-primary">AED {viewingOrder.totalAmount}</span>
                       </div>
                     </div>
                   </div>

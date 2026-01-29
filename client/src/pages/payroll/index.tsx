@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Download, Eye, Check, X, Plus, Trash2, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -108,6 +109,7 @@ export default function PayrollIndex() {
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [clearMonth, setClearMonth] = useState(new Date().getMonth() + 1);
   const [clearYear, setClearYear] = useState(new Date().getFullYear());
+  const [selectedPayrollIds, setSelectedPayrollIds] = useState<number[]>([]);
 
   useEffect(() => {
     // Only redirect after authentication loading is complete
@@ -226,6 +228,42 @@ export default function PayrollIndex() {
     },
   });
 
+  const bulkApprovePayrollMutation = useMutation({
+    mutationFn: async (entryIds: number[]) => {
+      const results = await Promise.all(
+        entryIds.map(async (id) => {
+          const response = await apiRequest(`/api/payroll/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ status: "approved" }),
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+          return response.json();
+        })
+      );
+      return results;
+    },
+    onSuccess: (_, variables) => {
+      toast({
+        title: "Payroll Approved",
+        description: `${variables.length} payroll ${variables.length === 1 ? 'entry has' : 'entries have'} been approved successfully.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }] 
+      });
+      setSelectedPayrollIds([]);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve payroll entries",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Show loading state while authentication is being checked
   if (loading) {
     return (
@@ -247,6 +285,11 @@ export default function PayrollIndex() {
           "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400",
         label: "Draft",
       },
+      generated: {
+        class:
+          "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
+        label: "Pending",
+      },
       approved: {
         class:
           "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
@@ -267,10 +310,7 @@ export default function PayrollIndex() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const generateAllPayslips = async () => {
@@ -899,10 +939,21 @@ export default function PayrollIndex() {
     0,
   );
 
-  const enrichedPayrollEntries = payrollEntries.map((entry) => ({
-    ...entry,
-    employee: employees?.find((emp) => emp.id === entry.employeeId),
-  }));
+  const enrichedPayrollEntries = payrollEntries
+    .map((entry) => ({
+      ...entry,
+      employee: employees?.find((emp) => emp.id === entry.employeeId),
+    }))
+    .sort((a, b) => {
+      // Sort by status: draft/generated first, then approved, then paid
+      const statusOrder: Record<string, number> = { draft: 0, generated: 0, approved: 1, paid: 2 };
+      const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+      // Within same status, sort by total amount descending
+      const amountA = parseFloat(String(a.totalAmount || 0));
+      const amountB = parseFloat(String(b.totalAmount || 0));
+      return amountB - amountA;
+    });
 
   const statusCounts = enrichedPayrollEntries.reduce(
     (acc, entry) => {
@@ -1125,18 +1176,18 @@ export default function PayrollIndex() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-8">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex-shrink-0">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Total Employees
+              <div className="ml-2 sm:ml-4 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
+                  Employees
                 </p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {employees?.length || 0}
                 </p>
               </div>
@@ -1145,16 +1196,16 @@ export default function PayrollIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                <DollarSign className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="p-2 bg-green-100 dark:bg-green-900/20 rounded-lg flex-shrink-0">
+                <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Monthly Payroll
+              <div className="ml-2 sm:ml-4 min-w-0 overflow-hidden">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
+                  Monthly
                 </p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 break-words">
+                <p className="text-sm sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
                   {formatCurrency(totalPayroll)}
                 </p>
               </div>
@@ -1163,16 +1214,16 @@ export default function PayrollIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg">
-                <Calendar className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+              <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 rounded-lg flex-shrink-0">
+                <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-600 dark:text-yellow-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              <div className="ml-2 sm:ml-4 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
                   Pending
                 </p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {statusCounts.draft || 0}
                 </p>
               </div>
@@ -1181,16 +1232,16 @@ export default function PayrollIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                <CheckCircle className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex-shrink-0">
+                <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-purple-600 dark:text-purple-400" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              <div className="ml-2 sm:ml-4 min-w-0">
+                <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
                   Processed
                 </p>
-                <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
+                <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {(statusCounts.approved || 0) + (statusCounts.paid || 0)}
                 </p>
               </div>
@@ -1241,26 +1292,91 @@ export default function PayrollIndex() {
                   </p>
                 </div>
               ) : (
+                <>
+                  {user?.role === "admin" && enrichedPayrollEntries.some(e => e.status === "draft" || e.status === "generated") && (
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      {selectedPayrollIds.length > 0 ? (
+                        <>
+                          <span className="text-sm text-blue-700 dark:text-blue-300">
+                            {selectedPayrollIds.length} {selectedPayrollIds.length === 1 ? 'entry' : 'entries'} selected
+                          </span>
+                          <Button
+                            size="sm"
+                            onClick={() => bulkApprovePayrollMutation.mutate(selectedPayrollIds)}
+                            disabled={bulkApprovePayrollMutation.isPending}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">{bulkApprovePayrollMutation.isPending ? 'Approving...' : 'Approve Selected'}</span>
+                            <span className="sm:hidden">{bulkApprovePayrollMutation.isPending ? '...' : 'Approve'}</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedPayrollIds([])}
+                          >
+                            <span className="hidden sm:inline">Clear Selection</span>
+                            <span className="sm:hidden">Clear</span>
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-sm text-blue-700 dark:text-blue-300">
+                          Select draft entries using checkboxes to approve them
+                        </span>
+                      )}
+                    </div>
+                  )}
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[120px]">Employee</TableHead>
-                        <TableHead className="min-w-[100px]">Month/Year</TableHead>
-                        <TableHead className="min-w-[80px] text-center">Days</TableHead>
-                        <TableHead className="min-w-[100px]">Basic Salary</TableHead>
-                        <TableHead className="min-w-[100px]">Total Amount</TableHead>
-                        <TableHead className="min-w-[80px]">Status</TableHead>
-                        <TableHead className="min-w-[120px]">Actions</TableHead>
+                        {user?.role === "admin" && (
+                          <TableHead className="w-10 sm:w-12 px-1 sm:px-2">
+                            <Checkbox
+                              className="border-2 border-slate-400 dark:border-slate-500"
+                              checked={
+                                enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").length > 0 &&
+                                enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").every(e => selectedPayrollIds.includes(e.id))
+                              }
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  const draftIds = enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").map(e => e.id);
+                                  setSelectedPayrollIds(draftIds);
+                                } else {
+                                  setSelectedPayrollIds([]);
+                                }
+                              }}
+                            />
+                          </TableHead>
+                        )}
+                        <TableHead className="min-w-[100px] sm:min-w-[120px]">Employee</TableHead>
+                        <TableHead className="hidden md:table-cell min-w-[100px]">Month/Year</TableHead>
+                        <TableHead className="hidden lg:table-cell min-w-[60px] text-center">Days</TableHead>
+                        <TableHead className="hidden lg:table-cell min-w-[90px]">Basic Salary</TableHead>
+                        <TableHead className="min-w-[90px] sm:min-w-[100px]">Total</TableHead>
+                        <TableHead className="min-w-[70px] sm:min-w-[80px]">Status</TableHead>
+                        <TableHead className="min-w-[80px] sm:min-w-[120px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {enrichedPayrollEntries.map((entry) => (
-                        <PayslipTableRow key={entry.id} entry={entry} />
+                        <PayslipTableRow 
+                          key={entry.id} 
+                          entry={entry} 
+                          isAdmin={user?.role === "admin"}
+                          isSelected={selectedPayrollIds.includes(entry.id)}
+                          onSelect={(id, checked) => {
+                            if (checked) {
+                              setSelectedPayrollIds(prev => [...prev, id]);
+                            } else {
+                              setSelectedPayrollIds(prev => prev.filter(pId => pId !== id));
+                            }
+                          }}
+                        />
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -1399,7 +1515,17 @@ export default function PayrollIndex() {
 }
 
 // Payslip Table Row Component
-function PayslipTableRow({ entry }: { entry: PayrollEntry }) {
+function PayslipTableRow({ 
+  entry, 
+  isSelected, 
+  onSelect, 
+  isAdmin 
+}: { 
+  entry: PayrollEntry; 
+  isSelected?: boolean; 
+  onSelect?: (id: number, checked: boolean) => void;
+  isAdmin?: boolean;
+}) {
   const [isPayslipOpen, setIsPayslipOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1435,10 +1561,7 @@ function PayslipTableRow({ entry }: { entry: PayrollEntry }) {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const getMonthName = (month: number) => {
@@ -1466,6 +1589,11 @@ function PayslipTableRow({ entry }: { entry: PayrollEntry }) {
           "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400",
         label: "Draft",
       },
+      generated: {
+        class:
+          "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
+        label: "Pending",
+      },
       approved: {
         class:
           "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
@@ -1486,51 +1614,68 @@ function PayslipTableRow({ entry }: { entry: PayrollEntry }) {
 
   return (
     <TableRow className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-      <TableCell className="py-4 px-4">
+      {isAdmin && (
+        <TableCell className="py-2 sm:py-4 px-1 sm:px-2 w-10 sm:w-12">
+          {(entry.status === "draft" || entry.status === "generated") && (
+            <Checkbox
+              className="border-2 border-slate-400 dark:border-slate-500"
+              checked={isSelected}
+              onCheckedChange={(checked) => onSelect?.(entry.id, !!checked)}
+            />
+          )}
+        </TableCell>
+      )}
+      <TableCell className="py-2 sm:py-4 px-2 sm:px-4">
         <div>
-          <div className="font-medium text-slate-900 dark:text-slate-100">
+          <div className="font-medium text-slate-900 dark:text-slate-100 text-sm sm:text-base">
             {entry.employee?.firstName} {entry.employee?.lastName}
           </div>
-          <div className="text-sm text-slate-500 dark:text-slate-400">
+          <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
             {entry.employee?.employeeCode}
+          </div>
+          {/* Show month/year on mobile since column is hidden */}
+          <div className="md:hidden text-xs text-slate-400 dark:text-slate-500 mt-1">
+            {getMonthName(entry.month)} {entry.year}
           </div>
         </div>
       </TableCell>
-      <TableCell className="py-4 px-4 text-slate-900 dark:text-slate-100">
+      <TableCell className="hidden md:table-cell py-2 sm:py-4 px-2 sm:px-4 text-slate-900 dark:text-slate-100 text-sm">
         {getMonthName(entry.month)} {entry.year}
       </TableCell>
-      <TableCell className="py-4 px-4 text-slate-900 dark:text-slate-100 text-center">
+      <TableCell className="hidden lg:table-cell py-2 sm:py-4 px-2 sm:px-4 text-slate-900 dark:text-slate-100 text-center text-sm">
         {entry.workingDays}
       </TableCell>
-      <TableCell className="text-sm sm:text-base break-words min-w-0">
+      <TableCell className="hidden lg:table-cell text-sm break-words min-w-0">
         {formatCurrency(entry.basicSalary || "0")}
       </TableCell>
-      <TableCell className="font-semibold text-sm sm:text-base break-words min-w-0">
+      <TableCell className="font-semibold text-xs sm:text-sm break-words min-w-0 py-2 sm:py-4">
         {formatCurrency(entry.totalAmount || "0")}
       </TableCell>
-      <TableCell className="py-4 px-4">
+      <TableCell className="py-2 sm:py-4 px-2 sm:px-4">
         {getStatusBadge(entry.status)}
       </TableCell>
-      <TableCell className="py-4 px-4">
-        <div className="flex space-x-2">
+      <TableCell className="py-2 sm:py-4 px-1 sm:px-4">
+        <div className="flex flex-wrap gap-1 sm:space-x-2">
           <Button
             variant="ghost"
             size="sm"
+            className="h-8 px-2 sm:px-3"
             onClick={() => setIsPayslipOpen(true)}
           >
-            <Eye className="h-4 w-4 mr-1" />
-            View Payslip
+            <Eye className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">View</span>
           </Button>
           <PayrollDetailsDialog payrollEntry={entry} />
-          {entry.status === "draft" && (
+          {(entry.status === "draft" || entry.status === "generated") && (
             <Button
               variant="ghost"
               size="sm"
+              className="h-8 px-2 sm:px-3"
               onClick={() => approvePayrollMutation.mutate(entry.id)}
               disabled={approvePayrollMutation.isPending}
             >
-              <Check className="h-4 w-4 mr-1" />
-              {approvePayrollMutation.isPending ? "Approving..." : "Approve"}
+              <Check className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">{approvePayrollMutation.isPending ? "..." : "Approve"}</span>
             </Button>
           )}
           {entry.status === "approved" && (
@@ -1596,10 +1741,7 @@ function GeneratePayslipButton({
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const getMonthName = (month: number) => {
@@ -1968,10 +2110,7 @@ function PrintPayslipButton({
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const getMonthName = (month: number) => {
@@ -2290,10 +2429,7 @@ function PayslipDialog({
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const getMonthName = (month: number) => {

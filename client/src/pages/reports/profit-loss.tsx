@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,16 +12,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { 
   Calendar, 
-  Filter, 
   Download, 
-  DollarSign, 
+  DollarSign,
   TrendingUp, 
   TrendingDown,
-  FileText,
   BarChart3,
-  PieChart
+  PieChart,
+  ArrowLeft,
+  FileText,
+  Filter
 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Company } from "@shared/schema";
 
 interface GeneralLedgerEntry {
   id: number;
@@ -47,22 +48,34 @@ interface GeneralLedgerEntry {
 interface Project {
   id: number;
   title: string;
+  startDate?: string | null;
+  actualEndDate?: string | null;
+  status?: string | null;
 }
 
 export default function ProfitLossReport() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
     projectId: undefined as number | undefined,
     accountType: "" as "revenue" | "expense" | "cogs" | "",
-    periodType: "custom" as "monthly" | "quarterly" | "yearly" | "custom",
+    periodType: "financial_year" as "monthly" | "quarterly" | "yearly" | "financial_year" | "previous_fy" | "custom",
   });
 
-  React.useEffect(() => {
+  // Check if any filters are active (non-default)
+  const hasActiveFilters = filters.projectId !== undefined || filters.periodType !== "financial_year";
+
+  // Fetch company settings for financial year
+  const { data: company } = useQuery<Company>({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setLocation("/login");
     } else if (user?.role !== "admin" && user?.role !== "finance") {
@@ -70,13 +83,61 @@ export default function ProfitLossReport() {
     }
   }, [isAuthenticated, user, setLocation]);
 
+  // Calculate financial year dates
+  const getFinancialYearDates = () => {
+    const now = new Date();
+    const fyStartMonth = (company?.financialYearStartMonth || 1) - 1;
+    const fyStartDay = company?.financialYearStartDay || 1;
+    const fyEndMonth = (company?.financialYearEndMonth || 12) - 1;
+    const fyEndDay = company?.financialYearEndDay || 31;
+    
+    let fyStartYear = now.getFullYear();
+    if (now.getMonth() < fyStartMonth || (now.getMonth() === fyStartMonth && now.getDate() < fyStartDay)) {
+      fyStartYear -= 1;
+    }
+    
+    const fyStart = new Date(fyStartYear, fyStartMonth, fyStartDay);
+    const fyEnd = new Date(fyStartMonth > fyEndMonth ? fyStartYear + 1 : fyStartYear, fyEndMonth, fyEndDay);
+    
+    return { fyStart, fyEnd };
+  };
+
   // Set default dates based on period type
-  React.useEffect(() => {
+  useEffect(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
 
-    if (filters.periodType === "monthly") {
+    if (filters.periodType === "financial_year") {
+      const { fyStart, fyEnd } = getFinancialYearDates();
+      setFilters(prev => ({
+        ...prev,
+        startDate: fyStart.toISOString().split('T')[0],
+        endDate: fyEnd.toISOString().split('T')[0]
+      }));
+    } else if (filters.periodType === "previous_fy") {
+      // Calculate previous financial year dates
+      const fyStartMonth = (company?.financialYearStartMonth || 1) - 1;
+      const fyStartDay = company?.financialYearStartDay || 1;
+      const fyEndMonth = (company?.financialYearEndMonth || 12) - 1;
+      const fyEndDay = company?.financialYearEndDay || 31;
+      
+      // Get current FY start year and subtract 1 for previous year
+      let fyStartYear = now.getFullYear();
+      if (now.getMonth() < fyStartMonth || (now.getMonth() === fyStartMonth && now.getDate() < fyStartDay)) {
+        fyStartYear -= 1;
+      }
+      fyStartYear -= 1; // Previous year
+      
+      const prevFyStart = new Date(fyStartYear, fyStartMonth, fyStartDay);
+      const prevFyEnd = new Date(fyStartMonth > fyEndMonth ? fyStartYear + 1 : fyStartYear, fyEndMonth, fyEndDay);
+      
+      setFilters(prev => ({
+        ...prev,
+        startDate: prevFyStart.toISOString().split('T')[0],
+        endDate: prevFyEnd.toISOString().split('T')[0]
+      }));
+    } else if (filters.periodType === "monthly") {
       const startOfMonth = new Date(currentYear, currentMonth, 1);
       const endOfMonth = new Date(currentYear, currentMonth + 1, 0);
       setFilters(prev => ({
@@ -102,122 +163,152 @@ export default function ProfitLossReport() {
         endDate: endOfYear.toISOString().split('T')[0]
       }));
     }
-  }, [filters.periodType]);
+  }, [filters.periodType, company]);
 
   const { data: revenueEntries, isLoading: revenueLoading } = useQuery<GeneralLedgerEntry[]>({
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "receivable" });
+      const params = new URLSearchParams({ entryType: "receivable", limit: "1000" });
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch revenue entries");
-      return response.json();
+      const result = await response.json();
+      return result.data || [];
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!filters.startDate && !!filters.endDate,
   });
 
   const { data: expenseEntries, isLoading: expenseLoading } = useQuery<GeneralLedgerEntry[]>({
     queryKey: ["/api/general-ledger", "payable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "payable" });
+      const params = new URLSearchParams({ entryType: "payable", limit: "1000" });
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
 
-      const response = await apiRequest("GET", `/api/general-ledger?${params}`);
+      const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch expense entries");
-      return response.json();
+      const result = await response.json();
+      return result.data || [];
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !!filters.startDate && !!filters.endDate,
   });
 
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
-    queryFn: async () => {
-      const response = await apiRequest("GET", "/api/projects");
-      if (!response.ok) throw new Error("Failed to fetch projects");
-      return response.json();
-    },
     enabled: isAuthenticated,
   });
 
-  // Fetch project revenue data for project-based profit/loss
-  const { data: projectRevenues, isLoading: projectRevenuesLoading } = useQuery<any[]>({
-    queryKey: ["/api/projects/revenues", filters],
-    queryFn: async () => {
-      if (!projects.length) return [];
-      
-      const revenuePromises = projects.map(async (project) => {
-        try {
-          const response = await apiRequest("GET", `/api/projects/${project.id}/revenue`);
-          if (!response.ok) return null;
-          const revenue = await response.json();
-          return {
-            ...project,
-            revenue: revenue
-          };
-        } catch (error) {
-          console.error(`Failed to fetch revenue for project ${project.id}:`, error);
-          return null;
-        }
-      });
-      
-      const results = await Promise.all(revenuePromises);
-      return results.filter(result => result !== null);
-    },
-    enabled: isAuthenticated && projects.length > 0,
+  // Fetch chart of accounts to get account types - this is the source of truth for P&L categorization
+  const { data: chartOfAccountsData, isLoading: chartOfAccountsLoading } = useQuery<{
+    id: number;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    accountCategory: string;
+  }[]>({
+    queryKey: ["/api/chart-of-accounts"],
+    enabled: isAuthenticated,
   });
 
   const formatCurrency = (amount: string | number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(parseFloat(amount?.toString() || "0"));
   };
 
-  // Calculate financial metrics
-  const totalRevenue = revenueEntries?.reduce((sum, entry) => 
-    sum + parseFloat(entry.debitAmount || "0"), 0) || 0;
+  // Get account names by type from chart of accounts (source of truth)
+  // Revenue accounts (4xxx codes) for Revenue section
+  // Expense accounts (5xxx-6xxx codes) for Expense section
+  const revenueAccountNames = chartOfAccountsData
+    ?.filter(account => account.accountType?.toLowerCase() === "revenue")
+    .map(account => account.accountName) || [];
+  
+  const expenseAccountNames = chartOfAccountsData
+    ?.filter(account => account.accountType?.toLowerCase() === "expense")
+    .map(account => account.accountName) || [];
 
-  const totalExpenses = expenseEntries?.reduce((sum, entry) => 
+  // Filter revenue entries to only include actual revenue accounts (not asset accounts like Cash/Bank, Accounts Receivable)
+  const revenueOnlyEntries = revenueEntries?.filter(entry => 
+    revenueAccountNames.includes(entry.accountName)
+  ) || [];
+
+  // Filter expense entries to only include actual expense accounts (not liability accounts like Accounts Payable)
+  const expenseOnlyEntries = expenseEntries?.filter(entry => 
+    expenseAccountNames.includes(entry.accountName)
+  ) || [];
+
+  // Calculate financial metrics - Revenue uses credit amounts, Expenses use debit amounts
+  const totalRevenue = revenueOnlyEntries.reduce((sum, entry) => 
     sum + parseFloat(entry.creditAmount || "0"), 0) || 0;
 
-  const grossProfit = totalRevenue - totalExpenses;
-  const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+  const totalExpenses = expenseOnlyEntries.reduce((sum, entry) => 
+    sum + parseFloat(entry.debitAmount || "0"), 0) || 0;
 
-  // Group revenue by account/project
-  const revenueByAccount = revenueEntries?.reduce((acc, entry) => {
+  const grossProfit = totalRevenue - totalExpenses;
+  // Calculate profit margin - show negative percentage when in loss
+  const profitMargin = totalRevenue > 0 
+    ? (grossProfit / totalRevenue) * 100 
+    : (totalExpenses > 0 ? -100 : 0); // If no revenue but has expenses, show -100% (full loss)
+
+  // Group revenue by account/project (only actual revenue accounts)
+  const revenueByAccount = revenueOnlyEntries.reduce((acc, entry) => {
     const key = entry.accountName || "Other Revenue";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.debitAmount || "0");
+    acc[key] += parseFloat(entry.creditAmount || "0");
     return acc;
-  }, {} as Record<string, number>) || {};
+  }, {} as Record<string, number>);
 
-  // Group expenses by account/project
-  const expensesByAccount = expenseEntries?.reduce((acc, entry) => {
+  // Group expenses by account/project (excluding liability accounts)
+  const expensesByAccount = expenseOnlyEntries.reduce((acc, entry) => {
     const key = entry.accountName || "Other Expenses";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.creditAmount || "0");
+    acc[key] += parseFloat(entry.debitAmount || "0");
     return acc;
   }, {} as Record<string, number>) || {};
 
-  // Group by project
-  const revenueByProject = revenueEntries?.reduce((acc, entry) => {
+  // Group by project (only actual revenue accounts)
+  const revenueByProject = revenueOnlyEntries.reduce((acc, entry) => {
+    const key = entry.projectTitle || "General";
+    if (!acc[key]) acc[key] = 0;
+    acc[key] += parseFloat(entry.creditAmount || "0");
+    return acc;
+  }, {} as Record<string, number>);
+
+  const expensesByProject = expenseOnlyEntries.reduce((acc, entry) => {
     const key = entry.projectTitle || "General";
     if (!acc[key]) acc[key] = 0;
     acc[key] += parseFloat(entry.debitAmount || "0");
     return acc;
   }, {} as Record<string, number>) || {};
 
-  const expensesByProject = expenseEntries?.reduce((acc, entry) => {
-    const key = entry.projectTitle || "General";
-    if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.creditAmount || "0");
-    return acc;
-  }, {} as Record<string, number>) || {};
+  // Calculate project P&L from filtered GL entries (respects all date/project filters)
+  const filteredProjectPL = projects?.map(project => {
+    const projectRevenue = revenueOnlyEntries
+      .filter(entry => entry.projectId === project.id)
+      .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    
+    const projectExpenses = expenseOnlyEntries
+      .filter(entry => entry.projectId === project.id)
+      .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    
+    const revenueTransactions = revenueOnlyEntries.filter(entry => entry.projectId === project.id).length;
+    
+    return {
+      ...project,
+      revenue: projectRevenue,
+      expenses: projectExpenses,
+      profit: projectRevenue - projectExpenses,
+      margin: projectRevenue > 0 ? ((projectRevenue - projectExpenses) / projectRevenue) * 100 : 0,
+      transactionCount: revenueTransactions
+    };
+  }).filter(p => p.revenue > 0 || p.expenses > 0) || [];
 
   const exportToCSV = () => {
     const headers = [
@@ -229,23 +320,23 @@ export default function ProfitLossReport() {
       "Description"
     ];
 
-    const revenueData = revenueEntries?.map(entry => [
+    const revenueData = revenueOnlyEntries.map(entry => [
       "Revenue",
-      entry.accountName || "-",
-      entry.projectTitle || "General",
-      entry.debitAmount,
-      new Date(entry.transactionDate).toLocaleDateString(),
-      entry.description
-    ]) || [];
-
-    const expenseData = expenseEntries?.map(entry => [
-      "Expense",
       entry.accountName || "-",
       entry.projectTitle || "General",
       entry.creditAmount,
       new Date(entry.transactionDate).toLocaleDateString(),
       entry.description
-    ]) || [];
+    ]);
+
+    const expenseData = expenseOnlyEntries.map(entry => [
+      "Expense",
+      entry.accountName || "-",
+      entry.projectTitle || "General",
+      entry.debitAmount,
+      new Date(entry.transactionDate).toLocaleDateString(),
+      entry.description
+    ]);
 
     const csvData = [headers, ...revenueData, ...expenseData]
       .map(row => row.map(cell => `"${cell}"`).join(","))
@@ -267,115 +358,158 @@ export default function ProfitLossReport() {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Profit & Loss Report</h1>
-          <p className="text-muted-foreground">Comprehensive financial performance analysis</p>
+    <div className="container mx-auto py-6 px-4 sm:px-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+        <div className="flex items-start gap-3">
+          <Button variant="ghost" size="icon" onClick={() => setLocation("/reports")} className="mt-1">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold">Profit & Loss Report</h1>
+            <p className="text-sm text-muted-foreground">Financial performance analysis</p>
+          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline">
-                <Filter className="w-4 h-4 mr-2" />
-                Advanced Filters
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <div className="space-y-4">
-                <h4 className="font-medium">Filter Options</h4>
-                
-                <div>
-                  <Label htmlFor="periodType">Period Type</Label>
-                  <Select
-                    value={filters.periodType}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, periodType: value as any }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="monthly">This Month</SelectItem>
-                      <SelectItem value="quarterly">This Quarter</SelectItem>
-                      <SelectItem value="yearly">This Year</SelectItem>
-                      <SelectItem value="custom">Custom Range</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {filters.periodType === "custom" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label htmlFor="startDate">Start Date</Label>
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={filters.startDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="endDate">End Date</Label>
-                      <Input
-                        id="endDate"
-                        type="date"
-                        value={filters.endDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <Label htmlFor="projectFilter">Project</Label>
-                  <Select
-                    value={filters.projectId?.toString() || ""}
-                    onValueChange={(value) => setFilters(prev => ({ ...prev, projectId: value === "all" ? undefined : parseInt(value) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Projects" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Projects</SelectItem>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()}>
-                          {project.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button onClick={() => setIsFilterOpen(false)} className="flex-1">Apply</Button>
-                  <Button 
-                    onClick={() => {
-                      setFilters({ 
-                        startDate: "", 
-                        endDate: "", 
-                        projectId: undefined,
-                        accountType: "",
-                        periodType: "custom"
-                      });
-                      setIsFilterOpen(false);
-                    }} 
-                    variant="outline" 
-                    className="flex-1"
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          <Button onClick={exportToCSV} variant="outline">
+          <Button 
+            variant={showFilters ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="w-4 h-4 mr-2" />
+            {showFilters ? "Hide Filters" : "Show Filters"}
+            {hasActiveFilters && <span className="ml-2 bg-primary-foreground text-primary rounded-full w-5 h-5 flex items-center justify-center text-xs">!</span>}
+          </Button>
+          <Button onClick={exportToCSV} variant="outline" size="sm">
             <Download className="w-4 h-4 mr-2" />
-            Export CSV
+            Export
           </Button>
         </div>
       </div>
 
+      {/* Inline Filters */}
+      {showFilters && (
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
+            {/* Period Selector */}
+            <div className="flex-1 min-w-0">
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Period</Label>
+              <Select
+                value={filters.periodType}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, periodType: value as any }))}
+              >
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue placeholder="Select Period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="financial_year">Current Financial Year</SelectItem>
+                  <SelectItem value="previous_fy">Previous Financial Year</SelectItem>
+                  <SelectItem value="monthly">This Month</SelectItem>
+                  <SelectItem value="quarterly">This Quarter</SelectItem>
+                  <SelectItem value="yearly">Calendar Year</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date Range */}
+            <div className="flex flex-col sm:flex-row gap-2 flex-1">
+              <div className="flex-1">
+                <Label className="text-xs text-muted-foreground mb-1.5 block">From</Label>
+                <Input
+                  type="date"
+                  value={filters.startDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value, periodType: "custom" }))}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex-1">
+                <Label className="text-xs text-muted-foreground mb-1.5 block">To</Label>
+                <Input
+                  type="date"
+                  value={filters.endDate}
+                  onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value, periodType: "custom" }))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Project Filter */}
+            <div className="flex-1 min-w-0">
+              <Label className="text-xs text-muted-foreground mb-1.5 block">Project</Label>
+              <Select
+                value={filters.projectId?.toString() || "all"}
+                onValueChange={(value) => setFilters(prev => ({ 
+                  ...prev, 
+                  projectId: value === "all" ? undefined : parseInt(value) 
+                }))}
+              >
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue placeholder="All Projects" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projects?.map((project) => (
+                    <SelectItem key={project.id} value={project.id.toString()}>
+                      {project.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Clear Button */}
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setFilters({ 
+                startDate: "", 
+                endDate: "", 
+                projectId: undefined,
+                accountType: "",
+                periodType: "financial_year"
+              })}
+              className="text-muted-foreground"
+            >
+              Reset
+            </Button>
+          </div>
+          
+          {/* Active Filter Summary */}
+          <div className="mt-3 pt-3 border-t flex flex-wrap gap-2 items-center text-sm">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Showing:</span>
+            <span className="font-medium">
+              {filters.startDate && filters.endDate 
+                ? `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`
+                : "Select a period"}
+            </span>
+            {filters.projectId && projects && (
+              <>
+                <span className="text-muted-foreground">|</span>
+                <span className="font-medium text-blue-600">
+                  {projects.find(p => p.id === filters.projectId)?.title || "Unknown Project"}
+                </span>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      )}
+
+      {/* Loading State */}
+      {(revenueLoading || expenseLoading || chartOfAccountsLoading) && (
+        <div className="flex justify-center items-center py-16">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading financial data...</p>
+          </div>
+        </div>
+      )}
+
+      {!revenueLoading && !expenseLoading && !chartOfAccountsLoading && (
+        <>
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
@@ -385,7 +519,7 @@ export default function ProfitLossReport() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">{revenueEntries?.length || 0} transactions</p>
+            <p className="text-xs text-muted-foreground">{revenueOnlyEntries.length} transactions</p>
           </CardContent>
         </Card>
 
@@ -396,7 +530,7 @@ export default function ProfitLossReport() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground">{expenseEntries?.length || 0} transactions</p>
+            <p className="text-xs text-muted-foreground">{expenseOnlyEntries.length} transactions</p>
           </CardContent>
         </Card>
 
@@ -563,200 +697,261 @@ export default function ProfitLossReport() {
 
         <TabsContent value="project-analysis" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
+            <CardHeader className="pb-2 sm:pb-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
                 Project-Based Profit & Loss Analysis
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Shows actual project costs vs revenue generated from invoice payments
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Shows project revenue and expenses within the selected period
               </p>
             </CardHeader>
-            <CardContent>
-              {projectRevenuesLoading ? (
+            <CardContent className="px-3 sm:px-6">
+              {(revenueLoading || expenseLoading) ? (
                 <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
-              ) : !projectRevenues || projectRevenues.length === 0 ? (
+              ) : filteredProjectPL.length === 0 ? (
                 <div className="text-center py-8">
-                  <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No project data available</p>
+                  <BarChart3 className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-sm sm:text-base">No project data for selected period</p>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card>
-                      <CardContent className="p-4">
-                        <div className="text-sm font-medium text-muted-foreground">Total Project Revenue</div>
-                        <div className="text-2xl font-bold text-green-600">
-                          {formatCurrency(
-                            projectRevenues.reduce((sum, project) => 
-                              sum + parseFloat(project.revenue?.totalRevenue || "0"), 0
-                            )
-                          )}
+                <div className="space-y-4 sm:space-y-6">
+                  {/* Summary Cards - Stacked on mobile, row on larger screens */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <Card className="border shadow-sm">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2 mb-1">
+                            <TrendingUp className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Total Revenue</span>
+                          </div>
+                          <div className="text-base sm:text-xl lg:text-2xl font-bold text-green-600 break-all">
+                            {formatCurrency(
+                              filteredProjectPL.reduce((sum, p) => sum + p.revenue, 0)
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
-                    <Card>
-                      <CardContent className="p-4">
-                        <div className="text-sm font-medium text-muted-foreground">Total Project Costs</div>
-                        <div className="text-2xl font-bold text-red-600">
-                          {formatCurrency(
-                            projectRevenues.reduce((sum, project) => 
-                              sum + parseFloat(project.actualCost || "0"), 0
-                            )
-                          )}
+                    <Card className="border shadow-sm">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2 mb-1">
+                            <TrendingDown className="h-4 w-4 text-red-500 flex-shrink-0" />
+                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Total Expenses</span>
+                          </div>
+                          <div className="text-base sm:text-xl lg:text-2xl font-bold text-red-600 break-all">
+                            {formatCurrency(
+                              filteredProjectPL.reduce((sum, p) => sum + p.expenses, 0)
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
-                    <Card>
-                      <CardContent className="p-4">
-                        <div className="text-sm font-medium text-muted-foreground">Net Project Profit</div>
-                        <div className={`text-2xl font-bold ${
-                          projectRevenues.reduce((sum, project) => 
-                            sum + (parseFloat(project.revenue?.totalRevenue || "0") - parseFloat(project.actualCost || "0")), 0
-                          ) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {formatCurrency(
-                            projectRevenues.reduce((sum, project) => 
-                              sum + (parseFloat(project.revenue?.totalRevenue || "0") - parseFloat(project.actualCost || "0")), 0
-                            )
-                          )}
+                    <Card className="border shadow-sm">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2 mb-1">
+                            <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs sm:text-sm font-medium text-muted-foreground">Net Profit</span>
+                          </div>
+                          <div className={`text-base sm:text-xl lg:text-2xl font-bold break-all ${
+                            filteredProjectPL.reduce((sum, p) => sum + p.profit, 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {formatCurrency(
+                              filteredProjectPL.reduce((sum, p) => sum + p.profit, 0)
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
                   </div>
 
-                  {/* Project Details Table */}
-                  <div className="overflow-x-auto">
+                  {/* Mobile: Card-based layout */}
+                  <div className="block lg:hidden space-y-3">
+                    {filteredProjectPL
+                      .sort((a, b) => b.profit - a.profit)
+                      .map((project) => (
+                        <Card key={project.id} className="border shadow-sm">
+                          <CardContent className="p-3 sm:p-4">
+                            {/* Project Header */}
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 pr-2">
+                                <h4 className="font-semibold text-sm sm:text-base truncate">{project.title}</h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {project.startDate && new Date(project.startDate).toLocaleDateString()} - 
+                                  {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'Ongoing'}
+                                </p>
+                              </div>
+                              <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                project.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                project.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                project.status === 'on_hold' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {project.status?.replace('_', ' ').toUpperCase()}
+                              </span>
+                            </div>
+                            
+                            {/* Financial Details Grid */}
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                                <div className="text-xs text-muted-foreground">Expenses</div>
+                                <div className="font-medium text-red-600">{formatCurrency(project.expenses)}</div>
+                              </div>
+                              <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                                <div className="text-xs text-muted-foreground">Revenue</div>
+                                <div className="font-medium text-green-600">{formatCurrency(project.revenue)}</div>
+                              </div>
+                            </div>
+                            
+                            {/* Profit/Loss and Margin */}
+                            <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                              <div>
+                                <span className="text-xs text-muted-foreground">Profit/Loss: </span>
+                                <span className={`font-bold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {formatCurrency(project.profit)}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className={`text-sm font-medium ${project.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {project.margin.toFixed(1)}%
+                                </span>
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  ({project.transactionCount} txn{project.transactionCount !== 1 ? 's' : ''})
+                                </span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                  </div>
+
+                  {/* Desktop: Table layout */}
+                  <div className="hidden lg:block overflow-x-auto">
                     <table className="w-full border-collapse">
                       <thead>
-                        <tr className="border-b">
+                        <tr className="border-b bg-gray-50 dark:bg-gray-800">
                           <th className="text-left p-3 font-medium">Project</th>
-                          <th className="text-right p-3 font-medium">Status</th>
-                          <th className="text-right p-3 font-medium">Actual Cost</th>
-                          <th className="text-right p-3 font-medium">Revenue Generated</th>
+                          <th className="text-center p-3 font-medium">Status</th>
+                          <th className="text-right p-3 font-medium">Expenses</th>
+                          <th className="text-right p-3 font-medium">Revenue</th>
                           <th className="text-right p-3 font-medium">Profit/Loss</th>
-                          <th className="text-right p-3 font-medium">Margin %</th>
-                          <th className="text-right p-3 font-medium">Payments</th>
+                          <th className="text-right p-3 font-medium">Margin</th>
+                          <th className="text-right p-3 font-medium">Transactions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {projectRevenues
-                          .sort((a, b) => 
-                            (parseFloat(b.revenue?.totalRevenue || "0") - parseFloat(b.actualCost || "0")) -
-                            (parseFloat(a.revenue?.totalRevenue || "0") - parseFloat(a.actualCost || "0"))
-                          )
-                          .map((project) => {
-                            const revenue = parseFloat(project.revenue?.totalRevenue || "0");
-                            const cost = parseFloat(project.actualCost || "0");
-                            const profit = revenue - cost;
-                            const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-                            const paymentsCount = project.revenue?.invoicePayments?.length || 0;
-
-                            return (
-                              <tr key={project.id} className="border-b hover:bg-gray-50">
-                                <td className="p-3">
-                                  <div>
-                                    <div className="font-medium">{project.title}</div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {project.startDate && new Date(project.startDate).toLocaleDateString()} - 
-                                      {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'Ongoing'}
-                                    </div>
+                        {filteredProjectPL
+                          .sort((a, b) => b.profit - a.profit)
+                          .map((project) => (
+                            <tr key={project.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
+                              <td className="p-3">
+                                <div>
+                                  <div className="font-medium">{project.title}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {project.startDate && new Date(project.startDate).toLocaleDateString()} - 
+                                    {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'Ongoing'}
                                   </div>
-                                </td>
-                                <td className="p-3 text-right">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    project.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                    project.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                                    project.status === 'on_hold' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {project.status?.replace('_', ' ').toUpperCase()}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right text-red-600 font-medium">
-                                  {formatCurrency(cost)}
-                                </td>
-                                <td className="p-3 text-right text-green-600 font-medium">
-                                  {formatCurrency(revenue)}
-                                </td>
-                                <td className={`p-3 text-right font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {formatCurrency(profit)}
-                                </td>
-                                <td className={`p-3 text-right ${margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {margin.toFixed(1)}%
-                                </td>
-                                <td className="p-3 text-right">
-                                  <span className="text-sm text-muted-foreground">
-                                    {paymentsCount} payment{paymentsCount !== 1 ? 's' : ''}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  project.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  project.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                  project.status === 'on_hold' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {project.status?.replace('_', ' ').toUpperCase()}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right text-red-600 font-medium">
+                                {formatCurrency(project.expenses)}
+                              </td>
+                              <td className="p-3 text-right text-green-600 font-medium">
+                                {formatCurrency(project.revenue)}
+                              </td>
+                              <td className={`p-3 text-right font-bold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {formatCurrency(project.profit)}
+                              </td>
+                              <td className={`p-3 text-right ${project.margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {project.margin.toFixed(1)}%
+                              </td>
+                              <td className="p-3 text-right">
+                                <span className="text-sm text-muted-foreground">
+                                  {project.transactionCount} txn{project.transactionCount !== 1 ? 's' : ''}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>
 
                   {/* Performance Insights */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Most Profitable Projects</CardTitle>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mt-4 sm:mt-6">
+                    <Card className="border shadow-sm">
+                      <CardHeader className="pb-2 sm:pb-4">
+                        <CardTitle className="text-sm sm:text-lg flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          Most Profitable Projects
+                        </CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="pt-0">
                         <div className="space-y-2">
-                          {projectRevenues
-                            .filter(p => parseFloat(p.revenue?.totalRevenue || "0") - parseFloat(p.actualCost || "0") > 0)
-                            .sort((a, b) => 
-                              (parseFloat(b.revenue?.totalRevenue || "0") - parseFloat(b.actualCost || "0")) -
-                              (parseFloat(a.revenue?.totalRevenue || "0") - parseFloat(a.actualCost || "0"))
-                            )
+                          {filteredProjectPL
+                            .filter(p => p.profit > 0)
+                            .sort((a, b) => b.profit - a.profit)
                             .slice(0, 5)
-                            .map((project) => {
-                              const profit = parseFloat(project.revenue?.totalRevenue || "0") - parseFloat(project.actualCost || "0");
-                              return (
-                                <div key={project.id} className="flex justify-between items-center">
-                                  <span className="text-sm font-medium truncate">{project.title}</span>
-                                  <span className="text-sm font-bold text-green-600">
-                                    {formatCurrency(profit)}
-                                  </span>
+                            .map((project, index) => (
+                              <div key={project.id} className="flex justify-between items-center p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="text-xs text-muted-foreground w-4">#{index + 1}</span>
+                                  <span className="text-xs sm:text-sm font-medium truncate">{project.title}</span>
                                 </div>
-                              );
-                            })}
+                                <span className="text-xs sm:text-sm font-bold text-green-600 flex-shrink-0 ml-2">
+                                  {formatCurrency(project.profit)}
+                                </span>
+                              </div>
+                            ))}
+                          {filteredProjectPL.filter(p => p.profit > 0).length === 0 && (
+                            <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
+                              No profitable projects in this period
+                            </p>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Projects at Loss</CardTitle>
+                    <Card className="border shadow-sm">
+                      <CardHeader className="pb-2 sm:pb-4">
+                        <CardTitle className="text-sm sm:text-lg flex items-center gap-2">
+                          <TrendingDown className="h-4 w-4 text-red-500" />
+                          Projects at Loss
+                        </CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="pt-0">
                         <div className="space-y-2">
-                          {projectRevenues
-                            .filter(p => parseFloat(p.revenue?.totalRevenue || "0") - parseFloat(p.actualCost || "0") < 0)
-                            .sort((a, b) => 
-                              (parseFloat(a.revenue?.totalRevenue || "0") - parseFloat(a.actualCost || "0")) -
-                              (parseFloat(b.revenue?.totalRevenue || "0") - parseFloat(b.actualCost || "0"))
-                            )
+                          {filteredProjectPL
+                            .filter(p => p.profit < 0)
+                            .sort((a, b) => a.profit - b.profit)
                             .slice(0, 5)
-                            .map((project) => {
-                              const loss = parseFloat(project.revenue?.totalRevenue || "0") - parseFloat(project.actualCost || "0");
-                              return (
-                                <div key={project.id} className="flex justify-between items-center">
-                                  <span className="text-sm font-medium truncate">{project.title}</span>
-                                  <span className="text-sm font-bold text-red-600">
-                                    {formatCurrency(loss)}
-                                  </span>
+                            .map((project, index) => (
+                              <div key={project.id} className="flex justify-between items-center p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="text-xs text-muted-foreground w-4">#{index + 1}</span>
+                                  <span className="text-xs sm:text-sm font-medium truncate">{project.title}</span>
                                 </div>
-                              );
-                            })}
-                          {projectRevenues.filter(p => parseFloat(p.revenue?.totalRevenue || "0") - parseFloat(p.actualCost || "0") < 0).length === 0 && (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              No projects at loss
+                                <span className="text-xs sm:text-sm font-bold text-red-600 flex-shrink-0 ml-2">
+                                  {formatCurrency(project.profit)}
+                                </span>
+                              </div>
+                            ))}
+                          {filteredProjectPL.filter(p => p.profit < 0).length === 0 && (
+                            <p className="text-xs sm:text-sm text-muted-foreground text-center py-4">
+                              No projects at loss in this period
                             </p>
                           )}
                         </div>
@@ -780,13 +975,13 @@ export default function ProfitLossReport() {
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                   </div>
-                ) : !revenueEntries || revenueEntries.length === 0 ? (
+                ) : revenueOnlyEntries.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500">No revenue transactions found</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {revenueEntries.map((entry) => (
+                    {revenueOnlyEntries.map((entry) => (
                       <div key={entry.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div>
@@ -797,7 +992,7 @@ export default function ProfitLossReport() {
                             </p>
                           </div>
                           <span className="font-bold text-green-600">
-                            {formatCurrency(entry.debitAmount)}
+                            {formatCurrency(entry.creditAmount)}
                           </span>
                         </div>
                       </div>
@@ -816,13 +1011,13 @@ export default function ProfitLossReport() {
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
                   </div>
-                ) : !expenseEntries || expenseEntries.length === 0 ? (
+                ) : expenseOnlyEntries.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500">No expense transactions found</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {expenseEntries.map((entry) => (
+                    {expenseOnlyEntries.map((entry) => (
                       <div key={entry.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div>
@@ -833,7 +1028,7 @@ export default function ProfitLossReport() {
                             </p>
                           </div>
                           <span className="font-bold text-red-600">
-                            {formatCurrency(entry.creditAmount)}
+                            {formatCurrency(entry.debitAmount)}
                           </span>
                         </div>
                       </div>
@@ -845,6 +1040,8 @@ export default function ProfitLossReport() {
           </div>
         </TabsContent>
       </Tabs>
+        </>
+      )}
     </div>
   );
 }
