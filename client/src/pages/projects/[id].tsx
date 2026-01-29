@@ -4177,7 +4177,7 @@ export default function ProjectDetail() {
                                     <SelectValue placeholder="Select item" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {inventoryItems?.filter(item => item.category === 'Consumables').map((item) => (
+                                    {inventoryItems?.filter(item => item.category === 'consumables').map((item) => (
                                       <SelectItem key={item.id} value={item.id.toString()}>
                                         {item.name} (Stock: {item.currentStock} {item.unit})
                                       </SelectItem>
