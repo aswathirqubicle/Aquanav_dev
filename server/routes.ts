@@ -73,7 +73,7 @@ import {
 function generateQuotationHTML(
   quotation: any,
   customer: any,
-  company: any
+  company: any,
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -124,7 +124,7 @@ function generateQuotationHTML(
         ${
           quotation.validUntil
             ? `<p><strong>Valid Until:</strong> ${formatDate(
-                quotation.validUntil
+                quotation.validUntil,
               )}</p>`
             : ""
         }
@@ -181,7 +181,7 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.subtotal || 0
+              quotation.subtotal || 0,
             )}</td>
           </tr>
           ${
@@ -197,13 +197,13 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.taxAmount || 0
+              quotation.taxAmount || 0,
             )}</td>
           </tr>
           <tr class="total-row">
             <td><strong>Total Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.totalAmount || 0
+              quotation.totalAmount || 0,
             )}</td>
           </tr>
         </table>
@@ -226,7 +226,7 @@ function generateQuotationHTML(
 function generateCreditNoteHTML(
   creditNote: any,
   customer: any,
-  company: any
+  company: any,
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -283,7 +283,7 @@ function generateCreditNoteHTML(
 
       <div class="credit-note-info">
         <p><strong>Credit Note Date:</strong> ${formatDate(
-          creditNote.creditNoteDate
+          creditNote.creditNoteDate,
         )}</p>
         <p><strong>Status:</strong> <span class="status-${
           creditNote.status
@@ -350,7 +350,7 @@ function generateCreditNoteHTML(
           <tr>
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(
-              creditNote.subtotal || 0
+              creditNote.subtotal || 0,
             )}</td>
           </tr>
           ${
@@ -366,13 +366,13 @@ function generateCreditNoteHTML(
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              creditNote.taxAmount || 0
+              creditNote.taxAmount || 0,
             )}</td>
           </tr>
           <tr class="total-row">
             <td><strong>Credit Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              creditNote.totalAmount || 0
+              creditNote.totalAmount || 0,
             )}</td>
           </tr>
         </table>
@@ -399,7 +399,7 @@ function generateCreditNoteHTML(
 function generateInvoiceHTML(
   invoice: any,
   customer: any,
-  company: any
+  company: any,
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -514,13 +514,13 @@ function generateInvoiceHTML(
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              invoice.taxAmount || 0
+              invoice.taxAmount || 0,
             )}</td>
           </tr>
           <tr class="total-row">
             <td><strong>Total Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              invoice.totalAmount || 0
+              invoice.totalAmount || 0,
             )}</td>
           </tr>
           ${
@@ -536,7 +536,7 @@ function generateInvoiceHTML(
               (
                 parseFloat(invoice.totalAmount || "0") -
                 parseFloat(invoice.paidAmount)
-              ).toFixed(2)
+              ).toFixed(2),
             )}</td>
           </tr>
           `
@@ -581,7 +581,7 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/company";
     } else if (req.originalUrl?.includes("/api/purchase-orders")) {
       uploadDir = "uploads/purchase-order";
-    }else if (req.originalUrl?.includes('reimbursements')) {
+    } else if (req.originalUrl?.includes("reimbursements")) {
       uploadDir = "uploads/reimbursements";
     }
 
@@ -594,7 +594,7 @@ const storage_multer = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(
       null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname)
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
     );
   },
 });
@@ -616,8 +616,8 @@ const upload = multer({
       } else {
         cb(
           new Error(
-            "Only image files (jpeg, jpg, png, gif) are allowed for photo groups."
-          )
+            "Only image files (jpeg, jpg, png, gif) are allowed for photo groups.",
+          ),
         );
       }
     } else {
@@ -625,15 +625,15 @@ const upload = multer({
       const allowedGeneralTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx/;
       const isAllowed =
         allowedGeneralTypes.test(
-          path.extname(file.originalname).toLowerCase()
+          path.extname(file.originalname).toLowerCase(),
         ) && allowedGeneralTypes.test(file.mimetype);
       if (isAllowed) {
         cb(null, true);
       } else {
         cb(
           new Error(
-            "Invalid file type. Allowed types include images and common documents."
-          )
+            "Invalid file type. Allowed types include images and common documents.",
+          ),
         );
       }
     }
@@ -643,7 +643,7 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve uploaded files statically
   app.use("/uploads", express.static("uploads"));
-  
+
   // Session middleware
   app.use(
     session({
@@ -657,7 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         httpOnly: true, // Prevent XSS attacks
         sameSite: "lax", // CSRF protection
       },
-    })
+    }),
   );
 
   // Auth middleware
@@ -705,8 +705,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.userId = user.id;
       req.session.userRole = user.role;
 
-      const { password: _, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword });
+      // Ensure session is saved before responding to avoid race conditions
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res
+            .status(500)
+            .json({ message: "Login failed to save session" });
+        }
+        const { password: _, ...userWithoutPassword } = user;
+        res.json({ user: userWithoutPassword });
+      });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed" });
@@ -756,13 +765,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const users = await storage.getUsers();
         const usersWithoutPasswords = users.map(
-          ({ password, ...user }) => user
+          ({ password, ...user }) => user,
         );
         res.json(usersWithoutPasswords);
       } catch (error) {
         res.status(500).json({ message: "Failed to get users" });
       }
-    }
+    },
   );
 
   app.get(
@@ -781,7 +790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to get user" });
       }
-    }
+    },
   );
 
   app.post(
@@ -792,27 +801,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const { employeeId, ...userData } = req.body;
         const parsedUserData = insertUserSchema.parse(userData);
-        
+
         // Validate employeeId if provided
-        if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+        if (
+          employeeId !== undefined &&
+          employeeId !== null &&
+          employeeId !== ""
+        ) {
           const empId = parseInt(employeeId);
           if (isNaN(empId)) {
-            return res.status(400).json({ message: "Invalid employee ID format" });
+            return res
+              .status(400)
+              .json({ message: "Invalid employee ID format" });
           }
           const employee = await storage.getEmployee(empId);
           if (!employee) {
             return res.status(404).json({ message: "Employee not found" });
           }
           if (employee.userId) {
-            return res.status(400).json({ message: "This employee is already linked to another user" });
+            return res.status(400).json({
+              message: "This employee is already linked to another user",
+            });
           }
         }
-        
+
         const user = await storage.createUser(parsedUserData);
-        
+
         // Link employee to user if employeeId provided
-        if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
-          await storage.updateEmployee(parseInt(employeeId), { userId: user.id });
+        if (
+          employeeId !== undefined &&
+          employeeId !== null &&
+          employeeId !== ""
+        ) {
+          await storage.updateEmployee(parseInt(employeeId), {
+            userId: user.id,
+          });
         }
         const { password, ...userWithoutPassword } = user;
         res.status(201).json(userWithoutPassword);
@@ -824,7 +847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create user" });
       }
-    }
+    },
   );
 
   app.put(
@@ -842,29 +865,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Check if user already has a linked employee
         const allEmployees = await storage.getEmployees();
-        const existingLinkedEmployee = allEmployees.find(e => e.userId === id);
-        
+        const existingLinkedEmployee = allEmployees.find(
+          (e) => e.userId === id,
+        );
+
         // If user already has a linked employee, reject any attempt to change it
         if (existingLinkedEmployee) {
           // Check if employeeId is provided and differs from existing link
-          if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+          if (
+            employeeId !== undefined &&
+            employeeId !== null &&
+            employeeId !== ""
+          ) {
             const providedEmpId = parseInt(employeeId);
             if (providedEmpId !== existingLinkedEmployee.id) {
-              return res.status(400).json({ message: "Cannot change employee link once established" });
+              return res.status(400).json({
+                message: "Cannot change employee link once established",
+              });
             }
           }
-        } else if (employeeId !== undefined && employeeId !== null && employeeId !== "") {
+        } else if (
+          employeeId !== undefined &&
+          employeeId !== null &&
+          employeeId !== ""
+        ) {
           // No existing link, validate and link new employee
           const empId = parseInt(employeeId);
           if (isNaN(empId)) {
-            return res.status(400).json({ message: "Invalid employee ID format" });
+            return res
+              .status(400)
+              .json({ message: "Invalid employee ID format" });
           }
           const employee = await storage.getEmployee(empId);
           if (!employee) {
             return res.status(404).json({ message: "Employee not found" });
           }
           if (employee.userId && employee.userId !== id) {
-            return res.status(400).json({ message: "This employee is already linked to another user" });
+            return res.status(400).json({
+              message: "This employee is already linked to another user",
+            });
           }
           await storage.updateEmployee(empId, { userId: id });
         }
@@ -878,7 +917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update user" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -896,7 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to delete user" });
       }
-    }
+    },
   );
 
   // Dashboard routes
@@ -934,21 +973,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Current stats
       const activeProjects = projects.filter(
-        (p) => p.status === "in_progress"
+        (p) => p.status === "in_progress",
       ).length;
       const completedProjects = projects.filter(
-        (p) => p.status === "completed"
+        (p) => p.status === "completed",
       ).length;
       const lowStockItems = inventoryItems.filter(
-        (item) => item.currentStock <= item.minStockLevel
+        (item) => item.currentStock <= item.minStockLevel,
       ).length;
 
       // Previous stats for comparison
       const previousActiveProjects = previousMonthProjects.filter(
-        (p) => p.status === "in_progress"
+        (p) => p.status === "in_progress",
       ).length;
       const previousCompletedProjects = previousMonthProjects.filter(
-        (p) => p.status === "completed"
+        (p) => p.status === "completed",
       ).length;
       const previousLowStockItems = Math.max(0, lowStockItems - 1); // Simulate previous month data
 
@@ -957,14 +996,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (sum, project) => {
           return sum + parseFloat(project.actualCost || "0");
         },
-        0
+        0,
       );
 
       const previousMonthRevenue = previousMonthProjects.reduce(
         (sum, project) => {
           return sum + parseFloat(project.actualCost || "0");
         },
-        0
+        0,
       );
 
       // Calculate changes
@@ -980,7 +1019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? Math.round(
               ((currentMonthRevenue - previousMonthRevenue) /
                 previousMonthRevenue) *
-                100
+                100,
             )
           : 0;
 
@@ -1051,7 +1090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Update company error:", error);
         res.status(500).json({ message: "Failed to update company info" });
       }
-    }
+    },
   );
 
   // Customer routes
@@ -1066,7 +1105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         page,
         limit,
         search,
-        showArchived
+        showArchived,
       );
       res.json(result);
     } catch (error) {
@@ -1117,7 +1156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create customer" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1143,7 +1182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to update customer" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1163,7 +1202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to archive customer" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1185,7 +1224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to unarchive customer" });
       }
-    }
+    },
   );
 
   // Supplier routes
@@ -1200,7 +1239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         page,
         limit,
         search,
-        showArchived
+        showArchived,
       );
       res.json(result);
     } catch (error) {
@@ -1245,7 +1284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create supplier" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1266,7 +1305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update supplier" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -1284,7 +1323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to delete supplier" });
       }
-    }
+    },
   );
 
   // Supplier-specific routes
@@ -1346,7 +1385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to update employee" });
       }
-    }
+    },
   );
 
   app.get("/api/employees", requireAuth, async (req, res) => {
@@ -1427,7 +1466,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const username =
               `${employee.firstName.toLowerCase()}.${employee.lastName.toLowerCase()}`.replace(
                 /\s+/g,
-                ""
+                "",
               );
             const defaultPassword = `${
               employee.employeeCode
@@ -1477,7 +1516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create employee" });
       }
-    }
+    },
   );
 
   // Update employee
@@ -1511,7 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Remove undefined values to avoid accidental NULLs
         Object.keys(prepared).forEach(
-          (k) => prepared[k] === undefined && delete prepared[k]
+          (k) => prepared[k] === undefined && delete prepared[k],
         );
 
         const result = await storage.updateEmployee(id, prepared);
@@ -1528,7 +1567,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to update employee" });
       }
-    }
+    },
   );
 
   // Get single employee with full details
@@ -1590,7 +1629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create next of kin record" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1614,7 +1653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to update next of kin record" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -1633,7 +1672,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to delete next of kin record" });
       }
-    }
+    },
   );
 
   // Employee Training Records routes
@@ -1643,14 +1682,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const employeeId = parseInt(req.params.id);
-        const trainingRecords = await storage.getEmployeeTrainingRecords(
-          employeeId
-        );
+        const trainingRecords =
+          await storage.getEmployeeTrainingRecords(employeeId);
         res.json(trainingRecords);
       } catch (error) {
         res.status(500).json({ message: "Failed to get training records" });
       }
-    }
+    },
   );
 
   app.post(
@@ -1685,7 +1723,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create training record" });
       }
-    }
+    },
   );
 
   app.put(
@@ -1707,7 +1745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const result = await storage.updateEmployeeTrainingRecord(
           id,
-          updateData
+          updateData,
         );
         if (!result) {
           return res.status(404).json({ message: "Training record not found" });
@@ -1716,7 +1754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update training record" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -1731,7 +1769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to delete training record" });
       }
-    }
+    },
   );
 
   // Employee Documents routes
@@ -1780,7 +1818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create employee document", error });
       }
-    }
+    },
   );
 
   app.put(
@@ -1815,7 +1853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update employee document" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -1830,7 +1868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to delete employee document" });
       }
-    }
+    },
   );
 
   // Get expiring employee documents for notification
@@ -1841,16 +1879,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const daysAhead = parseInt(req.query.daysAhead as string) || 30;
-        const expiringDocs = await storage.getExpiringEmployeeDocuments(
-          daysAhead
-        );
+        const expiringDocs =
+          await storage.getExpiringEmployeeDocuments(daysAhead);
         res.json(expiringDocs);
       } catch (error) {
         res
           .status(500)
           .json({ message: "Failed to get expiring employee documents" });
       }
-    }
+    },
   );
 
   // Get expiring documents for notification
@@ -1866,7 +1903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to get expiring documents" });
       }
-    }
+    },
   );
 
   // Generate employment contract
@@ -1877,9 +1914,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const employeeId = parseInt(req.params.id);
-        const contractHtml = await storage.generateEmploymentContract(
-          employeeId
-        );
+        const contractHtml =
+          await storage.generateEmploymentContract(employeeId);
 
         res.setHeader("Content-Type", "text/html");
         res.send(contractHtml);
@@ -1891,7 +1927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to generate employment contract" });
       }
-    }
+    },
   );
 
   // Helper function to parse and clean project data from multipart/form-data
@@ -2015,7 +2051,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create project" });
       }
-    }
+    },
   );
 
   app.put(
@@ -2057,7 +2093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Project update error:", error);
         res.status(500).json({ message: "Failed to update project" });
       }
-    }
+    },
   );
 
   // Manual cost recalculation endpoint
@@ -2078,7 +2114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to recalculate project cost" });
       }
-    }
+    },
   );
 
   // Project revenue routes (restricted to admin and finance)
@@ -2095,7 +2131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get project revenue error:", error);
         res.status(500).json({ message: "Failed to get project revenue" });
       }
-    }
+    },
   );
 
   app.get(
@@ -2126,7 +2162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch (error) {
             console.error(
               `Failed to get revenue for project ${projectId}:`,
-              error
+              error,
             );
             return { projectId, error: true };
           }
@@ -2138,7 +2174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get bulk project revenues error:", error);
         res.status(500).json({ message: "Failed to get project revenues" });
       }
-    }
+    },
   );
 
   app.post(
@@ -2161,7 +2197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to recalculate project revenue" });
       }
-    }
+    },
   );
 
   // Project Employee Assignment routes
@@ -2238,7 +2274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const result = await storage.assignEmployeesToProject(
           projectId,
-          assignments
+          assignments,
         );
         console.log("Team assignment result:", result);
         res.status(201).json(result);
@@ -2249,7 +2285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
-    }
+    },
   );
 
   app.delete(
@@ -2262,13 +2298,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employeeId = parseInt(req.params.employeeId);
 
         console.log(
-          `API: Removing employee ${employeeId} from project ${projectId}`
+          `API: Removing employee ${employeeId} from project ${projectId}`,
         );
 
         // Validate parameters
         if (isNaN(projectId) || isNaN(employeeId)) {
           console.log(
-            `Invalid parameters: projectId=${req.params.id}, employeeId=${req.params.employeeId}`
+            `Invalid parameters: projectId=${req.params.id}, employeeId=${req.params.employeeId}`,
           );
           return res
             .status(400)
@@ -2292,17 +2328,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const removed = await storage.removeEmployeeFromProject(
           projectId,
-          employeeId
+          employeeId,
         );
         if (!removed) {
           console.log(
-            `Assignment not found for employee ${employeeId} in project ${projectId}`
+            `Assignment not found for employee ${employeeId} in project ${projectId}`,
           );
           return res.status(404).json({ message: "Assignment not found" });
         }
 
         console.log(
-          `Successfully removed employee ${employeeId} from project ${projectId}`
+          `Successfully removed employee ${employeeId} from project ${projectId}`,
         );
         res.json({ message: "Employee removed from project successfully" });
       } catch (error) {
@@ -2311,7 +2347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to remove employee from project" });
       }
-    }
+    },
   );
 
   // Inventory routes
@@ -2328,7 +2364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         limit,
         search,
         category,
-        lowStock
+        lowStock,
       );
       res.json(result);
     } catch (error) {
@@ -2358,7 +2394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create inventory item" });
       }
-    }
+    },
   );
 
   app.put(
@@ -2379,7 +2415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update inventory item" });
       }
-    }
+    },
   );
 
   // Asset Types routes for Enhanced Asset Inventory
@@ -2435,7 +2471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const instances = await storage.getAssetInventoryInstancesByType(
-          parseInt(req.params.assetTypeId)
+          parseInt(req.params.assetTypeId),
         );
         res.json(instances);
       } catch (error: any) {
@@ -2443,7 +2479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: error?.message || "Failed to fetch instances for asset type",
         });
       }
-    }
+    },
   );
 
   app.get(
@@ -2452,7 +2488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const instances = await storage.getAvailableInstancesForAssignment(
-          parseInt(req.params.assetTypeId)
+          parseInt(req.params.assetTypeId),
         );
         res.json(instances);
       } catch (error: any) {
@@ -2460,7 +2496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: error?.message || "Failed to fetch available instances",
         });
       }
-    }
+    },
   );
 
   app.get(
@@ -2479,7 +2515,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: error?.message || "Failed to fetch asset instance",
         });
       }
-    }
+    },
   );
 
   app.post("/api/asset-inventory/instances", requireAuth, async (req, res) => {
@@ -2500,7 +2536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const instance = await storage.updateAssetInventoryInstance(
           parseInt(req.params.id),
-          req.body
+          req.body,
         );
         res.json(instance);
       } catch (error: any) {
@@ -2509,7 +2545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             error?.message || "Failed to update asset inventory instance",
         });
       }
-    }
+    },
   );
 
   // Get all maintenance records for reporting
@@ -2551,14 +2587,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = await storage.getDailyActivitiesPaginated(
           projectId,
           limit,
-          offset
+          offset,
         );
         res.json(result);
       } catch (error) {
         console.error("Error getting daily activities:", error);
         res.status(500).json({ message: "Failed to get daily activities" });
       }
-    }
+    },
   );
 
   // Planned Activities routes
@@ -2579,14 +2615,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = await storage.getPlannedActivitiesPaginated(
           projectId,
           limit,
-          offset
+          offset,
         );
         res.json(result);
       } catch (error) {
         console.error("Error getting planned activities:", error);
         res.status(500).json({ message: "Failed to get planned activities" });
       }
-    }
+    },
   );
 
   app.post(
@@ -2618,14 +2654,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const result = await storage.savePlannedActivities(
           projectId,
-          activities
+          activities,
         );
         res.status(201).json(result);
       } catch (error) {
         console.error("Error saving planned activities:", error);
         res.status(500).json({ message: "Failed to save planned activities" });
       }
-    }
+    },
   );
 
   app.post(
@@ -2683,7 +2719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Create photo group error:", error);
         res.status(500).json({ message: "Failed to create photo group" });
       }
-    }
+    },
   );
 
   app.get("/api/projects/:id/photo-groups", requireAuth, async (req, res) => {
@@ -2717,7 +2753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // This might happen if the group was already deleted, but we'll treat it
           // as a success for the client to avoid unnecessary error messages.
           console.warn(
-            `Attempted to delete a photo group that might not exist: ID ${groupId}`
+            `Attempted to delete a photo group that might not exist: ID ${groupId}`,
           );
         }
 
@@ -2726,7 +2762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Delete photo group error:", error);
         res.status(500).json({ message: "Failed to delete photo group" });
       }
-    }
+    },
   );
 
   // Project Consumables routes
@@ -2745,7 +2781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error getting project consumables:", error);
         res.status(500).json({ message: "Failed to get project consumables" });
       }
-    }
+    },
   );
 
   app.post(
@@ -2781,7 +2817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           projectId,
           date,
           items,
-          req.session.userId
+          req.session.userId,
         );
 
         res.status(201).json(result);
@@ -2792,7 +2828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error.message,
         });
       }
-    }
+    },
   );
 
   app.get(
@@ -2806,7 +2842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error getting activities:", error);
         res.status(500).json({ message: "Failed to get activities" });
       }
-    }
+    },
   );
 
   app.get(
@@ -2820,7 +2856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error getting employees:", error);
         res.status(500).json({ message: "Failed to get employees" });
       }
-    }
+    },
   );
 
   app.get(
@@ -2834,7 +2870,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error getting consumables:", error);
         res.status(500).json({ message: "Failed to get consumables" });
       }
-    }
+    },
   );
 
   app.post(
@@ -2867,7 +2903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create daily activity" });
       }
-    }
+    },
   );
 
   // Asset assignment routes
@@ -2908,7 +2944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const totalCost = await storage.calculateAssetRentalCost(
           start,
           end,
-          parseFloat(monthlyRate)
+          parseFloat(monthlyRate),
         );
 
         const assignmentData = {
@@ -2921,15 +2957,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           assignedBy: req.session.userId,
         };
 
-        const assignment = await storage.createProjectAssetAssignment(
-          assignmentData
-        );
+        const assignment =
+          await storage.createProjectAssetAssignment(assignmentData);
         res.status(201).json(assignment);
       } catch (error) {
         console.error("Error assigning asset to project:", error);
         res.status(500).json({ message: "Failed to assign asset to project" });
       }
-    }
+    },
   );
 
   app.put(
@@ -2959,7 +2994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const totalCost = await storage.calculateAssetRentalCost(
           start,
           end,
-          parseFloat(monthlyRate)
+          parseFloat(monthlyRate),
         );
 
         const assignmentData = {
@@ -2971,7 +3006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const assignment = await storage.updateProjectAssetAssignment(
           assignmentId,
-          assignmentData
+          assignmentData,
         );
 
         if (!assignment) {
@@ -2985,7 +3020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error updating project asset assignment:", error);
         res.status(500).json({ message: "Failed to update asset assignment" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -2995,9 +3030,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const assignmentId = parseInt(req.params.assignmentId);
-        const deleted = await storage.deleteProjectAssetAssignment(
-          assignmentId
-        );
+        const deleted =
+          await storage.deleteProjectAssetAssignment(assignmentId);
 
         if (!deleted) {
           return res
@@ -3010,7 +3044,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error deleting project asset assignment:", error);
         res.status(500).json({ message: "Failed to delete asset assignment" });
       }
-    }
+    },
   );
 
   // Asset Instance Assignment routes (NEW)
@@ -3020,20 +3054,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: any) => {
       try {
         const projectId = parseInt(req.params.id);
-        const assignments = await storage.getProjectAssetInstanceAssignments(
-          projectId
-        );
+        const assignments =
+          await storage.getProjectAssetInstanceAssignments(projectId);
         res.json(assignments);
       } catch (error) {
         console.error(
           "Error getting project asset instance assignments:",
-          error
+          error,
         );
         res
           .status(500)
           .json({ message: "Failed to get asset instance assignments" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3082,9 +3115,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notes: notes || null,
         };
 
-        const assignment = await storage.createProjectAssetInstanceAssignment(
-          assignmentData
-        );
+        const assignment =
+          await storage.createProjectAssetInstanceAssignment(assignmentData);
         res.status(201).json(assignment);
       } catch (error) {
         console.error("Error creating asset instance assignment:", error);
@@ -3092,7 +3124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create asset instance assignment" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3130,7 +3162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedAssignment =
           await storage.updateProjectAssetInstanceAssignment(
             assignmentId,
-            updateData
+            updateData,
           );
 
         if (!updatedAssignment) {
@@ -3146,7 +3178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to update asset instance assignment" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -3156,9 +3188,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const assignmentId = parseInt(req.params.assignmentId);
-        const deleted = await storage.deleteProjectAssetInstanceAssignment(
-          assignmentId
-        );
+        const deleted =
+          await storage.deleteProjectAssetInstanceAssignment(assignmentId);
 
         if (!deleted) {
           return res
@@ -3173,7 +3204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to delete asset instance assignment" });
       }
-    }
+    },
   );
 
   // Get all asset assignments for earnings calculation (legacy)
@@ -3218,7 +3249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get payroll entries error:", error);
         res.json([]); // Return empty array instead of error to prevent reports from failing
       }
-    }
+    },
   );
 
   app.post(
@@ -3240,13 +3271,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         console.log(
-          `[Payroll Route] Generating payroll for month: ${month}, year: ${year}, userId: ${req.session.userId}`
+          `[Payroll Route] Generating payroll for month: ${month}, year: ${year}, userId: ${req.session.userId}`,
         );
 
         const entries = await storage.generateMonthlyPayroll(
           month,
           year,
-          req.session.userId
+          req.session.userId,
         );
         res.status(201).json(entries);
       } catch (error) {
@@ -3255,7 +3286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: error.message || "Failed to generate payroll" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -3287,7 +3318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: error.message || "Failed to clear payroll period" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3318,7 +3349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Update payroll entry error:", error);
         res.status(500).json({ message: "Failed to update payroll entry" });
       }
-    }
+    },
   );
 
   app.get(
@@ -3334,7 +3365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get payroll additions error:", error);
         res.status(500).json({ message: "Failed to get payroll additions" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3352,7 +3383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Create payroll addition error:", error);
         res.status(500).json({ message: "Failed to create payroll addition" });
       }
-    }
+    },
   );
 
   app.get(
@@ -3368,7 +3399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get payroll deductions error:", error);
         res.status(500).json({ message: "Failed to get payroll deductions" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3386,7 +3417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Create payroll deduction error:", error);
         res.status(500).json({ message: "Failed to create payroll deduction" });
       }
-    }
+    },
   );
 
   // Sales Quotations routes
@@ -3408,8 +3439,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             req.query.archived === "true"
               ? true
               : req.query.archived === "false"
-              ? false
-              : undefined,
+                ? false
+                : undefined,
           startDate: req.query.startDate as string,
           endDate: req.query.endDate as string,
         };
@@ -3417,14 +3448,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = await storage.getSalesQuotationsPaginated(
           page,
           limit,
-          filters
+          filters,
         );
         res.json(result);
       } catch (error) {
         console.error("Get sales quotations error:", error);
         res.status(500).json({ message: "Failed to get sales quotations" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3447,7 +3478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return max;
           }, 0);
           quotationData.quotationNumber = `QTN-${String(
-            latestNumber + 1
+            latestNumber + 1,
           ).padStart(4, "0")}`;
         }
 
@@ -3460,7 +3491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales quotation creation error:", error);
         res.status(500).json({ message: "Failed to create sales quotation" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3477,7 +3508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const quotation = await storage.updateSalesQuotation(
           quotationId,
-          quotationData
+          quotationData,
         );
 
         if (!quotation) {
@@ -3489,7 +3520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales quotation update error:", error);
         res.status(500).json({ message: "Failed to update sales quotation" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3512,7 +3543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales quotation approval error:", error);
         res.status(500).json({ message: "Failed to approve sales quotation" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3559,7 +3590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales invoice approval error:", error);
         res.status(500).json({ message: "Failed to approve sales invoice" });
       }
-    }
+    },
   );
 
   app.get(
@@ -3587,7 +3618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("PDF generation error:", error);
         res.status(500).json({ message: "Failed to generate PDF" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3610,7 +3641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales quotation archive error:", error);
         res.status(500).json({ message: "Failed to archive sales quotation" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3635,7 +3666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to unarchive sales quotation" });
       }
-    }
+    },
   );
 
   // Chart of Accounts routes
@@ -3687,7 +3718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to get general ledger entries" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3708,7 +3739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create general ledger entry" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3730,7 +3761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error.message,
         });
       }
-    }
+    },
   );
 
   app.put(
@@ -3749,7 +3780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const entry = await storage.updateGeneralLedgerEntry(
           entryId,
-          updateData
+          updateData,
         );
 
         if (!entry) {
@@ -3765,7 +3796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: error.message || "Failed to update general ledger entry",
         });
       }
-    }
+    },
   );
 
   app.get(
@@ -3780,7 +3811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get payables error:", error);
         res.status(500).json({ message: "Failed to get payables" });
       }
-    }
+    },
   );
 
   app.get(
@@ -3795,7 +3826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get receivables error:", error);
         res.status(500).json({ message: "Failed to get receivables" });
       }
-    }
+    },
   );
 
   // Add missing sales invoice and receivables methods
@@ -3811,7 +3842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get receivables error:", error);
         res.status(500).json({ message: "Failed to get receivables" });
       }
-    }
+    },
   );
 
   app.get(
@@ -3832,7 +3863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get sales invoice error:", error);
         res.status(500).json({ message: "Failed to get sales invoice" });
       }
-    }
+    },
   );
 
   app.put(
@@ -3845,7 +3876,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const invoiceData = req.body;
         const invoice = await storage.updateSalesInvoice(
           invoiceId,
-          invoiceData
+          invoiceData,
         );
 
         if (!invoice) {
@@ -3857,7 +3888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales invoice update error:", error);
         res.status(500).json({ message: "Failed to update sales invoice" });
       }
-    }
+    },
   );
 
   // Sales Invoices routes
@@ -3891,7 +3922,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get sales invoices error:", error);
         res.status(500).json({ message: "Failed to get sales invoices" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3911,7 +3942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Sales invoice creation error:", error);
         res.status(500).json({ message: "Failed to create sales invoice" });
       }
-    }
+    },
   );
 
   // Invoice Payments routes
@@ -3928,7 +3959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get invoice payments error:", error);
         res.status(500).json({ message: "Failed to get invoice payments" });
       }
-    }
+    },
   );
 
   app.post(
@@ -3966,7 +3997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Record payment error:", error);
         res.status(500).json({ message: "Failed to record payment" });
       }
-    }
+    },
   );
 
   // Payment file routes
@@ -3983,7 +4014,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get payment files error:", error);
         res.status(500).json({ message: "Failed to get payment files" });
       }
-    }
+    },
   );
 
   app.get(
@@ -4008,11 +4039,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${file.originalName}"`
+          `attachment; filename="${file.originalName}"`,
         );
         res.setHeader(
           "Content-Type",
-          file.mimeType || "application/octet-stream"
+          file.mimeType || "application/octet-stream",
         );
 
         const fileStream = fs.createReadStream(filePath);
@@ -4021,7 +4052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Download payment file error:", error);
         res.status(500).json({ message: "Failed to download file" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -4052,7 +4083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Delete payment file error:", error);
         res.status(500).json({ message: "Failed to delete file" });
       }
-    }
+    },
   );
 
   // Receivables routes
@@ -4068,7 +4099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get receivables error:", error);
         res.status(500).json({ message: "Failed to get receivables" });
       }
-    }
+    },
   );
 
   // Goods Receipt routes
@@ -4084,7 +4115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get goods receipts error:", error);
         res.status(500).json({ message: "Failed to get goods receipts" });
       }
-    }
+    },
   );
 
   app.post(
@@ -4133,7 +4164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const receipt = await storage.createGoodsReceipt(
           reference,
           items,
-          req.session.userId
+          req.session.userId,
         );
         res.status(201).json(receipt);
       } catch (error) {
@@ -4144,7 +4175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error.message,
         });
       }
-    }
+    },
   );
 
   // Goods Issue routes
@@ -4162,7 +4193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get goods issues error:", error);
         res.status(500).json({ message: "Failed to get goods issues" });
       }
-    }
+    },
   );
 
   app.post(
@@ -4205,7 +4236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           reference,
           projectId,
           items,
-          req.session.userId
+          req.session.userId,
         );
         res.status(201).json(issue);
       } catch (error) {
@@ -4215,7 +4246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error.message,
         });
       }
-    }
+    },
   );
 
   // Payroll routes
@@ -4230,13 +4261,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           month ? parseInt(month as string) : undefined,
           year ? parseInt(year as string) : undefined,
           employeeId ? parseInt(employeeId as string) : undefined,
-          projectId ? parseInt(projectId as string) : undefined
+          projectId ? parseInt(projectId as string) : undefined,
         );
         res.json(payroll);
       } catch (error) {
         res.status(500).json({ message: "Failed to get payroll entries" });
       }
-    }
+    },
   );
 
   app.post(
@@ -4259,7 +4290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Payroll generation error:", error);
         res.status(500).json({ message: "Failed to generate payroll" });
       }
-    }
+    },
   );
 
   app.put(
@@ -4283,7 +4314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedEntry = await storage.updatePayrollEntry(
           id,
           payrollData,
-          req.session.userId
+          req.session.userId,
         );
         if (!updatedEntry) {
           return res.status(404).json({ message: "Payroll entry not found" });
@@ -4303,7 +4334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Update payroll entry error:", error);
         res.status(500).json({ message: "Failed to update payroll entry" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -4321,7 +4352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Clear payroll error:", error);
         res.status(500).json({ message: "Failed to clear payroll entries" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -4340,7 +4371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const deletedCount = await storage.clearPayrollEntriesByPeriod(
           parseInt(month as string),
-          parseInt(year as string)
+          parseInt(year as string),
         );
         res.json({
           message: `Payroll entries for ${month}/${year} cleared successfully`,
@@ -4350,7 +4381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Clear payroll by period error:", error);
         res.status(500).json({ message: "Failed to clear payroll entries" });
       }
-    }
+    },
   );
 
   // Payroll Additions routes
@@ -4366,7 +4397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to get payroll additions" });
       }
-    }
+    },
   );
 
   app.post(
@@ -4391,7 +4422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Payroll addition creation error:", error);
         res.status(500).json({ message: "Failed to create payroll addition" });
       }
-    }
+    },
   );
 
   app.put(
@@ -4405,7 +4436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const updatedAddition = await storage.updatePayrollAddition(
           id,
-          additionData
+          additionData,
         );
         if (!updatedAddition) {
           return res
@@ -4423,7 +4454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update payroll addition" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -4461,7 +4492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
-    }
+    },
   );
 
   // Payroll Deductions routes
@@ -4477,7 +4508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to get payroll deductions" });
       }
-    }
+    },
   );
 
   app.post(
@@ -4502,7 +4533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Payroll deduction creation error:", error);
         res.status(500).json({ message: "Failed to create payroll deduction" });
       }
-    }
+    },
   );
 
   app.put(
@@ -4516,7 +4547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const updatedDeduction = await storage.updatePayrollDeduction(
           id,
-          deductionData
+          deductionData,
         );
         if (!updatedDeduction) {
           return res
@@ -4534,7 +4565,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to update payroll deduction" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -4572,7 +4603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
-    }
+    },
   );
 
   // Reimbursement routes
@@ -4581,9 +4612,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.session.userId!;
       const userRole = req.session.userRole!;
       const { status, view } = req.query;
-      
+
       let filters: { userId?: number; status?: string } = {};
-      
+
       // If not admin/finance, only show own reimbursements
       if (!["admin", "finance"].includes(userRole)) {
         filters.userId = userId;
@@ -4591,17 +4622,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Admin/Finance can filter to see only their own
         filters.userId = userId;
       }
-      
+
       if (status && typeof status === "string") {
         filters.status = status;
       }
-      
+
       const reimbursements = await storage.getReimbursements(filters);
       res.json(reimbursements);
     } catch (error: any) {
       console.error("Get reimbursements error:", error);
       await storage.createErrorLog({
-        message: "Error in GET /api/reimbursements: " + (error?.message || "Unknown error"),
+        message:
+          "Error in GET /api/reimbursements: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "reimbursements",
         severity: "error",
@@ -4612,29 +4645,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/reimbursements/payroll/:month/:year", requireAuth, requireRole(["admin", "finance"]), async (req, res) => {
-    try {
-      const month = parseInt(req.params.month);
-      const year = parseInt(req.params.year);
-      
-      if (isNaN(month) || isNaN(year)) {
-        return res.status(400).json({ message: "Invalid month or year" });
+  app.get(
+    "/api/reimbursements/payroll/:month/:year",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const month = parseInt(req.params.month);
+        const year = parseInt(req.params.year);
+
+        if (isNaN(month) || isNaN(year)) {
+          return res.status(400).json({ message: "Invalid month or year" });
+        }
+
+        const reimbursements = await storage.getReimbursementsForPayroll(
+          month,
+          year,
+        );
+        res.json(reimbursements);
+      } catch (error: any) {
+        console.error("Get reimbursements for payroll error:", error);
+        await storage.createErrorLog({
+          message:
+            "Error in GET /api/reimbursements/payroll: " +
+            (error?.message || "Unknown error"),
+          stack: error?.stack,
+          component: "reimbursements",
+          severity: "error",
+          userId: req.session.userId,
+        });
+        res
+          .status(500)
+          .json({ message: "Failed to get reimbursements for payroll" });
       }
-      
-      const reimbursements = await storage.getReimbursementsForPayroll(month, year);
-      res.json(reimbursements);
-    } catch (error: any) {
-      console.error("Get reimbursements for payroll error:", error);
-      await storage.createErrorLog({
-        message: "Error in GET /api/reimbursements/payroll: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "reimbursements",
-        severity: "error",
-        userId: req.session.userId,
-      });
-      res.status(500).json({ message: "Failed to get reimbursements for payroll" });
-    }
-  });
+    },
+  );
 
   app.get("/api/reimbursements/:id", requireAuth, async (req, res) => {
     try {
@@ -4642,24 +4687,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid reimbursement ID" });
       }
-      
+
       const reimbursement = await storage.getReimbursement(id);
       if (!reimbursement) {
         return res.status(404).json({ message: "Reimbursement not found" });
       }
-      
+
       // Check access - user can only see their own unless admin/finance
       const userId = req.session.userId!;
       const userRole = req.session.userRole!;
-      if (!["admin", "finance"].includes(userRole) && reimbursement.userId !== userId) {
+      if (
+        !["admin", "finance"].includes(userRole) &&
+        reimbursement.userId !== userId
+      ) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       res.json(reimbursement);
     } catch (error: any) {
       console.error("Get reimbursement error:", error);
       await storage.createErrorLog({
-        message: "Error in GET /api/reimbursements/:id: " + (error?.message || "Unknown error"),
+        message:
+          "Error in GET /api/reimbursements/:id: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "reimbursements",
         severity: "error",
@@ -4669,154 +4719,207 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reimbursements", requireAuth, upload.array("attachments", 5), async (req, res) => {
-    try {
-      const userId = req.session.userId!;
-      const userRole = req.session.userRole!;
-      const { amount, description, originalExpenseDate, projectId, employeeId: requestedEmployeeId } = req.body;
-      
-      // Validation
-      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-        return res.status(400).json({ message: "Amount is required and must be greater than 0" });
-      }
-      if (!description || typeof description !== "string" || description.trim().length === 0) {
-        return res.status(400).json({ message: "Description is required" });
-      }
-      if (!originalExpenseDate) {
-        return res.status(400).json({ message: "Original expense date is required" });
-      }
-      
-      // Validate date format
-      const expenseDate = new Date(originalExpenseDate);
-      if (isNaN(expenseDate.getTime())) {
-        return res.status(400).json({ message: "Invalid expense date format" });
-      }
-      
-      const employees = await storage.getEmployees();
-      let targetEmployeeId: number;
-      
-      // Check if user can create for others (admin, finance, project_manager)
-      const canCreateForOthers = ["admin", "finance", "project_manager"].includes(userRole);
-      
-      if (requestedEmployeeId && canCreateForOthers) {
-        // Privileged user creating for specific employee
-        const targetEmployee = employees.find((e: any) => e.id === parseInt(requestedEmployeeId));
-        if (!targetEmployee) {
-          return res.status(400).json({ message: "Selected employee not found" });
-        }
-        targetEmployeeId = targetEmployee.id;
-      } else {
-        // Regular employee or privileged user creating for themselves
-        const ownEmployee = employees.find((e: any) => e.userId === userId);
-        if (!ownEmployee) {
-          return res.status(400).json({ message: "No employee record linked to your account. Please contact HR." });
-        }
-        targetEmployeeId = ownEmployee.id;
-      }
-      
-      // Handle file uploads
-      const files = req.files as Express.Multer.File[];
-      const attachments = files && files.length > 0 
-        ? files.map(f => f.path) 
-        : null;
-      
-      const reimbursement = await storage.createReimbursement({
-        employeeId: targetEmployeeId,
-        userId: userId,
-        projectId: projectId ? parseInt(projectId) : null,
-        amount: parseFloat(amount).toFixed(2),
-        description: description.trim(),
-        originalExpenseDate,
-        status: "pending",
-        attachments,
-      });
-      
-      res.status(201).json(reimbursement);
-    } catch (error) {
-      console.error("Create reimbursement error:", error);
-      await storage.createErrorLog({
-        message: "Error in POST /api/reimbursements: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "reimbursements",
-        severity: "error",
-        userId: req.session.userId,
-      });
-      res.status(500).json({ message: "Failed to create reimbursement" });
-    }
-  });
+  app.post(
+    "/api/reimbursements",
+    requireAuth,
+    upload.array("attachments", 5),
+    async (req, res) => {
+      try {
+        const userId = req.session.userId!;
+        const userRole = req.session.userRole!;
+        const {
+          amount,
+          description,
+          originalExpenseDate,
+          projectId,
+          employeeId: requestedEmployeeId,
+        } = req.body;
 
-  app.put("/api/reimbursements/:id/approve", requireAuth, requireRole(["admin", "finance"]), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const userId = req.session.userId!;
-      const userRole = req.session.userRole!;
-      
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid reimbursement ID" });
-      }
-      
-      // Get the reimbursement to check ownership
-      const reimbursement = await storage.getReimbursement(id);
-      if (!reimbursement) {
-        return res.status(404).json({ message: "Reimbursement not found" });
-      }
-      
-      // Finance users cannot approve reimbursements created by finance users (only Admin can)
-      if (userRole === "finance" && reimbursement.userRole === "finance") {
-        return res.status(403).json({ message: "Finance users cannot approve reimbursements created by finance users. An Admin must approve this request." });
-      }
-      
-      const approved = await storage.approveReimbursement(id, userId);
-      res.json(approved);
-    } catch (error: any) {
-      console.error("Approve reimbursement error:", error);
-      await storage.createErrorLog({
-        message: "Error in PUT /api/reimbursements/:id/approve: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "reimbursements",
-        severity: "error",
-        userId: req.session.userId,
-      });
-      res.status(500).json({ message: "Failed to approve reimbursement" });
-    }
-  });
+        // Validation
+        if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+          return res
+            .status(400)
+            .json({ message: "Amount is required and must be greater than 0" });
+        }
+        if (
+          !description ||
+          typeof description !== "string" ||
+          description.trim().length === 0
+        ) {
+          return res.status(400).json({ message: "Description is required" });
+        }
+        if (!originalExpenseDate) {
+          return res
+            .status(400)
+            .json({ message: "Original expense date is required" });
+        }
 
-  app.put("/api/reimbursements/:id/reject", requireAuth, requireRole(["admin", "finance"]), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const userId = req.session.userId!;
-      const userRole = req.session.userRole!;
-      const { reason } = req.body;
-      
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid reimbursement ID" });
+        // Validate date format
+        const expenseDate = new Date(originalExpenseDate);
+        if (isNaN(expenseDate.getTime())) {
+          return res
+            .status(400)
+            .json({ message: "Invalid expense date format" });
+        }
+
+        const employees = await storage.getEmployees();
+        let targetEmployeeId: number;
+
+        // Check if user can create for others (admin, finance, project_manager)
+        const canCreateForOthers = [
+          "admin",
+          "finance",
+          "project_manager",
+        ].includes(userRole);
+
+        if (requestedEmployeeId && canCreateForOthers) {
+          // Privileged user creating for specific employee
+          const targetEmployee = employees.find(
+            (e: any) => e.id === parseInt(requestedEmployeeId),
+          );
+          if (!targetEmployee) {
+            return res
+              .status(400)
+              .json({ message: "Selected employee not found" });
+          }
+          targetEmployeeId = targetEmployee.id;
+        } else {
+          // Regular employee or privileged user creating for themselves
+          const ownEmployee = employees.find((e: any) => e.userId === userId);
+          if (!ownEmployee) {
+            return res.status(400).json({
+              message:
+                "No employee record linked to your account. Please contact HR.",
+            });
+          }
+          targetEmployeeId = ownEmployee.id;
+        }
+
+        // Handle file uploads
+        const files = req.files as Express.Multer.File[];
+        const attachments =
+          files && files.length > 0 ? files.map((f) => f.path) : null;
+
+        const reimbursement = await storage.createReimbursement({
+          employeeId: targetEmployeeId,
+          userId: userId,
+          projectId: projectId ? parseInt(projectId) : null,
+          amount: parseFloat(amount).toFixed(2),
+          description: description.trim(),
+          originalExpenseDate,
+          status: "pending",
+          attachments,
+        });
+
+        res.status(201).json(reimbursement);
+      } catch (error) {
+        console.error("Create reimbursement error:", error);
+        await storage.createErrorLog({
+          message:
+            "Error in POST /api/reimbursements: " +
+            (error?.message || "Unknown error"),
+          stack: error?.stack,
+          component: "reimbursements",
+          severity: "error",
+          userId: req.session.userId,
+        });
+        res.status(500).json({ message: "Failed to create reimbursement" });
       }
-      
-      // Get the reimbursement to check ownership
-      const reimbursement = await storage.getReimbursement(id);
-      if (!reimbursement) {
-        return res.status(404).json({ message: "Reimbursement not found" });
+    },
+  );
+
+  app.put(
+    "/api/reimbursements/:id/approve",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const userId = req.session.userId!;
+        const userRole = req.session.userRole!;
+
+        if (isNaN(id)) {
+          return res.status(400).json({ message: "Invalid reimbursement ID" });
+        }
+
+        // Get the reimbursement to check ownership
+        const reimbursement = await storage.getReimbursement(id);
+        if (!reimbursement) {
+          return res.status(404).json({ message: "Reimbursement not found" });
+        }
+
+        // Finance users cannot approve reimbursements created by finance users (only Admin can)
+        if (userRole === "finance" && reimbursement.userRole === "finance") {
+          return res.status(403).json({
+            message:
+              "Finance users cannot approve reimbursements created by finance users. An Admin must approve this request.",
+          });
+        }
+
+        const approved = await storage.approveReimbursement(id, userId);
+        res.json(approved);
+      } catch (error: any) {
+        console.error("Approve reimbursement error:", error);
+        await storage.createErrorLog({
+          message:
+            "Error in PUT /api/reimbursements/:id/approve: " +
+            (error?.message || "Unknown error"),
+          stack: error?.stack,
+          component: "reimbursements",
+          severity: "error",
+          userId: req.session.userId,
+        });
+        res.status(500).json({ message: "Failed to approve reimbursement" });
       }
-      
-      // Finance users cannot reject reimbursements created by finance users (only Admin can)
-      if (userRole === "finance" && reimbursement.userRole === "finance") {
-        return res.status(403).json({ message: "Finance users cannot reject reimbursements created by finance users. An Admin must handle this request." });
+    },
+  );
+
+  app.put(
+    "/api/reimbursements/:id/reject",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const userId = req.session.userId!;
+        const userRole = req.session.userRole!;
+        const { reason } = req.body;
+
+        if (isNaN(id)) {
+          return res.status(400).json({ message: "Invalid reimbursement ID" });
+        }
+
+        // Get the reimbursement to check ownership
+        const reimbursement = await storage.getReimbursement(id);
+        if (!reimbursement) {
+          return res.status(404).json({ message: "Reimbursement not found" });
+        }
+
+        // Finance users cannot reject reimbursements created by finance users (only Admin can)
+        if (userRole === "finance" && reimbursement.userRole === "finance") {
+          return res.status(403).json({
+            message:
+              "Finance users cannot reject reimbursements created by finance users. An Admin must handle this request.",
+          });
+        }
+
+        const rejected = await storage.rejectReimbursement(id, userId, reason);
+        res.json(rejected);
+      } catch (error: any) {
+        console.error("Reject reimbursement error:", error);
+        await storage.createErrorLog({
+          message:
+            "Error in PUT /api/reimbursements/:id/reject: " +
+            (error?.message || "Unknown error"),
+          stack: error?.stack,
+          component: "reimbursements",
+          severity: "error",
+          userId: req.session.userId,
+        });
+        res.status(500).json({ message: "Failed to reject reimbursement" });
       }
-      
-      const rejected = await storage.rejectReimbursement(id, userId, reason);
-      res.json(rejected);
-    } catch (error: any) {
-      console.error("Reject reimbursement error:", error);
-      await storage.createErrorLog({
-        message: "Error in PUT /api/reimbursements/:id/reject: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "reimbursements",
-        severity: "error",
-        userId: req.session.userId,
-      });
-      res.status(500).json({ message: "Failed to reject reimbursement" });
-    }
-  });
+    },
+  );
 
   app.put("/api/reimbursements/:id", requireAuth, async (req, res) => {
     try {
@@ -4824,52 +4927,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.session.userId!;
       const userRole = req.session.userRole!;
       const { amount, description, originalExpenseDate, projectId } = req.body;
-      
+
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid reimbursement ID" });
       }
-      
+
       const reimbursement = await storage.getReimbursement(id);
       if (!reimbursement) {
         return res.status(404).json({ message: "Reimbursement not found" });
       }
-      
+
       // Only pending reimbursements can be edited
       if (reimbursement.status !== "pending") {
-        return res.status(400).json({ message: "Only pending reimbursements can be edited" });
+        return res
+          .status(400)
+          .json({ message: "Only pending reimbursements can be edited" });
       }
-      
+
       // Only the creator or admin can edit
       if (userRole !== "admin" && reimbursement.userId !== userId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       // Validation
       if (amount && (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)) {
-        return res.status(400).json({ message: "Amount must be greater than 0" });
+        return res
+          .status(400)
+          .json({ message: "Amount must be greater than 0" });
       }
-      if (description && (typeof description !== "string" || description.trim().length === 0)) {
+      if (
+        description &&
+        (typeof description !== "string" || description.trim().length === 0)
+      ) {
         return res.status(400).json({ message: "Description cannot be empty" });
       }
       if (originalExpenseDate) {
         const expenseDate = new Date(originalExpenseDate);
         if (isNaN(expenseDate.getTime())) {
-          return res.status(400).json({ message: "Invalid expense date format" });
+          return res
+            .status(400)
+            .json({ message: "Invalid expense date format" });
         }
       }
-      
+
       const updateData: any = {};
       if (amount) updateData.amount = parseFloat(amount).toFixed(2);
       if (description) updateData.description = description.trim();
-      if (originalExpenseDate) updateData.originalExpenseDate = originalExpenseDate;
-      if (projectId !== undefined) updateData.projectId = projectId ? parseInt(projectId) : null;
-      
+      if (originalExpenseDate)
+        updateData.originalExpenseDate = originalExpenseDate;
+      if (projectId !== undefined)
+        updateData.projectId = projectId ? parseInt(projectId) : null;
+
       const updated = await storage.updateReimbursement(id, updateData);
       res.json(updated);
     } catch (error: any) {
       console.error("Update reimbursement error:", error);
       await storage.createErrorLog({
-        message: "Error in PUT /api/reimbursements/:id: " + (error?.message || "Unknown error"),
+        message:
+          "Error in PUT /api/reimbursements/:id: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "reimbursements",
         severity: "error",
@@ -4884,31 +5000,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const userId = req.session.userId!;
       const userRole = req.session.userRole!;
-      
+
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid reimbursement ID" });
       }
-      
+
       const reimbursement = await storage.getReimbursement(id);
       if (!reimbursement) {
         return res.status(404).json({ message: "Reimbursement not found" });
       }
-      
+
       // Only owner can delete pending reimbursements, or admin can delete any
       if (userRole !== "admin" && reimbursement.userId !== userId) {
         return res.status(403).json({ message: "Access denied" });
       }
-      
+
       if (reimbursement.status !== "pending" && userRole !== "admin") {
-        return res.status(400).json({ message: "Can only delete pending reimbursements" });
+        return res
+          .status(400)
+          .json({ message: "Can only delete pending reimbursements" });
       }
-      
+
       await storage.deleteReimbursement(id);
       res.json({ message: "Reimbursement deleted successfully" });
     } catch (error: any) {
       console.error("Delete reimbursement error:", error);
       await storage.createErrorLog({
-        message: "Error in DELETE /api/reimbursements/:id: " + (error?.message || "Unknown error"),
+        message:
+          "Error in DELETE /api/reimbursements/:id: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "reimbursements",
         severity: "error",
@@ -4969,14 +5089,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const receipt = await storage.createGoodsReceipt(
           reference,
           items,
-          req.session.userId
+          req.session.userId,
         );
         res.status(201).json(receipt);
       } catch (error) {
         console.error("Goods receipt creation error:", error);
         res.status(500).json({ message: "Failed to create goods receipt" });
       }
-    }
+    },
   );
 
   // Purchase Requests routes
@@ -5102,7 +5222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Approve purchase request error:", error);
         res.status(500).json({ message: "Failed to approve purchase request" });
       }
-    }
+    },
   );
 
   app.put(
@@ -5146,7 +5266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Reject purchase request error:", error);
         res.status(500).json({ message: "Failed to reject purchase request" });
       }
-    }
+    },
   );
 
   app.delete("/api/purchase-requests/:id", requireAuth, async (req, res) => {
@@ -5178,7 +5298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get purchase orders error:", error);
         res.json([]); // Return empty array instead of error to prevent reports from failing
       }
-    }
+    },
   );
 
   app.get(
@@ -5199,7 +5319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get purchase order error:", error);
         res.status(500).json({ message: "Failed to get purchase order" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5222,7 +5342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Create purchase order error:", error);
         res.status(500).json({ message: "Failed to create purchase order" });
       }
-    }
+    },
   );
 
   app.put(
@@ -5249,7 +5369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Update purchase order error:", error);
         res.status(500).json({ message: "Failed to update purchase order" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -5270,7 +5390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Delete purchase order error:", error);
         res.status(500).json({ message: "Failed to delete purchase order" });
       }
-    }
+    },
   );
 
   // Purchase Order Approval routes
@@ -5283,7 +5403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const id = parseInt(req.params.id);
         const order = await storage.submitPurchaseOrderForApproval(
           id,
-          req.session.userId!
+          req.session.userId!,
         );
         res.json(order);
       } catch (error) {
@@ -5292,7 +5412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to submit purchase order for approval" });
       }
-    }
+    },
   );
 
   app.patch(
@@ -5304,14 +5424,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const id = parseInt(req.params.id);
         const order = await storage.approvePurchaseOrder(
           id,
-          req.session.userId!
+          req.session.userId!,
         );
         res.json(order);
       } catch (error) {
         console.error("Approve purchase order error:", error);
         res.status(500).json({ message: "Failed to approve purchase order" });
       }
-    }
+    },
   );
 
   app.patch(
@@ -5325,14 +5445,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const order = await storage.rejectPurchaseOrder(
           id,
           req.session.userId!,
-          reason
+          reason,
         );
         res.json(order);
       } catch (error) {
         console.error("Reject purchase order error:", error);
         res.status(500).json({ message: "Failed to reject purchase order" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5344,7 +5464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const id = parseInt(req.params.id);
         const result = await storage.convertPurchaseOrderToInvoice(
           id,
-          req.session.userId!
+          req.session.userId!,
         );
         res.json(result);
       } catch (error: any) {
@@ -5354,7 +5474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             error.message || "Failed to convert purchase order to invoice",
         });
       }
-    }
+    },
   );
 
   // Purchase Invoices routes
@@ -5382,7 +5502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get purchase invoices error:", error);
         res.status(500).json({ message: "Failed to get purchase invoices" });
       }
-    }
+    },
   );
 
   app.get(
@@ -5405,7 +5525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Get purchase invoice error:", error);
         res.status(500).json({ message: "Failed to get purchase invoice" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5419,15 +5539,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           createdBy: req.session.userId,
         };
 
-        const invoice = await storage.createPurchaseInvoiceStandalone(
-          invoiceData
-        );
+        const invoice =
+          await storage.createPurchaseInvoiceStandalone(invoiceData);
         res.status(201).json(invoice);
       } catch (error) {
         console.error("Create purchase invoice error:", error);
         res.status(500).json({ message: "Failed to create purchase invoice" });
       }
-    }
+    },
   );
 
   app.patch(
@@ -5452,7 +5571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const updated = await storage.submitPurchaseInvoiceForApproval(
           id,
-          req.session.userId!
+          req.session.userId!,
         );
         res.json({
           message: "Purchase invoice submitted for approval",
@@ -5462,7 +5581,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Submit purchase invoice error:", error);
         res.status(500).json({ message: "Failed to submit purchase invoice" });
       }
-    }
+    },
   );
 
   app.patch(
@@ -5498,7 +5617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Approve purchase invoice error:", error);
         res.status(500).json({ message: "Failed to approve purchase invoice" });
       }
-    }
+    },
   );
 
   app.patch(
@@ -5526,14 +5645,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updated = await storage.rejectPurchaseInvoice(
           id,
           req.session.userId!,
-          reason
+          reason,
         );
         res.json({ message: "Purchase invoice rejected", invoice: updated });
       } catch (error) {
         console.error("Reject purchase invoice error:", error);
         res.status(500).json({ message: "Failed to reject purchase invoice" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5571,7 +5690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Record purchase payment error:", error);
         res.status(500).json({ message: "Failed to record payment" });
       }
-    }
+    },
   );
 
   app.get(
@@ -5589,7 +5708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to get purchase invoice payments" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5606,7 +5725,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const invoice = await storage.createPurchaseInvoiceFromPO(
           poId,
-          invoiceData
+          invoiceData,
         );
         res.status(201).json(invoice);
       } catch (error) {
@@ -5615,16 +5734,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to convert purchase order to invoice" });
       }
-    }
+    },
   );
 
   // Get supplier inventory items
   app.get("/api/suppliers/:id/suppliers", async (req, res) => {
     try {
       const supplierId = parseInt(req.params.id);
-      const supplierItems = await storage.getSupplierInventoryItemsBySupplierId(
-        supplierId
-      );
+      const supplierItems =
+        await storage.getSupplierInventoryItemsBySupplierId(supplierId);
       res.json(supplierItems);
     } catch (error) {
       console.error("Error fetching supplier inventory items:", error);
@@ -5663,7 +5781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         res.status(500).json({ message: "Failed to archive supplier" });
       }
-    }
+    },
   );
 
   app.put(
@@ -5686,7 +5804,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Supplier unarchive error:", error);
         res.status(500).json({ message: "Failed to unarchive supplier" });
       }
-    }
+    },
   );
 
   // ============================================================================
@@ -5806,7 +5924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to get general ledger entries" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5828,7 +5946,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create general ledger entry" });
       }
-    }
+    },
   );
 
   app.put(
@@ -5854,7 +5972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to update general ledger entry" });
       }
-    }
+    },
   );
 
   // ============================================================================
@@ -5874,7 +5992,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error fetching proforma invoices:", error);
         res.status(500).json({ message: "Failed to fetch proforma invoices" });
       }
-    }
+    },
   );
 
   app.get(
@@ -5897,7 +6015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error fetching proforma invoice:", error);
         res.status(500).json({ message: "Failed to fetch proforma invoice" });
       }
-    }
+    },
   );
 
   app.post(
@@ -5912,16 +6030,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Date fields should remain as ISO strings (YYYY-MM-DD format)
         // No conversion needed - Drizzle expects strings for date() columns
 
-        const proformaInvoice = await storage.createProformaInvoice(
-          proformaData
-        );
+        const proformaInvoice =
+          await storage.createProformaInvoice(proformaData);
         console.log("Created proforma invoice:", proformaInvoice);
         res.status(201).json(proformaInvoice);
       } catch (error) {
         console.error("Error creating proforma invoice:", error);
         res.status(500).json({ message: "Failed to create proforma invoice" });
       }
-    }
+    },
   );
 
   app.put(
@@ -5955,7 +6072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const proformaInvoice = await storage.updateProformaInvoice(
           id,
-          req.body
+          req.body,
         );
 
         if (!proformaInvoice) {
@@ -5970,7 +6087,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error updating proforma invoice:", error);
         res.status(500).json({ message: "Failed to update proforma invoice" });
       }
-    }
+    },
   );
 
   app.post(
@@ -6035,13 +6152,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error(
           "Error converting proforma invoice to sales invoice:",
-          error
+          error,
         );
         res.status(500).json({
           message: "Failed to convert proforma invoice to sales invoice",
         });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6057,7 +6174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error deleting proforma invoice:", error);
         res.status(500).json({ message: "Failed to delete proforma invoice" });
       }
-    }
+    },
   );
 
   // Credit Notes routes
@@ -6073,7 +6190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error fetching credit notes:", error);
         res.status(500).json({ message: "Failed to fetch credit notes" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6094,7 +6211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error fetching credit note:", error);
         res.status(500).json({ message: "Failed to fetch credit note" });
       }
-    }
+    },
   );
 
   app.post(
@@ -6116,7 +6233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error creating credit note:", error);
         res.status(500).json({ message: "Failed to create credit note" });
       }
-    }
+    },
   );
 
   app.put(
@@ -6140,7 +6257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error updating credit note:", error);
         res.status(500).json({ message: "Failed to update credit note" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6156,7 +6273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error deleting credit note:", error);
         res.status(500).json({ message: "Failed to delete credit note" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6174,7 +6291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to fetch credit notes for invoice" });
       }
-    }
+    },
   );
 
   // Purchase Credit Notes routes
@@ -6192,7 +6309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to fetch purchase credit notes" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6217,7 +6334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to fetch purchase credit note" });
       }
-    }
+    },
   );
 
   app.post(
@@ -6236,7 +6353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to create purchase credit note" });
       }
-    }
+    },
   );
 
   app.put(
@@ -6250,7 +6367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "Updating purchase credit note",
           id,
           "with data:",
-          req.body
+          req.body,
         );
 
         const creditNote = await storage.updatePurchaseCreditNote(id, req.body);
@@ -6269,7 +6386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to update purchase credit note" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6287,7 +6404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to delete purchase credit note" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6297,20 +6414,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const invoiceId = parseInt(req.params.id);
-        const creditNotes = await storage.getPurchaseCreditNotesByInvoice(
-          invoiceId
-        );
+        const creditNotes =
+          await storage.getPurchaseCreditNotesByInvoice(invoiceId);
         res.json(creditNotes);
       } catch (error) {
         console.error(
           "Error fetching purchase credit notes for invoice:",
-          error
+          error,
         );
         res.status(500).json({
           message: "Failed to fetch purchase credit notes for invoice",
         });
       }
-    }
+    },
   );
 
   // Error Logs routes
@@ -6325,7 +6441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         page,
         limit,
         severity,
-        resolved === "true" ? true : resolved === "false" ? false : undefined
+        resolved === "true" ? true : resolved === "false" ? false : undefined,
       );
 
       res.json(result);
@@ -6373,7 +6489,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Resolve error log error:", error);
         res.status(500).json({ message: "Failed to resolve error log" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6391,7 +6507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Clear error logs error:", error);
         res.status(500).json({ message: "Failed to clear error logs" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6411,7 +6527,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(500)
           .json({ message: "Failed to clear resolved error logs" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6439,7 +6555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Credit note PDF generation error:", error);
         res.status(500).json({ message: "Failed to generate credit note PDF" });
       }
-    }
+    },
   );
 
   app.get(
@@ -6467,7 +6583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("PDF generation error:", error);
         res.status(500).json({ message: "Failed to generate PDF" });
       }
-    }
+    },
   );
 
   // Customer Documents routes
@@ -6505,7 +6621,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           typeof documentData.dateOfIssue === "string"
         ) {
           documentData.dateOfIssue = new Date(
-            documentData.dateOfIssue
+            documentData.dateOfIssue,
           ).toISOString();
         }
         if (
@@ -6513,7 +6629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           typeof documentData.expiryDate === "string"
         ) {
           documentData.expiryDate = new Date(
-            documentData.expiryDate
+            documentData.expiryDate,
           ).toISOString();
         }
 
@@ -6529,7 +6645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create customer document" });
       }
-    }
+    },
   );
 
   app.put(
@@ -6555,7 +6671,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           typeof documentData.dateOfIssue === "string"
         ) {
           documentData.dateOfIssue = new Date(
-            documentData.dateOfIssue
+            documentData.dateOfIssue,
           ).toISOString();
         }
         if (
@@ -6563,13 +6679,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           typeof documentData.expiryDate === "string"
         ) {
           documentData.expiryDate = new Date(
-            documentData.expiryDate
+            documentData.expiryDate,
           ).toISOString();
         }
 
         const result = await storage.updateCustomerDocument(
           documentId,
-          documentData
+          documentData,
         );
         if (!result) {
           return res.status(404).json({ message: "Document not found" });
@@ -6579,7 +6695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error updating customer document:", error);
         res.status(500).json({ message: "Failed to update customer document" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6598,7 +6714,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error deleting customer document:", error);
         res.status(500).json({ message: "Failed to delete customer document" });
       }
-    }
+    },
   );
 
   // Supplier Documents routes
@@ -6656,7 +6772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         res.status(500).json({ message: "Failed to create supplier document" });
       }
-    }
+    },
   );
 
   app.put(
@@ -6692,7 +6808,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const result = await storage.updateSupplierDocument(
           documentId,
-          documentData
+          documentData,
         );
         if (!result) {
           return res.status(404).json({ message: "Document not found" });
@@ -6702,7 +6818,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error updating supplier document:", error);
         res.status(500).json({ message: "Failed to update supplier document" });
       }
-    }
+    },
   );
 
   app.delete(
@@ -6721,8 +6837,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error deleting supplier document:", error);
         res.status(500).json({ message: "Failed to delete supplier document" });
       }
-    }
+    },
   );
+
+  //Profile
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const userId = req.session.userId;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+
+      await storage.changePassword(userId!, currentPassword, newPassword);
+
+      res.json({ message: "Password changed successfully" });
+    } catch (error: any) {
+      console.error("Change password error:", error);
+      res.status(400).json({ message: error.message });
+    }
+  });
 
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

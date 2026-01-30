@@ -31,11 +31,12 @@ import SettingsIndex from "@/pages/settings/index";
 import CurrencySettings from "@/pages/settings/CurrencySettings";
 import UsersIndex from "@/pages/users/index";
 import NotFound from "@/pages/not-found";
-import { lazy, Suspense } from "react";
 import GeneralLedgerReceivable from "./pages/general-ledger/receivable";
 import GeneralLedgerPayable from "./pages/general-ledger/payable";
 import GeneralLedgerIndex from "./pages/general-ledger/index";
 import PayablesReceivablesReport from "./pages/reports/payables-receivables";
+import ProfileIndex from "@/pages/profile/index";
+import { lazy, Suspense } from "react";
 
 // Lazy load heavy components
 const InventoryIndex = lazy(() => import("./pages/inventory/index"));
@@ -95,6 +96,7 @@ function Router() {
               <Route path="/settings" component={SettingsIndex} />
               <Route path="/settings/currency" component={CurrencySettings} />
               <Route path="/users" component={UsersIndex} />
+              <Route path="/profile" component={ProfileIndex} />
               <Route component={NotFound} />
 
             </Switch>

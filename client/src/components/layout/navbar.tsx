@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { roleDisplayNames } from "@/lib/auth";
+import { Link } from "wouter";
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -55,8 +56,12 @@ export function Navbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              {/* <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem> */}
+              <DropdownMenuItem asChild>
+                <Link href="/profile">Profile</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={logout}>Sign Out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

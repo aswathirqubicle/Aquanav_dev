@@ -29,6 +29,15 @@ export default function Login() {
   //   }
   // }, [isAuthenticated, loading, setLocation]);
 
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      const currentPath = window.location.pathname;
+      if (currentPath === "/" || currentPath === "/login") {
+        setLocation("/dashboard");
+      }
+    }
+  }, [isAuthenticated, loading, setLocation]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);

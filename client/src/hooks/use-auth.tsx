@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(response.user);
     } catch (error: any) {
       logApiError(error, "Login", "/api/auth/login");
+      throw error;
     }
   };
 
