@@ -70,10 +70,157 @@ import {
   creditNotes,
 } from "../migrations/schema";
 
+
+
+function getCommonStyles(): string {
+  return `
+  <>
+  
+      <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+      />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      color: #333;
+    }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 30mm 15mm 30mm 15mm;
+  }
+
+  .print-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 25mm;
+    background: #fff;
+  }
+
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 25mm;
+    background: #fff;
+    border-top: 1px solid #ddd;
+  }
+
+  .page-content {
+    margin-top: 30mm;
+    margin-bottom: 30mm;
+  }
+}
+
+    /* ===== COMMON HEADER ===== */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #0b4d78;
+      padding-bottom: 15px;
+      margin-bottom: 30px;
+    }
+
+    .top-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+
+    .top-info img {
+      height: 50px;
+    }
+
+    .address {
+      line-height: 1.4;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 16px;
+      font-weight: bold;
+      color: #0b4d78;
+      line-height: 1.4;
+    }
+
+    .highlight {
+      color: #d9534f;
+    }
+
+    .ship img {
+      height: 45px;
+    }
+
+    /* ===== TABLE STYLES ===== */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      font-size: 13px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .total-row {
+      font-weight: bold;
+    }
+    .terms {
+      page-break-before: always;
+    }
+
+    /* Footer */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top: 1px solid #ddd;
+    font-size: 12px;
+    background: #fff;
+  }
+
+  .footer-content {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 40px;
+  }
+
+  .footer-item i {
+    margin-right: 5px;
+  }
+
+  .footer-item a {
+    text-decoration: none;
+    color: #000;
+  }
+  </style>
+  </>
+  `;
+}
+
 function generateQuotationHTML(
   quotation: any,
   customer: any,
-  company: any,
+  company: any
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -93,6 +240,7 @@ function generateQuotationHTML(
     <head>
       <meta charset="utf-8">
       <title>Quotation ${quotation.quotationNumber}</title>
+      ${getCommonStyles()}
       <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
         .header { text-align: center; margin-bottom: 30px; }
@@ -107,11 +255,10 @@ function generateQuotationHTML(
       </style>
     </head>
     <body>
-      <div class="header">
-        <h1>SALES QUOTATION</h1>
-        <h2>${quotation.quotationNumber}</h2>
-      </div>
-
+      ${generateCommonHeader({
+    company,
+  })}
+    <div class="page-content">
       <div class="company-info">
         <h3>${company.name}</h3>
         <p>${company.address || ""}</p>
@@ -124,7 +271,7 @@ function generateQuotationHTML(
         ${
           quotation.validUntil
             ? `<p><strong>Valid Until:</strong> ${formatDate(
-                quotation.validUntil,
+                quotation.validUntil
               )}</p>`
             : ""
         }
@@ -181,7 +328,7 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.subtotal || 0,
+              quotation.subtotal || 0
             )}</td>
           </tr>
           ${
@@ -197,20 +344,20 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.taxAmount || 0,
+              quotation.taxAmount || 0
             )}</td>
           </tr>
           <tr class="total-row">
             <td><strong>Total Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.totalAmount || 0,
+              quotation.totalAmount || 0
             )}</td>
           </tr>
         </table>
       </div>
 
-      <div style="margin-top: 50px;">
-        <p><strong>Terms and Conditions:</strong></p>
+      <div class="terms">
+        <h3>Terms and Conditions:</h3>
         <p>This quotation is valid until ${
           quotation.validUntil
             ? formatDate(quotation.validUntil)
@@ -218,9 +365,77 @@ function generateQuotationHTML(
         }.</p>
         <p>Payment terms: Net 30 days</p>
       </div>
+      </div>
+      ${generateCommonFooter({
+        company,
+      })}
     </body>
     </html>
   `;
+}
+
+function imageToBase64(relativePath: string) {
+  const absPath = path.join(process.cwd(), relativePath);
+  const ext = path.extname(absPath).replace(".", "");
+  const buffer = fs.readFileSync(absPath);
+  return `data:image/${ext};base64,${buffer.toString("base64")}`;
+}
+
+function generateCommonFooter(options?: {
+  company?:any;
+}) {
+  const company = options?.company;
+
+  return `
+    <div class="print-footer">
+      <div class="footer-content">
+        <div class="footer-item">
+          <i class="fas fa-globe"></i>
+          <a href=${company.website}>${company.website}</a>
+        </div>
+        <div class="footer-item">
+          <i class="fas fa-envelope"></i>
+          <a href="mailto:${company.email}">${company.email}</a>
+        </div>
+        <div class="footer-item">
+          <i class="fas fa-phone"></i>
+          <a href="tel:${company.phone}">${company.phone}</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
+function generateCommonHeader(options?: {
+  company?:any;
+}) {
+  const company = options?.company;
+  company.logo = imageToBase64(company.logo);
+  
+  return `
+  <div class="print-header">
+  <div class="header">
+    <div class="top-info">
+      <img src="${company.logo}" alt="${company.name}" class="company-logo" />
+    </div>
+    <div class="title">
+    <div class="address">
+        ${company.address}
+    </div>
+    </div>
+  </div>
+  </div>
+  `;
+
+    // <div class="title">
+    //   ${options?.title || "Sales Quotation"}<br />
+    //   ${options?.subtitle || ""} ${
+    //     options?.vesselName
+    //       ? `<br />Vessel - <span class="highlight">${options.vesselName}</span>`
+    //       : ""
+    //   }
+    // </div>
 }
 
 function generateCreditNoteHTML(
@@ -419,6 +634,7 @@ function generateInvoiceHTML(
     <head>
       <meta charset="utf-8">
       <title>Invoice ${invoice.invoiceNumber}</title>
+      ${getCommonStyles()}
       <style>
         body { font-family: Arial, sans-serif; margin: 40px; }
         .header { text-align: center; margin-bottom: 30px; }
@@ -436,10 +652,10 @@ function generateInvoiceHTML(
       </style>
     </head>
     <body>
-      <div class="header">
-        <h1>INVOICE</h1>
-        <h2>${invoice.invoiceNumber}</h2>
-      </div>
+    ${generateCommonHeader({
+      company,
+    })}
+      <div class="page-content">
 
       <div class="company-info">
         <h3>${company.name}</h3>
@@ -545,11 +761,15 @@ function generateInvoiceHTML(
         </table>
       </div>
 
-      <div style="margin-top: 50px;">
+      <div class="terms">
         <p><strong>Payment Terms:</strong></p>
         <p>Payment is due within 30 days of invoice date.</p>
         <p>Thank you for your business!</p>
       </div>
+      </div>
+      ${generateCommonFooter({
+        company,
+      })}
     </body>
     </html>
   `;
@@ -640,7 +860,12 @@ const upload = multer({
   },
 });
 
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.use(
+    "/attached_assets",
+    express.static(path.join(process.cwd(), "attached_assets"))
+  );
   // Serve uploaded files statically
   app.use("/uploads", express.static("uploads"));
 
