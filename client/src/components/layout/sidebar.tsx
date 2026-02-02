@@ -196,31 +196,31 @@ const navigation: NavItem[] = [
     icon: Users,
     roles: ["admin", "finance"],
   },
-  // {
-  //   title: "General Ledger",
-  //   icon: BookOpen,
-  //   roles: ["admin", "finance"],
-  //   subItems: [
-  //     {
-  //       title: "All Entries",
-  //       href: "/general-ledger",
-  //       icon: BookOpen,
-  //       roles: ["admin", "finance"],
-  //     },
-  //     {
-  //       title: "Accounts Receivable",
-  //       href: "/general-ledger/receivable",
-  //       icon: TrendingUp,
-  //       roles: ["admin", "finance"],
-  //     },
-  //     {
-  //       title: "Accounts Payable",
-  //       href: "/general-ledger/payable",
-  //       icon: TrendingUp,
-  //       roles: ["admin", "finance"],
-  //     },
-  //   ],
-  // },
+  {
+    title: "General Ledger",
+    icon: BookOpen,
+    roles: ["admin", "finance"],
+    subItems: [
+      {
+        title: "All Entries",
+        href: "/general-ledger",
+        icon: BookOpen,
+        roles: ["admin", "finance"],
+      },
+      {
+        title: "Accounts Receivable",
+        href: "/general-ledger/receivable",
+        icon: TrendingUp,
+        roles: ["admin", "finance"],
+      },
+      {
+        title: "Accounts Payable",
+        href: "/general-ledger/payable",
+        icon: TrendingUp,
+        roles: ["admin", "finance"],
+      },
+    ],
+  },
   {
     title: "Reports",
     href: "/reports",
