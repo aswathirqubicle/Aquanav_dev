@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
+  Tabs, TabsContent, TabsList, TabsTrigger
+} from "@/components/ui/tabs";
+import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +35,13 @@ const safeFormatDate = (date?: string | null) => {
 const toDateInputValue = (date?: string | null) => {
   if (!date) return '';
   const d = new Date(date);
-  return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  if (isNaN(d.getTime())) return '';
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 };
 
 /* ================= TYPES ================= */
@@ -81,6 +90,7 @@ export function MaintenanceManagement() {
   const queryClient = useQueryClient();
   const [isRecorderOpen, setIsRecorderOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<MaintenanceRecord | null>(null);
+  const [activeTab, setActiveTab] = useState("active");
 
   const { data: records = [] } = useQuery({
     queryKey: ['/api/maintenance-records'],
@@ -147,104 +157,141 @@ export function MaintenanceManagement() {
     },
   });
 
+  // Robust check for archive status (handles multiple naming conventions from API/Database)
+  const isRecordArchived = (r: any) => !!(r.isArchived || r.is_archived || r.isarchived);
+
+  const activeRecords = (records as any[]).filter(r => !isRecordArchived(r));
+  const archivedRecords = (records as any[]).filter(r => isRecordArchived(r));
+
   return (
     <div className="space-y-6">
-      <Dialog open={isRecorderOpen} onOpenChange={setIsRecorderOpen}>
-        <DialogTrigger asChild>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> Record Maintenance
-          </Button>
-        </DialogTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <TabsList>
+            <TabsTrigger value="active">Active</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
 
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedRecord ? "Edit Maintenance" : "Record Maintenance"}
-            </DialogTitle>
-          </DialogHeader>
+          <Dialog open={isRecorderOpen} onOpenChange={setIsRecorderOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" /> Record Maintenance
+              </Button>
+            </DialogTrigger>
 
-          <MaintenanceRecorder
-            record={selectedRecord}
-            assetInstances={assetInstances}
-            onRecordSaved={refresh}
-          />
-        </DialogContent>
-      </Dialog>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {selectedRecord ? "Edit Maintenance" : "Record Maintenance"}
+                </DialogTitle>
+              </DialogHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Maintenance Records</CardTitle>
-        </CardHeader>
+              <MaintenanceRecorder
+                record={selectedRecord}
+                assetInstances={assetInstances}
+                onRecordSaved={refresh}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
 
-        <CardContent className="space-y-4">
-          {(records as MaintenanceRecord[]).map(record => {
-            const Icon = statusIcons.completed;
-            return (
-              <div key={record.id} className="border rounded-lg p-4">
-                <div className="flex items-center gap-2">
-                  <Icon className="h-4 w-4" />
-                  <strong>{record.assetInstance?.assetTag}</strong>
-                  <Badge variant="outline">
-                    {record.assetInstance?.assetType?.name}
-                  </Badge>
-                </div>
+        <TabsContent value="active" className="mt-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Active Maintenance Records</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeRecords.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No active maintenance records found.</p>
+              ) : (
+                activeRecords.map(record => renderRecordCard(record))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                <div className="grid grid-cols-2 gap-4 text-sm mt-2">
-                  <div>
-                    <p><b>Type:</b> {record.maintenanceType}</p>
-                    <p><b>Performed By:</b> {record.performedByName}</p>
-                    <p><b>Start Date:</b> {safeFormatDate(record.startDate)}</p>
-                    <p><b>Completed Date:</b> {safeFormatDate(record.completedDate)}</p>
-                  </div>
-                  <div>
-                    <p><b>Description:</b> {record.description}</p>
-                    <p><b>Next Maintenance:</b> {safeFormatDate(record.maintenanceDate)}</p>
-                  </div>
-                </div>
-                <div className="mt-4 md:mt-6 flex flex-col sm:flex-row sm:justify-end space-y-2 sm:space-y-0 sm:space-x-2">
-                    
-                <Button
-                  variant="outline"
-                  size="sm"
-                    className="w-full sm:w-auto"
-                  onClick={() => {
-                    setSelectedRecord(record);
-                    setIsRecorderOpen(true);
-                  }}
-                >
-                  Edit Maintenance
-                </Button>
-                {record.isArchived ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full sm:w-auto"
-                    onClick={() => startTransition(() => unarchiveMaintenanceRecordMutation.mutate(record.id))}
-                    disabled={unarchiveMaintenanceRecordMutation.isPending}
-                  >
-                    <ArchiveRestore className="h-4 w-4 mr-2" />
-                    {unarchiveMaintenanceRecordMutation.isPending ? "Unarchiving..." : "Unarchive"}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full sm:w-auto"
-                    onClick={() => startTransition(() => archiveMaintenanceRecordMutation.mutate(record.id))}
-                    disabled={archiveMaintenanceRecordMutation.isPending}
-                  >
-                    <Archive className="h-4 w-4 mr-2" />
-                    {archiveMaintenanceRecordMutation.isPending ? "Archiving..." : "Archive"}
-                  </Button>
-                )}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+        <TabsContent value="archived" className="mt-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Archived Maintenance Records</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {archivedRecords.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No archived maintenance records found.</p>
+              ) : (
+                archivedRecords.map(record => renderRecordCard(record))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
+
+  function renderRecordCard(record: any) {
+    const Icon = statusIcons.completed;
+    const archived = isRecordArchived(record);
+    return (
+      <div key={record.id} className="border rounded-lg p-4">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4" />
+          <strong>{record.assetInstance?.assetTag}</strong>
+          <Badge variant="outline">
+            {record.assetInstance?.assetType?.name}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 text-sm mt-2">
+          <div>
+            <p><b>Type:</b> {record.maintenanceType}</p>
+            <p><b>Performed By:</b> {record.performedByName}</p>
+            <p><b>Start Date:</b> {safeFormatDate(record.startDate)}</p>
+            <p><b>Completed Date:</b> {safeFormatDate(record.completedDate)}</p>
+          </div>
+          <div>
+            <p><b>Description:</b> {record.description}</p>
+            <p><b>Next Maintenance:</b> {safeFormatDate(record.maintenanceDate)}</p>
+          </div>
+        </div>
+        <div className="mt-4 md:mt-6 flex flex-col sm:flex-row sm:justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            onClick={() => {
+              setSelectedRecord(record);
+              setIsRecorderOpen(true);
+            }}
+          >
+            Edit Maintenance
+          </Button>
+          {archived ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => startTransition(() => unarchiveMaintenanceRecordMutation.mutate(record.id))}
+              disabled={unarchiveMaintenanceRecordMutation.isPending}
+            >
+              <ArchiveRestore className="h-4 w-4 mr-2" />
+              {unarchiveMaintenanceRecordMutation.isPending ? "Unarchiving..." : "Unarchive"}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => startTransition(() => archiveMaintenanceRecordMutation.mutate(record.id))}
+              disabled={archiveMaintenanceRecordMutation.isPending}
+            >
+              <Archive className="h-4 w-4 mr-2" />
+              {archiveMaintenanceRecordMutation.isPending ? "Archiving..." : "Archive"}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 }
 
 /* ================================================= */
@@ -387,7 +434,7 @@ function MaintenanceRecorder({
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Asset */}
       <div>
-        <Label>Asset *</Label>
+        <Label>Asset Instance*</Label>
         <Select
           value={formData.assetInstanceId}
           onValueChange={v => setFormData({ ...formData, assetInstanceId: v })}

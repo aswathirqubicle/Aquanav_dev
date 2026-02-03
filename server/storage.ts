@@ -158,6 +158,7 @@ export interface AssetMaintenanceRecordWithUser {
   description: string | null;
   performedBy: number | null;
   createdAt: Date;
+  isArchived: boolean;
   performedByName?: string | null;
 }
 
@@ -2893,7 +2894,8 @@ class Storage {
           aimr.performed_by as "performedBy",
           aimr.maintenance_date as "maintenanceDate",
           u.username as "performedByName",
-          aimr.created_at as "createdAt"
+          aimr.created_at as "createdAt",
+          aimr.is_archived as "isArchived"
         FROM asset_inventory_maintenance_records aimr
         LEFT JOIN users u ON aimr.performed_by = u.id
         WHERE aimr.instance_id = ${instanceId}
@@ -3365,6 +3367,7 @@ class Storage {
           amr.maintenance_date as "maintenanceDate",
           u.username as "performedByName",
           amr.created_at as "createdAt",
+          amr.is_archived as "isArchived",
           jsonb_build_object(
             'id', ai.id,
             'assetTag', ai.asset_tag,
