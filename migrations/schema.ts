@@ -39,6 +39,12 @@ export const projects = pgTable("projects", {
 	additionalField2Description: text("additional_field_2_description"),
 	additionalField3Title: text("additional_field_3_title"),
 	additionalField3Description: text("additional_field_3_description"),
+	additionalField4Title: text("additional_field_4_title"),
+	additionalField4Description: text("additional_field_4_description"),
+	additionalField5Title: text("additional_field_5_title"),
+	additionalField5Description: text("additional_field_5_description"),
+	additionalField6Title: text("additional_field_6_title"),
+	additionalField6Description: text("additional_field_6_description"),
 }, (table) => [
 	foreignKey({
 			columns: [table.customerId],
@@ -446,6 +452,10 @@ export const assetMaintenanceRecords = pgTable("asset_maintenance_records", {
   maintenanceDate: timestamp("maintenance_date").defaultNow().notNull(),
   description: text("description"),
   performedBy: integer("performed_by").notNull().references(() => users.id),
+  startDate: timestamp("start_date"),
+  completedDate: timestamp("completed_date"),
+  maintenanceType: text("maintenance_type"),
+  isArchived: boolean("is_archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

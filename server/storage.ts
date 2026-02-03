@@ -2052,6 +2052,12 @@ class Storage {
           additionalField2Description: projects.additionalField2Description,
           additionalField3Title: projects.additionalField3Title,
           additionalField3Description: projects.additionalField3Description,
+          additionalField4Title: projects.additionalField4Title,
+          additionalField4Description: projects.additionalField4Description,
+          additionalField5Title: projects.additionalField5Title,
+          additionalField5Description: projects.additionalField5Description,
+          additionalField6Title: projects.additionalField6Title,
+          additionalField6Description: projects.additionalField6Description,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))
@@ -4121,7 +4127,7 @@ class Storage {
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(
           and(
-            eq(purchaseInvoiceItems.projectId, projectId),
+            eq(purchaseInvoices.projectId, projectId),
             eq(purchaseInvoices.status, "approved"),
           ),
         )

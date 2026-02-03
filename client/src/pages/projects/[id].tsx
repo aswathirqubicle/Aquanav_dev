@@ -575,6 +575,12 @@ export default function ProjectDetail() {
     additionalField2Description: "",
     additionalField3Title: "",
     additionalField3Description: "",
+    additionalField4Title: "",
+    additionalField4Description: "",
+    additionalField5Title: "",
+    additionalField5Description: "",
+    additionalField6Title: "",
+    additionalField6Description: "",
     customerId: "",
   });
   const [isCustomContractMode, setIsCustomContractMode] = useState(false);
@@ -723,6 +729,12 @@ export default function ProjectDetail() {
         additionalField2Description: project.additionalField2Description || "",
         additionalField3Title: project.additionalField3Title || "",
         additionalField3Description: project.additionalField3Description || "",
+        additionalField4Title: project.additionalField4Title || "",
+        additionalField4Description: project.additionalField4Description || "",
+        additionalField5Title: project.additionalField5Title || "",
+        additionalField5Description: project.additionalField5Description || "",
+        additionalField6Title: project.additionalField6Title || "",
+        additionalField6Description: project.additionalField6Description || "",
         customerId: project.customerId?.toString() || "",
       });
 
@@ -1740,6 +1752,12 @@ export default function ProjectDetail() {
     appendIfExists("additionalField2Description", editProjectData.additionalField2Description);
     appendIfExists("additionalField3Title", editProjectData.additionalField3Title);
     appendIfExists("additionalField3Description", editProjectData.additionalField3Description);
+    appendIfExists("additionalField4Title", editProjectData.additionalField4Title);
+    appendIfExists("additionalField4Description", editProjectData.additionalField4Description);
+    appendIfExists("additionalField5Title", editProjectData.additionalField5Title);
+    appendIfExists("additionalField5Description", editProjectData.additionalField5Description);
+    appendIfExists("additionalField6Title", editProjectData.additionalField6Title);
+    appendIfExists("additionalField6Description", editProjectData.additionalField6Description);
     appendIfExists("customerId", editProjectData.customerId);
 
 
@@ -2238,6 +2256,138 @@ export default function ProjectDetail() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Additional Field 4 */}
+                      <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField4Title">Field 4 Title</Label>
+                          <Input
+                            id="editAdditionalField4Title"
+                            value={editProjectData.additionalField4Title}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, additionalField4Title: e.target.value }))}
+                            placeholder="Enter field title..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField4Description">Field 4 Description</Label>
+                          <div className="border border-input rounded-md">
+                            <ReactQuill
+                              theme="snow"
+                              value={editProjectData.additionalField4Description}
+                              onChange={(value) => setEditProjectData(prev => ({ ...prev, additionalField4Description: value }))}
+                              placeholder="Enter detailed description..."
+                              modules={{
+                                toolbar: [
+                                  [{ 'header': [1, 2, 3, false] }],
+                                  ['bold', 'italic', 'underline', 'strike'],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                  [{ 'color': [] }, { 'background': [] }],
+                                  ['link'],
+                                  ['clean']
+                                ],
+                              }}
+                              formats={[
+                                'header',
+                                'bold', 'italic', 'underline', 'strike',
+                                'list', 'bullet',
+                                'color', 'background',
+                                'link'
+                              ]}
+                              style={{
+                                minHeight: '120px'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Additional Field 5 */}
+                      <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField5Title">Field 5 Title</Label>
+                          <Input
+                            id="editAdditionalField5Title"
+                            value={editProjectData.additionalField5Title}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, additionalField5Title: e.target.value }))}
+                            placeholder="Enter field title..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField5Description">Field 5 Description</Label>
+                          <div className="border border-input rounded-md">
+                            <ReactQuill
+                              theme="snow"
+                              value={editProjectData.additionalField5Description}
+                              onChange={(value) => setEditProjectData(prev => ({ ...prev, additionalField5Description: value }))}
+                              placeholder="Enter detailed description..."
+                              modules={{
+                                toolbar: [
+                                  [{ 'header': [1, 2, 3, false] }],
+                                  ['bold', 'italic', 'underline', 'strike'],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                  [{ 'color': [] }, { 'background': [] }],
+                                  ['link'],
+                                  ['clean']
+                                ],
+                              }}
+                              formats={[
+                                'header',
+                                'bold', 'italic', 'underline', 'strike',
+                                'list', 'bullet',
+                                'color', 'background',
+                                'link'
+                              ]}
+                              style={{
+                                minHeight: '120px'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Additional Field 6 */}
+                      <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField6Title">Field 6 Title</Label>
+                          <Input
+                            id="editAdditionalField6Title"
+                            value={editProjectData.additionalField6Title}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, additionalField6Title: e.target.value }))}
+                            placeholder="Enter field title..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="editAdditionalField6Description">Field 6 Description</Label>
+                          <div className="border border-input rounded-md">
+                            <ReactQuill
+                              theme="snow"
+                              value={editProjectData.additionalField6Description}
+                              onChange={(value) => setEditProjectData(prev => ({ ...prev, additionalField6Description: value }))}
+                              placeholder="Enter detailed description..."
+                              modules={{
+                                toolbar: [
+                                  [{ 'header': [1, 2, 3, false] }],
+                                  ['bold', 'italic', 'underline', 'strike'],
+                                  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                  [{ 'color': [] }, { 'background': [] }],
+                                  ['link'],
+                                  ['clean']
+                                ],
+                              }}
+                              formats={[
+                                'header',
+                                'bold', 'italic', 'underline', 'strike',
+                                'list', 'bullet',
+                                'color', 'background',
+                                'link'
+                              ]}
+                              style={{
+                                minHeight: '120px'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2347,7 +2497,8 @@ export default function ProjectDetail() {
               )}
 
               {/* Custom Fields */}
-              {(project.additionalField1Title || project.additionalField2Title || project.additionalField3Title) && (
+              {(project.additionalField1Title || project.additionalField2Title || project.additionalField3Title ||
+                project.additionalField4Title || project.additionalField5Title || project.additionalField6Title) && (
                 <div className="space-y-4">
                   <h4 className="font-medium text-slate-900 dark:text-slate-100">Additional Information</h4>
 
@@ -2388,6 +2539,48 @@ export default function ProjectDetail() {
                         <div
                           className="text-sm text-slate-600 dark:text-slate-400"
                           dangerouslySetInnerHTML={{ __html: project.additionalField3Description }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {project.additionalField4Title && (
+                    <div className="border-l-4 border-orange-500 pl-4">
+                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                        {project.additionalField4Title}
+                      </h5>
+                      {project.additionalField4Description && (
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField4Description }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {project.additionalField5Title && (
+                    <div className="border-l-4 border-red-500 pl-4">
+                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                        {project.additionalField5Title}
+                      </h5>
+                      {project.additionalField5Description && (
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField5Description }}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {project.additionalField6Title && (
+                    <div className="border-l-4 border-yellow-500 pl-4">
+                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                        {project.additionalField6Title}
+                      </h5>
+                      {project.additionalField6Description && (
+                        <div
+                          className="text-sm text-slate-600 dark:text-slate-400"
+                          dangerouslySetInnerHTML={{ __html: project.additionalField6Description }}
                         />
                       )}
                     </div>
