@@ -318,7 +318,10 @@ export default function SalesIndex() {
         return sum + itemTax;
       }, 0);
       const totalAmount = subtotal - discount + taxAmount;
-
+      // 🚨 VALIDATION
+      if (totalAmount <= 0) {
+        throw new Error("Total amount must be greater than zero");
+      }
       const processedData = {
         ...data,
         customerId: data.customerId
@@ -465,6 +468,10 @@ export default function SalesIndex() {
         return sum + itemTax;
       }, 0);
       const totalAmount = subtotal - discount + taxAmount;
+      // 🚨 VALIDATION
+      if (totalAmount <= 0) {
+        throw new Error("Total amount must be greater than zero");
+      }
 
       const processedData = {
         ...data,
@@ -1283,6 +1290,7 @@ export default function SalesIndex() {
       subtotal: quotation.subtotal,
       taxAmount: quotation.taxAmount,
       totalAmount: quotation.totalAmount,
+      termsAndConditions:quotation.termsAndConditions
     });
 
     setIsInvoiceDialogOpen(true);
