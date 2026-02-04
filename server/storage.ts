@@ -158,6 +158,7 @@ export interface AssetMaintenanceRecordWithUser {
   description: string | null;
   performedBy: number | null;
   createdAt: Date;
+  isArchived: boolean;
   performedByName?: string | null;
 }
 
@@ -2051,6 +2052,12 @@ class Storage {
           additionalField2Description: projects.additionalField2Description,
           additionalField3Title: projects.additionalField3Title,
           additionalField3Description: projects.additionalField3Description,
+          additionalField4Title: projects.additionalField4Title,
+          additionalField4Description: projects.additionalField4Description,
+          additionalField5Title: projects.additionalField5Title,
+          additionalField5Description: projects.additionalField5Description,
+          additionalField6Title: projects.additionalField6Title,
+          additionalField6Description: projects.additionalField6Description,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))
@@ -2893,7 +2900,8 @@ class Storage {
           aimr.performed_by as "performedBy",
           aimr.maintenance_date as "maintenanceDate",
           u.username as "performedByName",
-          aimr.created_at as "createdAt"
+          aimr.created_at as "createdAt",
+          aimr.is_archived as "isArchived"
         FROM asset_inventory_maintenance_records aimr
         LEFT JOIN users u ON aimr.performed_by = u.id
         WHERE aimr.instance_id = ${instanceId}
@@ -3365,6 +3373,7 @@ class Storage {
           amr.maintenance_date as "maintenanceDate",
           u.username as "performedByName",
           amr.created_at as "createdAt",
+          amr.is_archived as "isArchived",
           jsonb_build_object(
             'id', ai.id,
             'assetTag', ai.asset_tag,
@@ -4118,7 +4127,7 @@ class Storage {
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(
           and(
-            eq(purchaseInvoiceItems.projectId, projectId),
+            eq(purchaseInvoices.projectId, projectId),
             eq(purchaseInvoices.status, "approved"),
           ),
         )

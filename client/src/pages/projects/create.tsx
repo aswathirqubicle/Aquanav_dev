@@ -50,6 +50,12 @@ export default function ProjectCreate() {
     additionalField2Description: "",
     additionalField3Title: "",
     additionalField3Description: "",
+    additionalField4Title: "",
+    additionalField4Description: "",
+    additionalField5Title: "",
+    additionalField5Description: "",
+    additionalField6Title: "",
+    additionalField6Description: "",
   });
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
 
@@ -111,6 +117,12 @@ export default function ProjectCreate() {
       appendIfExists("additionalField2Description", data.additionalField2Description);
       appendIfExists("additionalField3Title", data.additionalField3Title);
       appendIfExists("additionalField3Description", data.additionalField3Description);
+      appendIfExists("additionalField4Title", data.additionalField4Title);
+      appendIfExists("additionalField4Description", data.additionalField4Description);
+      appendIfExists("additionalField5Title", data.additionalField5Title);
+      appendIfExists("additionalField5Description", data.additionalField5Description);
+      appendIfExists("additionalField6Title", data.additionalField6Title);
+      appendIfExists("additionalField6Description", data.additionalField6Description);
 
       if (vesselImageFile) {
         formData.append("vesselImage", vesselImageFile);
@@ -626,6 +638,138 @@ export default function ProjectCreate() {
                         theme="snow"
                         value={formData.additionalField3Description}
                         onChange={(value) => handleChange("additionalField3Description", value)}
+                        placeholder="Enter detailed description..."
+                        modules={{
+                          toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'color': [] }, { 'background': [] }],
+                            ['link'],
+                            ['clean']
+                          ],
+                        }}
+                        formats={[
+                          'header',
+                          'bold', 'italic', 'underline', 'strike',
+                          'list', 'bullet',
+                          'color', 'background',
+                          'link'
+                        ]}
+                        style={{
+                          minHeight: '120px'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Field 4 */}
+                <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField4Title">Field 4 Title</Label>
+                    <Input
+                      id="additionalField4Title"
+                      value={formData.additionalField4Title}
+                      onChange={(e) => handleChange("additionalField4Title", e.target.value)}
+                      placeholder="Enter field title..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField4Description">Field 4 Description</Label>
+                    <div className="border border-input rounded-md">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.additionalField4Description}
+                        onChange={(value) => handleChange("additionalField4Description", value)}
+                        placeholder="Enter detailed description..."
+                        modules={{
+                          toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'color': [] }, { 'background': [] }],
+                            ['link'],
+                            ['clean']
+                          ],
+                        }}
+                        formats={[
+                          'header',
+                          'bold', 'italic', 'underline', 'strike',
+                          'list', 'bullet',
+                          'color', 'background',
+                          'link'
+                        ]}
+                        style={{
+                          minHeight: '120px'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Field 5 */}
+                <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField5Title">Field 5 Title</Label>
+                    <Input
+                      id="additionalField5Title"
+                      value={formData.additionalField5Title}
+                      onChange={(e) => handleChange("additionalField5Title", e.target.value)}
+                      placeholder="Enter field title..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField5Description">Field 5 Description</Label>
+                    <div className="border border-input rounded-md">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.additionalField5Description}
+                        onChange={(value) => handleChange("additionalField5Description", value)}
+                        placeholder="Enter detailed description..."
+                        modules={{
+                          toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'color': [] }, { 'background': [] }],
+                            ['link'],
+                            ['clean']
+                          ],
+                        }}
+                        formats={[
+                          'header',
+                          'bold', 'italic', 'underline', 'strike',
+                          'list', 'bullet',
+                          'color', 'background',
+                          'link'
+                        ]}
+                        style={{
+                          minHeight: '120px'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Field 6 */}
+                <div className="space-y-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField6Title">Field 6 Title</Label>
+                    <Input
+                      id="additionalField6Title"
+                      value={formData.additionalField6Title}
+                      onChange={(e) => handleChange("additionalField6Title", e.target.value)}
+                      placeholder="Enter field title..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="additionalField6Description">Field 6 Description</Label>
+                    <div className="border border-input rounded-md">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.additionalField6Description}
+                        onChange={(value) => handleChange("additionalField6Description", value)}
                         placeholder="Enter detailed description..."
                         modules={{
                           toolbar: [
