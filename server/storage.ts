@@ -4127,7 +4127,7 @@ class Storage {
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(
           and(
-            eq(purchaseInvoices.projectId, projectId),
+            eq(purchaseInvoiceItems.projectId, projectId),
             eq(purchaseInvoices.status, "approved"),
           ),
         )

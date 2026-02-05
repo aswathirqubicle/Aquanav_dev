@@ -70,8 +70,6 @@ import {
   creditNotes,
 } from "../migrations/schema";
 
-
-
 function getCommonStyles(): string {
   return `
   <>
@@ -220,7 +218,7 @@ function getCommonStyles(): string {
 function generateQuotationHTML(
   quotation: any,
   customer: any,
-  company: any
+  company: any,
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -256,8 +254,8 @@ function generateQuotationHTML(
     </head>
     <body>
       ${generateCommonHeader({
-    company,
-  })}
+        company,
+      })}
     <div class="page-content">
       <div class="company-info">
         <h3>${company.name}</h3>
@@ -271,11 +269,10 @@ function generateQuotationHTML(
         ${
           quotation.validUntil
             ? `<p><strong>Valid Until:</strong> ${formatDate(
-                quotation.validUntil
+                quotation.validUntil,
               )}</p>`
             : ""
         }
-        <p><strong>Status:</strong> ${quotation.status}</p>
       </div>
 
       <div class="customer-info">
@@ -328,7 +325,7 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.subtotal || 0
+              quotation.subtotal || 0,
             )}</td>
           </tr>
           ${
@@ -344,13 +341,13 @@ function generateQuotationHTML(
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.taxAmount || 0
+              quotation.taxAmount || 0,
             )}</td>
           </tr>
           <tr class="total-row">
             <td><strong>Total Amount:</strong></td>
             <td class="text-right">${formatCurrency(
-              quotation.totalAmount || 0
+              quotation.totalAmount || 0,
             )}</td>
           </tr>
         </table>
@@ -381,9 +378,7 @@ function imageToBase64(relativePath: string) {
   return `data:image/${ext};base64,${buffer.toString("base64")}`;
 }
 
-function generateCommonFooter(options?: {
-  company?:any;
-}) {
+function generateCommonFooter(options?: { company?: any }) {
   const company = options?.company;
 
   return `
@@ -406,13 +401,10 @@ function generateCommonFooter(options?: {
   `;
 }
 
-
-function generateCommonHeader(options?: {
-  company?:any;
-}) {
+function generateCommonHeader(options?: { company?: any }) {
   const company = options?.company;
   company.logo = imageToBase64(company.logo);
-  
+
   return `
   <div class="print-header">
   <div class="header">
@@ -428,14 +420,14 @@ function generateCommonHeader(options?: {
   </div>
   `;
 
-    // <div class="title">
-    //   ${options?.title || "Sales Quotation"}<br />
-    //   ${options?.subtitle || ""} ${
-    //     options?.vesselName
-    //       ? `<br />Vessel - <span class="highlight">${options.vesselName}</span>`
-    //       : ""
-    //   }
-    // </div>
+  // <div class="title">
+  //   ${options?.title || "Sales Quotation"}<br />
+  //   ${options?.subtitle || ""} ${
+  //     options?.vesselName
+  //       ? `<br />Vessel - <span class="highlight">${options.vesselName}</span>`
+  //       : ""
+  //   }
+  // </div>
 }
 
 function generateCreditNoteHTML(
@@ -500,9 +492,6 @@ function generateCreditNoteHTML(
         <p><strong>Credit Note Date:</strong> ${formatDate(
           creditNote.creditNoteDate,
         )}</p>
-        <p><strong>Status:</strong> <span class="status-${
-          creditNote.status
-        }">${creditNote.status.toUpperCase()}</span></p>
         ${
           creditNote.reason
             ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>`
@@ -667,9 +656,6 @@ function generateInvoiceHTML(
       <div class="invoice-info">
         <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
         <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
-        <p><strong>Status:</strong> <span class="status-${
-          invoice.status
-        }">${invoice.status.toUpperCase()}</span></p>
       </div>
 
       <div class="customer-info">
@@ -860,11 +846,10 @@ const upload = multer({
   },
 });
 
-
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(
     "/attached_assets",
-    express.static(path.join(process.cwd(), "attached_assets"))
+    express.static(path.join(process.cwd(), "attached_assets")),
   );
   // Serve uploaded files statically
   app.use("/uploads", express.static("uploads"));
@@ -5423,11 +5408,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employees = await storage.getEmployees();
         const employee = employees.find((emp) => emp.userId === user.id);
 
-        if (!employee) {
-          return res
-            .status(400)
-            .json({ message: "Employee record not found for current user" });
-        }
+        // if (!employee) {
+        //   return res
+        //     .status(400)
+        //     .json({ message: "Employee record not found for current user" });
+        // }
 
         const request = await storage.updatePurchaseRequest(id, {
           status: "approved",
@@ -5467,11 +5452,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employees = await storage.getEmployees();
         const employee = employees.find((emp) => emp.userId === user.id);
 
-        if (!employee) {
-          return res
-            .status(400)
-            .json({ message: "Employee record not found for current user" });
-        }
+        // if (!employee) {
+        //   return res
+        //     .status(400)
+        //     .json({ message: "Employee record not found for current user" });
+        // }
 
         const request = await storage.updatePurchaseRequest(id, {
           status: "rejected",

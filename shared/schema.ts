@@ -205,7 +205,7 @@ export const projects = pgTable("projects", {
   estimatedBudget: decimal("estimated_budget", { precision: 12, scale: 2 }),
   actualCost: decimal("actual_cost", { precision: 12, scale: 2 }).default("0"),
   totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).default(
-    "0"
+    "0",
   ),
   customerId: integer("customer_id").references(() => customers.id),
   locations: json("locations").$type<string[]>().default([]),
@@ -219,7 +219,7 @@ export const projects = pgTable("projects", {
   additionalField2Description: text("additional_field_2_description"),
   additionalField3Title: text("additional_field_3_title"),
   additionalField3Description: text("additional_field_3_description"),
-   additionalField4Title: text("additional_field_4_title"),
+  additionalField4Title: text("additional_field_4_title"),
   additionalField4Description: text("additional_field_4_description"),
   additionalField5Title: text("additional_field_5_title"),
   additionalField5Description: text("additional_field_5_description"),
@@ -309,7 +309,7 @@ export const assetInventoryInstances = pgTable("asset_inventory_instances", {
   condition: text("condition").notNull().default("excellent"), // excellent, good, fair, poor, damaged
   location: text("location"), // current physical location
   assignedProjectId: integer("assigned_project_id").references(
-    () => projects.id
+    () => projects.id,
   ), // currently assigned project
   assignedToId: integer("assigned_to_id").references(() => employees.id), // if assigned to person
   acquisitionDate: timestamp("acquisition_date"),
@@ -395,6 +395,11 @@ export const salesQuotations = pgTable("sales_quotations", {
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   isArchived: boolean("is_archived").notNull().default(false),
   createdDate: timestamp("created_date", { mode: "string" })
     .notNull()
@@ -438,6 +443,11 @@ export const salesInvoices = pgTable("sales_invoices", {
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   paidAmount: decimal("paid_amount", { precision: 12, scale: 2 }).default("0"),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
 });
 
 // Sales Invoice Items
@@ -486,10 +496,10 @@ export const projectConsumables = pgTable("project_consumables", {
 export const projectConsumableItems = pgTable("project_consumable_items", {
   id: serial("id").primaryKey(),
   consumableId: integer("consumable_id").references(
-    () => projectConsumables.id
+    () => projectConsumables.id,
   ),
   inventoryItemId: integer("inventory_item_id").references(
-    () => inventoryItems.id
+    () => inventoryItems.id,
   ),
   quantity: integer("quantity").notNull(),
   unitCost: decimal("unit_cost", { precision: 10, scale: 4 }),
@@ -535,7 +545,7 @@ export const projectAssetInstanceAssignments = pgTable(
     assignedAt: timestamp("assigned_at").notNull().defaultNow(),
     returnedAt: timestamp("returned_at"),
     notes: text("notes"),
-  }
+  },
 );
 
 // Removing duplicate assetMaintenanceRecords - using the comprehensive version defined earlier
@@ -560,11 +570,11 @@ export const assetInventoryMaintenanceRecords = pgTable(
     performedBy: integer("performed_by").references(() => users.id),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     isArchived: boolean("is_archived").notNull().default(false),
-  }
+  },
 );
 
 export const insertAssetInventoryMaintenanceRecords = createInsertSchema(
-  assetInventoryMaintenanceRecords
+  assetInventoryMaintenanceRecords,
 ).omit({ id: true });
 export const updateAssetInventoryMaintenanceRecord =
   insertAssetInventoryMaintenanceRecords.partial();
@@ -585,7 +595,7 @@ export const assetInventoryMaintenanceFiles = pgTable(
     fileSize: integer("file_size"),
     mimeType: text("mime_type"),
     uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
-  }
+  },
 );
 
 // Asset Maintenance Files
@@ -642,7 +652,7 @@ export const payrollAdditions = pgTable("payroll_additions", {
   id: serial("id").primaryKey(),
   payrollEntryId: integer("payroll_entry_id").references(
     () => payrollEntries.id,
-    { onDelete: "cascade" }
+    { onDelete: "cascade" },
   ),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
@@ -652,7 +662,10 @@ export const payrollAdditions = pgTable("payroll_additions", {
 // Payroll Deductions
 export const payrollDeductions = pgTable("payroll_deductions", {
   id: serial("id").primaryKey(),
-  payrollEntryId: integer("payroll_entry_id").references(() => payrollEntries.id, { onDelete: "cascade" }),
+  payrollEntryId: integer("payroll_entry_id").references(
+    () => payrollEntries.id,
+    { onDelete: "cascade" },
+  ),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   note: text("note"),
@@ -661,8 +674,12 @@ export const payrollDeductions = pgTable("payroll_deductions", {
 // Employee Reimbursements
 export const reimbursements = pgTable("reimbursements", {
   id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").notNull().references(() => employees.id),
-  userId: integer("user_id").notNull().references(() => users.id), // The user who submitted
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id), // The user who submitted
   projectId: integer("project_id").references(() => projects.id), // Optional project association
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description").notNull(),
@@ -713,6 +730,11 @@ export const proformaInvoices = pgTable("proforma_invoices", {
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   isArchived: boolean("is_archived").notNull().default(false),
 });
 
@@ -721,7 +743,7 @@ export const creditNotes = pgTable("credit_notes", {
   id: serial("id").primaryKey(),
   creditNoteNumber: text("credit_note_number").notNull().unique(),
   salesInvoiceId: integer("sales_invoice_id").references(
-    () => salesInvoices.id
+    () => salesInvoices.id,
   ),
   customerId: integer("customer_id").references(() => customers.id),
   status: text("status").notNull().default("draft"), // draft, issued, cancelled
@@ -743,6 +765,11 @@ export const creditNotes = pgTable("credit_notes", {
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -781,7 +808,7 @@ export const purchaseRequestItems = pgTable("purchase_request_items", {
     .references(() => purchaseRequests.id, { onDelete: "cascade" }),
   itemType: text("item_type").notNull().default("product"), // product, service
   inventoryItemId: integer("inventory_item_id").references(
-    () => inventoryItems.id
+    () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
   quantity: integer("quantity").notNull(),
@@ -804,7 +831,12 @@ export const purchaseOrders = pgTable("purchase_orders", {
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  convertedInvoiceId: integer("converted_invoice_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -816,7 +848,7 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
     .references(() => purchaseOrders.id, { onDelete: "cascade" }),
   itemType: text("item_type").notNull().default("product"), // product, service
   inventoryItemId: integer("inventory_item_id").references(
-    () => inventoryItems.id
+    () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
   quantity: integer("quantity").notNull(),
@@ -846,12 +878,8 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   invoiceNumber: text("invoice_number").notNull().unique(),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   poId: integer("po_id").references(() => purchaseOrders.id),
-  projectId: integer("project_id").references(() => projects.id), // Optional: link to project
-  assetInventoryInstanceId: integer("asset_inventory_instance_id").references(
-    () => assetInventoryInstances.id
-  ), // Optional: link to asset instance
-  status: text("status").notNull().default("pending"), // pending, partially_paid, paid, overdue
-  approvalStatus: text("approval_status").notNull().default("pending"), // pending, approved, rejected
+  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected
+  paymentStatus: text("payment_status").notNull().default("pending"), // pending, partially_paid, paid, overdue
   invoiceDate: timestamp("invoice_date").notNull(),
   dueDate: timestamp("due_date"),
   paymentTerms: text("payment_terms"),
@@ -861,10 +889,13 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   paidAmount: decimal("paid_amount", { precision: 12, scale: 2 }).default("0"),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  approvedBy: integer("approved_by").references(() => users.id),
-  approvedAt: timestamp("approved_at"),
 });
 
 // Purchase Invoice Payments table
@@ -933,7 +964,7 @@ export const purchaseInvoiceItems = pgTable("purchase_invoice_items", {
     .references(() => purchaseInvoices.id, { onDelete: "cascade" }),
   itemType: text("item_type").notNull().default("product"), // product, service
   inventoryItemId: integer("inventory_item_id").references(
-    () => inventoryItems.id
+    () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
   quantity: integer("quantity").notNull(),
@@ -941,6 +972,10 @@ export const purchaseInvoiceItems = pgTable("purchase_invoice_items", {
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   lineTotal: decimal("line_total", { precision: 10, scale: 2 }).notNull(),
+  projectId: integer("project_id").references(() => projects.id), // Optional: allocate to project
+  assetInstanceId: integer("asset_instance_id").references(
+    () => assetInventoryInstances.id,
+  ), // Optional: allocate to asset instance
 });
 
 // Error Logs table
@@ -981,10 +1016,10 @@ export const generalLedgerEntries = pgTable("general_ledger_entries", {
   accountName: text("account_name").notNull(),
   description: text("description").notNull(),
   debitAmount: numeric("debit_amount", { precision: 12, scale: 2 }).default(
-    "0"
+    "0",
   ),
   creditAmount: numeric("credit_amount", { precision: 12, scale: 2 }).default(
-    "0"
+    "0",
   ),
   entityId: integer("entity_id"),
   entityName: text("entity_name"),
@@ -1129,7 +1164,7 @@ export const insertSupplierSchema = createInsertSchema(suppliers)
         z.object({
           id: z.number().optional(),
           accountDetails: z.string(),
-        })
+        }),
       )
       .optional(),
   });
@@ -1173,10 +1208,10 @@ export const insertEmployeeSchema = createInsertSchema(employees)
 export const updateEmployeeSchema = insertEmployeeSchema.partial();
 
 export const insertEmployeeNextOfKinSchema = createInsertSchema(
-  employeeNextOfKin
+  employeeNextOfKin,
 ).omit({ id: true });
 export const insertEmployeeTrainingRecordSchema = createInsertSchema(
-  employeeTrainingRecords
+  employeeTrainingRecords,
 )
   .omit({ id: true })
   .extend({
@@ -1186,7 +1221,7 @@ export const insertEmployeeTrainingRecordSchema = createInsertSchema(
   });
 
 export const insertEmployeeDocumentSchema = createInsertSchema(
-  employeeDocuments
+  employeeDocuments,
 )
   .omit({ id: true, createdAt: true, updatedAt: true })
   .extend({
@@ -1268,14 +1303,14 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems)
   });
 
 export const insertDailyActivitySchema = createInsertSchema(
-  dailyActivities
+  dailyActivities,
 ).omit({ id: true });
 
 export const insertSalesQuotationSchema = createInsertSchema(
-  salesQuotations
+  salesQuotations,
 ).omit({ id: true, quotationNumber: true, createdDate: true });
 export const insertSalesQuotationItemSchema = createInsertSchema(
-  salesQuotationItems
+  salesQuotationItems,
 ).omit({ id: true });
 export const insertSalesInvoiceSchema = createInsertSchema(salesInvoices)
   .omit({ id: true })
@@ -1283,16 +1318,16 @@ export const insertSalesInvoiceSchema = createInsertSchema(salesInvoices)
     invoiceNumber: z.string().optional(),
   });
 export const insertSalesInvoiceItemSchema = createInsertSchema(
-  salesInvoiceItems
+  salesInvoiceItems,
 ).omit({ id: true });
 export const insertInvoicePaymentSchema = createInsertSchema(
-  invoicePayments
+  invoicePayments,
 ).omit({ id: true, recordedAt: true });
 export const insertSupplierInventoryItemSchema = createInsertSchema(
-  supplierInventoryItems
+  supplierInventoryItems,
 ).omit({ id: true, createdAt: true });
 export const insertProjectPhotoGroupSchema = createInsertSchema(
-  projectPhotoGroups
+  projectPhotoGroups,
 )
   .omit({ id: true, createdAt: true })
   .extend({
@@ -1306,10 +1341,10 @@ export const insertProjectPhotoSchema = createInsertSchema(projectPhotos).omit({
   uploadedAt: true,
 });
 export const insertProjectConsumableSchema = createInsertSchema(
-  projectConsumables
+  projectConsumables,
 ).omit({ id: true, recordedAt: true });
 export const insertProjectConsumableItemSchema = createInsertSchema(
-  projectConsumableItems
+  projectConsumableItems,
 ).omit({ id: true });
 
 export const insertPayrollEntrySchema = createInsertSchema(payrollEntries)
@@ -1321,7 +1356,7 @@ export const insertPayrollEntrySchema = createInsertSchema(payrollEntries)
           description: z.string(),
           amount: z.number(),
           note: z.string().optional(),
-        })
+        }),
       )
       .default([]),
     deductions: z
@@ -1330,19 +1365,19 @@ export const insertPayrollEntrySchema = createInsertSchema(payrollEntries)
           description: z.string(),
           amount: z.number(),
           note: z.string().optional(),
-        })
+        }),
       )
       .default([]),
   });
 export const insertPayrollAdditionSchema = createInsertSchema(
-  payrollAdditions
+  payrollAdditions,
 ).omit({ id: true });
 export const insertPayrollDeductionSchema = createInsertSchema(
-  payrollDeductions
+  payrollDeductions,
 ).omit({ id: true });
 
 export const insertProformaInvoiceSchema = createInsertSchema(
-  proformaInvoices
+  proformaInvoices,
 ).omit({ id: true, proformaNumber: true, createdDate: true });
 export const insertCreditNoteSchema = createInsertSchema(creditNotes).omit({
   id: true,
@@ -1350,14 +1385,14 @@ export const insertCreditNoteSchema = createInsertSchema(creditNotes).omit({
   createdAt: true,
 });
 export const insertCreditNoteItemSchema = createInsertSchema(
-  creditNoteItems
+  creditNoteItems,
 ).omit({ id: true });
 
 export const insertPurchaseRequestSchema = createInsertSchema(
-  purchaseRequests
+  purchaseRequests,
 ).omit({ id: true, requestNumber: true, requestDate: true });
 export const insertPurchaseRequestItemSchema = createInsertSchema(
-  purchaseRequestItems
+  purchaseRequestItems,
 ).omit({ id: true });
 const purchaseOrdersTable = pgTable("purchase_orders", {
   id: serial("id").primaryKey(),
@@ -1372,37 +1407,47 @@ const purchaseOrdersTable = pgTable("purchase_orders", {
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at"),
+  approvedById: integer("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  convertedInvoiceId: integer("converted_invoice_id").references(
+    () => purchaseInvoices.id,
+  ),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export const insertPurchaseOrderSchema = createInsertSchema(
-  purchaseOrdersTable
+  purchaseOrdersTable,
 ).omit({ id: true, poNumber: true, createdAt: true });
 export const insertPurchaseOrderItemSchema = createInsertSchema(
-  purchaseOrderItems
+  purchaseOrderItems,
 ).omit({ id: true });
 export const insertPurchaseInvoiceSchema = createInsertSchema(
-  purchaseInvoices
+  purchaseInvoices,
 ).omit({ id: true, createdAt: true });
 export const insertPurchaseInvoiceItemSchema = createInsertSchema(
-  purchaseInvoiceItems
+  purchaseInvoiceItems,
 ).omit({ id: true });
 export const insertPurchaseCreditNoteSchema = createInsertSchema(
-  purchaseCreditNotes
+  purchaseCreditNotes,
 ).omit({ id: true, creditNoteNumber: true, createdAt: true });
 
 export const insertGeneralLedgerEntrySchema = createInsertSchema(
-  generalLedgerEntries
+  generalLedgerEntries,
 ).omit({ id: true, createdAt: true });
 
 // Chart of Accounts Schema
-export const insertChartOfAccountsSchema = createInsertSchema(chartOfAccounts).omit({ id: true, createdAt: true }).extend({
-  accountType: z.enum(["asset", "liability", "equity", "revenue", "expense"]),
-  accountCategory: z.string(),
-});
+export const insertChartOfAccountsSchema = createInsertSchema(chartOfAccounts)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    accountType: z.enum(["asset", "liability", "equity", "revenue", "expense"]),
+    accountCategory: z.string(),
+  });
 
 // Customer and Supplier Document Schemas
 export const insertCustomerDocumentSchema = createInsertSchema(
-  customerDocuments
+  customerDocuments,
 )
   .omit({ id: true, createdAt: true, updatedAt: true })
   .extend({
@@ -1426,7 +1471,7 @@ export const insertCustomerDocumentSchema = createInsertSchema(
   });
 
 export const insertSupplierDocumentSchema = createInsertSchema(
-  supplierDocuments
+  supplierDocuments,
 )
   .omit({ id: true, createdAt: true, updatedAt: true })
   .extend({
@@ -1589,10 +1634,10 @@ export const insertAssetTypeSchema = createInsertSchema(assetTypes).omit({
 
 // New enhanced asset inventory schemas
 export const insertAssetInventoryInstanceSchema = createInsertSchema(
-  assetInventoryInstances
+  assetInventoryInstances,
 ).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProjectAssetInstanceAssignmentSchema = createInsertSchema(
-  projectAssetInstanceAssignments
+  projectAssetInstanceAssignments,
 ).omit({ id: true, assignedAt: true });
 
 // Asset Management Types - consolidated from duplicates above
@@ -1634,12 +1679,13 @@ export type SupplierWithBankDetails = Supplier & {
   bankAccountDetails: SupplierBankDetails[];
 };
 
-
 // Reimbursement schemas and types
-export const insertReimbursementSchema = createInsertSchema(reimbursements).omit({ 
-  id: true, 
-  submissionTimestamp: true, 
-  approvedById: true, 
+export const insertReimbursementSchema = createInsertSchema(
+  reimbursements,
+).omit({
+  id: true,
+  submissionTimestamp: true,
+  approvedById: true,
   approvalTimestamp: true,
   payrollMonth: true,
   payrollYear: true,

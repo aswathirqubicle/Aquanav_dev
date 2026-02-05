@@ -15,6 +15,20 @@
       "when": 1769678763647,
       "tag": "0001_eager_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770190744168,
+      "tag": "0002_dizzy_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770192280533,
+      "tag": "0003_naive_fabian_cortez",
+      "breakpoints": true
     }
   ]
 }
