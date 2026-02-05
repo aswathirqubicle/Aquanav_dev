@@ -1290,6 +1290,7 @@ export default function SalesIndex() {
       subtotal: quotation.subtotal,
       taxAmount: quotation.taxAmount,
       totalAmount: quotation.totalAmount,
+      paymentTerms: quotation.paymentTerms,
       termsAndConditions:quotation.termsAndConditions
     });
 

@@ -6325,7 +6325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Generate invoice number
-        const invoiceNumber = `SI-${Date.now()}`;
+        const invoiceNumber = `INV-${Date.now()}`;
 
         // Create sales invoice data
         const invoiceData = {

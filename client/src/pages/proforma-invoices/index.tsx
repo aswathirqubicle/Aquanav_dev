@@ -178,6 +178,19 @@ export default function ProformaInvoicesIndex() {
     return date.split(" ")[0]; // handles "YYYY-MM-DD HH:mm:ss"
   };
 
+  const { data: company } = useQuery({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  useEffect(() => {
+    if (!isDialogOpen || !company?.bankAccount) return;
+
+    setFormData(prev => ({
+      ...prev,
+      bankAccount: prev.bankAccount || company.bankAccount, // ✅ default only
+    }));
+  }, [isDialogOpen, company]);
 
   const { data: customersResponse } = useQuery<{
     data: Customer[];
@@ -225,7 +238,10 @@ export default function ProformaInvoicesIndex() {
         return sum + itemTax;
       }, 0);
       const totalAmount = subtotal - discount + taxAmount;
-
+      // 🚨 VALIDATION
+      if (totalAmount <= 0) {
+        throw new Error("Total amount must be greater than zero");
+      }
       const processedData = {
         ...data,
         validUntil: data.validUntil ? data.validUntil : null,
@@ -282,6 +298,7 @@ export default function ProformaInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"]});
       toast({
         title: "Success",
         description: "Proforma invoice has been converted to sales invoice successfully.",
