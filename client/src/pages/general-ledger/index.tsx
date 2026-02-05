@@ -534,12 +534,12 @@ export default function GeneralLedger() {
           </Button>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
+            {/* <DialogTrigger asChild>
               <Button onClick={() => { setEditingEntry(null); resetForm(); }}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Entry
               </Button>
-            </DialogTrigger>
+            </DialogTrigger> */}
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>

@@ -331,10 +331,10 @@ export default function GeneralLedgerReceivable() {
             {showFilters ? "Hide Filters" : "Show Filters"}
             {hasActiveFilters && <span className="ml-2 bg-primary-foreground text-primary rounded-full w-5 h-5 flex items-center justify-center text-xs">!</span>}
           </Button>
-          <Button onClick={() => setIsDialogOpen(true)}>
+          {/* <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Manual Entry
-          </Button>
+          </Button> */}
         </div>
       </div>
 
@@ -468,10 +468,10 @@ export default function GeneralLedgerReceivable() {
             <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No receivable entries found</h3>
             <p className="text-gray-500 mb-4">Entries will appear here when sales invoices are created or manual entries are added.</p>
-            <Button onClick={() => setIsDialogOpen(true)}>
+            {/* <Button onClick={() => setIsDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Add Manual Entry
-            </Button>
+            </Button> */}
           </CardContent>
         </Card>
       ) : (
