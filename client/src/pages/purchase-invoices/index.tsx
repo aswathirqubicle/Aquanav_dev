@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase } from "lucide-react";
+import { printByUrl } from "@/lib/print-utils";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface SupplierBankDetails {
@@ -36,8 +37,8 @@ interface PurchaseInvoice {
   supplierName: string;
   poId?: number;
   poNumber?: string;
-  status: "pending" | "paid" | "partially_paid" | "overdue";
-  approvalStatus?: "pending" | "approved" | "rejected";
+  status: "draft" | "pending_approval" | "approved" | "rejected";
+  paymentStatus: "unpaid" | "partial" | "paid";
   invoiceDate: string;
   dueDate: string;
   subtotal: string;
@@ -49,8 +50,13 @@ interface PurchaseInvoice {
   notes?: string;
   items?: PurchaseInvoiceItem[];
   payments?: Payment[];
-  approvedBy?: number;
+  submittedById?: number;
+  submittedAt?: string;
+  approvedById?: number;
   approvedAt?: string;
+  rejectionReason?: string;
+  createdBy?: number;
+  createdAt?: string;
 }
 
 interface PurchaseInvoiceItem {
@@ -64,6 +70,11 @@ interface PurchaseInvoiceItem {
   unitPrice: string;
   taxAmount?: string;
   lineTotal: string;
+  projectId?: number;
+  projectTitle?: string;
+  assetInstanceId?: number;
+  assetTag?: string;
+  assetTypeName?: string;
 }
 
 interface Payment {
@@ -111,6 +122,8 @@ export default function PurchaseInvoicesIndex() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedInvoiceForCreditNote, setSelectedInvoiceForCreditNote] = useState<any>(null);
   const [isCreateCreditNoteOpen, setIsCreateCreditNoteOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -121,8 +134,6 @@ export default function PurchaseInvoicesIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
-    projectId: "",
-    assetInventoryInstanceId: "",
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: "",
     paymentTerms: "Net 30 days",
@@ -137,6 +148,8 @@ export default function PurchaseInvoicesIndex() {
     quantity: string;
     unitPrice: string;
     taxRate: string;
+    projectId?: string;
+    assetInstanceId?: string;
   }[]>([]);
 
   const [newItem, setNewItem] = useState({
@@ -146,6 +159,8 @@ export default function PurchaseInvoicesIndex() {
     quantity: "1",
     unitPrice: "0",
     taxRate: "0",
+    projectId: "",
+    assetInstanceId: "",
   });
 
   const [paymentData, setPaymentData] = useState({
@@ -242,8 +257,8 @@ export default function PurchaseInvoicesIndex() {
     }
 
     // Only count approved invoices for financial metrics
-    const approvedInvoices = invoices.filter(inv => inv.approvalStatus === "approved");
-    const pendingApprovalInvoices = invoices.filter(inv => inv.approvalStatus === "pending");
+    const approvedInvoices = invoices.filter(inv => inv.status === "approved");
+    const pendingApprovalInvoices = invoices.filter(inv => inv.status === "pending_approval");
 
     const totalInvoices = approvedInvoices.length;
     const totalAmount = approvedInvoices.reduce((sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0);
@@ -253,7 +268,7 @@ export default function PurchaseInvoicesIndex() {
     const overdueInvoices = approvedInvoices.filter(inv => {
       const dueDate = new Date(inv.dueDate);
       const today = new Date();
-      return inv.status !== "paid" && dueDate < today;
+      return inv.paymentStatus !== "paid" && dueDate < today;
     });
 
     const overdueCount = overdueInvoices.length;
@@ -286,6 +301,8 @@ export default function PurchaseInvoicesIndex() {
           taxRate: parseFloat(item.taxRate),
           taxAmount: lineTaxAmount,
           lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
+          projectId: item.projectId ? parseInt(item.projectId) : null,
+          assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
         };
       });
 
@@ -333,6 +350,33 @@ export default function PurchaseInvoicesIndex() {
     },
   });
 
+  const submitInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: number) => {
+      const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/submit`, {
+        method: "PATCH",
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to submit invoice");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      toast({
+        title: "Invoice Submitted",
+        description: "Purchase invoice has been submitted for approval.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
   const approveInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: number) => {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/approve`, {
@@ -356,6 +400,39 @@ export default function PurchaseInvoicesIndex() {
       toast({
         title: "Error",
         description: error.message || "Failed to approve invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectInvoiceMutation = useMutation({
+    mutationFn: async ({ invoiceId, reason }: { invoiceId: number; reason: string }) => {
+      const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/reject`, {
+        method: "PATCH",
+        body: { reason },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to reject invoice");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      toast({
+        title: "Invoice Rejected",
+        description: "Purchase invoice has been rejected.",
+        variant: "destructive",
+      });
+      setIsRejectDialogOpen(false);
+      setRejectionReason("");
+      setViewingInvoice(null);
+      setIsViewDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject invoice",
         variant: "destructive",
       });
     },
@@ -425,6 +502,8 @@ export default function PurchaseInvoicesIndex() {
       quantity: "1",
       unitPrice: "0",
       taxRate: "0",
+      projectId: "",
+      assetInstanceId: "",
     });
   };
 
@@ -478,7 +557,9 @@ export default function PurchaseInvoicesIndex() {
       description: "",
       quantity: "1",
       unitPrice: "0",
-      taxRate: newItem.taxRate,
+      taxRate: "0",
+      projectId: "",
+      assetInstanceId: "",
     });
   };
 
@@ -604,27 +685,48 @@ export default function PurchaseInvoicesIndex() {
     return item ? item.unit : "";
   };
 
-  const getStatusBadge = (status: string) => {
+  const getProjectTitle = (projectId: string) => {
+    const project = projects.find((p: any) => p.id === parseInt(projectId));
+    return project ? project.title : "Unknown Project";
+  };
+
+  const getAssetInfo = (assetId: string) => {
+    const asset = assetInstances.find((a: any) => a.id === parseInt(assetId));
+    return asset ? { tag: asset.assetTag, type: asset.assetTypeName || 'Asset' } : { tag: "Unknown", type: "Asset" };
+  };
+
+  const getApprovalStatusBadge = (status: string) => {
     switch (status) {
+      case "draft":
+        return <Badge variant="outline" className="bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">Draft</Badge>;
+      case "pending_approval":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">Pending Approval</Badge>;
+      case "approved":
+        return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Approved</Badge>;
+      case "rejected":
+        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getPaymentStatusBadge = (paymentStatus: string) => {
+
+    switch (paymentStatus) {
       case "paid":
         return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
           <CheckCircle2 className="w-3 h-3 mr-1" />
           Paid
         </Badge>;
-      case "partially_paid":
+      case "partial":
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
           <CreditCard className="w-3 h-3 mr-1" />
           Partially Paid
         </Badge>;
-      case "pending":
+      case "unpaid":
         return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300">
           <Calendar className="w-3 h-3 mr-1" />
-          Pending
-        </Badge>;
-      case "overdue":
-        return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-          <AlertCircle className="w-3 h-3 mr-1" />
-          Overdue
+          Unpaid
         </Badge>;
       default:
         return null;
@@ -645,6 +747,23 @@ export default function PurchaseInvoicesIndex() {
     vatTreatment?: string
   ): number => {
     return vatTreatment === "standard" ? 5 : 0;
+  };
+
+  const handlePrintPDF = async (invoice: PurchaseInvoice) => {
+    try {
+      await printByUrl(`/api/purchase-invoices/${invoice.id}/pdf`);
+      toast({
+        title: "Success",
+        description: "Print dialog opened successfully.",
+      });
+    } catch (error) {
+      console.error("PDF Error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate invoice PDF",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -736,15 +855,15 @@ export default function PurchaseInvoicesIndex() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="partially_paid">Partially Paid</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="overdue">Overdue</SelectItem>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="pending_approval">Pending Approval</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="flex gap-2">
-                    <Button onClick={applyFilters} className="flex-1">Apply</Button>
+                    {/* <Button onClick={applyFilters} className="flex-1">Apply</Button> */}
                     <Button onClick={clearFilters} variant="outline" className="flex-1">Clear</Button>
                   </div>
                 </div>
@@ -887,28 +1006,59 @@ export default function PurchaseInvoicesIndex() {
                               <div className="font-medium text-green-600">AED {invoice.paidAmount}</div>
                             </td>
                             <td className="p-4 text-center">
-                              {getStatusBadge(invoice.status)}
+                              {getApprovalStatusBadge(invoice.status)}{" "}
+                              {getPaymentStatusBadge(invoice.paymentStatus)}
                             </td>
                             <td className="p-4 text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => viewInvoice(invoice)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  setSelectedInvoiceForCreditNote(invoice);
-                                  setIsCreateCreditNoteOpen(true);
-                                }}
-                                variant="ghost"
-                                size="sm"
-                                title="Create Credit Note"
-                              >
-                                <CreditCard className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => viewInvoice(invoice)}
+                                  className="h-8 w-8 p-0"
+                                  data-testid={`button-view-invoice-${invoice.id}`}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                {invoice.status === "draft" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => submitInvoiceMutation.mutate(invoice.id)}
+                                    disabled={submitInvoiceMutation.isPending}
+                                    className="h-8 px-2"
+                                    data-testid={`button-submit-invoice-${invoice.id}`}
+                                  >
+                                    Submit
+                                  </Button>
+                                )}
+                                {invoice.status === "pending_approval" && user?.role === "admin" && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                                      disabled={approveInvoiceMutation.isPending}
+                                      className="h-8 px-2 text-green-600 hover:text-green-700"
+                                      data-testid={`button-approve-invoice-${invoice.id}`}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setViewingInvoice(invoice);
+                                        setIsRejectDialogOpen(true);
+                                      }}
+                                      className="h-8 px-2 text-red-600 hover:text-red-700"
+                                      data-testid={`button-reject-invoice-${invoice.id}`}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -931,7 +1081,8 @@ export default function PurchaseInvoicesIndex() {
                     <CardTitle className="text-sm font-medium truncate">
                       {invoice.invoiceNumber}
                     </CardTitle>
-                    {getStatusBadge(invoice.status)}
+                    {getApprovalStatusBadge(invoice.status)}{" "}
+                    {getPaymentStatusBadge(invoice.paymentStatus)}
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
@@ -958,6 +1109,56 @@ export default function PurchaseInvoicesIndex() {
                           <span className="font-medium text-gray-600 dark:text-gray-400">Paid:</span>
                           <p className="font-semibold text-green-600">AED {invoice.paidAmount}</p>
                         </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => viewInvoice(invoice)}
+                          className="flex-1"
+                          data-testid={`button-view-invoice-${invoice.id}`}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                        {invoice.status === "draft" && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => submitInvoiceMutation.mutate(invoice.id)}
+                            disabled={submitInvoiceMutation.isPending}
+                            className="flex-1"
+                            data-testid={`button-submit-invoice-${invoice.id}`}
+                          >
+                            Submit
+                          </Button>
+                        )}
+                        {invoice.status === "pending_approval" && user?.role === "admin" && (
+                          <>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                              disabled={approveInvoiceMutation.isPending}
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              data-testid={`button-approve-invoice-${invoice.id}`}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setViewingInvoice(invoice);
+                                setIsRejectDialogOpen(true);
+                              }}
+                              className="flex-1"
+                              data-testid={`button-reject-invoice-${invoice.id}`}
+                            >
+                              Reject
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -1042,46 +1243,6 @@ export default function PurchaseInvoicesIndex() {
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="project" className="text-sm font-medium">
-                          Link to Project (Optional)
-                        </Label>
-                        <Autocomplete
-                          options={projects.map((project: any) => ({
-                            value: project.id.toString(),
-                            label: project.title,
-                            searchText: project.title
-                          }))}
-                          value={formData.projectId}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, projectId: value, assetInventoryInstanceId: "" }))}
-                          placeholder="Search projects..."
-                          emptyMessage="No projects found"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Cost will be added to project's actual cost upon approval
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="asset" className="text-sm font-medium">
-                          Link to Asset Instance (Optional)
-                        </Label>
-                        <Autocomplete
-                          options={assetInstances.map((asset: any) => ({
-                            value: asset.id.toString(),
-                            label: `${asset.assetTag} - ${asset.assetTypeName || 'Asset'}`,
-                            searchText: `${asset.assetTag} ${asset.assetTypeName || ''} ${asset.serialNumber || ''}`
-                          }))}
-                          value={formData.assetInventoryInstanceId}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, assetInventoryInstanceId: value, projectId: "" }))}
-                          placeholder="Search assets..."
-                          emptyMessage="No assets found"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          A maintenance record will be created upon approval
-                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -1221,7 +1382,7 @@ export default function PurchaseInvoicesIndex() {
                         {/* Conditional Fields */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                           {newItem.itemType === "product" ? (
-                            <div className="lg:col-span-2">
+                            <div className="lg:col-span-3">
                               <Label className="text-xs font-medium text-muted-foreground">INVENTORY ITEM</Label>
                               <Autocomplete
                                 options={(inventoryItems || []).map((item) => ({
@@ -1235,7 +1396,7 @@ export default function PurchaseInvoicesIndex() {
                               />
                             </div>
                           ) : (
-                            <div className="lg:col-span-2">
+                            <div className="lg:col-span-3">
                               <Label className="text-xs font-medium text-muted-foreground">DESCRIPTION</Label>
                               <Input
                                 value={newItem.description || ""}
@@ -1285,12 +1446,48 @@ export default function PurchaseInvoicesIndex() {
                             />
                           </div>
 
-                          <div className="flex items-end">
-                            <Button type="button" onClick={addItem} className="w-full h-9" size="sm">
-                              <Plus className="w-4 h-4 mr-1" />
-                              Add
-                            </Button>
+                        </div>
+
+                        {/* Project and Asset Allocation Row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <div>
+                            <Label className="text-xs font-medium text-muted-foreground">ALLOCATE TO PROJECT (OPTIONAL)</Label>
+                            <Autocomplete
+                              options={projects.map((project: any) => ({
+                                value: project.id.toString(),
+                                label: project.title,
+                                searchText: project.title
+                              }))}
+                              value={newItem.projectId || ""}
+                              onValueChange={(value) => setNewItem(prev => ({ ...prev, projectId: value, assetInstanceId: "" }))}
+                              placeholder="Search projects..."
+                              emptyMessage="No projects found"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">Line cost will be added to project cost upon approval</p>
                           </div>
+
+                          <div>
+                            <Label className="text-xs font-medium text-muted-foreground">ALLOCATE TO ASSET (OPTIONAL)</Label>
+                            <Autocomplete
+                              options={assetInstances.filter((asset: any) => asset.status === 'available').map((asset: any) => ({
+                                value: asset.id.toString(),
+                                label: `${asset.assetTag} - ${asset.assetTypeName || 'Asset'}`,
+                                searchText: `${asset.assetTag} ${asset.assetTypeName || ''} ${asset.serialNumber || ''}`
+                              }))}
+                              value={newItem.assetInstanceId || ""}
+                              onValueChange={(value) => setNewItem(prev => ({ ...prev, assetInstanceId: value, projectId: "" }))}
+                              placeholder="Search assets..."
+                              emptyMessage="No assets found"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">Maintenance record will be created upon approval</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row justify-end gap-3">
+                          <Button type="button" onClick={addItem} className=" h-9" size="sm">
+                            <Plus className="w-4 h-4 mr-1" />
+                            Add
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -1326,6 +1523,18 @@ export default function PurchaseInvoicesIndex() {
                                 </div>
                                 {item.itemType === "product" && (
                                   <div className="text-xs text-muted-foreground">{getItemUnit(item.inventoryItemId || "")}</div>
+                                )}
+                                {item.projectId && (
+                                  <Badge variant="outline" className="text-xs mt-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300">
+                                    <Briefcase className="w-3 h-3 mr-1" />
+                                    {getProjectTitle(item.projectId)}
+                                  </Badge>
+                                )}
+                                {item.assetInstanceId && (
+                                  <Badge variant="outline" className="text-xs mt-1 bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300">
+                                    <Package className="w-3 h-3 mr-1" />
+                                    {getAssetInfo(item.assetInstanceId).tag}
+                                  </Badge>
                                 )}
                               </div>
                               <div className="col-span-2 text-center">
@@ -1461,22 +1670,14 @@ export default function PurchaseInvoicesIndex() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 print:hidden w-full sm:w-auto">
-                    <Badge
-                      variant={
-                        viewingInvoice.approvalStatus === "approved" ? "default" :
-                          viewingInvoice.approvalStatus === "rejected" ? "destructive" :
-                            "secondary"
-                      }
-                      className="text-xs sm:text-sm flex-1 sm:flex-none justify-center"
-                    >
-                      {viewingInvoice.approvalStatus === "approved" ? "✓ Approved" :
-                        viewingInvoice.approvalStatus === "rejected" ? "✗ Rejected" :
-                          "⏳ Pending"}
-                    </Badge>
+                    <div className="flex flex-col gap-1 items-end">
+                      {getApprovalStatusBadge(viewingInvoice.status)}{" "}
+                      {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
+                    </div>
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => window.print()}
+                      onClick={() => handlePrintPDF(viewingInvoice)}
                       data-testid="button-print-invoice"
                       className="h-9 w-9"
                     >
@@ -1510,7 +1711,10 @@ export default function PurchaseInvoicesIndex() {
                     </div>
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Payment Status</p>
-                      <div className="print:inline-block">{getStatusBadge(viewingInvoice.status)}</div>
+                      <div className="print:inline-block">
+                        {getApprovalStatusBadge(viewingInvoice.status)}{" "}
+                        {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
+                      </div>
                     </div>
                     {viewingInvoice.paymentTerms && (
                       <div>
@@ -1628,14 +1832,26 @@ export default function PurchaseInvoicesIndex() {
                                     <span className="font-medium text-gray-900 dark:text-white print:text-black">
                                       {item.itemType === "product" ? item.inventoryItemName : item.description}
                                     </span>
+                                    {item.projectId && (
+                                      <Badge variant="outline" className="text-xs w-fit bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 print:border print:border-blue-500 print:bg-blue-50">
+                                        <Briefcase className="w-3 h-3 mr-1" />
+                                        {getProjectTitle(item.projectId.toString())}
+                                      </Badge>
+                                    )}
+                                    {item.assetInstanceId && (
+                                      <Badge variant="outline" className="text-xs w-fit bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 print:border print:border-purple-500 print:bg-purple-50">
+                                        <Package className="w-3 h-3 mr-1" />
+                                        {getAssetInfo(item.assetInstanceId.toString()).tag}
+                                      </Badge>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
                                   {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                                 </td>
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.unitPrice}</td>
-                              <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.taxAmount || "0.00"}</td>
-                              <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">AED {item.lineTotal}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.taxAmount || "0.00"}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">AED {item.lineTotal}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1679,29 +1895,68 @@ export default function PurchaseInvoicesIndex() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
-                  {user?.role === "admin" && viewingInvoice.approvalStatus === "pending" && (
+                  {viewingInvoice.status === "draft" && (
                     <Button
-                      onClick={() => approveInvoiceMutation.mutate(viewingInvoice.id)}
-                      disabled={approveInvoiceMutation.isPending}
+                      onClick={() => {
+                        submitInvoiceMutation.mutate(viewingInvoice.id);
+                        setIsViewDialogOpen(false);
+                      }}
+                      disabled={submitInvoiceMutation.isPending}
                       variant="default"
                       size="lg"
                       className="w-full sm:w-auto"
-                      data-testid="button-approve-invoice"
+                      data-testid={`button-submit-invoice-${viewingInvoice.id}`}
                     >
-                      {approveInvoiceMutation.isPending ? (
+                      {submitInvoiceMutation.isPending ? (
                         <>
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Approving...
+                          Submitting...
                         </>
                       ) : (
                         <>
                           <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Approve Invoice
+                          Submit for Approval
                         </>
                       )}
                     </Button>
                   )}
-                  {canEdit && viewingInvoice.approvalStatus === "approved" && parseFloat(viewingInvoice.paidAmount) < parseFloat(viewingInvoice.totalAmount) && (
+                  {viewingInvoice.status === "pending_approval" && user?.role === "admin" && (
+                    <>
+                      <Button
+                        onClick={() => {
+                          approveInvoiceMutation.mutate(viewingInvoice.id);
+                        }}
+                        disabled={approveInvoiceMutation.isPending}
+                        variant="default"
+                        size="lg"
+                        className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                        data-testid={`button-approve-invoice-${viewingInvoice.id}`}
+                      >
+                        {approveInvoiceMutation.isPending ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Approving...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Approve Invoice
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => setIsRejectDialogOpen(true)}
+                        variant="destructive"
+                        size="lg"
+                        className="w-full sm:w-auto"
+                        data-testid={`button-reject-invoice-${viewingInvoice.id}`}
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        Reject Invoice
+                      </Button>
+                    </>
+                  )}
+                  {canEdit && viewingInvoice.status === "approved" && parseFloat(viewingInvoice.paidAmount) < parseFloat(viewingInvoice.totalAmount) && (
                     <Button
                       onClick={() => setIsPaymentDialogOpen(true)}
                       size="lg"
@@ -1871,6 +2126,79 @@ export default function PurchaseInvoicesIndex() {
             </div>
           </DialogContent>
         </Dialog>
+
+
+        {/* Reject Invoice Dialog */}
+        <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reject Invoice</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Please provide a reason for rejecting this invoice. This will be recorded and visible to the creator.
+              </p>
+              <div>
+                <Label htmlFor="rejectionReason">Rejection Reason <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="rejectionReason"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Enter the reason for rejection..."
+                  rows={4}
+                  data-testid="input-rejection-reason"
+                />
+              </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsRejectDialogOpen(false);
+                    setRejectionReason("");
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (!rejectionReason.trim()) {
+                      toast({
+                        title: "Error",
+                        description: "Please provide a reason for rejection",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    if (viewingInvoice) {
+                      rejectInvoiceMutation.mutate({
+                        invoiceId: viewingInvoice.id,
+                        reason: rejectionReason,
+                      });
+                    }
+                  }}
+                  disabled={rejectInvoiceMutation.isPending}
+                  className="w-full sm:w-auto"
+                  data-testid="button-confirm-reject"
+                >
+                  {rejectInvoiceMutation.isPending ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Rejecting...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject Invoice
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );

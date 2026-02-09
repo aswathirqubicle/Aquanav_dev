@@ -8110,7 +8110,7 @@ class Storage {
           invoiceNumber,
           supplierId: po.supplierId,
           poId: id,
-          status: "pending",
+          status: "draft",
           invoiceDate: new Date(),
           dueDate: po.expectedDeliveryDate || new Date(),
           paymentTerms: po.paymentTerms,
@@ -8177,9 +8177,10 @@ class Storage {
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          // projectId: purchaseInvoices.projectId,
+          // assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
+          paymentStatus: purchaseInvoices.paymentStatus,
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
           subtotal: purchaseInvoices.subtotal,
@@ -8189,10 +8190,13 @@ class Storage {
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          submittedById: purchaseInvoices.submittedById,
+          submittedAt: purchaseInvoices.submittedAt,
+          approvedById: purchaseInvoices.approvedById,
+          approvedAt: purchaseInvoices.approvedAt,
+          rejectionReason: purchaseInvoices.rejectionReason,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedById,
-          approvedAt: purchaseInvoices.approvedAt,
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
@@ -8246,22 +8250,26 @@ class Storage {
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          // projectId: purchaseInvoices.projectId,
+          // assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
+          paymentStatus: purchaseInvoices.paymentStatus,
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
+          paymentTerms: purchaseInvoices.paymentTerms,
+          bankAccount: purchaseInvoices.bankAccount,
           subtotal: purchaseInvoices.subtotal,
           taxAmount: purchaseInvoices.taxAmount,
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
-          paymentTerms: purchaseInvoices.paymentTerms,
-          bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          submittedById: purchaseInvoices.submittedById,
+          submittedAt: purchaseInvoices.submittedAt,
+          approvedById: purchaseInvoices.approvedById,
+          approvedAt: purchaseInvoices.approvedAt,
+          rejectionReason: purchaseInvoices.rejectionReason,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedById,
-          approvedAt: purchaseInvoices.approvedAt,
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
@@ -8288,8 +8296,8 @@ class Storage {
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
-          projectId: purchaseInvoices.projectId,
-          assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
+          // projectId: purchaseInvoices.projectId,
+          // assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
@@ -8359,7 +8367,7 @@ class Storage {
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
           invoiceData.assetInventoryInstanceId || null,
-          status: invoiceData.status || "pending",
+          status: invoiceData.status || "draft",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: invoiceData.paymentTerms || null,
@@ -8424,7 +8432,7 @@ class Storage {
           invoiceNumber,
           supplierId: po.supplierId,
           poId: poId,
-          status: "pending",
+          status: "draft",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: po.paymentTerms || null,
@@ -8585,7 +8593,7 @@ class Storage {
           await db.insert(assetInventoryMaintenanceRecords).values({
             instanceId: item.assetInstanceId,
             maintenanceCost: lineAmountWithTax.toFixed(2),
-            maintenanceDate: new Date(),
+            maintenanceDate: new Date().toISOString(),
             description: `Purchase Invoice: ${invoice.invoiceNumber} - ${
               item.description || "Maintenance cost"
             }`,
@@ -8620,8 +8628,8 @@ class Storage {
         entityName: supplierName,
         projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
-        transactionDate: invoice.invoiceDate,
-        dueDate: invoice.dueDate,
+        transactionDate: invoice.invoiceDate.toISOString(),
+        dueDate: invoice.dueDate.toISOString(),
         status: "pending",
       });
 
@@ -8638,8 +8646,8 @@ class Storage {
         entityName: supplierName,
         projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
-        transactionDate: invoice.invoiceDate,
-        dueDate: invoice.dueDate,
+        transactionDate: invoice.invoiceDate.toISOString(),
+        dueDate: invoice.dueDate.toISOString(),
         status: "pending",
       });
 
@@ -8720,7 +8728,7 @@ class Storage {
       if (newPaidAmount >= totalAmount) {
         newStatus = "paid";
       } else if (newPaidAmount > 0) {
-        newStatus = "partially_paid";
+        newStatus = "partial";
       }
 
       // Update invoice paid amount and status
@@ -8728,7 +8736,7 @@ class Storage {
         .update(purchaseInvoices)
         .set({
           paidAmount: newPaidAmount.toFixed(2),
-          status: newStatus,
+          paymentStatus: newStatus,
         })
         .where(eq(purchaseInvoices.id, paymentData.invoiceId));
 

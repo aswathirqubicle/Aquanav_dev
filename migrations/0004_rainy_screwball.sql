@@ -1,0 +1,1 @@
+ALTER TABLE "purchase_invoices" ALTER COLUMN "payment_status" SET DEFAULT 'unpaid';
