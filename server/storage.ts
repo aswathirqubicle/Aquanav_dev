@@ -8111,7 +8111,6 @@ class Storage {
           supplierId: po.supplierId,
           poId: id,
           status: "pending",
-          approvalStatus: "pending",
           invoiceDate: new Date(),
           dueDate: po.expectedDeliveryDate || new Date(),
           paymentTerms: po.paymentTerms,
@@ -8181,7 +8180,6 @@ class Storage {
           projectId: purchaseInvoices.projectId,
           assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
-          approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
           subtotal: purchaseInvoices.subtotal,
@@ -8193,7 +8191,7 @@ class Storage {
           notes: purchaseInvoices.notes,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+          approvedBy: purchaseInvoices.approvedById,
           approvedAt: purchaseInvoices.approvedAt,
         })
         .from(purchaseInvoices)
@@ -8251,7 +8249,6 @@ class Storage {
           projectId: purchaseInvoices.projectId,
           assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
-          approvalStatus: purchaseInvoices.approvalStatus, // ✅ FIXED
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
           subtotal: purchaseInvoices.subtotal,
@@ -8263,7 +8260,7 @@ class Storage {
           notes: purchaseInvoices.notes,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedBy, // ✅ FIXED
+          approvedBy: purchaseInvoices.approvedById,
           approvedAt: purchaseInvoices.approvedAt,
         })
         .from(purchaseInvoices)
@@ -8294,7 +8291,6 @@ class Storage {
           projectId: purchaseInvoices.projectId,
           assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
-          approvalStatus: purchaseInvoices.approvalStatus, // ✅ correct
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
           paymentTerms: purchaseInvoices.paymentTerms,
@@ -8306,7 +8302,7 @@ class Storage {
           notes: purchaseInvoices.notes,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedBy, // ✅ correct
+          approvedBy: purchaseInvoices.approvedById,
           approvedAt: purchaseInvoices.approvedAt,
         })
         .from(purchaseInvoices)
@@ -8362,7 +8358,7 @@ class Storage {
           poId: invoiceData.poId || null,
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
-            invoiceData.assetInventoryInstanceId || null,
+          invoiceData.assetInventoryInstanceId || null,
           status: invoiceData.status || "pending",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,

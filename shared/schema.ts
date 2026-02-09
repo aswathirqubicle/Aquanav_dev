@@ -878,6 +878,8 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   invoiceNumber: text("invoice_number").notNull().unique(),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   poId: integer("po_id").references(() => purchaseOrders.id),
+  projectId: integer("project_id").references(() => projects.id),
+  assetInventoryInstanceId: integer("asset_inventory_instance_id").references(() => assetInventoryInstances.id),
   status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected
   paymentStatus: text("payment_status").notNull().default("pending"), // pending, partially_paid, paid, overdue
   invoiceDate: timestamp("invoice_date").notNull(),

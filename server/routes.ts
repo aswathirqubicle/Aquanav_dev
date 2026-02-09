@@ -72,146 +72,253 @@ import {
 
 function getCommonStyles(): string {
   return `
-  <>
-  
-      <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-      />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      color: #333;
-    }
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        color: #333;
+      }
 
-@media print {
-  @page {
-    size: A4;
-    margin: 30mm 15mm 30mm 15mm;
-  }
+      @media print {
+        @page {
+          size: A4;
+          margin: 30mm 15mm 30mm 15mm;
+        }
 
-  .print-header {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 25mm;
-    background: #fff;
-  }
+        .print-header {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 25mm;
+          background: #fff;
+        }
 
-  .print-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 25mm;
-    background: #fff;
-    border-top: 1px solid #ddd;
-  }
+        .print-footer {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 25mm;
+          background: #fff;
+          border-top: 1px solid #ddd;
+        }
 
-  .page-content {
-    margin-top: 30mm;
-    margin-bottom: 30mm;
-  }
+        .page-content {
+          margin-top: 30mm;
+          margin-bottom: 30mm;
+        }
+      }
+
+      /* ===== COMMON HEADER ===== */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid #0b4d78;
+        padding-bottom: 15px;
+        margin-bottom: 30px;
+      }
+
+      .top-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+      }
+
+      .top-info img {
+        height: 50px;
+      }
+
+      .address {
+        line-height: 1.4;
+      }
+
+      .title {
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        color: #0b4d78;
+        line-height: 1.4;
+      }
+
+      .highlight {
+        color: #d9534f;
+      }
+
+      .ship img {
+        height: 45px;
+      }
+
+      /* ===== TABLE STYLES ===== */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+
+      th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        font-size: 13px;
+      }
+
+      th {
+        background-color: #f8f9fa;
+        color: #333;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+      }
+
+      .text-right {
+        text-align: right;
+      }
+
+      .total-row {
+        font-weight: bold;
+        background-color: #f8f9fa;
+      }
+      .terms {
+        page-break-inside: avoid;
+      }
+
+      /* Footer */
+      .print-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-top: 1px solid #ddd;
+        font-size: 12px;
+        background: #fff;
+      }
+
+      .footer-content {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 40px;
+      }
+
+      .footer-item i {
+        margin-right: 5px;
+      }
+
+      .footer-item a {
+        text-decoration: none;
+        color: #000;
+      }
+
+      .info-grid {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 30px;
+        gap: 40px;
+      }
+
+      .info-box {
+        flex: 1;
+      }
+
+      .info-box h3 {
+        color: #0b4d78;
+        padding-bottom: 5px;
+        margin-top: 0;
+        margin-bottom: 12px;
+        font-size: 13px;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+
+      .info-box p {
+        margin: 3px 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #444;
+      }
+
+      .info-box p strong {
+        color: #222;
+      }
+
+      .document-info {
+        margin-bottom: 30px;
+      }
+
+      .document-info h1 {
+        color: #0b4d78;
+        margin-bottom: 15px;
+        font-size: 24px;
+        margin-top: 0;
+        display: inline-block;
+        padding-right: 20px;
+        font-weight: 800;
+        letter-spacing: 1px;
+      }
+
+      .document-info p {
+        margin: 4px 0;
+        font-size: 13px;
+      }
+
+      .document-info p strong {
+        color: #555;
+        width: 140px;
+        display: inline-block;
+      }
+    </style>
+  `;
 }
 
-    /* ===== COMMON HEADER ===== */
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 2px solid #0b4d78;
-      padding-bottom: 15px;
-      margin-bottom: 30px;
-    }
+function generateCommonFooter(options?: { company?: any }) {
+  const company = options?.company;
 
-    .top-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 12px;
-    }
+  return `
+    <div class="print-footer">
+      <div class="footer-content">
+        <div class="footer-item">
+          <i class="fas fa-globe"></i>
+          <a href=${company.website}>${company.website}</a>
+        </div>
+        <div class="footer-item">
+          <i class="fas fa-envelope"></i>
+          <a href="mailto:${company.email}">${company.email}</a>
+        </div>
+        <div class="footer-item">
+          <i class="fas fa-phone"></i>
+          <a href="tel:${company.phone}">${company.phone}</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
-    .top-info img {
-      height: 50px;
-    }
-
-    .address {
-      line-height: 1.4;
-    }
-
-    .title {
-      text-align: center;
-      font-size: 16px;
-      font-weight: bold;
-      color: #0b4d78;
-      line-height: 1.4;
-    }
-
-    .highlight {
-      color: #d9534f;
-    }
-
-    .ship img {
-      height: 45px;
-    }
-
-    /* ===== TABLE STYLES ===== */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      font-size: 13px;
-    }
-
-    th {
-      background-color: #f2f2f2;
-    }
-
-    .text-right {
-      text-align: right;
-    }
-
-    .total-row {
-      font-weight: bold;
-    }
-    .terms {
-      page-break-before: always;
-    }
-
-    /* Footer */
-  .print-footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-top: 1px solid #ddd;
-    font-size: 12px;
-    background: #fff;
+function generateCommonHeader(options?: { company?: any }) {
+  const company = options?.company;
+  if (company && company.logo) {
+    company.logo = imageToBase64(company.logo);
   }
 
-  .footer-content {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 40px;
-  }
-
-  .footer-item i {
-    margin-right: 5px;
-  }
-
-  .footer-item a {
-    text-decoration: none;
-    color: #000;
-  }
-  </style>
-  </>
+  return `
+  <div class="print-header">
+    <div class="header">
+      <div class="top-info">
+        ${company?.logo ? `<img src="${company.logo}" alt="${company.name}" class="company-logo" />` : ""}
+      </div>
+      <div class="title">
+        <div class="address">
+          ${company?.address || ""}
+        </div>
+      </div>
+    </div>
+  </div>
   `;
 }
 
@@ -222,10 +329,13 @@ function generateQuotationHTML(
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = customer.currency || "AED";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
-    }).format(num);
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
   };
 
   const formatDate = (date: string | Date) => {
@@ -239,53 +349,39 @@ function generateQuotationHTML(
       <meta charset="utf-8">
       <title>Quotation ${quotation.quotationNumber}</title>
       ${getCommonStyles()}
-      <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .company-info { margin-bottom: 30px; }
-        .quotation-info { margin-bottom: 30px; }
-        .customer-info { margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .total-row { font-weight: bold; }
-        .text-right { text-align: right; }
-      </style>
     </head>
     <body>
       ${generateCommonHeader({
         company,
       })}
     <div class="page-content">
-      <div class="company-info">
-        <h3>${company.name}</h3>
-        <p>${company.address || ""}</p>
-        <p>Phone: ${company.phone || ""} | Email: ${company.email || ""}</p>
-        ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-      </div>
-
-      <div class="quotation-info">
+      <div class="document-info">
+        <h1>SALES QUOTATION</h1>
+        <p><strong>Quotation Number:</strong> ${quotation.quotationNumber}</p>
         <p><strong>Date:</strong> ${formatDate(quotation.createdDate)}</p>
-        ${
-          quotation.validUntil
-            ? `<p><strong>Valid Until:</strong> ${formatDate(
-                quotation.validUntil,
-              )}</p>`
-            : ""
-        }
+        ${quotation.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
+        ${quotation.projectId ? `<p><strong>Project:</strong> ${quotation.projectName || quotation.projectId}</p>` : ""}
       </div>
 
-      <div class="customer-info">
-        <h3>Bill To:</h3>
-        <p><strong>${customer.name}</strong></p>
-        ${
-          customer.contactPerson
-            ? `<p>Contact: ${customer.contactPerson}</p>`
-            : ""
-        }
-        ${customer.address ? `<p>${customer.address}</p>` : ""}
-        ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-        ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>From:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Bill To:</h3>
+          <p><strong>${customer.name}</strong></p>
+          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+          <p style="white-space: pre-wrap;">${quotation.billingAddress || customer.address || ""}</p>
+          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+        </div>
       </div>
 
       <table>
@@ -371,65 +467,6 @@ function generateQuotationHTML(
   `;
 }
 
-function imageToBase64(relativePath: string) {
-  const absPath = path.join(process.cwd(), relativePath);
-  const ext = path.extname(absPath).replace(".", "");
-  const buffer = fs.readFileSync(absPath);
-  return `data:image/${ext};base64,${buffer.toString("base64")}`;
-}
-
-function generateCommonFooter(options?: { company?: any }) {
-  const company = options?.company;
-
-  return `
-    <div class="print-footer">
-      <div class="footer-content">
-        <div class="footer-item">
-          <i class="fas fa-globe"></i>
-          <a href=${company.website}>${company.website}</a>
-        </div>
-        <div class="footer-item">
-          <i class="fas fa-envelope"></i>
-          <a href="mailto:${company.email}">${company.email}</a>
-        </div>
-        <div class="footer-item">
-          <i class="fas fa-phone"></i>
-          <a href="tel:${company.phone}">${company.phone}</a>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function generateCommonHeader(options?: { company?: any }) {
-  const company = options?.company;
-  company.logo = imageToBase64(company.logo);
-
-  return `
-  <div class="print-header">
-  <div class="header">
-    <div class="top-info">
-      <img src="${company.logo}" alt="${company.name}" class="company-logo" />
-    </div>
-    <div class="title">
-    <div class="address">
-        ${company.address}
-    </div>
-    </div>
-  </div>
-  </div>
-  `;
-
-  // <div class="title">
-  //   ${options?.title || "Sales Quotation"}<br />
-  //   ${options?.subtitle || ""} ${
-  //     options?.vesselName
-  //       ? `<br />Vessel - <span class="highlight">${options.vesselName}</span>`
-  //       : ""
-  //   }
-  // </div>
-}
-
 function generateCreditNoteHTML(
   creditNote: any,
   customer: any,
@@ -437,10 +474,13 @@ function generateCreditNoteHTML(
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = customer.currency || "AED";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
-    }).format(num);
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
   };
 
   const formatDate = (date: string | Date) => {
@@ -453,68 +493,41 @@ function generateCreditNoteHTML(
     <head>
       <meta charset="utf-8">
       <title>Credit Note ${creditNote.creditNoteNumber}</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .company-info { margin-bottom: 30px; }
-        .company-logo { max-width: 200px; height: auto; margin-bottom: 20px; }
-        .credit-note-info { margin-bottom: 30px; }
-        .customer-info { margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .total-row { font-weight: bold; }
-        .text-right { text-align: right; }
-        .status-draft { color: orange; }
-        .status-issued { color: green; }
-        .status-cancelled { color: red; }
-      </style>
+      ${getCommonStyles()}
     </head>
     <body>
-      <div class="header">
-        ${
-          company.logo
-            ? `<img src="${company.logo}" alt="${company.name}" class="company-logo" />`
-            : ""
-        }
+      ${generateCommonHeader({
+        company,
+      })}
+    <div class="page-content">
+      <div class="document-info">
         <h1>CREDIT NOTE</h1>
-        <h2>${creditNote.creditNoteNumber}</h2>
+        <p><strong>Credit Note Number:</strong> ${creditNote.creditNoteNumber}</p>
+        <p><strong>Date:</strong> ${formatDate(creditNote.creditNoteDate)}</p>
+        ${creditNote.invoiceNumber ? `<p><strong>Related Invoice:</strong> ${creditNote.invoiceNumber}</p>` : ""}
+        ${creditNote.reason ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>` : ""}
+        ${creditNote.projectId ? `<p><strong>Project:</strong> ${creditNote.projectName || creditNote.projectId}</p>` : ""}
       </div>
 
-      <div class="company-info">
-        <h3>${company.name}</h3>
-        <p>${company.address || ""}</p>
-        <p>Phone: ${company.phone || ""} | Email: ${company.email || ""}</p>
-        ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-      </div>
-
-      <div class="credit-note-info">
-        <p><strong>Credit Note Date:</strong> ${formatDate(
-          creditNote.creditNoteDate,
-        )}</p>
-        ${
-          creditNote.reason
-            ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>`
-            : ""
-        }
-        ${
-          creditNote.invoiceNumber
-            ? `<p><strong>Related Invoice:</strong> ${creditNote.invoiceNumber}</p>`
-            : ""
-        }
-      </div>
-
-      <div class="customer-info">
-        <h3>Credit To:</h3>
-        <p><strong>${customer.name}</strong></p>
-        ${
-          customer.contactPerson
-            ? `<p>Contact: ${customer.contactPerson}</p>`
-            : ""
-        }
-        ${customer.address ? `<p>${customer.address}</p>` : ""}
-        ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-        ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>From:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Bill To:</h3>
+          <p><strong>${customer.name}</strong></p>
+          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+          <p style="white-space: pre-wrap;">${creditNote.billingAddress || customer.address || ""}</p>
+          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+        </div>
       </div>
 
       <table>
@@ -595,6 +608,9 @@ function generateCreditNoteHTML(
         }
         <p>Thank you for your business!</p>
       </div>
+       ${generateCommonFooter({
+         company,
+       })}
     </body>
     </html>
   `;
@@ -607,10 +623,13 @@ function generateInvoiceHTML(
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = customer.currency || "AED";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
-    }).format(num);
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
   };
 
   const formatDate = (date: string | Date) => {
@@ -624,21 +643,6 @@ function generateInvoiceHTML(
       <meta charset="utf-8">
       <title>Invoice ${invoice.invoiceNumber}</title>
       ${getCommonStyles()}
-      <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .company-info { margin-bottom: 30px; }
-        .invoice-info { margin-bottom: 30px; }
-        .customer-info { margin-bottom: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .total-row { font-weight: bold; }
-        .text-right { text-align: right; }
-        .status-paid { color: green; }
-        .status-unpaid { color: red; }
-        .status-partial { color: orange; }
-      </style>
     </head>
     <body>
     ${generateCommonHeader({
@@ -646,29 +650,33 @@ function generateInvoiceHTML(
     })}
       <div class="page-content">
 
-      <div class="company-info">
-        <h3>${company.name}</h3>
-        <p>${company.address || ""}</p>
-        <p>Phone: ${company.phone || ""} | Email: ${company.email || ""}</p>
-        ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-      </div>
-
-      <div class="invoice-info">
+      <div class="document-info">
+        <h1>TAX INVOICE</h1>
+        <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
         <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
         <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
+        ${invoice.projectId ? `<p><strong>Project:</strong> ${invoice.projectName || invoice.projectId}</p>` : ""}
       </div>
 
-      <div class="customer-info">
-        <h3>Bill To:</h3>
-        <p><strong>${customer.name}</strong></p>
-        ${
-          customer.contactPerson
-            ? `<p>Contact: ${customer.contactPerson}</p>`
-            : ""
-        }
-        ${customer.address ? `<p>${customer.address}</p>` : ""}
-        ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-        ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>From:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Bill To:</h3>
+          <p><strong>${customer.name}</strong></p>
+          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+          <p style="white-space: pre-wrap;">${invoice.billingAddress || customer.address || ""}</p>
+          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+        </div>
       </div>
 
       <table>
@@ -759,6 +767,403 @@ function generateInvoiceHTML(
     </body>
     </html>
   `;
+}
+
+function generateProformaHTML(
+  proforma: any,
+  customer: any,
+  company: any,
+): string {
+  const formatCurrency = (amount: string | number) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = customer.currency || "AED";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
+  };
+
+  const formatDate = (date: string | Date) => {
+    return new Date(date).toLocaleDateString();
+  };
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Proforma Invoice ${proforma.proformaNumber}</title>
+      ${getCommonStyles()}
+    </head>
+    <body>
+      ${generateCommonHeader({ company })}
+    <div class="page-content">
+      <div class="document-info">
+        <h1>PROFORMA INVOICE</h1>
+        <p><strong>Proforma Number:</strong> ${proforma.proformaNumber}</p>
+        <p><strong>Date:</strong> ${formatDate(proforma.invoiceDate || proforma.createdDate)}</p>
+        ${proforma.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(proforma.validUntil)}</p>` : ""}
+        ${proforma.projectId ? `<p><strong>Project:</strong> ${proforma.projectName || proforma.projectId}</p>` : ""}
+      </div>
+
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>From:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Bill To:</h3>
+          <p><strong>${customer.name}</strong></p>
+          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+          <p style="white-space: pre-wrap;">${proforma.billingAddress || customer.address || ""}</p>
+          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="text-right">Qty</th>
+            <th class="text-right">Unit Price</th>
+            <th class="text-right">Tax Rate</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(proforma.items || [])
+            .map((item: any) => {
+              const lineSubtotal = item.quantity * item.unitPrice;
+              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+              const lineTotal = lineSubtotal + taxAmount;
+              return `
+            <tr>
+              <td>${item.description}</td>
+              <td class="text-right">${item.quantity}</td>
+              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+              <td class="text-right">${item.taxRate || 0}%</td>
+              <td class="text-right">${formatCurrency(lineTotal)}</td>
+            </tr>
+            `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+
+      <div style="margin-top: 30px;">
+        <table style="width: 300px; margin-left: auto;">
+          <tr>
+            <td><strong>Subtotal:</strong></td>
+            <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
+          </tr>
+          ${
+            proforma.discount && parseFloat(proforma.discount) > 0
+              ? `
+          <tr>
+            <td><strong>Discount:</strong></td>
+            <td class="text-right">-${formatCurrency(proforma.discount)}</td>
+          </tr>
+          `
+              : ""
+          }
+          <tr>
+            <td><strong>Tax Amount:</strong></td>
+            <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
+          </tr>
+          <tr class="total-row">
+            <td><strong>Total Amount:</strong></td>
+            <td class="text-right">${formatCurrency(proforma.totalAmount || 0)}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="terms">
+        ${proforma.paymentTerms ? `<p><strong>Payment Terms:</strong> ${proforma.paymentTerms}</p>` : ""}
+        ${proforma.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${proforma.deliveryTerms}</p>` : ""}
+        ${proforma.bankAccount ? `<p><strong>Bank Account:</strong> ${proforma.bankAccount}</p>` : ""}
+        ${proforma.remarks ? `<h3>Remarks:</h3><p>${proforma.remarks}</p>` : ""}
+        ${proforma.termsAndConditions ? `<h3>Terms and Conditions:</h3><p>${proforma.termsAndConditions}</p>` : ""}
+      </div>
+      </div>
+      ${generateCommonFooter({ company })}
+    </body>
+    </html>
+  `;
+}
+
+function generatePurchaseOrderHTML(
+  order: any,
+  supplier: any,
+  company: any,
+): string {
+  const formatCurrency = (amount: string | number) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = supplier.currency || "AED";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
+  };
+
+  const formatDate = (date: string | Date) => {
+    return new Date(date).toLocaleDateString();
+  };
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Purchase Order ${order.poNumber}</title>
+      ${getCommonStyles()}
+    </head>
+    <body>
+      ${generateCommonHeader({ company })}
+    <div class="page-content">
+      <div class="document-info">
+        <h1>PURCHASE ORDER</h1>
+        <p><strong>PO Number:</strong> ${order.poNumber}</p>
+        <p><strong>Date:</strong> ${formatDate(order.orderDate)}</p>
+        ${order.expectedDeliveryDate ? `<p><strong>Expected Delivery:</strong> ${formatDate(order.expectedDeliveryDate)}</p>` : ""}
+        ${order.projectId ? `<p><strong>Project:</strong> ${order.projectName || order.projectId}</p>` : ""}
+      </div>
+
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>Supplier:</h3>
+          <p><strong>${supplier.name}</strong></p>
+          ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
+          ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
+          ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
+          ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Ship To / Bill To:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address || ""}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="text-right">Qty</th>
+            <th class="text-right">Unit Price</th>
+            <th class="text-right">Tax Rate</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(order.items || [])
+            .map((item: any) => {
+              const lineSubtotal = item.quantity * item.unitPrice;
+              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+              const lineTotal = lineSubtotal + taxAmount;
+              return `
+            <tr>
+              <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
+              <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+              <td class="text-right">${item.taxRate || 0}%</td>
+              <td class="text-right">${formatCurrency(lineTotal)}</td>
+            </tr>
+            `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+
+      <div style="margin-top: 30px;">
+        <table style="width: 300px; margin-left: auto;">
+          <tr>
+            <td><strong>Subtotal:</strong></td>
+            <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
+          </tr>
+          <tr>
+            <td><strong>Tax Amount:</strong></td>
+            <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
+          </tr>
+          <tr class="total-row">
+            <td><strong>Total Amount:</strong></td>
+            <td class="text-right">${formatCurrency(order.totalAmount || 0)}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="terms">
+        ${order.paymentTerms ? `<p><strong>Payment Terms:</strong> ${order.paymentTerms}</p>` : ""}
+        ${order.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${order.deliveryTerms}</p>` : ""}
+        ${order.bankAccount ? `<h3>Bank Account Details:</h3><p>${order.bankAccount}</p>` : ""}
+        ${order.notes ? `<h3>Notes:</h3><p>${order.notes}</p>` : ""}
+      </div>
+      </div>
+      ${generateCommonFooter({ company })}
+    </body>
+    </html>
+  `;
+}
+
+function generatePurchaseInvoiceHTML(
+  invoice: any,
+  supplier: any,
+  company: any,
+  project?: any,
+): string {
+  const formatCurrency = (amount: string | number) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    const currency = supplier.currency || "AED";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+    })
+      .format(num)
+      .replace(currency, currency + " ");
+  };
+
+  const formatDate = (date: string | Date) => {
+    return new Date(date).toLocaleDateString();
+  };
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Purchase Invoice ${invoice.invoiceNumber}</title>
+      ${getCommonStyles()}
+    </head>
+    <body>
+      ${generateCommonHeader({ company })}
+    <div class="page-content">
+      <div class="document-info">
+        <h1>PURCHASE INVOICE</h1>
+        <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+        <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
+        ${invoice.dueDate ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
+        ${invoice.poId ? `<p><strong>Linked PO:</strong> PO-${invoice.poId}</p>` : ""}
+        ${project ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
+      </div>
+
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>Supplier:</h3>
+          <p><strong>${supplier.name}</strong></p>
+          ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
+          ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
+          ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
+          ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+        </div>
+        <div class="info-box">
+          <h3>Bill To:</h3>
+          <p><strong>${company.name}</strong></p>
+          <p style="white-space: pre-wrap;">${company.address || ""}</p>
+          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="text-right">Qty</th>
+            <th class="text-right">Unit Price</th>
+            <th class="text-right">Tax Rate</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(invoice.items || [])
+            .map((item: any) => {
+              const lineSubtotal = item.quantity * item.unitPrice;
+              const taxAmount = parseFloat(item.taxAmount || 0);
+              const lineTotal = parseFloat(
+                item.lineTotal || lineSubtotal + taxAmount,
+              );
+              const taxRate =
+                item.taxRate ||
+                (lineSubtotal > 0 ? (taxAmount / lineSubtotal) * 100 : 0);
+
+              return `
+            <tr>
+              <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
+              <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+              <td class="text-right">${parseFloat(taxRate).toFixed(0)}%</td>
+              <td class="text-right">${formatCurrency(lineTotal)}</td>
+            </tr>
+            `;
+            })
+            .join("")}
+        </tbody>
+      </table>
+
+      <div style="margin-top: 30px;">
+        <table style="width: 300px; margin-left: auto;">
+          <tr>
+            <td><strong>Subtotal:</strong></td>
+            <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+          </tr>
+          <tr>
+            <td><strong>Tax Amount:</strong></td>
+            <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
+          </tr>
+          <tr class="total-row">
+            <td><strong>Total Amount:</strong></td>
+            <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
+          </tr>
+          ${
+            parseFloat(invoice.paidAmount || 0) > 0
+              ? `
+          <tr>
+            <td><strong>Paid Amount:</strong></td>
+            <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
+          </tr>
+          <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
+            <td><strong>Balance Due:</strong></td>
+            <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
+          </tr>
+          `
+              : ""
+          }
+        </table>
+      </div>
+
+      <div class="terms">
+        ${invoice.paymentTerms ? `<p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>` : ""}
+        ${invoice.bankAccount ? `<h3>Bank Account Details:</h3><p style="white-space: pre-wrap;">${invoice.bankAccount}</p>` : ""}
+        ${invoice.notes ? `<h3>Notes:</h3><p style="white-space: pre-wrap;">${invoice.notes}</p>` : ""}
+      </div>
+      </div>
+      ${generateCommonFooter({ company })}
+    </body>
+    </html>
+  `;
+}
+
+function imageToBase64(relativePath: string) {
+  const absPath = path.join(process.cwd(), relativePath);
+  const ext = path.extname(absPath).replace(".", "");
+  const buffer = fs.readFileSync(absPath);
+  return `data:image/${ext};base64,${buffer.toString("base64")}`;
 }
 
 declare module "express-session" {
@@ -5665,6 +6070,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.get(
+    "/api/purchase-invoices/:id/pdf",
+    requireAuth,
+    requireRole(["admin", "finance", "project_manager"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const invoice = await storage.getPurchaseInvoice(id);
+        const supplier = await storage.getSupplier(invoice?.supplierId);
+        const company = await storage.getCompany();
+        let project = null;
+        if (invoice?.projectId) {
+          project = await storage.getProject(invoice.projectId);
+        }
+
+        if (!invoice || !supplier || !company) {
+          return res
+            .status(404)
+            .json({ message: "Purchase invoice or related data not found" });
+        }
+
+        const html = generatePurchaseInvoiceHTML(
+          invoice,
+          supplier,
+          company,
+          project,
+        );
+
+        res.setHeader("Content-Type", "text/html");
+        res.send(html);
+      } catch (error) {
+        console.error("PDF generation error:", error);
+        res.status(500).json({ message: "Failed to generate PDF" });
+      }
+    },
+  );
+
   app.post(
     "/api/purchase-orders/:id/convert-to-invoice",
     requireAuth,
@@ -5683,6 +6125,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message:
             error.message || "Failed to convert purchase order to invoice",
         });
+      }
+    },
+  );
+
+  app.get(
+    "/api/purchase-orders/:id/pdf",
+    requireAuth,
+    requireRole(["admin", "finance", "project_manager"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const order = await storage.getPurchaseOrder(id);
+        const supplier = await storage.getSupplier(order?.supplierId);
+        const company = await storage.getCompany();
+
+        if (!order || !supplier || !company) {
+          return res
+            .status(404)
+            .json({ message: "Purchase order or related data not found" });
+        }
+
+        const html = generatePurchaseOrderHTML(order, supplier, company);
+
+        res.setHeader("Content-Type", "text/html");
+        res.send(html);
+      } catch (error) {
+        console.error("PDF generation error:", error);
+        res.status(500).json({ message: "Failed to generate PDF" });
       }
     },
   );
@@ -6383,6 +6853,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Error deleting proforma invoice:", error);
         res.status(500).json({ message: "Failed to delete proforma invoice" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/proforma-invoices/:id/pdf",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const proforma = await storage.getProformaInvoice(id);
+        const customer = await storage.getCustomer(proforma?.customerId);
+        const company = await storage.getCompany();
+
+        if (!proforma || !customer || !company) {
+          return res
+            .status(404)
+            .json({ message: "Proforma invoice or related data not found" });
+        }
+
+        const html = generateProformaHTML(proforma, customer, company);
+
+        res.setHeader("Content-Type", "text/html");
+        res.send(html);
+      } catch (error) {
+        console.error("PDF generation error:", error);
+        res.status(500).json({ message: "Failed to generate PDF" });
       }
     },
   );

@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { printByUrl } from "@/lib/print-utils";
 import {
   FileText,
   Plus,
@@ -298,7 +299,7 @@ export default function ProformaInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"]});
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       toast({
         title: "Success",
         description: "Proforma invoice has been converted to sales invoice successfully.",
@@ -457,7 +458,7 @@ export default function ProformaInvoicesIndex() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-     return `AED ${num.toFixed(2)}`;
+    return `AED ${num.toFixed(2)}`;
   };
 
   const formatDate = (date: string | Date) => {
@@ -516,6 +517,23 @@ export default function ProformaInvoicesIndex() {
   ) {
     return null;
   }
+
+  const handlePrintPDF = async (proforma: ProformaInvoice) => {
+    try {
+      await printByUrl(`/api/proforma-invoices/${proforma.id}/pdf`);
+
+      toast({
+        title: "Success",
+        description: "Print window opened successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to open print preview.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="container mx-auto p-4 md:p-6">
@@ -1228,11 +1246,11 @@ export default function ProformaInvoicesIndex() {
                         View
                       </Button>
 
-                      
+
                       {proforma.status === "approved" && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="text-green-600 hover:text-green-700"
                           onClick={() => handleConvertToInvoice(proforma)}
                         >
@@ -1515,11 +1533,11 @@ export default function ProformaInvoicesIndex() {
                 <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                   Close
                 </Button>
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => handlePrintPDF(selectedProforma)}>
                   <Download className="h-4 w-4 mr-1" />
                   Print PDF
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => {
                     if (selectedProforma) {
@@ -1554,7 +1572,7 @@ export default function ProformaInvoicesIndex() {
                         unitPrice: 0,
                         taxRate: defaultTaxRate,
                       });
-                      
+
                       setIsEditingProforma(true);
                       setIsDetailsOpen(false);
                       setIsDialogOpen(true);
@@ -1569,7 +1587,7 @@ export default function ProformaInvoicesIndex() {
                   Duplicate
                 </Button>
                 {selectedProforma && (selectedProforma.status === "draft" || selectedProforma.status === "sent") && (
-                  <Button 
+                  <Button
                     className="bg-green-600 hover:bg-green-700 text-white"
                     onClick={() => handleApproveProforma(selectedProforma)}
                     disabled={approveProformaMutation.isPending}
@@ -1579,7 +1597,7 @@ export default function ProformaInvoicesIndex() {
                   </Button>
                 )}
                 {selectedProforma && selectedProforma.status === "approved" && (
-                  <Button 
+                  <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleConvertToInvoice(selectedProforma)}
                     disabled={convertToInvoiceMutation.isPending}

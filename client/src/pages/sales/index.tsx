@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { printByUrl } from "@/lib/print-utils";
 import {
   FileText,
   Plus,
@@ -563,8 +564,8 @@ export default function SalesIndex() {
       formData.append("paymentMethod", data.paymentMethod);
       formData.append("referenceNumber", data.referenceNumber || "");
       formData.append("notes", data.notes || "");
-      console.log("formData",formData);
-      
+      console.log("formData", formData);
+
       // Append files
       if (data.files) {
         for (let i = 0; i < data.files.length; i++) {
@@ -609,7 +610,7 @@ export default function SalesIndex() {
         variant: "destructive",
       });
     },
-  });  
+  });
 
   const openNewQuotationDialog = () => {
     resetForm();              // clears form + editing state
@@ -983,16 +984,16 @@ export default function SalesIndex() {
 
   const totalQuotationValue = quotations?.length
     ? quotations.reduce(
-        (sum, quotation) => sum + parseFloat(quotation.totalAmount || "0"),
-        0,
-      )
+      (sum, quotation) => sum + parseFloat(quotation.totalAmount || "0"),
+      0,
+    )
     : 0;
 
   const totalInvoiceValue = invoices?.length
     ? invoices.reduce(
-        (sum, invoice) => sum + parseFloat(invoice.totalAmount || "0"),
-        0,
-      )
+      (sum, invoice) => sum + parseFloat(invoice.totalAmount || "0"),
+      0,
+    )
     : 0;
 
   const getCustomerName = (customerId: number, customerName?: string) => {
@@ -1128,9 +1129,9 @@ export default function SalesIndex() {
           : "",
         items: selectedQuotation.items || [],
         discount: selectedQuotation.discount || "0",
-        subtotal: selectedQuotation.subtotal,
-        taxAmount: selectedQuotation.taxAmount,
-        totalAmount: selectedQuotation.totalAmount,
+        subtotal: selectedQuotation.subtotal || "0",
+        taxAmount: selectedQuotation.taxAmount || "0",
+        totalAmount: selectedQuotation.totalAmount || "0",
         paymentTerms: selectedQuotation.paymentTerms || "",
         bankAccount: selectedQuotation.bankAccount || "",
         billingAddress: selectedQuotation.billingAddress || "",
@@ -1152,9 +1153,9 @@ export default function SalesIndex() {
           : "",
         items: selectedQuotation.items || [],
         discount: selectedQuotation.discount || "0",
-        subtotal: selectedQuotation.subtotal,
-        taxAmount: selectedQuotation.taxAmount,
-        totalAmount: selectedQuotation.totalAmount,
+        subtotal: selectedQuotation.subtotal || "0",
+        taxAmount: selectedQuotation.taxAmount || "0",
+        totalAmount: selectedQuotation.totalAmount || "0",
         paymentTerms: selectedQuotation.paymentTerms || "",
         bankAccount: selectedQuotation.bankAccount || "",
         billingAddress: selectedQuotation.billingAddress || "",
@@ -1168,44 +1169,7 @@ export default function SalesIndex() {
 
   const handlePrintPDF = async (quotation: SalesQuotation) => {
     try {
-      const response = await fetch(
-        `/api/sales-quotations/${quotation.id}/pdf`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to generate PDF");
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      // Open the PDF in a new window for printing
-      const newWindow = window.open(url, "_blank");
-      if (newWindow) {
-        newWindow.onload = () => {
-          newWindow.print();
-          // Revoke the blob URL after printing
-          newWindow.onafterprint = () => {
-            window.URL.revokeObjectURL(url);
-            newWindow.close(); // Close the blank window after printing
-          };
-        };
-      } else {
-        // Handle the case where the new window couldn't be opened
-        toast({
-          title: "Error",
-          description:
-            "Failed to open print preview. Please check your browser settings.",
-          variant: "destructive",
-        });
-        window.URL.revokeObjectURL(url); // Revoke the blob URL in case of an error
-      }
+      await printByUrl(`/api/sales-quotations/${quotation.id}/pdf`);
 
       toast({
         title: "Success",
@@ -1287,11 +1251,11 @@ export default function SalesIndex() {
 
       items: quotation.items || [],
       discount: quotation.discount || "0",
-      subtotal: quotation.subtotal,
-      taxAmount: quotation.taxAmount,
-      totalAmount: quotation.totalAmount,
-      paymentTerms: quotation.paymentTerms,
-      termsAndConditions:quotation.termsAndConditions
+      subtotal: quotation.subtotal || "0",
+      taxAmount: quotation.taxAmount || "0",
+      totalAmount: quotation.totalAmount || "0",
+      paymentTerms: quotation.paymentTerms || "",
+      termsAndConditions: quotation.termsAndConditions || ""
     });
 
     setIsInvoiceDialogOpen(true);
@@ -1705,7 +1669,7 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                         AED {item.unitPrice.toFixed(2)}
+                                        AED {item.unitPrice.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -3335,7 +3299,7 @@ export default function SalesIndex() {
                 </CardHeader>
                 <CardContent>
                   {selectedQuotation.items &&
-                  selectedQuotation.items.length > 0 ? (
+                    selectedQuotation.items.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
                         <thead>
@@ -3730,7 +3694,7 @@ export default function SalesIndex() {
                             <span>
                               {formatCurrency(
                                 parseFloat(selectedInvoice.totalAmount || "0") -
-                                  parseFloat(selectedInvoice.paidAmount),
+                                parseFloat(selectedInvoice.paidAmount),
                               )}
                             </span>
                           </div>
@@ -4186,21 +4150,21 @@ export default function SalesIndex() {
                             {getInvoiceStatusBadge(receivable.status)}
                           </td>
                           <td className="text-center p-3">
-                            {receivable.invoiceNumber && receivable.status !== "paid" &&(
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                const invoice = invoices?.find(
-                                  (inv) => inv.id === receivable.invoiceId,
-                                );
-                                if (invoice) {
-                                  setIsReceivablesOpen(false);
-                                  openPaymentDialog(invoice);
-                                }
-                              }}
-                            >
-                              Record Payment
-                            </Button>
+                            {receivable.invoiceNumber && receivable.status !== "paid" && (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  const invoice = invoices?.find(
+                                    (inv) => inv.id === receivable.invoiceId,
+                                  );
+                                  if (invoice) {
+                                    setIsReceivablesOpen(false);
+                                    openPaymentDialog(invoice);
+                                  }
+                                }}
+                              >
+                                Record Payment
+                              </Button>
                             )}
                           </td>
                         </tr>

@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { insertCreditNoteSchema } from "@shared/schema";
 import { z } from "zod";
+import { printByUrl } from "@/lib/print-utils";
 
 const createCreditNoteSchema = insertCreditNoteSchema.extend({
   creditNoteDate: z.string(),
@@ -609,7 +610,7 @@ export default function CreditNotesIndex() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            window.open(`/api/credit-notes/${creditNote.id}/pdf`, '_blank');
+                            printByUrl(`/api/credit-notes/${creditNote.id}/pdf`);
                           }}
                         >
                           <FileText className="h-4 w-4" />
@@ -775,7 +776,7 @@ export default function CreditNotesIndex() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      window.open(`/api/credit-notes/${viewingCreditNote.id}/pdf`, '_blank');
+                      printByUrl(`/api/credit-notes/${viewingCreditNote.id}/pdf`);
                     }}
                   >
                     <FileText className="h-4 w-4 mr-2" />

@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { printByUrl } from "@/lib/print-utils";
 import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 
@@ -197,7 +198,7 @@ export default function PurchaseOrdersIndex() {
     }, 0);
   };
 
-  
+
 
   const createOrderMutation = useMutation({
     mutationFn: async (formDataInstance: FormData) => {
@@ -234,7 +235,7 @@ export default function PurchaseOrdersIndex() {
 
   const submitOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/submit`,{method:"POST"});
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/submit`, { method: "POST" });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to submit order");
@@ -259,7 +260,7 @@ export default function PurchaseOrdersIndex() {
 
   const approveOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/approve`,{method:"PATCH"});
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/approve`, { method: "PATCH" });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to approve order");
@@ -284,7 +285,7 @@ export default function PurchaseOrdersIndex() {
 
   const rejectOrderMutation = useMutation({
     mutationFn: async ({ orderId, reason }: { orderId: number; reason: string }) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/reject`,{method:"PATCH", body:{ reason }});
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/reject`, { method: "PATCH", body: { reason } });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to reject order");
@@ -313,7 +314,7 @@ export default function PurchaseOrdersIndex() {
 
   const convertToInvoiceMutation = useMutation({
     mutationFn: async ({ orderId, invoiceData }: { orderId: number; invoiceData: any }) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/convert-to-invoice`,{method:"POST", body:invoiceData});
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/convert-to-invoice`, { method: "POST", body: invoiceData });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to convert to invoice");
@@ -406,7 +407,7 @@ export default function PurchaseOrdersIndex() {
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
     });
-    
+
     if (order.items && order.items.length > 0) {
       setOrderItems(order.items.map(item => ({
         itemType: item.itemType,
@@ -421,7 +422,7 @@ export default function PurchaseOrdersIndex() {
     }
 
     setExistingFiles(order.files || []);
-    
+
     setIsDialogOpen(true);
   };
 
@@ -574,6 +575,23 @@ export default function PurchaseOrdersIndex() {
     setIsViewDialogOpen(true);
   };
 
+  const handlePrintPDF = async (order: PurchaseOrder) => {
+    try {
+      await printByUrl(`/api/purchase-orders/${order.id}/pdf`);
+
+      toast({
+        title: "Success",
+        description: "Print window opened successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to open print preview.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleConvertToInvoice = () => {
     if (!viewingOrder) return;
 
@@ -618,7 +636,7 @@ export default function PurchaseOrdersIndex() {
 
   // Filter orders based on search and filters
   const filteredOrders = orders?.filter(order => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       order.poNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.supplierName.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -639,7 +657,7 @@ export default function PurchaseOrdersIndex() {
   };
 
   // Calculate statistics
-  const totalOrderValue = orders?.length 
+  const totalOrderValue = orders?.length
     ? orders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0)
     : 0;
 
@@ -834,8 +852,8 @@ export default function PurchaseOrdersIndex() {
             <div className="text-center py-12">
               <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">
-                {searchQuery || statusFilter !== "all" || supplierFilter !== "all" 
-                  ? "No orders found" 
+                {searchQuery || statusFilter !== "all" || supplierFilter !== "all"
+                  ? "No orders found"
                   : "No purchase orders yet"
                 }
               </h3>
@@ -888,8 +906,8 @@ export default function PurchaseOrdersIndex() {
                         {formatCurrency(order.totalAmount)}
                       </TableCell>
                       <TableCell>
-                        {order.expectedDeliveryDate 
-                          ? new Date(order.expectedDeliveryDate).toLocaleDateString() 
+                        {order.expectedDeliveryDate
+                          ? new Date(order.expectedDeliveryDate).toLocaleDateString()
                           : "-"
                         }
                       </TableCell>
@@ -899,11 +917,11 @@ export default function PurchaseOrdersIndex() {
                             <Eye className="w-4 h-4" />
                             <span className="hidden sm:inline">View</span>
                           </Button>
-                          
+
                           {/* Edit - Draft orders only */}
                           {order.status === "draft" && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => handleEditOrder(order)}
                               data-testid={`button-edit-order-${order.id}`}
@@ -911,11 +929,11 @@ export default function PurchaseOrdersIndex() {
                               Edit
                             </Button>
                           )}
-                          
+
                           {/* Submit for Approval - Draft orders, all roles */}
                           {order.status === "draft" && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               onClick={() => submitOrderMutation.mutate(order.id)}
                               disabled={submitOrderMutation.isPending}
                               data-testid={`button-submit-order-${order.id}`}
@@ -926,8 +944,8 @@ export default function PurchaseOrdersIndex() {
 
                           {/* Approve - Pending orders, admin only */}
                           {order.status === "pending_approval" && user?.role === "admin" && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="default"
                               onClick={() => approveOrderMutation.mutate(order.id)}
                               disabled={approveOrderMutation.isPending}
@@ -940,8 +958,8 @@ export default function PurchaseOrdersIndex() {
 
                           {/* Reject - Pending orders, admin only */}
                           {order.status === "pending_approval" && user?.role === "admin" && (
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="destructive"
                               onClick={() => {
                                 setViewingOrder(order);
@@ -956,7 +974,7 @@ export default function PurchaseOrdersIndex() {
 
                           {/* Convert to Invoice - Approved orders, admin/finance */}
                           {order.status === "approved" && (user?.role === "admin" || user?.role === "finance") && (
-                            <Button 
+                            <Button
                               size="sm"
                               onClick={() => {
                                 setViewingOrder(order);
@@ -1168,7 +1186,7 @@ export default function PurchaseOrdersIndex() {
 
               <div className="space-y-4">
                 <Label className="text-lg font-semibold">Order Items *</Label>
-                
+
                 {/* Add Item Form */}
                 <Card className="p-4 bg-muted/30">
                   <div className="space-y-4">
@@ -1177,8 +1195,8 @@ export default function PurchaseOrdersIndex() {
                       <Label>Item Type *</Label>
                       <Select
                         value={newItem.itemType}
-                        onValueChange={(value: "product" | "service") => setNewItem(prev => ({ 
-                          ...prev, 
+                        onValueChange={(value: "product" | "service") => setNewItem(prev => ({
+                          ...prev,
                           itemType: value,
                           inventoryItemId: "",
                           description: "",
@@ -1305,7 +1323,7 @@ export default function PurchaseOrdersIndex() {
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="font-medium">
-                                    {item.itemType === "product" 
+                                    {item.itemType === "product"
                                       ? getItemName(item.inventoryItemId || "")
                                       : item.description}
                                   </TableCell>
@@ -1367,9 +1385,9 @@ export default function PurchaseOrdersIndex() {
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
-                  disabled={createOrderMutation.isPending || updateOrderMutation.isPending} 
+                <Button
+                  type="submit"
+                  disabled={createOrderMutation.isPending || updateOrderMutation.isPending}
                   className="w-full sm:w-auto gap-2"
                 >
                   {(createOrderMutation.isPending || updateOrderMutation.isPending) ? (
@@ -1409,7 +1427,7 @@ export default function PurchaseOrdersIndex() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.print()}
+                    onClick={() => handlePrintPDF(viewingOrder)}
                     className="gap-2"
                   >
                     <Printer className="w-4 h-4" />
@@ -1492,7 +1510,7 @@ export default function PurchaseOrdersIndex() {
                           </div>
                         </div>
                       )}
-                      
+
                       {viewingOrder.approvedAt && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3">
                           <div>
