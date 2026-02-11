@@ -69,6 +69,7 @@ import {
   errorLogs,
   creditNotes,
 } from "../migrations/schema";
+import sanitizeHtml from "sanitize-html";
 
 function getCommonStyles(): string {
   return `
@@ -1159,6 +1160,337 @@ function generatePurchaseInvoiceHTML(
   `;
 }
 
+export function generateProjectPrintHTML(data: any): string {
+  const sanitize = (html: string) =>
+    sanitizeHtml(html || "", {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        "*": ["style"],
+      },
+    });
+
+  const weeklyReports = data.reports || {};
+  const gallery = data.gallery || [];
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Weekly Report</title>
+
+<style>
+@page { size: A4; margin: 0; }
+
+body {
+  font-family: Inter, sans-serif;
+  margin: 0;
+  background: #f4f4f4;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.container {
+  background: #fff;
+  max-width: 900px;
+  margin: auto;
+  padding: 10px;
+}
+
+.top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 3px solid #0019A5;
+  padding-bottom: 10px;
+}
+
+.top-header img { height: 60px; }
+
+.main-title {
+  text-align: center;
+  margin: 20px 0;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.highlight { color: red; }
+.vessel { color: #0019A5; }
+
+.ship-image img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 15px;
+}
+
+.project-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.project-table th,
+.project-table td {
+  border: 1px solid #ccc;
+  padding: 6px;
+}
+
+.project-table th {
+  background: #0019A5;
+  color: white;
+  text-align: center;
+}
+
+.section-title {
+  background: #c00000;
+  color: white;
+  text-align: center;
+  padding: 6px;
+  margin-top: 20px;
+}
+
+.steps-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.steps-table th {
+  background: #f4b183;
+  border: 1px solid #ccc;
+  font-size: 12px;
+}
+
+.steps-table td {
+  background: #fff2cc;
+  border: 1px solid #ccc;
+  font-size: 10px;
+  padding: 6px;
+}
+
+.footer {
+  border-top: 1px solid #0019A5;
+  border-bottom: 1px solid #0019A5;
+  text-align: center;
+  padding: 10px 0;
+  margin-top: 20px;
+}
+
+.footer-content {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  font-weight: bold;
+  color: #0019A5;
+}
+
+.page-break {
+  page-break-before: always;
+}
+
+.image-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.image-table td {
+  border: 1px solid #000;
+  padding: 5px;
+}
+
+.image-table img {
+  width: 100%;
+  height: 230px;
+  object-fit: contain;
+}
+
+@media print {
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+}
+</style>
+</head>
+
+<body onload="window.print()">
+<div class="container">
+
+<!-- HEADER -->
+<div class="top-header">
+  <img src="${data.company?.logo || ""}" />
+  <div>${data.company?.address || ""}</div>
+</div>
+
+<!-- TITLE -->
+<div class="main-title">
+  ${data.title || ""}<br/>
+  <span class="highlight">${sanitize(data.description)}</span><br/>
+  <span class="vessel">${data.vesselName || ""}</span>
+</div>
+
+<!-- IMAGE -->
+<div class="ship-image">
+  <img src="${data.vesselImage || ""}" />
+</div>
+
+<!-- PROJECT TABLE -->
+<table class="project-table">
+<tbody>
+<tr>
+<th>Project Start Date</th>
+<td>${data.startDate || ""}</td>
+<th>Vessel Name</th>
+<td>${data.vesselName || ""}</td>
+</tr>
+
+<tr>
+<th>Project Details</th>
+<td>${sanitize(data.description)}</td>
+<th>Client</th>
+<td>${data.customerName || ""}</td>
+</tr>
+
+<tr>
+<th>Mode of Contract</th>
+<td>${data.modeOfContract || ""}</td>
+<th>Riding crew Nos.</th>
+<td>${data.ridgingCrewNos || ""}</td>
+</tr>
+
+<tr>
+<th>PPE</th>
+<td>${data.ppe || ""}</td>
+<th>Working Hours</th>
+<td>${data.workingHours || ""}</td>
+</tr>
+</tbody>
+</table>
+
+<h3 class="section-title">
+COATING REPAIR PROCEDURE FOR MAIN DECK
+</h3>
+
+<table class="steps-table">
+<tbody>
+${
+  [1, 3, 5].map((start) => {
+    const firstTitle = data[`additionalField${start}Title`];
+    const firstDesc = data[`additionalField${start}Description`];
+
+    const secondTitle = data[`additionalField${start + 1}Title`];
+    const secondDesc = data[`additionalField${start + 1}Description`];
+
+    // If both empty, skip row
+    if (!firstTitle?.trim() && !secondTitle?.trim()) {
+      return "";
+    }
+
+    return `
+<tr>
+  <th>Step-${start}</th>
+  <td>
+    ${
+      firstTitle?.trim()
+        ? `<b>${firstTitle}</b> ${sanitize(firstDesc)}`
+        : ""
+    }
+  </td>
+
+  <th>Step-${start + 1}</th>
+  <td>
+    ${
+      secondTitle?.trim()
+        ? `<b>${secondTitle}</b> ${sanitize(secondDesc)}`
+        : ""
+    }
+  </td>
+</tr>
+`;
+  }).join("")
+}
+</tbody>
+
+</table>
+
+${data.reportImage ? `
+<br/>
+<h2 style="text-align:center;color:red;">WORK PLAN</h2>
+<div class="ship-image">
+<img src="${data.reportImage}" />
+</div>
+` : ""}
+
+${Object.entries(weeklyReports).map(([week, reports]: any) => `
+<div class="page-break">
+<h2 style="text-align:center;color:red;">
+Work done for the Week - ${week}
+</h2>
+
+<table class="project-table">
+<thead>
+<tr>
+<th>Day</th>
+<th>Date</th>
+<th>Location</th>
+<th>Activities</th>
+</tr>
+</thead>
+<tbody>
+${reports.map((r: any) => `
+<tr>
+<td>Day ${r.day_num}</td>
+<td>${r.date}</td>
+<td>${r.location || ""}</td>
+<td>${r.activities || ""}</td>
+</tr>
+`).join("")}
+</tbody>
+</table>
+</div>
+`).join("")}
+
+${gallery.map((g: any) => `
+<div class="page-break">
+<h2 style="text-align:center;color:red;">${g.title}</h2>
+<p style="text-align:center;">${g.description}</p>
+
+<table class="image-table">
+<tbody>
+${g.images.reduce((rows: any[], img: string, idx: number) => {
+  if (idx % 2 === 0) rows.push([img]);
+  else rows[rows.length - 1].push(img);
+  return rows;
+}, []).map((row: string[]) => `
+<tr>
+${row.map(img => `<td><img src="${img}" /></td>`).join("")}
+${row.length === 1 ? "<td></td>" : ""}
+</tr>
+`).join("")}
+</tbody>
+</table>
+</div>
+`).join("")}
+
+<div class="footer">
+<div class="footer-content">
+<span>🌐 ${data.company?.website || ""}</span>
+<span>✉ ${data.company?.email || ""}</span>
+<span>☎ ${data.company?.phone || ""}</span>
+</div>
+</div>
+
+</div>
+</body>
+</html>
+`;
+}
+
+
 function imageToBase64(relativePath: string) {
   const absPath = path.join(process.cwd(), relativePath);
   const ext = path.extname(absPath).replace(".", "");
@@ -1194,6 +1526,8 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/purchase-order";
     } else if (req.originalUrl?.includes("reimbursements")) {
       uploadDir = "uploads/reimbursements";
+    }else if (req.originalUrl?.includes("/api/print")) {
+      uploadDir = "uploads/report";
     }
 
     if (!fs.existsSync(uploadDir)) {
@@ -2634,6 +2968,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
+
+      res.json(project);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get project" });
+    }
+  });
+
+  app.post(
+    "/api/print/project",
+    requireAuth,
+    upload.single("reportImage"),
+    async (req, res) => {
+      try {
+        const {
+          id,
+          fromDate,
+          toDate,
+          reportDate,
+          includeRemainingDays,
+          includeHBMHours,
+        } = req.body;
+
+        const project = await storage.getProjectPrint(
+          id,
+          fromDate,
+          toDate,
+          reportDate,
+          includeRemainingDays,
+          includeHBMHours
+        );
+
+        if (!project) {
+          return res.status(404).json({ message: "Project not found" });
+        }
+
+        if (req.file) {
+          project.reportImage = `/${req.file.path}`;
+        }
+
+        project.company = await storage.getCompany();
+
+        // 🔥 Generate HTML instead of JSON
+        const html = generateProjectPrintHTML(project);
+
+        res.setHeader("Content-Type", "text/html");
+        res.send(html);
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to generate report" });
+      }
+    }
+  );
+  app.post("/api/print/projectbk", requireAuth,upload.single("reportImage"), async (req, res) => {
+    try {
+      const { id,fromDate,toDate,reportDate,includeRemainingDays,includeHBMHours } = req.body;
+      const project = await storage.getProjectPrint(id,fromDate,toDate,reportDate,includeRemainingDays,includeHBMHours);
+
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (req.file) {
+        project.reportImage = `/${req.file.path}`;
+      }
+      project.company = await storage.getCompany();
 
       res.json(project);
     } catch (error) {
