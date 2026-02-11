@@ -1305,6 +1305,18 @@ body {
   height: 230px;
   object-fit: contain;
 }
+.steps-table {
+  width: 100%;
+  table-layout: fixed; /* VERY IMPORTANT */
+  border-collapse: collapse;
+}
+
+.steps-table th,
+.steps-table td {
+  border: 1px solid #ccc;
+  padding: 6px;
+  vertical-align: top;
+}
 
 @media print {
   .footer {
@@ -1385,27 +1397,26 @@ ${
     const secondTitle = data[`additionalField${start + 1}Title`];
     const secondDesc = data[`additionalField${start + 1}Description`];
 
-    // If both empty, skip row
     if (!firstTitle?.trim() && !secondTitle?.trim()) {
       return "";
     }
 
     return `
 <tr>
-  <th>Step-${start}</th>
-  <td>
+  <th style="width:10%;">Step-${start}</th>
+  <td style="width:40%;">
     ${
       firstTitle?.trim()
-        ? `<b>${firstTitle}</b> ${sanitize(firstDesc)}`
+        ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}`
         : ""
     }
   </td>
 
-  <th>Step-${start + 1}</th>
-  <td>
+  <th style="width:10%;">Step-${start + 1}</th>
+  <td style="width:40%;">
     ${
       secondTitle?.trim()
-        ? `<b>${secondTitle}</b> ${sanitize(secondDesc)}`
+        ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}`
         : ""
     }
   </td>
