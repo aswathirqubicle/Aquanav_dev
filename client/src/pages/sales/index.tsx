@@ -3074,21 +3074,24 @@ export default function SalesIndex() {
                               Record Payment
                             </Button>
                           )}
-                          {invoice.invoiceNumber && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                window.open(
-                                  `/credit-notes?invoiceId=${invoice.id}`,
-                                  "_blank",
-                                )
-                              }
-                              className="w-full sm:w-auto"
-                            >
-                              Credit Note
-                            </Button>
-                          )}
+                          {invoice.invoiceNumber &&
+                            invoice.status !== "draft" &&
+                            invoice.status !== "paid" &&
+                            parseFloat(invoice.totalAmount || "0") > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  window.open(
+                                    `/credit-notes?invoiceId=${invoice.id}`,
+                                    "_blank",
+                                  )
+                                }
+                                className="w-full sm:w-auto"
+                              >
+                                Credit Note
+                              </Button>
+                            )}
                         </div>
                       </div>
                     </div>

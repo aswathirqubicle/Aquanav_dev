@@ -63,7 +63,13 @@ export default function CreditNotesIndex() {
 
   // Fetch sales invoices for linking
   const { data: salesInvoicesResponse } = useQuery({
-    queryKey: ["/api/sales-invoices"],
+    // queryKey: ["/api/sales-invoices"],
+     queryKey: ["/api/sales-invoices", { limit: 1000 }],
+    queryFn: async () => {
+      const response = await fetch("/api/sales-invoices?limit=1000");
+      if (!response.ok) throw new Error("Failed to fetch sales invoices");
+      return response.json();
+    },
   });
 
   const salesInvoices = salesInvoicesResponse?.data || [];
@@ -311,11 +317,18 @@ export default function CreditNotesIndex() {
                 <SelectValue placeholder="Select an invoice number" />
               </SelectTrigger>
               <SelectContent>
-                {salesInvoices.map((invoice: any) => (
-                  <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                    {invoice.invoiceNumber || `Invoice #${invoice.id}`}
-                  </SelectItem>
-                ))}
+                {salesInvoices
+                  .filter(
+                    (invoice: any) =>
+                      invoice.status !== "draft" &&
+                      invoice.status !== "paid" &&
+                      parseFloat(invoice.totalAmount || "0") > 0,
+                  )
+                  .map((invoice: any) => (
+                    <SelectItem key={invoice.id} value={invoice.id.toString()}>
+                      {invoice.invoiceNumber || `Invoice #${invoice.id}`}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             {(() => {
