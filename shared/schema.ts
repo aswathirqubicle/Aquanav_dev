@@ -636,6 +636,8 @@ export const payrollEntries = pgTable("payroll_entries", {
   year: integer("year").notNull(),
   workingDays: integer("working_days").notNull(),
   basicSalary: decimal("basic_salary", { precision: 10, scale: 2 }),
+  totalAdditions: decimal("total_additions", { precision: 10, scale: 2 }),
+  totalDeductions: decimal("total_deductions", { precision: 10, scale: 2 }),
   additions: json("additions")
     .$type<{ description: string; amount: number; note?: string }[]>()
     .default([]),

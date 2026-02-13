@@ -535,6 +535,45 @@ export default function ProformaInvoicesIndex() {
     }
   };
 
+    const handleDuplicateProforma = (proforma: ProformaInvoice) => {
+    const selectedCustomer = customers?.find(
+      (c) => c.id === proforma.customerId
+    );
+
+    const vatTreatment = selectedCustomer?.vatTreatment || null;
+    const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
+
+    setCustomerVatTreatment(vatTreatment);
+    // Populate form with existing data
+    setFormData({
+      customerId: proforma.customerId,
+      projectId: proforma.projectId,
+      quotationId: proforma.quotationId,
+      invoiceDate: new Date().toISOString().split('T')[0],
+      validUntil: toInputDate(proforma.validUntil),
+      paymentTerms: proforma.paymentTerms || '',
+      deliveryTerms: proforma.deliveryTerms || '',
+      bankAccount: proforma.bankAccount || '',
+      billingAddress: proforma.billingAddress || '',
+      termsAndConditions: proforma.termsAndConditions || '',
+      remarks: proforma.remarks || '',
+      items: proforma.items || [],
+      discount: proforma.discount || '0',
+    });
+    // 🔹 ensure new item uses correct tax
+    setNewItem({
+      description: "",
+      quantity: 1,
+      unitPrice: 0,
+      taxRate: defaultTaxRate,
+    });
+
+    setIsEditingProforma(false);
+    setIsDetailsOpen(false);
+    setIsDialogOpen(true);
+  };
+
+
   return (
     <div className="container mx-auto p-4 md:p-6">
       {/* Header */}
@@ -1582,7 +1621,10 @@ export default function ProformaInvoicesIndex() {
                   <Edit className="h-4 w-4 mr-1" />
                   Edit
                 </Button>
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  onClick={() => handleDuplicateProforma(selectedProforma)}
+                >
                   <Copy className="h-4 w-4 mr-1" />
                   Duplicate
                 </Button>

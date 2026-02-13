@@ -7282,11 +7282,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Generate invoice number
-        const invoiceNumber = `INV-${Date.now()}`;
+        // const invoiceNumber = `INV-${Date.now()}`;
 
         // Create sales invoice data
         const invoiceData = {
-          invoiceNumber,
+          // invoiceNumber,
           customerId: proforma.customerId,
           projectId: proforma.projectId,
           quotationId: proforma.quotationId,

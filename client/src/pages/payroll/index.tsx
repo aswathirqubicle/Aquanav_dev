@@ -63,6 +63,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { Employee } from "@shared/schema";
+import * as XLSX from "xlsx";
 
 interface PayrollEntry {
   id: number;
@@ -147,12 +148,12 @@ export default function PayrollIndex() {
           "Content-Type": "application/json",
         },
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
         throw new Error(errorData.message || `Server error: ${response.status}`);
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
@@ -215,8 +216,8 @@ export default function PayrollIndex() {
       });
       // Invalidate both general payroll queries and specific month/year queries
       queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }] 
+      queryClient.invalidateQueries({
+        queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }]
       });
     },
     onError: (error: Error) => {
@@ -250,8 +251,8 @@ export default function PayrollIndex() {
         description: `${variables.length} payroll ${variables.length === 1 ? 'entry has' : 'entries have'} been approved successfully.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }] 
+      queryClient.invalidateQueries({
+        queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }]
       });
       setSelectedPayrollIds([]);
     },
@@ -459,13 +460,17 @@ export default function PayrollIndex() {
       const payrollDataPromises = enrichedPayrollEntries.map(async (entry) => {
         try {
           const [additionsRes, deductionsRes] = await Promise.all([
-            apiRequest("GET", `/api/payroll/${entry.id}/additions`),
-            apiRequest("GET", `/api/payroll/${entry.id}/deductions`),
+            apiRequest(`/api/payroll/${entry.id}/additions`),
+            apiRequest(`/api/payroll/${entry.id}/deductions`),
           ]);
+
+          const additions = await additionsRes.json();
+          const deductions = await deductionsRes.json();
+
           return {
             entry,
-            additions: additionsRes || [],
-            deductions: deductionsRes || [],
+            additions: additions || [],
+            deductions: deductions || [],
           };
         } catch (error) {
           console.error(
@@ -486,7 +491,7 @@ export default function PayrollIndex() {
         const totalEarnings =
           parseFloat(entry.basicSalary) +
           parseFloat(entry.totalAdditions || "0");
-        const totalDeductions = Array.isArray(deductions) 
+        const totalDeductions = Array.isArray(deductions)
           ? deductions.reduce((sum, deduction) => sum + parseFloat(deduction.amount), 0)
           : 0;
 
@@ -546,15 +551,15 @@ export default function PayrollIndex() {
                 <span>${formatCurrency(entry.basicSalary)}</span>
               </div>
               ${additions
-                .map(
-                  (addition) => `
+            .map(
+              (addition) => `
                 <div class="amount-row">
                   <span>${addition.description}</span>
                   <span>${formatCurrency(addition.amount)}</span>
                 </div>
               `,
-                )
-                .join("")}
+            )
+            .join("")}
               <div class="amount-row total-row">
                 <span>Total Earnings</span>
                 <span>${formatCurrency(totalEarnings)}</span>
@@ -563,25 +568,24 @@ export default function PayrollIndex() {
 
             <div class="deductions-section">
               <div class="section-title deductions-title">Deductions</div>
-              ${
-                deductions.length === 0
-                  ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
-                  : deductions
-                      .map(
-                        (deduction) => `
+              ${deductions.length === 0
+            ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+            : deductions
+              .map(
+                (deduction) => `
                   <div class="amount-row">
                     <span>${deduction.description}</span>
                     <span>${formatCurrency(deduction.amount)}</span>
                   </div>
                 `,
-                      )
-                      .join("") +
-                    `
+              )
+              .join("") +
+            `
                 <div class="amount-row total-row">
                   <span>Total Deductions</span>
                   <span>${formatCurrency(totalDeductions)}</span>
                 </div>`
-              }
+          }
             </div>
 
             <div class="net-pay">
@@ -621,6 +625,73 @@ export default function PayrollIndex() {
       toast({
         title: "Error",
         description: "Failed to generate payslips",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  const handleExportExcel = () => {
+    if (!enrichedPayrollEntries.length) {
+      toast({
+        title: "No Data",
+        description: "No payroll entries found to export",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const data = enrichedPayrollEntries.map((entry) => ({
+        Employee: `${entry.employee?.firstName} ${entry.employee?.lastName}`,
+        Code: entry.employee?.employeeCode,
+        Position: entry.employee?.position,
+        Department: entry.employee?.department,
+        Month: getMonthName(entry.month),
+        Year: entry.year,
+        "Working Days": entry.workingDays,
+        "Basic Salary": parseFloat(entry.basicSalary),
+        "Total Additions": parseFloat(entry.totalAdditions || "0"),
+        "Total Deductions": parseFloat(entry.totalDeductions || "0"),
+        "Net Amount": parseFloat(entry.totalAmount),
+        Status: entry.status.toUpperCase(),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Payroll");
+
+      // Set column widths
+      const wscols = [
+        { wch: 25 }, // Employee
+        { wch: 10 }, // Code
+        { wch: 20 }, // Position
+        { wch: 15 }, // Department
+        { wch: 12 }, // Month
+        { wch: 8 },  // Year
+        { wch: 12 }, // Working Days
+        { wch: 15 }, // Basic Salary
+        { wch: 15 }, // Total Additions
+        { wch: 15 }, // Total Deductions
+        { wch: 15 }, // Net Amount
+        { wch: 12 }, // Status
+      ];
+      worksheet["!cols"] = wscols;
+
+      XLSX.writeFile(
+        workbook,
+        `Payroll_${getMonthName(selectedMonth)}_${selectedYear}.xlsx`
+      );
+
+      toast({
+        title: "Success",
+        description: "Payroll data exported to Excel successfully",
+      });
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export payroll data to Excel",
         variant: "destructive",
       });
     }
@@ -1148,7 +1219,7 @@ export default function PayrollIndex() {
                     Warning
                   </h4>
                   <p className="text-sm text-red-700 dark:text-red-300">
-                    This will permanently delete all payroll entries for {getMonthName(clearMonth)} {clearYear}. 
+                    This will permanently delete all payroll entries for {getMonthName(clearMonth)} {clearYear}.
                     This action cannot be undone.
                   </p>
                 </div>
@@ -1265,7 +1336,7 @@ export default function PayrollIndex() {
                   {getMonthName(selectedMonth)} {selectedYear} Payroll
                 </CardTitle>
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={handleExportExcel}>
                     <Download className="h-4 w-4 mr-2" />
                     Export Excel
                   </Button>
@@ -1325,57 +1396,57 @@ export default function PayrollIndex() {
                       )}
                     </div>
                   )}
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {user?.role === "admin" && (
-                          <TableHead className="w-10 sm:w-12 px-1 sm:px-2">
-                            <Checkbox
-                              className="border-2 border-slate-400 dark:border-slate-500"
-                              checked={
-                                enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").length > 0 &&
-                                enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").every(e => selectedPayrollIds.includes(e.id))
-                              }
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  const draftIds = enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").map(e => e.id);
-                                  setSelectedPayrollIds(draftIds);
-                                } else {
-                                  setSelectedPayrollIds([]);
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {user?.role === "admin" && (
+                            <TableHead className="w-10 sm:w-12 px-1 sm:px-2">
+                              <Checkbox
+                                className="border-2 border-slate-400 dark:border-slate-500"
+                                checked={
+                                  enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").length > 0 &&
+                                  enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").every(e => selectedPayrollIds.includes(e.id))
                                 }
-                              }}
-                            />
-                          </TableHead>
-                        )}
-                        <TableHead className="min-w-[100px] sm:min-w-[120px]">Employee</TableHead>
-                        <TableHead className="hidden md:table-cell min-w-[100px]">Month/Year</TableHead>
-                        <TableHead className="hidden lg:table-cell min-w-[60px] text-center">Days</TableHead>
-                        <TableHead className="hidden lg:table-cell min-w-[90px]">Basic Salary</TableHead>
-                        <TableHead className="min-w-[90px] sm:min-w-[100px]">Total</TableHead>
-                        <TableHead className="min-w-[70px] sm:min-w-[80px]">Status</TableHead>
-                        <TableHead className="min-w-[80px] sm:min-w-[120px]">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {enrichedPayrollEntries.map((entry) => (
-                        <PayslipTableRow 
-                          key={entry.id} 
-                          entry={entry} 
-                          isAdmin={user?.role === "admin"}
-                          isSelected={selectedPayrollIds.includes(entry.id)}
-                          onSelect={(id, checked) => {
-                            if (checked) {
-                              setSelectedPayrollIds(prev => [...prev, id]);
-                            } else {
-                              setSelectedPayrollIds(prev => prev.filter(pId => pId !== id));
-                            }
-                          }}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    const draftIds = enrichedPayrollEntries.filter(e => e.status === "draft" || e.status === "generated").map(e => e.id);
+                                    setSelectedPayrollIds(draftIds);
+                                  } else {
+                                    setSelectedPayrollIds([]);
+                                  }
+                                }}
+                              />
+                            </TableHead>
+                          )}
+                          <TableHead className="min-w-[100px] sm:min-w-[120px]">Employee</TableHead>
+                          <TableHead className="hidden md:table-cell min-w-[100px]">Month/Year</TableHead>
+                          <TableHead className="hidden lg:table-cell min-w-[60px] text-center">Days</TableHead>
+                          <TableHead className="hidden lg:table-cell min-w-[90px]">Basic Salary</TableHead>
+                          <TableHead className="min-w-[90px] sm:min-w-[100px]">Total</TableHead>
+                          <TableHead className="min-w-[70px] sm:min-w-[80px]">Status</TableHead>
+                          <TableHead className="min-w-[80px] sm:min-w-[120px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enrichedPayrollEntries.map((entry) => (
+                          <PayslipTableRow
+                            key={entry.id}
+                            entry={entry}
+                            isAdmin={user?.role === "admin"}
+                            isSelected={selectedPayrollIds.includes(entry.id)}
+                            onSelect={(id, checked) => {
+                              if (checked) {
+                                setSelectedPayrollIds(prev => [...prev, id]);
+                              } else {
+                                setSelectedPayrollIds(prev => prev.filter(pId => pId !== id));
+                              }
+                            }}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </>
               )}
             </CardContent>
@@ -1476,10 +1547,10 @@ export default function PayrollIndex() {
                         </div>
                       </DialogContent>
                     </Dialog>
-                    <EmployeeSalarySlipsDialog 
-                      employees={employees || []} 
-                      formatCurrency={formatCurrency} 
-                      getMonthName={getMonthName} 
+                    <EmployeeSalarySlipsDialog
+                      employees={employees || []}
+                      formatCurrency={formatCurrency}
+                      getMonthName={getMonthName}
                     />
                   </div>
                 </div>
@@ -1489,15 +1560,15 @@ export default function PayrollIndex() {
                     Annual Reports
                   </h4>
                   <div className="space-y-3">
-                    <AnnualPayrollReportDialog 
-                      employees={employees || []} 
-                      formatCurrency={formatCurrency} 
-                      getMonthName={getMonthName} 
+                    <AnnualPayrollReportDialog
+                      employees={employees || []}
+                      formatCurrency={formatCurrency}
+                      getMonthName={getMonthName}
                     />
-                    <EmployeeCostAnalysisDialog 
-                      employees={employees || []} 
-                      formatCurrency={formatCurrency} 
-                      getMonthName={getMonthName} 
+                    <EmployeeCostAnalysisDialog
+                      employees={employees || []}
+                      formatCurrency={formatCurrency}
+                      getMonthName={getMonthName}
                     />
                     <Button variant="outline" className="w-full justify-start h-auto py-3">
                       <Download className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -1515,14 +1586,14 @@ export default function PayrollIndex() {
 }
 
 // Payslip Table Row Component
-function PayslipTableRow({ 
-  entry, 
-  isSelected, 
-  onSelect, 
-  isAdmin 
-}: { 
-  entry: PayrollEntry; 
-  isSelected?: boolean; 
+function PayslipTableRow({
+  entry,
+  isSelected,
+  onSelect,
+  isAdmin
+}: {
+  entry: PayrollEntry;
+  isSelected?: boolean;
   onSelect?: (id: number, checked: boolean) => void;
   isAdmin?: boolean;
 }) {
@@ -1955,15 +2026,15 @@ function GeneratePayslipButton({
                 <span>${formatCurrency(payrollEntry.basicSalary)}</span>
               </div>
               ${additions
-                .map(
-                  (addition) => `
+          .map(
+            (addition) => `
                 <div class="amount-row">
                   <span>${addition.description}</span>
                   <span>${formatCurrency(addition.amount)}</span>
                 </div>
               `,
-                )
-                .join("")}
+          )
+          .join("")}
               <div class="amount-row total-row">
                 <span>Total Earnings</span>
                 <span>${formatCurrency(totalEarnings)}</span>
@@ -1972,25 +2043,24 @@ function GeneratePayslipButton({
 
             <div class="deductions-section">
               <div class="section-title deductions-title">Deductions</div>
-              ${
-                deductions.length === 0
-                  ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
-                  : deductions
-                      .map(
-                        (deduction) => `
+              ${deductions.length === 0
+          ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+          : deductions
+            .map(
+              (deduction) => `
                   <div class="amount-row">
                     <span>${deduction.description}</span>
                     <span>${formatCurrency(deduction.amount)}</span>
                   </div>
                 `,
-                      )
-                      .join("") +
-                    `
+            )
+            .join("") +
+          `
                 <div class="amount-row total-row">
                   <span>Total Deductions</span>
                   <span>${formatCurrency(totalDeductions)}</span>
                 </div>`
-              }
+        }
             </div>
 
             <div class="net-pay">
@@ -2037,13 +2107,13 @@ function GeneratePayslipButton({
     try {
       // First generate the payslip
       await generateSinglePayslip();
-      
+
       // Then update status to paid (this will also create double-entry accounting records on the server)
       await updatePayrollStatusMutation.mutateAsync(payrollEntry.id);
-      
+
       // Close the dialog after successful completion
       setIsDialogOpen(false);
-      
+
       toast({
         title: "Success",
         description: "Payslip generated successfully and payroll entry marked as paid.",
@@ -2323,15 +2393,15 @@ function PrintPayslipButton({
                 <span>${formatCurrency(payrollEntry.basicSalary)}</span>
               </div>
               ${additions
-                .map(
-                  (addition) => `
+          .map(
+            (addition) => `
                 <div class="amount-row">
                   <span>${addition.description}</span>
                   <span>${formatCurrency(addition.amount)}</span>
                 </div>
               `,
-                )
-                .join("")}
+          )
+          .join("")}
               <div class="amount-row total-row">
                 <span>Total Earnings</span>
                 <span>${formatCurrency(totalEarnings)}</span>
@@ -2340,25 +2410,24 @@ function PrintPayslipButton({
 
             <div class="deductions-section">
               <div class="section-title deductions-title">Deductions</div>
-              ${
-                deductions.length === 0
-                  ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
-                  : deductions
-                      .map(
-                        (deduction) => `
+              ${deductions.length === 0
+          ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+          : deductions
+            .map(
+              (deduction) => `
                   <div class="amount-row">
                     <span>${deduction.description}</span>
                     <span>${formatCurrency(deduction.amount)}</span>
                   </div>
                 `,
-                      )
-                      .join("") +
-                    `
+            )
+            .join("") +
+          `
                 <div class="amount-row total-row">
                   <span>Total Deductions</span>
                   <span>${formatCurrency(totalDeductions)}</span>
                 </div>`
-              }
+        }
             </div>
 
             <div class="net-pay">
@@ -2559,7 +2628,7 @@ function PayslipDialog({
                   <span>
                     {formatCurrency(
                       parseFloat(payrollEntry.basicSalary) +
-                        parseFloat(payrollEntry.totalAdditions || "0"),
+                      parseFloat(payrollEntry.totalAdditions || "0"),
                     )}
                   </span>
                 </div>
@@ -2657,14 +2726,14 @@ function PayslipDialog({
 }
 
 // Payroll History Tab Component
-function PayrollHistoryTab({ 
-  payrollEntries, 
-  formatCurrency, 
-  getMonthName 
-}: { 
-  payrollEntries: any[], 
+function PayrollHistoryTab({
+  payrollEntries,
+  formatCurrency,
+  getMonthName
+}: {
+  payrollEntries: any[],
   formatCurrency: (amount: string | number) => string,
-  getMonthName: (month: number) => string 
+  getMonthName: (month: number) => string
 }) {
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
@@ -2676,8 +2745,8 @@ function PayrollHistoryTab({
   ).sort((a, b) => parseInt(b) - parseInt(a));
 
   // Filter entries by selected year
-  const filteredEntries = selectedYear === "all" 
-    ? payrollEntries 
+  const filteredEntries = selectedYear === "all"
+    ? payrollEntries
     : payrollEntries.filter(entry => entry.year.toString() === selectedYear);
 
   // Group entries by period (month-year)
@@ -2710,8 +2779,8 @@ function PayrollHistoryTab({
   ).map(([key, period]) => ({
     key,
     ...period,
-    overallStatus: period.statuses.has('paid') ? 'paid' : 
-                   period.statuses.has('approved') ? 'approved' : 'draft'
+    overallStatus: period.statuses.has('paid') ? 'paid' :
+      period.statuses.has('approved') ? 'approved' : 'draft'
   })).sort((a, b) => b.year - a.year || b.month - a.month);
 
   const getStatusBadge = (status: string) => {
@@ -2786,7 +2855,7 @@ function PayrollHistoryTab({
                 No payroll history
               </h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm">
-                {selectedYear === "all" 
+                {selectedYear === "all"
                   ? "Previous payroll records will appear here"
                   : `No payroll records found for ${selectedYear}`
                 }
@@ -2826,16 +2895,16 @@ function PayrollHistoryTab({
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => handleViewPeriod(period)}
                               >
                                 <Eye className="h-4 w-4 mr-1" />
                                 View
                               </Button>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => handleExportPeriod(period)}
                               >
@@ -2886,17 +2955,17 @@ function PayrollHistoryTab({
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col space-y-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 className="h-8 px-2 justify-start"
                                 onClick={() => handleViewPeriod(period)}
                               >
                                 <Eye className="h-3 w-3 mr-1" />
                                 View
                               </Button>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 className="h-8 px-2 justify-start"
                                 onClick={() => handleExportPeriod(period)}
@@ -2952,18 +3021,18 @@ function PayrollHistoryTab({
                       </div>
 
                       <div className="flex flex-col space-y-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full justify-center"
                           onClick={() => handleViewPeriod(period)}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full justify-center"
                           onClick={() => handleExportPeriod(period)}
                         >
@@ -3409,9 +3478,9 @@ function AnnualPayrollReportDialog({
             </thead>
             <tbody>
               ${monthlyData.map((monthData, index) => {
-                const percentage = totalAnnualPayroll > 0 ? (monthData.total / totalAnnualPayroll * 100) : 0;
-                const avgPerEmployee = monthData.employeeCount > 0 ? monthData.total / monthData.employeeCount : 0;
-                return `
+        const percentage = totalAnnualPayroll > 0 ? (monthData.total / totalAnnualPayroll * 100) : 0;
+        const avgPerEmployee = monthData.employeeCount > 0 ? monthData.total / monthData.employeeCount : 0;
+        return `
                   <tr>
                     <td><strong>${getMonthName(monthData.month)}</strong></td>
                     <td class="number">${monthData.employeeCount}</td>
@@ -3420,7 +3489,7 @@ function AnnualPayrollReportDialog({
                     <td class="number">${percentage.toFixed(1)}%</td>
                   </tr>
                 `;
-              }).join('')}
+      }).join('')}
               <tr class="total-row">
                 <td><strong>Annual Total</strong></td>
                 <td class="number"><strong>${totalEmployeesProcessed}</strong></td>
@@ -3444,11 +3513,11 @@ function AnnualPayrollReportDialog({
             </thead>
             <tbody>
               ${Object.entries(departmentTotals)
-                .sort(([,a], [,b]) => b.totalPayroll - a.totalPayroll)
-                .map(([dept, data]) => {
-                  const percentage = totalAnnualPayroll > 0 ? (data.totalPayroll / totalAnnualPayroll * 100) : 0;
-                  const avgPerEmployee = data.employeeCount > 0 ? data.totalPayroll / data.employeeCount : 0;
-                  return `
+          .sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)
+          .map(([dept, data]) => {
+            const percentage = totalAnnualPayroll > 0 ? (data.totalPayroll / totalAnnualPayroll * 100) : 0;
+            const avgPerEmployee = data.employeeCount > 0 ? data.totalPayroll / data.employeeCount : 0;
+            return `
                     <tr>
                       <td><strong>${dept}</strong></td>
                       <td class="number">${data.employeeCount}</td>
@@ -3457,7 +3526,7 @@ function AnnualPayrollReportDialog({
                       <td class="number">${percentage.toFixed(1)}%</td>
                     </tr>
                   `;
-                }).join('')}
+          }).join('')}
               <tr class="total-row">
                 <td><strong>Grand Total</strong></td>
                 <td class="number"><strong>${Object.values(departmentTotals).reduce((sum, dept) => sum + dept.employeeCount, 0)}</strong></td>
@@ -3485,10 +3554,10 @@ function AnnualPayrollReportDialog({
             </thead>
             <tbody>
               ${Object.values(employeeAnnualTotals)
-                .sort((a, b) => b.totalPayroll - a.totalPayroll)
-                .map((empData) => {
-                  const percentage = totalAnnualPayroll > 0 ? (empData.totalPayroll / totalAnnualPayroll * 100) : 0;
-                  return `
+          .sort((a, b) => b.totalPayroll - a.totalPayroll)
+          .map((empData) => {
+            const percentage = totalAnnualPayroll > 0 ? (empData.totalPayroll / totalAnnualPayroll * 100) : 0;
+            return `
                     <tr>
                       <td><strong>${empData.employee?.firstName || 'N/A'} ${empData.employee?.lastName || ''}</strong></td>
                       <td>${empData.employee?.department || 'N/A'}</td>
@@ -3499,7 +3568,7 @@ function AnnualPayrollReportDialog({
                       <td class="number">${percentage.toFixed(1)}%</td>
                     </tr>
                   `;
-                }).join('')}
+          }).join('')}
               <tr class="total-row">
                 <td colspan="4"><strong>Grand Total</strong></td>
                 <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
@@ -3535,9 +3604,9 @@ function AnnualPayrollReportDialog({
               </div>
               <div class="summary-card">
                 <div class="summary-label">Top Department</div>
-                <div class="summary-value" style="font-size: 16px;">${Object.entries(departmentTotals).sort(([,a], [,b]) => b.totalPayroll - a.totalPayroll)[0]?.[0] || 'N/A'}</div>
+                <div class="summary-value" style="font-size: 16px;">${Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[0] || 'N/A'}</div>
                 <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
-                  ${formatCurrency(Object.entries(departmentTotals).sort(([,a], [,b]) => b.totalPayroll - a.totalPayroll)[0]?.[1]?.totalPayroll || 0)}
+                  ${formatCurrency(Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[1]?.totalPayroll || 0)}
                 </div>
               </div>
             </div>
@@ -3635,7 +3704,7 @@ function AnnualPayrollReportDialog({
 
           <div className="bg-blue-50 dark:bg-blue-900/20 p-3 md:p-4 rounded-lg border border-blue-200 dark:border-blue-800">
             <p className="text-xs md:text-sm text-blue-800 dark:text-blue-300">
-              <strong>Note:</strong> This report will include all payroll data for {selectedYear}. 
+              <strong>Note:</strong> This report will include all payroll data for {selectedYear}.
               The generation may take a few moments for large datasets.
             </p>
           </div>
@@ -3772,8 +3841,8 @@ function EmployeeCostAnalysisDialog({
       // Calculate averages for departments
       Object.keys(departmentAnalysis).forEach(dept => {
         const entries = departmentAnalysis[dept].payrollEntries;
-        departmentAnalysis[dept].avgMonthlyCost = entries.length > 0 
-          ? departmentAnalysis[dept].totalCost / entries.length 
+        departmentAnalysis[dept].avgMonthlyCost = entries.length > 0
+          ? departmentAnalysis[dept].totalCost / entries.length
           : 0;
         departmentAnalysis[dept].employeeCount = departmentAnalysis[dept].employees.size;
         if (departmentAnalysis[dept].minMonthlyCost === Infinity) {
@@ -3850,9 +3919,9 @@ function EmployeeCostAnalysisDialog({
       const highestPaidEmployee = individualAnalysis[0];
       const lowestPaidEmployee = individualAnalysis[individualAnalysis.length - 1];
       const mostExpensiveDept = Object.entries(departmentAnalysis)
-        .sort(([,a], [,b]) => b.totalCost - a.totalCost)[0];
+        .sort(([, a], [, b]) => b.totalCost - a.totalCost)[0];
       const leastExpensiveDept = Object.entries(departmentAnalysis)
-        .sort(([,a], [,b]) => a.totalCost - b.totalCost)[0];
+        .sort(([, a], [, b]) => a.totalCost - b.totalCost)[0];
 
       // Generate HTML content for the cost analysis report
       const htmlContent = `
@@ -4094,11 +4163,11 @@ function EmployeeCostAnalysisDialog({
             </thead>
             <tbody>
               ${Object.entries(departmentAnalysis)
-                .sort(([,a], [,b]) => b.totalCost - a.totalCost)
-                .map(([dept, analysis]) => {
-                  const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
-                  const avgCostPerEmp = analysis.employeeCount > 0 ? analysis.totalCost / analysis.employeeCount : 0;
-                  return `
+          .sort(([, a], [, b]) => b.totalCost - a.totalCost)
+          .map(([dept, analysis]) => {
+            const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
+            const avgCostPerEmp = analysis.employeeCount > 0 ? analysis.totalCost / analysis.employeeCount : 0;
+            return `
                     <tr>
                       <td><strong>${dept}</strong></td>
                       <td class="number">${formatCurrency(analysis.totalCost)}</td>
@@ -4109,7 +4178,7 @@ function EmployeeCostAnalysisDialog({
                       <td class="number">${percentage.toFixed(1)}%</td>
                     </tr>
                   `;
-                }).join('')}
+          }).join('')}
               <tr class="total-row">
                 <td><strong>Total</strong></td>
                 <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
@@ -4136,10 +4205,10 @@ function EmployeeCostAnalysisDialog({
             </thead>
             <tbody>
               ${Object.entries(positionAnalysis)
-                .sort(([,a], [,b]) => b.totalCost - a.totalCost)
-                .map(([position, analysis]) => {
-                  const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
-                  return `
+          .sort(([, a], [, b]) => b.totalCost - a.totalCost)
+          .map(([position, analysis]) => {
+            const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
+            return `
                     <tr>
                       <td><strong>${position}</strong></td>
                       <td class="number">${formatCurrency(analysis.totalCost)}</td>
@@ -4149,7 +4218,7 @@ function EmployeeCostAnalysisDialog({
                       <td class="number">${percentage.toFixed(1)}%</td>
                     </tr>
                   `;
-                }).join('')}
+          }).join('')}
             </tbody>
           </table>
 
@@ -4198,8 +4267,8 @@ function EmployeeCostAnalysisDialog({
             </thead>
             <tbody>
               ${monthlyTrends.map(trend => {
-                const percentage = totalYearlyPayroll > 0 ? (trend.totalCost / totalYearlyPayroll * 100) : 0;
-                return `
+            const percentage = totalYearlyPayroll > 0 ? (trend.totalCost / totalYearlyPayroll * 100) : 0;
+            return `
                   <tr>
                     <td><strong>${trend.monthName}</strong></td>
                     <td class="number">${formatCurrency(trend.totalCost)}</td>
@@ -4208,7 +4277,7 @@ function EmployeeCostAnalysisDialog({
                     <td class="number">${percentage.toFixed(1)}%</td>
                   </tr>
                 `;
-              }).join('')}
+          }).join('')}
               <tr class="total-row">
                 <td><strong>Annual Total</strong></td>
                 <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
@@ -4324,7 +4393,7 @@ function EmployeeCostAnalysisDialog({
 
           <div className="bg-blue-50 dark:bg-blue-900/20 p-3 md:p-4 rounded-lg border border-blue-200 dark:border-blue-800">
             <p className="text-xs md:text-sm text-blue-800 dark:text-blue-300">
-              <strong>Note:</strong> This analysis will process all payroll data for {selectedYear} to provide 
+              <strong>Note:</strong> This analysis will process all payroll data for {selectedYear} to provide
               comprehensive cost insights across departments, positions, and individual employees.
             </p>
           </div>
@@ -4375,15 +4444,15 @@ function EmployeeSalarySlipsDialog({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
-  const [selectedMonths, setSelectedMonths] = useState<Array<{month: number, year: number}>>([]);
+  const [selectedMonths, setSelectedMonths] = useState<Array<{ month: number, year: number }>>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const handleEmployeeToggle = (employeeId: number) => {
-    setSelectedEmployees(prev => 
-      prev.includes(employeeId) 
+    setSelectedEmployees(prev =>
+      prev.includes(employeeId)
         ? prev.filter(id => id !== employeeId)
         : [...prev, employeeId]
     );
@@ -4400,7 +4469,7 @@ function EmployeeSalarySlipsDialog({
   const handleAddMonth = () => {
     const monthYear = { month: currentMonth, year: currentYear };
     const exists = selectedMonths.some(m => m.month === currentMonth && m.year === currentYear);
-    
+
     if (!exists) {
       setSelectedMonths(prev => [...prev, monthYear]);
     }
@@ -4703,8 +4772,8 @@ function EmployeeSalarySlipsDialog({
                 <div class="deductions-section">
                   <div class="section-title deductions-title">Deductions</div>
                   ${deductions.length === 0
-                    ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
-                    : deductions.map((deduction: any) => `
+                ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+                : deductions.map((deduction: any) => `
                       <div class="amount-row">
                         <span>${deduction.description}</span>
                         <span>${formatCurrency(deduction.amount)}</span>
@@ -4714,7 +4783,7 @@ function EmployeeSalarySlipsDialog({
                       <span>Total Deductions</span>
                       <span>${formatCurrency(totalDeductions)}</span>
                     </div>`
-                  }
+              }
                 </div>
 
                 <div class="net-pay">
@@ -4790,15 +4859,15 @@ function EmployeeSalarySlipsDialog({
               <h4 className="font-medium text-slate-900 dark:text-slate-100">
                 Select Employees ({selectedEmployees.length} selected)
               </h4>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleSelectAllEmployees}
               >
                 {selectedEmployees.length === employees.length ? "Deselect All" : "Select All"}
               </Button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto border rounded-lg p-4">
               {employees.map((employee) => (
                 <div key={employee.id} className="flex items-center space-x-3">
@@ -4809,7 +4878,7 @@ function EmployeeSalarySlipsDialog({
                     onChange={() => handleEmployeeToggle(employee.id)}
                     className="rounded border-gray-300"
                   />
-                  <label 
+                  <label
                     htmlFor={`employee-${employee.id}`}
                     className="text-sm cursor-pointer flex-1"
                   >
@@ -4826,7 +4895,7 @@ function EmployeeSalarySlipsDialog({
             <h4 className="font-medium text-slate-900 dark:text-slate-100">
               Select Months ({selectedMonths.length} selected)
             </h4>
-            
+
             <div className="flex gap-4 items-end">
               <div className="space-y-2">
                 <Label>Month</Label>
@@ -4878,7 +4947,7 @@ function EmployeeSalarySlipsDialog({
                 <Label>Selected Months:</Label>
                 <div className="flex flex-wrap gap-2">
                   {selectedMonths.map((monthYear, index) => (
-                    <div 
+                    <div
                       key={index}
                       className="flex items-center gap-2 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-full text-sm"
                     >
@@ -4981,17 +5050,15 @@ function PayrollDetailsDialog({
       note?: string;
     }) => {
       if (editingAddition) {
-        return apiRequest(
-          "PUT",
-          `/api/payroll/additions/${editingAddition.id}`,
-          data,
-        );
+        return apiRequest(`/api/payroll/additions/${editingAddition.id}`, {
+          method: "PUT",
+          body: data,
+        });
       } else {
-        return apiRequest(
-          "POST",
-          `/api/payroll/${payrollEntry.id}/additions`,
-          data,
-        );
+        return apiRequest(`/api/payroll/${payrollEntry.id}/additions`, {
+          method: "POST",
+          body: data,
+        });
       }
     },
     onSuccess: () => {
@@ -5024,17 +5091,15 @@ function PayrollDetailsDialog({
       note?: string;
     }) => {
       if (editingDeduction) {
-        return apiRequest(
-          "PUT",
-          `/api/payroll/deductions/${editingDeduction.id}`,
-          data,
-        );
+        return apiRequest(`/api/payroll/deductions/${editingDeduction.id}`, {
+          method: "PUT",
+          body: data,
+        });
       } else {
-        return apiRequest(
-          "POST",
-          `/api/payroll/${payrollEntry.id}/deductions`,
-          data,
-        );
+        return apiRequest(`/api/payroll/${payrollEntry.id}/deductions`, {
+          method: "POST",
+          body: data,
+        });
       }
     },
     onSuccess: () => {
@@ -5062,7 +5127,9 @@ function PayrollDetailsDialog({
 
   const deleteAdditionMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest("DELETE", `/api/payroll/additions/${id}`);
+       return apiRequest(`/api/payroll/additions/${id}`, {
+        method: "DELETE",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -5085,7 +5152,9 @@ function PayrollDetailsDialog({
 
   const deleteDeductionMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest("DELETE", `/api/payroll/deductions/${id}`);
+      return apiRequest(`/api/payroll/deductions/${id}`, {
+        method: "DELETE",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -5108,10 +5177,7 @@ function PayrollDetailsDialog({
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num);
+    return `AED ${num.toFixed(2)}`;
   };
 
   const handleAdditionSubmit = (e: React.FormEvent) => {

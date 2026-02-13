@@ -202,7 +202,10 @@ export default function GeneralLedgerPayable() {
         ],
       };
 
-      const response = await apiRequest("POST", "/api/general-ledger/journal", journalEntryData);
+      const response = await apiRequest("/api/general-ledger/journal", {
+        method: "POST",
+        body: journalEntryData,
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create payable journal entry");
@@ -229,7 +232,10 @@ export default function GeneralLedgerPayable() {
 
   const updateEntryMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await apiRequest("PUT", `/api/general-ledger/${id}`, data);
+      const response = await apiRequest(`/api/general-ledger/${id}`, {
+        method: "PUT",
+        body: data,
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to update entry");
@@ -294,7 +300,7 @@ export default function GeneralLedgerPayable() {
 
     if (formData.selectedAccountType === "project" && !formData.projectId) {
       toast({
-        title: "Error", 
+        title: "Error",
         description: "Please select a project",
         variant: "destructive",
       });
@@ -383,8 +389,8 @@ export default function GeneralLedgerPayable() {
           <p className="text-muted-foreground">Track all amounts owed to suppliers</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Button 
-            variant={showFilters ? "default" : "outline"} 
+          <Button
+            variant={showFilters ? "default" : "outline"}
             onClick={() => setShowFilters(!showFilters)}
           >
             <Search className="w-4 h-4 mr-2" />
@@ -489,8 +495,8 @@ export default function GeneralLedgerPayable() {
               </div>
               <div className="space-y-2">
                 <Label className="invisible">Actions</Label>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={clearFilters}
                   className="w-full"
                   disabled={!hasActiveFilters}
@@ -644,8 +650,8 @@ export default function GeneralLedgerPayable() {
               <Select
                 value={formData.selectedAccountType}
                 onValueChange={(value: "supplier" | "project" | "account") => {
-                  setFormData(prev => ({ 
-                    ...prev, 
+                  setFormData(prev => ({
+                    ...prev,
                     selectedAccountType: value,
                     selectedAccount: "",
                     selectedSupplierId: "",
@@ -672,8 +678,8 @@ export default function GeneralLedgerPayable() {
                   value={formData.selectedAccount || "default-supplier"}
                   onValueChange={(value) => {
                     const supplier = suppliers.find(s => s.id.toString() === value);
-                    setFormData(prev => ({ 
-                      ...prev, 
+                    setFormData(prev => ({
+                      ...prev,
                       selectedAccount: value === "default-supplier" ? "" : value,
                       selectedSupplierId: value === "default-supplier" ? "" : value,
                       entityName: supplier ? supplier.name : ""
@@ -704,8 +710,8 @@ export default function GeneralLedgerPayable() {
                   value={formData.selectedAccount || "default-project"}
                   onValueChange={(value) => {
                     const project = projects.find(p => p.id.toString() === value);
-                    setFormData(prev => ({ 
-                      ...prev, 
+                    setFormData(prev => ({
+                      ...prev,
                       selectedAccount: value === "default-project" ? "" : value,
                       projectId: value === "default-project" ? undefined : parseInt(value),
                       entityName: project ? project.title : ""
@@ -735,8 +741,8 @@ export default function GeneralLedgerPayable() {
                 <Select
                   value={formData.selectedAccount || "default-account"}
                   onValueChange={(value) => {
-                    setFormData(prev => ({ 
-                      ...prev, 
+                    setFormData(prev => ({
+                      ...prev,
                       selectedAccount: value === "default-account" ? "" : value,
                       entityName: value === "default-account" ? "" : value
                     }));

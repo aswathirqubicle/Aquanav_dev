@@ -10073,9 +10073,9 @@ class Storage {
       await db
         .update(payrollEntries)
         .set({
-          totalAdditions: totalAdditions.toString(),
-          totalDeductions: totalDeductions.toString(),
-          totalAmount: totalAmount.toString(),
+          totalAdditions: totalAdditions.toFixed(2),
+          totalDeductions: totalDeductions.toFixed(2),
+          totalAmount: totalAmount.toFixed(2),
         })
         .where(eq(payrollEntries.id, payrollEntryId));
 
@@ -10096,7 +10096,7 @@ class Storage {
 
         await db.execute(sql`
           UPDATE general_ledger_entries 
-          SET debit_amount = ${totalEarnings.toString()},
+          SET debit_amount = ${totalEarnings.toFixed(2)},
               description = ${salaryDescription}
           WHERE reference_type = 'manual' 
             AND reference_id = ${payrollEntryId} 
@@ -10105,7 +10105,7 @@ class Storage {
 
         await db.execute(sql`
           UPDATE general_ledger_entries 
-          SET credit_amount = ${totalEarnings.toString()},
+          SET credit_amount = ${totalEarnings.toFixed(2)},
               description = ${payableDescription}
           WHERE reference_type = 'manual' 
             AND reference_id = ${payrollEntryId} 
@@ -10354,7 +10354,7 @@ class Storage {
         .delete(payrollAdditions)
         .where(eq(payrollAdditions.id, id));
 
-      if (result.rowCount && result.rowCount > 0) {
+      if (result.count && result.count > 0) {
         // Update payroll entry totals
         await this.updatePayrollEntryTotals(addition.payrollEntryId);
         return true;
@@ -10493,7 +10493,7 @@ class Storage {
         .delete(payrollDeductions)
         .where(eq(payrollDeductions.id, id));
 
-      if (result.rowCount && result.rowCount > 0) {
+      if (result.count && result.count > 0) {
         // Update payroll entry totals
         await this.updatePayrollEntryTotals(deduction.payrollEntryId);
         return true;
