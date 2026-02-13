@@ -2,6 +2,7 @@ import { db } from "./db";
 import {
   getTableColumns,
   eq,
+  asc,
   desc,
   sql,
   and,
@@ -2118,7 +2119,82 @@ class Storage {
         .leftJoin(customers, eq(projects.customerId, customers.id))
         .where(eq(projects.id, id))
         .limit(1);
-      return result[0] as Project;
+        const res = result[0];
+        res.dailyActivities = await db
+        .select({
+          id: dailyActivities.id,
+          location: dailyActivities.location,
+          tasks: dailyActivities.completedTasks,
+          date: dailyActivities.date,
+          remarks: dailyActivities.remarks,
+        })
+        .from(dailyActivities)
+        .where(
+          and(
+            eq(dailyActivities.projectId, id),
+            isNotNull(dailyActivities.completedTasks),
+            ne(dailyActivities.completedTasks, ""),
+          ),
+        )
+        .orderBy(asc(dailyActivities.date));
+
+        res.plannedActivities = await db
+        .select({
+          id: dailyActivities.id,
+          location: dailyActivities.location,
+          tasks: dailyActivities.plannedTasks,
+          date: dailyActivities.date,
+          remarks: dailyActivities.remarks,
+        })
+        .from(dailyActivities)
+        .where(
+          and(
+            eq(dailyActivities.projectId, id),
+            isNotNull(dailyActivities.plannedTasks),
+            ne(dailyActivities.plannedTasks, ""),
+          ),
+        )
+        .orderBy(asc(dailyActivities.date));
+        const groups = await db
+          .select()
+          .from(projectPhotoGroups)
+          .where(eq(projectPhotoGroups.projectId, id))
+          .orderBy(desc(projectPhotoGroups.createdAt));
+
+        const groupIds = groups.map((g) => g.id);
+
+        let photos: any[] = [];
+
+        if (groupIds.length > 0) {
+          photos = await db
+            .select()
+            .from(projectPhotos)
+            .where(inArray(projectPhotos.groupId, groupIds));
+        }
+
+        // Group photos by groupId (optimized)
+        const photoMap = photos.reduce((acc: any, photo) => {
+          if (!acc[photo.groupId]) {
+            acc[photo.groupId] = [];
+          }
+          acc[photo.groupId].push(photo);
+          return acc;
+        }, {});
+
+        // Final gallery structure
+        const gallery = groups.map((group) => ({
+          id: group.id,
+          title: group.title, // 👈 photo group title becomes gallery title
+          description: group.description, // 👈 photo group title becomes gallery description
+          createdAt: group.createdAt,
+          photos: photoMap[group.id] || [],
+        }));
+
+        res.gallery = gallery;
+
+        res.consumables = await storage.getProjectConsumables(id);
+        console.log("hhhhh",res);
+      return res as Project;
     } catch (error: any) {
       await this.createErrorLog({
         message:

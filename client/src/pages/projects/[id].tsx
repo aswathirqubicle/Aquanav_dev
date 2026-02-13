@@ -962,7 +962,7 @@ export default function ProjectDetail() {
       remarks: activityData.remarks || "",
       photos: [],
     };
-    console.log(submitData);
+    console.log("submitData",submitData);
 
     createActivityMutation.mutate(submitData);
   };

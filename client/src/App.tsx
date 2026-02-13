@@ -12,6 +12,8 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
+import DailyReport from "@/pages/daily-report";
+import ConsumeReport from "@/pages/consume-report";
 import ProjectsIndex from "@/pages/projects/index";
 import ProjectCreate from "@/pages/projects/create";
 import ProjectDetail from "@/pages/projects/[id]";
@@ -63,6 +65,8 @@ function Router() {
           <Layout>
             <Switch>
               <Route path="/dashboard" component={Dashboard} />
+              <Route path="/daily-report" component={DailyReport} />
+              <Route path="/consume-report" component={ConsumeReport} />
               <Route path="/projects" component={ProjectsIndex} />
               <Route path="/projects/create" component={ProjectCreate} />
               <Route path="/projects/:id" component={ProjectDetail} />

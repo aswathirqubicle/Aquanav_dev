@@ -79,12 +79,18 @@ const navigation: NavItem[] = [
     icon: Ship,
     roles: ["admin", "project_manager", "finance", "employee"],
   },
-  // {
-  //   title: "Daily Activities",
-  //   href: "/projects/activities",
-  //   icon: Calendar,
-  //   roles: ["admin", "project_manager", "employee"],
-  // },
+  {
+    title: "Daily Report",
+    href: "/daily-report",
+    icon: Calendar,
+    roles: ["admin", "project_manager"],
+  },
+  {
+    title: "Consume Report",
+    href: "/consume-report",
+    icon: Calendar,
+    roles: ["admin", "project_manager"],
+  },
   // {
   //   title: "Photo Management",
   //   href: "/projects/photos",
@@ -253,8 +259,8 @@ const sections = [
     items: [
       "Dashboard",
       "All Projects",
-      "Daily Activities",
-      "Photo Management",
+      "Daily Report",
+      "Consume Report",
     ],
   },
   {

@@ -1170,8 +1170,78 @@ export function generateProjectPrintHTML(data: any): string {
       },
     });
 
-  const weeklyReports = data.reports || {};
-  const gallery = data.gallery || [];
+
+   const gallery = data.gallery || [];
+   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
+function getWeekRange(date: Date) {
+  const d = new Date(date);
+  const first = new Date(d);
+  first.setDate(d.getDate() - d.getDay()); // Sunday start
+
+  const last = new Date(first);
+  last.setDate(first.getDate() + 6);
+
+  return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
+}
+
+// Group by week
+  const weeklyReports = data.dailyActivities.reduce((acc: any, activity: any) => {
+    const weekKey = getWeekRange(activity.date);
+
+    if (!acc[weekKey]) {
+      acc[weekKey] = [];
+    }
+
+    acc[weekKey].push({
+      day_num: new Date(activity.date).getDay(),
+      date: new Date(activity.date).toLocaleDateString(),
+      location: activity.location,
+      activities: activity.tasks,
+    });
+
+    return acc;
+  }, {});
+
+  const plannedReports = data.plannedActivities.reduce((acc: any, activity: any) => {
+    const weekKey = getWeekRange(activity.date);
+
+    if (!acc[weekKey]) {
+      acc[weekKey] = [];
+    }
+
+    acc[weekKey].push({
+      day_num: new Date(activity.date).getDay(),
+      date: new Date(activity.date).toLocaleDateString(),
+      location: activity.location,
+      activities: activity.tasks,
+    });
+
+    return acc;
+  }, {});
+
+    const weeklyConsumables = (data.consumables || []).reduce((acc: any, entry: any) => {
+      const weekKey = getWeekRange(entry.date);
+
+      if (!acc[weekKey]) {
+        acc[weekKey] = [];
+      }
+
+      // Push each item separately (better for table display)
+      entry.items.forEach((item: any) => {
+        acc[weekKey].push({
+          date: new Date(entry.date).toLocaleDateString(),
+          createdBy: entry.createdByName,
+          itemName: item.itemName,
+          quantity: item.quantity,
+          unit: item.itemUnit,
+          unitCost: item.unitCost,
+          total: (item.quantity * parseFloat(item.unitCost)).toFixed(2),
+        });
+      });
+
+      return acc;
+    }, {});
+
 
   return `
 <!DOCTYPE html>
@@ -1182,10 +1252,37 @@ export function generateProjectPrintHTML(data: any): string {
 
 <style>
 @page { size: A4; margin: 0; }
+.print-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100px; /* FIXED HEIGHT */
+  background: white;
+  padding: 10px 20px;
+  z-index: 1000;
+}
+
+@media print {
+  .print-header {
+    position: fixed;
+    top: 0;
+  }
+
+  .footer {
+    position: fixed;
+    bottom: 0;
+  }
+
+  body {
+    margin-top: 120px;
+    margin-bottom: 80px; /* space for footer */
+  }
+}
 
 body {
   font-family: Inter, sans-serif;
-  margin: 0;
+  margin-top: 120px; /* IMPORTANT - space for header */
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -1330,13 +1427,14 @@ body {
 </head>
 
 <body onload="window.print()">
-<div class="container">
-
-<!-- HEADER -->
-<div class="top-header">
-  <img src="${data.company?.logo || ""}" />
-  <div>${data.company?.address || ""}</div>
+<div class="print-header">
+  <div class="top-header">
+    <img src="${data.company?.logo || ""}" />
+    <div>${data.company?.address || ""}</div>
+  </div>
 </div>
+
+<div class="container">
 
 <!-- TITLE -->
 <div class="main-title">
@@ -1467,19 +1565,86 @@ ${reports.map((r: any) => `
 
 ${gallery.map((g: any) => `
 <div class="page-break">
-<h2 style="text-align:center;color:red;">${g.title}</h2>
-<p style="text-align:center;">${g.description}</p>
-
+<h2 style="text-align:center;color:red;text-transform: capitalize;">${g.title}</h2>
+<h2 style="text-align:center;">${g.description}</h2>
 <table class="image-table">
 <tbody>
-${g.images.reduce((rows: any[], img: string, idx: number) => {
+${g.photos.reduce((rows: any[], img: any, idx: number) => {
   if (idx % 2 === 0) rows.push([img]);
   else rows[rows.length - 1].push(img);
   return rows;
-}, []).map((row: string[]) => `
+}, []).map((row: any[]) => `
 <tr>
-${row.map(img => `<td><img src="${img}" /></td>`).join("")}
+${row.map(img => `
+<td>
+  <img src="${img.filePath}" style="width:100%;height:auto;" />
+</td>
+`).join("")}
 ${row.length === 1 ? "<td></td>" : ""}
+</tr>
+`).join("")}
+</tbody>
+</table>
+</div>
+`).join("")}
+
+${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+<div class="page-break">
+<h2 style="text-align:center;color:red;">
+Consumables Used - ${week}
+</h2>
+
+<table class="project-table">
+<thead>
+<tr>
+<th>Date</th>
+<th>Item</th>
+<th>Qty</th>
+<th>Unit</th>
+<th>Unit Cost</th>
+<th>Total</th>
+<th>Created By</th>
+</tr>
+</thead>
+<tbody>
+${items.map((i: any) => `
+<tr>
+<td>${i.date}</td>
+<td>${i.itemName}</td>
+<td>${i.quantity}</td>
+<td>${i.unit}</td>
+<td>${i.unitCost}</td>
+<td>${i.total}</td>
+<td>${i.createdBy}</td>
+</tr>
+`).join("")}
+</tbody>
+</table>
+</div>
+`).join("")}
+
+${Object.entries(plannedReports).map(([week, reports]: any) => `
+<div class="page-break">
+<h2 style="text-align:center;color:red;">
+Work Planned for the Week - ${week}
+</h2>
+
+<table class="project-table">
+<thead>
+<tr>
+<th>Day</th>
+<th>Date</th>
+<th>Location</th>
+<th>Activities</th>
+</tr>
+</thead>
+<tbody>
+${reports.map((r: any) => `
+<tr>
+<td>Day ${r.day_num}</td>
+<td>${r.date}</td>
+<td>${r.location || ""}</td>
+<td>${r.activities || ""}</td>
 </tr>
 `).join("")}
 </tbody>
