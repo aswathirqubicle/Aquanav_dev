@@ -1171,18 +1171,18 @@ export function generateProjectPrintHTML(data: any): string {
     });
 
 
-   const gallery = data.gallery || [];
+  const gallery = data.gallery || [];
    // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
-function getWeekRange(date: Date) {
-  const d = new Date(date);
-  const first = new Date(d);
-  first.setDate(d.getDate() - d.getDay()); // Sunday start
+  function getWeekRange(date: Date) {
+    const d = new Date(date);
+    const first = new Date(d);
+    first.setDate(d.getDate() - d.getDay()); // Sunday start
 
-  const last = new Date(first);
-  last.setDate(first.getDate() + 6);
+    const last = new Date(first);
+    last.setDate(first.getDate() + 6);
 
-  return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
-}
+    return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
+  }
 
 // Group by week
   const weeklyReports = data.dailyActivities.reduce((acc: any, activity: any) => {
@@ -1251,60 +1251,78 @@ function getWeekRange(date: Date) {
 <title>Weekly Report</title>
 
 <style>
-@page { size: A4; margin: 0; }
-.print-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 100px; /* FIXED HEIGHT */
-  background: white;
-  padding: 10px 20px;
-  z-index: 1000;
+@page {
+  size: A4;
+  margin: 0;
 }
 
-@media print {
-  .print-header {
-    position: fixed;
-    top: 0;
-  }
-
-  .footer {
-    position: fixed;
-    bottom: 0;
-  }
-
-  body {
-    margin-top: 120px;
-    margin-bottom: 80px; /* space for footer */
-  }
-}
-
+/* ===== BODY ===== */
 body {
   font-family: Inter, sans-serif;
-  margin-top: 120px; /* IMPORTANT - space for header */
+  margin: 0;
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 
-.container {
-  background: #fff;
-  max-width: 900px;
-  margin: auto;
-  padding: 10px;
+/* ===== FIXED HEADER ===== */
+.print-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100px;               /* MUST MATCH CONTAINER PADDING */
+  background: #ffffff;
+  z-index: 1000;
+  padding: 10px 20px;
+  border-bottom: 1px solid #0019A5;
 }
 
 .top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 3px solid #0019A5;
-  padding-bottom: 10px;
 }
 
-.top-header img { height: 60px; }
+.top-header img {
+  height: 60px;
+}
 
+/* ===== FIXED FOOTER ===== */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;                /* MUST MATCH CONTAINER PADDING */
+  background: #ffffff;
+  border-top: 1px solid #0019A5;
+  border-bottom: 1px solid #0019A5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer-content {
+  display: flex;
+  gap: 20px;
+  font-weight: bold;
+  color: #0019A5;
+}
+
+/* ===== MAIN CONTAINER ===== */
+.container {
+  background: #fff;
+  max-width: 900px;
+  margin: auto;
+
+  padding-top: 130px;   /* header height + spacing */
+  padding-bottom: 100px; /* footer height + spacing */
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* ===== TITLES ===== */
 .main-title {
   text-align: center;
   margin: 20px 0;
@@ -1315,6 +1333,7 @@ body {
 .highlight { color: red; }
 .vessel { color: #0019A5; }
 
+/* ===== SHIP IMAGE ===== */
 .ship-image img {
   width: 100%;
   max-height: 200px;
@@ -1322,6 +1341,7 @@ body {
   border-radius: 15px;
 }
 
+/* ===== TABLES ===== */
 .project-table {
   width: 100%;
   border-collapse: collapse;
@@ -1340,6 +1360,7 @@ body {
   text-align: center;
 }
 
+/* ===== SECTION TITLE ===== */
 .section-title {
   background: #c00000;
   color: white;
@@ -1348,6 +1369,7 @@ body {
   margin-top: 20px;
 }
 
+/* ===== STEPS TABLE ===== */
 .steps-table {
   width: 100%;
   border-collapse: collapse;
@@ -1365,28 +1387,10 @@ body {
   border: 1px solid #ccc;
   font-size: 10px;
   padding: 6px;
+  vertical-align: top;
 }
 
-.footer {
-  border-top: 1px solid #0019A5;
-  border-bottom: 1px solid #0019A5;
-  text-align: center;
-  padding: 10px 0;
-  margin-top: 20px;
-}
-
-.footer-content {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  font-weight: bold;
-  color: #0019A5;
-}
-
-.page-break {
-  page-break-before: always;
-}
-
+/* ===== IMAGE GALLERY ===== */
 .image-table {
   width: 100%;
   border-collapse: collapse;
@@ -1402,27 +1406,56 @@ body {
   height: 230px;
   object-fit: contain;
 }
-.steps-table {
-  width: 100%;
-  table-layout: fixed; /* VERY IMPORTANT */
-  border-collapse: collapse;
+
+/* ===== PAGE BREAK ===== */
+.page-break {
+  page-break-before: always;
+  margin-top: 140px;
 }
 
-.steps-table th,
-.steps-table td {
-  border: 1px solid #ccc;
-  padding: 6px;
-  vertical-align: top;
+.highlights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  padding: 6px 0;
+  font-weight: bold;
+  font-size: 14px;
+  border-bottom: 2px solid #0019A5;
 }
 
+.left-title {
+  text-transform: uppercase;
+}
+
+.right-date {
+  font-size: 12px;
+  color: #0019A5;
+}
+
+/* ===== PRINT MODE ===== */
 @media print {
+  body {
+    margin: 0;
+  }
+
+  .print-header {
+    position: fixed;
+    top: 0;
+  }
+
   .footer {
     position: fixed;
     bottom: 0;
-    left: 0;
-    right: 0;
   }
+
+  .page-break {
+    page-break-before: always;
+    margin-top: 140px;
+  }
+
 }
+
 </style>
 </head>
 
@@ -1446,6 +1479,14 @@ body {
 <!-- IMAGE -->
 <div class="ship-image">
   <img src="${data.vesselImage || ""}" />
+</div>
+
+<!-- PROJECT HIGHLIGHTS HEADER -->
+<div class="highlights-header">
+  <div class="left-title">PROJECT HIGHLIGHTS</div>
+  <div class="right-date">
+    Report Date: ${new Date().toLocaleDateString()}
+  </div>
 </div>
 
 <!-- PROJECT TABLE -->
@@ -1527,7 +1568,7 @@ ${
 </table>
 
 ${data.reportImage ? `
-<br/>
+  <div class="page-break">
 <h2 style="text-align:center;color:red;">WORK PLAN</h2>
 <div class="ship-image">
 <img src="${data.reportImage}" />
