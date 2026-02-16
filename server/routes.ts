@@ -1741,6 +1741,31 @@ ${reports
   )
   .join("")}
 
+  ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
+  <div class="page-break">
+<h2 style="text-align:center;color:red;">
+Work Remaining Days
+</h2>
+
+    <table style="width:100%; border-collapse:collapse;" border="1">
+      <thead>
+        <tr>
+          <th style="padding:8px; text-align:left;">Location</th>
+          <th style="padding:8px; text-align:left;">Remaining Days</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.workRemainingDays.map((item: any) => `
+          <tr>
+            <td style="padding:8px;">${item.location || "-"}</td>
+            <td style="padding:8px;">${item.days || "-"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  </div>
+` : ""}
+
 <div class="footer">
 <div class="footer-content">
 <span>🌐 ${data.company?.website || ""}</span>

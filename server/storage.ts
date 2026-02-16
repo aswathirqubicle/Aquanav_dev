@@ -2227,6 +2227,8 @@ class Storage {
         res.gallery = gallery;
         res.consumables = await storage.getProjectConsumables(id,fromDate,toDate);
         res.reportDate = reportDate;
+        if(!includeRemainingDays)
+          res.workRemainingDays = [];
         console.log("hhhhh",res);
       return res as Project;
     } catch (error: any) {
