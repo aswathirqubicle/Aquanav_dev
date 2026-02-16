@@ -2078,7 +2078,12 @@ class Storage {
     }
   }
 
-  async getProjectPrint(id: number): Promise<Project | undefined> {
+  async getProjectPrint(id: number,
+          fromDate,
+          toDate,
+          reportDate,
+          includeRemainingDays,
+          includeHBMHours): Promise<Project | undefined> {
     try {
       const result = await db
         .select({
@@ -2120,6 +2125,15 @@ class Storage {
         .where(eq(projects.id, id))
         .limit(1);
         const res = result[0];
+        const dateConditions: any[] = [];
+
+        if (fromDate) {
+          dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
+        }
+
+        if (toDate) {
+          dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+        }
         res.dailyActivities = await db
         .select({
           id: dailyActivities.id,
@@ -2134,6 +2148,7 @@ class Storage {
             eq(dailyActivities.projectId, id),
             isNotNull(dailyActivities.completedTasks),
             ne(dailyActivities.completedTasks, ""),
+            ...dateConditions
           ),
         )
         .orderBy(asc(dailyActivities.date));
@@ -2152,13 +2167,30 @@ class Storage {
             eq(dailyActivities.projectId, id),
             isNotNull(dailyActivities.plannedTasks),
             ne(dailyActivities.plannedTasks, ""),
+            ...dateConditions
           ),
         )
         .orderBy(asc(dailyActivities.date));
+
+        const photoDateConditions: any[] = [];
+
+        if (fromDate) {
+          photoDateConditions.push(gte(projectPhotoGroups.createdAt, new Date(fromDate)));
+        }
+
+        if (toDate) {
+          photoDateConditions.push(lte(projectPhotoGroups.createdAt, new Date(toDate)));
+        }
+
         const groups = await db
           .select()
           .from(projectPhotoGroups)
-          .where(eq(projectPhotoGroups.projectId, id))
+          .where(
+            and(
+              eq(projectPhotoGroups.projectId, id),
+              ...photoDateConditions
+            )
+          )
           .orderBy(desc(projectPhotoGroups.createdAt));
 
         const groupIds = groups.map((g) => g.id);
@@ -2191,8 +2223,8 @@ class Storage {
         }));
 
         res.gallery = gallery;
-
-        res.consumables = await storage.getProjectConsumables(id);
+        res.consumables = await storage.getProjectConsumables(id,fromDate,toDate);
+        res.reportDate = reportDate;
         console.log("hhhhh",res);
       return res as Project;
     } catch (error: any) {
@@ -8993,8 +9025,21 @@ class Storage {
   // Project Consumables methods
   async getProjectConsumables(
     projectId: number,
+    fromDate?: string,
+    toDate?: string,
   ): Promise<ProjectConsumableWithItems[]> {
     try {
+      const conditions: any[] = [
+      eq(projectConsumables.projectId, projectId),
+    ];
+
+    if (fromDate) {
+      conditions.push(gte(projectConsumables.date, new Date(fromDate)));
+    }
+
+    if (toDate) {
+      conditions.push(lte(projectConsumables.date, new Date(toDate)));
+    }
       const consumables: Array<Omit<ProjectConsumableWithItems, "items">> =
         await db
           .select({
@@ -9007,7 +9052,7 @@ class Storage {
           })
           .from(projectConsumables)
           .leftJoin(users, eq(projectConsumables.recordedBy, users.id))
-          .where(eq(projectConsumables.projectId, projectId))
+          .where(and(...conditions))
           .orderBy(desc(projectConsumables.date));
 
       // Get items for each consumable record
@@ -11569,7 +11614,7 @@ export interface IStorage {
 
   // Project Consumables methods
   getProjectConsumables(
-    projectId: number,
+    projectId: number,fromDate,toDate
   ): Promise<ProjectConsumableWithItems[]>;
   createProjectConsumables(
     projectId: number,

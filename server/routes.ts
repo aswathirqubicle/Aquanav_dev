@@ -1485,7 +1485,7 @@ body {
 <div class="highlights-header">
   <div class="left-title">PROJECT HIGHLIGHTS</div>
   <div class="right-date">
-    Report Date: ${new Date().toLocaleDateString()}
+    Report Date: ${data.reportDate}
   </div>
 </div>
 

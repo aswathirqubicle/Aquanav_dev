@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -23,6 +23,9 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
   const formRef = useRef<HTMLFormElement>(null);
+  const [reportDate, setReportDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
 
   /* ---------- Redirect if not logged in ---------- */
   useEffect(() => {
@@ -136,6 +139,8 @@ export default function Dashboard() {
                 name="reportDate"
                 className="w-full border rounded-md p-2"
                 required
+                value={reportDate}
+                onChange={(e) => setReportDate(e.target.value)}
               />
             </div>
 
