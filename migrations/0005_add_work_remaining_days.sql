@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "work_remaining_days" json DEFAULT '[]'::json;

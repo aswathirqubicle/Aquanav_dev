@@ -2059,6 +2059,7 @@ class Storage {
           additionalField5Description: projects.additionalField5Description,
           additionalField6Title: projects.additionalField6Title,
           additionalField6Description: projects.additionalField6Description,
+          workRemainingDays: projects.workRemainingDays,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))
@@ -2119,6 +2120,7 @@ class Storage {
           additionalField5Description: projects.additionalField5Description,
           additionalField6Title: projects.additionalField6Title,
           additionalField6Description: projects.additionalField6Description,
+          workRemainingDays: projects.workRemainingDays,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))

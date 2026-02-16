@@ -225,6 +225,9 @@ export const projects = pgTable("projects", {
   additionalField5Description: text("additional_field_5_description"),
   additionalField6Title: text("additional_field_6_title"),
   additionalField6Description: text("additional_field_6_description"),
+  workRemainingDays: json("work_remaining_days")
+    .$type<{ location: string; days: string }[]>()
+    .default([]),
 });
 
 // Project Employee Assignments
@@ -1298,6 +1301,14 @@ export const insertProjectSchema = createInsertSchema(projects)
     additionalField5Description: z.string().optional(),
     additionalField6Title: z.string().optional(),
     additionalField6Description: z.string().optional(),
+    workRemainingDays: z
+      .array(
+        z.object({
+          location: z.string(),
+          days: z.string(),
+        }),
+      )
+      .optional(),
   });
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems)
   .omit({ id: true, currentStock: true, avgCost: true })

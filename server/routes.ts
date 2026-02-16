@@ -1170,9 +1170,8 @@ export function generateProjectPrintHTML(data: any): string {
       },
     });
 
-
   const gallery = data.gallery || [];
-   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
+  // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
   function getWeekRange(date: Date) {
     const d = new Date(date);
     const first = new Date(d);
@@ -1184,42 +1183,49 @@ export function generateProjectPrintHTML(data: any): string {
     return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
   }
 
-// Group by week
-  const weeklyReports = data.dailyActivities.reduce((acc: any, activity: any) => {
-    const weekKey = getWeekRange(activity.date);
+  // Group by week
+  const weeklyReports = data.dailyActivities.reduce(
+    (acc: any, activity: any) => {
+      const weekKey = getWeekRange(activity.date);
 
-    if (!acc[weekKey]) {
-      acc[weekKey] = [];
-    }
+      if (!acc[weekKey]) {
+        acc[weekKey] = [];
+      }
 
-    acc[weekKey].push({
-      day_num: new Date(activity.date).getDay(),
-      date: new Date(activity.date).toLocaleDateString(),
-      location: activity.location,
-      activities: activity.tasks,
-    });
+      acc[weekKey].push({
+        day_num: new Date(activity.date).getDay(),
+        date: new Date(activity.date).toLocaleDateString(),
+        location: activity.location,
+        activities: activity.tasks,
+      });
 
-    return acc;
-  }, {});
+      return acc;
+    },
+    {},
+  );
 
-  const plannedReports = data.plannedActivities.reduce((acc: any, activity: any) => {
-    const weekKey = getWeekRange(activity.date);
+  const plannedReports = data.plannedActivities.reduce(
+    (acc: any, activity: any) => {
+      const weekKey = getWeekRange(activity.date);
 
-    if (!acc[weekKey]) {
-      acc[weekKey] = [];
-    }
+      if (!acc[weekKey]) {
+        acc[weekKey] = [];
+      }
 
-    acc[weekKey].push({
-      day_num: new Date(activity.date).getDay(),
-      date: new Date(activity.date).toLocaleDateString(),
-      location: activity.location,
-      activities: activity.tasks,
-    });
+      acc[weekKey].push({
+        day_num: new Date(activity.date).getDay(),
+        date: new Date(activity.date).toLocaleDateString(),
+        location: activity.location,
+        activities: activity.tasks,
+      });
 
-    return acc;
-  }, {});
+      return acc;
+    },
+    {},
+  );
 
-    const weeklyConsumables = (data.consumables || []).reduce((acc: any, entry: any) => {
+  const weeklyConsumables = (data.consumables || []).reduce(
+    (acc: any, entry: any) => {
       const weekKey = getWeekRange(entry.date);
 
       if (!acc[weekKey]) {
@@ -1240,8 +1246,9 @@ export function generateProjectPrintHTML(data: any): string {
       });
 
       return acc;
-    }, {});
-
+    },
+    {},
+  );
 
   return `
 <!DOCTYPE html>
@@ -1528,8 +1535,8 @@ COATING REPAIR PROCEDURE FOR MAIN DECK
 
 <table class="steps-table">
 <tbody>
-${
-  [1, 3, 5].map((start) => {
+${[1, 3, 5]
+  .map((start) => {
     const firstTitle = data[`additionalField${start}Title`];
     const firstDesc = data[`additionalField${start}Description`];
 
@@ -1561,21 +1568,27 @@ ${
   </td>
 </tr>
 `;
-  }).join("")
-}
+  })
+  .join("")}
 </tbody>
 
 </table>
 
-${data.reportImage ? `
+${
+  data.reportImage
+    ? `
   <div class="page-break">
 <h2 style="text-align:center;color:red;">WORK PLAN</h2>
 <div class="ship-image">
 <img src="${data.reportImage}" />
 </div>
-` : ""}
+`
+    : ""
+}
 
-${Object.entries(weeklyReports).map(([week, reports]: any) => `
+${Object.entries(weeklyReports)
+  .map(
+    ([week, reports]: any) => `
 <div class="page-break">
 <h2 style="text-align:center;color:red;">
 Work done for the Week - ${week}
@@ -1591,45 +1604,66 @@ Work done for the Week - ${week}
 </tr>
 </thead>
 <tbody>
-${reports.map((r: any) => `
+${reports
+  .map(
+    (r: any) => `
 <tr>
 <td>Day ${r.day_num}</td>
 <td>${r.date}</td>
 <td>${r.location || ""}</td>
 <td>${r.activities || ""}</td>
 </tr>
-`).join("")}
+`,
+  )
+  .join("")}
 </tbody>
 </table>
 </div>
-`).join("")}
+`,
+  )
+  .join("")}
 
-${gallery.map((g: any) => `
+${gallery
+  .map(
+    (g: any) => `
 <div class="page-break">
 <h2 style="text-align:center;color:red;text-transform: capitalize;">${g.title}</h2>
 <h2 style="text-align:center;">${g.description}</h2>
 <table class="image-table">
 <tbody>
-${g.photos.reduce((rows: any[], img: any, idx: number) => {
-  if (idx % 2 === 0) rows.push([img]);
-  else rows[rows.length - 1].push(img);
-  return rows;
-}, []).map((row: any[]) => `
+${g.photos
+  .reduce((rows: any[], img: any, idx: number) => {
+    if (idx % 2 === 0) rows.push([img]);
+    else rows[rows.length - 1].push(img);
+    return rows;
+  }, [])
+  .map(
+    (row: any[]) => `
 <tr>
-${row.map(img => `
+${row
+  .map(
+    (img) => `
 <td>
   <img src="${img.filePath}" style="width:100%;height:auto;" />
 </td>
-`).join("")}
+`,
+  )
+  .join("")}
 ${row.length === 1 ? "<td></td>" : ""}
 </tr>
-`).join("")}
+`,
+  )
+  .join("")}
 </tbody>
 </table>
 </div>
-`).join("")}
+`,
+  )
+  .join("")}
 
-${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+${Object.entries(weeklyConsumables)
+  .map(
+    ([week, items]: any) => `
 <div class="page-break">
 <h2 style="text-align:center;color:red;">
 Consumables Used - ${week}
@@ -1648,7 +1682,9 @@ Consumables Used - ${week}
 </tr>
 </thead>
 <tbody>
-${items.map((i: any) => `
+${items
+  .map(
+    (i: any) => `
 <tr>
 <td>${i.date}</td>
 <td>${i.itemName}</td>
@@ -1658,13 +1694,19 @@ ${items.map((i: any) => `
 <td>${i.total}</td>
 <td>${i.createdBy}</td>
 </tr>
-`).join("")}
+`,
+  )
+  .join("")}
 </tbody>
 </table>
 </div>
-`).join("")}
+`,
+  )
+  .join("")}
 
-${Object.entries(plannedReports).map(([week, reports]: any) => `
+${Object.entries(plannedReports)
+  .map(
+    ([week, reports]: any) => `
 <div class="page-break">
 <h2 style="text-align:center;color:red;">
 Work Planned for the Week - ${week}
@@ -1680,18 +1722,24 @@ Work Planned for the Week - ${week}
 </tr>
 </thead>
 <tbody>
-${reports.map((r: any) => `
+${reports
+  .map(
+    (r: any) => `
 <tr>
 <td>Day ${r.day_num}</td>
 <td>${r.date}</td>
 <td>${r.location || ""}</td>
 <td>${r.activities || ""}</td>
 </tr>
-`).join("")}
+`,
+  )
+  .join("")}
 </tbody>
 </table>
 </div>
-`).join("")}
+`,
+  )
+  .join("")}
 
 <div class="footer">
 <div class="footer-content">
@@ -1717,7 +1765,7 @@ export function generateConsumablePrintHTML(data: any): string {
       },
     });
 
-   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
+  // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
   function getWeekRange(date: Date) {
     const d = new Date(date);
     const first = new Date(d);
@@ -1729,7 +1777,8 @@ export function generateConsumablePrintHTML(data: any): string {
     return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
   }
 
-    const weeklyConsumables = (data.consumables || []).reduce((acc: any, entry: any) => {
+  const weeklyConsumables = (data.consumables || []).reduce(
+    (acc: any, entry: any) => {
       const weekKey = getWeekRange(entry.date);
 
       if (!acc[weekKey]) {
@@ -1750,8 +1799,9 @@ export function generateConsumablePrintHTML(data: any): string {
       });
 
       return acc;
-    }, {});
-
+    },
+    {},
+  );
 
   return `
 <!DOCTYPE html>
@@ -2038,8 +2088,8 @@ COATING REPAIR PROCEDURE FOR MAIN DECK
 
 <table class="steps-table">
 <tbody>
-${
-  [1, 3, 5].map((start) => {
+${[1, 3, 5]
+  .map((start) => {
     const firstTitle = data[`additionalField${start}Title`];
     const firstDesc = data[`additionalField${start}Description`];
 
@@ -2071,14 +2121,16 @@ ${
   </td>
 </tr>
 `;
-  }).join("")
-}
+  })
+  .join("")}
 </tbody>
 
 </table>
 
 
-${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+${Object.entries(weeklyConsumables)
+  .map(
+    ([week, items]: any) => `
 <div class="page-break">
 <h2 style="text-align:center;color:red;">
 Consumables Used - ${week}
@@ -2097,7 +2149,9 @@ Consumables Used - ${week}
 </tr>
 </thead>
 <tbody>
-${items.map((i: any) => `
+${items
+  .map(
+    (i: any) => `
 <tr>
 <td>${i.date}</td>
 <td>${i.itemName}</td>
@@ -2107,11 +2161,15 @@ ${items.map((i: any) => `
 <td>${i.total}</td>
 <td>${i.createdBy}</td>
 </tr>
-`).join("")}
+`,
+  )
+  .join("")}
 </tbody>
 </table>
 </div>
-`).join("")}
+`,
+  )
+  .join("")}
 
 <div class="footer">
 <div class="footer-content">
@@ -2126,7 +2184,6 @@ ${items.map((i: any) => `
 </html>
 `;
 }
-
 
 function imageToBase64(relativePath: string) {
   const absPath = path.join(process.cwd(), relativePath);
@@ -2163,7 +2220,7 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/purchase-order";
     } else if (req.originalUrl?.includes("reimbursements")) {
       uploadDir = "uploads/reimbursements";
-    }else if (req.originalUrl?.includes("/api/print")) {
+    } else if (req.originalUrl?.includes("/api/print")) {
       uploadDir = "uploads/report";
     }
 
@@ -3546,6 +3603,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
+    if (data.workRemainingDays && typeof data.workRemainingDays === "string") {
+      try {
+        data.workRemainingDays = JSON.parse(data.workRemainingDays);
+      } catch (e) {
+        data.workRemainingDays = [];
+      }
+    }
+
     // Clean up empty/nullish string values from FormData
     Object.keys(data).forEach((key) => {
       if (
@@ -3611,7 +3676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to get project" });
     }
   });
-// Print Daily report
+  // Print Daily report
   app.post(
     "/api/print/project",
     requireAuth,
@@ -3633,7 +3698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           toDate,
           reportDate,
           includeRemainingDays,
-          includeHBMHours
+          includeHBMHours,
         );
 
         if (!project) {
@@ -3651,17 +3716,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.setHeader("Content-Type", "text/html");
         res.send(html);
-
       } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Failed to generate report" });
       }
-    }
+    },
   );
-  app.post(
-  "/api/print/consumables",
-  requireAuth,
-  async (req, res) => {
+  app.post("/api/print/consumables", requireAuth, async (req, res) => {
     try {
       const { id, fromDate, toDate, reportDate } = req.body;
 
@@ -3678,7 +3739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         projectId,
         fromDate,
         toDate,
-        reportDate
+        reportDate,
       );
 
       if (!project) {
@@ -3694,33 +3755,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.setHeader("Content-Type", "text/html");
       res.send(html);
-
     } catch (error) {
       console.error("Consumables print error:", error);
       res.status(500).json({ message: "Failed to generate report" });
     }
-  }
-);
-
-
-  app.post("/api/print/projectbk", requireAuth,upload.single("reportImage"), async (req, res) => {
-    try {
-      const { id,fromDate,toDate,reportDate,includeRemainingDays,includeHBMHours } = req.body;
-      const project = await storage.getProjectPrint(id,fromDate,toDate,reportDate,includeRemainingDays,includeHBMHours);
-
-      if (!project) {
-        return res.status(404).json({ message: "Project not found" });
-      }
-      if (req.file) {
-        project.reportImage = `/${req.file.path}`;
-      }
-      project.company = await storage.getCompany();
-
-      res.json(project);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get project" });
-    }
   });
+
+  app.post(
+    "/api/print/projectbk",
+    requireAuth,
+    upload.single("reportImage"),
+    async (req, res) => {
+      try {
+        const {
+          id,
+          fromDate,
+          toDate,
+          reportDate,
+          includeRemainingDays,
+          includeHBMHours,
+        } = req.body;
+        const project = await storage.getProjectPrint(
+          id,
+          fromDate,
+          toDate,
+          reportDate,
+          includeRemainingDays,
+          includeHBMHours,
+        );
+
+        if (!project) {
+          return res.status(404).json({ message: "Project not found" });
+        }
+        if (req.file) {
+          project.reportImage = `/${req.file.path}`;
+        }
+        project.company = await storage.getCompany();
+
+        res.json(project);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to get project" });
+      }
+    },
+  );
 
   app.post(
     "/api/projects",

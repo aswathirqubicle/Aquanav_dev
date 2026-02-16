@@ -31,9 +31,11 @@ import {
   Trash2,
   Eye,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Clock
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import { z } from "zod";
 
 const ITEMS_PER_PAGE = 5;
@@ -586,6 +588,10 @@ export default function ProjectDetail() {
   const [isCustomContractMode, setIsCustomContractMode] = useState(false);
   const [customContractMode, setCustomContractMode] = useState("");
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
+  const [workRemainingRows, setWorkRemainingRows] = useState<Array<{ location: string; days: string }>>([
+    { location: "", days: "" }
+  ]);
+  const [isWorkRemainingDirty, setIsWorkRemainingDirty] = useState(false);
 
   const { data: customers } = useQuery<any[]>({
     queryKey: ["/api/customers/all"],
@@ -870,6 +876,18 @@ export default function ProjectDetail() {
     enabled: isAuthenticated && !!id && (user?.role === "admin" || user?.role === "finance"),
   });
 
+  // Initialize work remaining days from project data
+  useEffect(() => {
+    if (!isWorkRemainingDirty) {
+      if (project?.workRemainingDays && project.workRemainingDays.length > 0) {
+        setWorkRemainingRows(project.workRemainingDays);
+      } else {
+        setWorkRemainingRows([{ location: "", days: "" }]);
+      }
+    }
+  }, [project, isWorkRemainingDirty]);
+
+
   const createActivityMutation = useMutation({
     mutationFn: async (data: CreateActivityData) => {
       return await apiRequest(`/api/projects/${id}/activities`, {
@@ -962,7 +980,7 @@ export default function ProjectDetail() {
       remarks: activityData.remarks || "",
       photos: [],
     };
-    console.log("submitData",submitData);
+    console.log("submitData", submitData);
 
     createActivityMutation.mutate(submitData);
   };
@@ -1832,6 +1850,71 @@ export default function ProjectDetail() {
     return true;
   }) || [];
 
+  const handleAddWorkRemainingRow = () => {
+    const lastRow = workRemainingRows[workRemainingRows.length - 1];
+    if (lastRow && (!lastRow.location.trim() || !lastRow.days.trim())) {
+      toast({
+        title: "Empty Fields",
+        description: "Please fill in both location and days before adding a new row.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsWorkRemainingDirty(true);
+    setWorkRemainingRows(prev => [...prev, { location: "", days: "" }]);
+  };
+
+  const handleRemoveWorkRemainingRow = (index: number) => {
+    setIsWorkRemainingDirty(true);
+    if (workRemainingRows.length === 1) {
+      setWorkRemainingRows([{ location: "", days: "" }]);
+    } else {
+      setWorkRemainingRows(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleWorkRemainingChange = (index: number, field: 'location' | 'days', value: string) => {
+    setIsWorkRemainingDirty(true);
+    setWorkRemainingRows(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const saveWorkRemainingMutation = useMutation({
+    mutationFn: async (data: { workRemainingDays: Array<{ location: string; days: string }> }) => {
+      const response = await apiRequest(`/api/projects/${id}`, {
+        method: "PUT",
+        body: data,
+      });
+      if (!response.ok) throw new Error("Failed to save work remaining days");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setIsWorkRemainingDirty(false);
+      toast({
+        title: "Success",
+        description: "Work remaining days updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update work remaining days",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveWorkRemaining = () => {
+    // Filter out completely empty rows
+    const filteredRows = workRemainingRows.filter(row => row.location.trim() !== "" || row.days.trim() !== "");
+    saveWorkRemainingMutation.mutate({ workRemainingDays: filteredRows });
+  };
+
+
   if (isLoading) {
     return (
       <div className="p-6">
@@ -2499,94 +2582,94 @@ export default function ProjectDetail() {
               {/* Custom Fields */}
               {(project.additionalField1Title || project.additionalField2Title || project.additionalField3Title ||
                 project.additionalField4Title || project.additionalField5Title || project.additionalField6Title) && (
-                <div className="space-y-4">
-                  <h4 className="font-medium text-slate-900 dark:text-slate-100">Additional Information</h4>
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-slate-900 dark:text-slate-100">Additional Information</h4>
 
-                  {project.additionalField1Title && (
-                    <div className="border-l-4 border-blue-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField1Title}
-                      </h5>
-                      {project.additionalField1Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField1Description }}
-                        />
-                      )}
-                    </div>
-                  )}
+                    {project.additionalField1Title && (
+                      <div className="border-l-4 border-blue-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField1Title}
+                        </h5>
+                        {project.additionalField1Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField1Description }}
+                          />
+                        )}
+                      </div>
+                    )}
 
-                  {project.additionalField2Title && (
-                    <div className="border-l-4 border-green-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField2Title}
-                      </h5>
-                      {project.additionalField2Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField2Description }}
-                        />
-                      )}
-                    </div>
-                  )}
+                    {project.additionalField2Title && (
+                      <div className="border-l-4 border-green-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField2Title}
+                        </h5>
+                        {project.additionalField2Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField2Description }}
+                          />
+                        )}
+                      </div>
+                    )}
 
-                  {project.additionalField3Title && (
-                    <div className="border-l-4 border-purple-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField3Title}
-                      </h5>
-                      {project.additionalField3Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField3Description }}
-                        />
-                      )}
-                    </div>
-                  )}
+                    {project.additionalField3Title && (
+                      <div className="border-l-4 border-purple-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField3Title}
+                        </h5>
+                        {project.additionalField3Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField3Description }}
+                          />
+                        )}
+                      </div>
+                    )}
 
-                  {project.additionalField4Title && (
-                    <div className="border-l-4 border-orange-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField4Title}
-                      </h5>
-                      {project.additionalField4Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField4Description }}
-                        />
-                      )}
-                    </div>
-                  )}
+                    {project.additionalField4Title && (
+                      <div className="border-l-4 border-orange-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField4Title}
+                        </h5>
+                        {project.additionalField4Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField4Description }}
+                          />
+                        )}
+                      </div>
+                    )}
 
-                  {project.additionalField5Title && (
-                    <div className="border-l-4 border-red-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField5Title}
-                      </h5>
-                      {project.additionalField5Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField5Description }}
-                        />
-                      )}
-                    </div>
-                  )}
+                    {project.additionalField5Title && (
+                      <div className="border-l-4 border-red-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField5Title}
+                        </h5>
+                        {project.additionalField5Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField5Description }}
+                          />
+                        )}
+                      </div>
+                    )}
 
-                  {project.additionalField6Title && (
-                    <div className="border-l-4 border-yellow-500 pl-4">
-                      <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
-                        {project.additionalField6Title}
-                      </h5>
-                      {project.additionalField6Description && (
-                        <div
-                          className="text-sm text-slate-600 dark:text-slate-400"
-                          dangerouslySetInnerHTML={{ __html: project.additionalField6Description }}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                    {project.additionalField6Title && (
+                      <div className="border-l-4 border-yellow-500 pl-4">
+                        <h5 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">
+                          {project.additionalField6Title}
+                        </h5>
+                        {project.additionalField6Description && (
+                          <div
+                            className="text-sm text-slate-600 dark:text-slate-400"
+                            dangerouslySetInnerHTML={{ __html: project.additionalField6Description }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
             </CardContent>
           </Card>
         </div>
@@ -2663,8 +2746,8 @@ export default function ProjectDetail() {
                 <div>
                   <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Net Profit/Loss</p>
                   <p className={`text-lg font-bold ${parseFloat(projectRevenue.profit) >= 0
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
                     }`}>
                     {formatCurrency(projectRevenue.profit)}
                   </p>
@@ -2711,6 +2794,11 @@ export default function ProjectDetail() {
           <TabsTrigger value="live-location" className="flex items-center justify-center text-xs sm:text-sm p-2">
             <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             Live Location
+          </TabsTrigger>
+          <TabsTrigger value="work-remaining" className="flex items-center justify-center text-xs sm:text-sm p-2">
+            <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Work Remaining</span>
+            <span className="sm:hidden">Work</span>
           </TabsTrigger>
         </TabsList>
 
@@ -4544,6 +4632,74 @@ export default function ProjectDetail() {
               ) : (
                 <VesselLocationTracker imoNumber={project.vesselImoNumber} vesselName={project.vesselName || 'Unknown Vessel'} />
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="work-remaining">
+          <Card>
+            <CardHeader>
+              <CardTitle>Work Remaining Days</CardTitle>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Manage remaining work days for each location.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  {workRemainingRows.map((row, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row items-end gap-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/50">
+                      <div className="w-full sm:flex-1 space-y-2">
+                        <Label>Location</Label>
+                        <Autocomplete
+                          options={(project?.locations || []).map(loc => ({ value: loc, label: loc }))}
+                          value={row.location}
+                          onValueChange={(val) => handleWorkRemainingChange(index, 'location', val)}
+                          placeholder="Select location..."
+                        />
+                      </div>
+                      <div className="w-full sm:flex-1 space-y-2">
+                        <Label>Remaining Work Days</Label>
+                        <Input
+                          type="text"
+                          value={row.days}
+                          onChange={(e) => handleWorkRemainingChange(index, 'days', e.target.value)}
+                          placeholder="Enter days..."
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveWorkRemainingRow(index)}
+                        className="text-red-500 hover:text-red-700 shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddWorkRemainingRow}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Row
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end border-t border-slate-200 dark:border-slate-700 pt-6">
+                  <Button
+                    onClick={handleSaveWorkRemaining}
+                    disabled={saveWorkRemainingMutation.isPending}
+                    size="sm"
+                  >
+                    {saveWorkRemainingMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
