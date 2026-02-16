@@ -1197,6 +1197,7 @@ export function generateProjectPrintHTML(data: any): string {
         date: new Date(activity.date).toLocaleDateString(),
         location: activity.location,
         activities: activity.tasks,
+        hbmHours: activity.hbmDailyRunningHours,  
       });
 
       return acc;
@@ -1599,6 +1600,7 @@ Work done for the Week - ${week}
 <tr>
 <th>Day</th>
 <th>Date</th>
+<th>HBM Hours</th>
 <th>Location</th>
 <th>Activities</th>
 </tr>
@@ -1610,6 +1612,7 @@ ${reports
 <tr>
 <td>Day ${r.day_num}</td>
 <td>${r.date}</td>
+<td>${r.hbmHours || ""}</td>
 <td>${r.location || ""}</td>
 <td>${r.activities || ""}</td>
 </tr>

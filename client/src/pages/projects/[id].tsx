@@ -588,10 +588,9 @@ export default function ProjectDetail() {
   const [isCustomContractMode, setIsCustomContractMode] = useState(false);
   const [customContractMode, setCustomContractMode] = useState("");
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
-  const [workRemainingRows, setWorkRemainingRows] = useState<Array<{ location: string; days: string }>>([
+  const [newWorkRemainingRows, setNewWorkRemainingRows] = useState<Array<{ location: string; days: string }>>([
     { location: "", days: "" }
   ]);
-  const [isWorkRemainingDirty, setIsWorkRemainingDirty] = useState(false);
 
   const { data: customers } = useQuery<any[]>({
     queryKey: ["/api/customers/all"],
@@ -605,11 +604,20 @@ export default function ProjectDetail() {
     enabled: isAuthenticated,
   });
 
-  const [activityData, setActivityData] = useState<Partial<CreateActivityData>>({
+  const [activityData, setActivityData] = useState<{
+    date: string;
+    location: string;
+    completedTasks: string;
+    plannedTasks: string;
+    hbmDailyRunningHours: string;
+    remarks: string;
+    photos: string[];
+  }>({
     date: new Date().toISOString().split('T')[0],
     location: "",
     completedTasks: "",
     plannedTasks: "",
+    hbmDailyRunningHours: "",
     remarks: "",
     photos: [],
   });
@@ -876,16 +884,6 @@ export default function ProjectDetail() {
     enabled: isAuthenticated && !!id && (user?.role === "admin" || user?.role === "finance"),
   });
 
-  // Initialize work remaining days from project data
-  useEffect(() => {
-    if (!isWorkRemainingDirty) {
-      if (project?.workRemainingDays && project.workRemainingDays.length > 0) {
-        setWorkRemainingRows(project.workRemainingDays);
-      } else {
-        setWorkRemainingRows([{ location: "", days: "" }]);
-      }
-    }
-  }, [project, isWorkRemainingDirty]);
 
 
   const createActivityMutation = useMutation({
@@ -941,6 +939,7 @@ export default function ProjectDetail() {
       location: "",
       completedTasks: "",
       plannedTasks: "",
+      hbmDailyRunningHours: "",
       remarks: "",
       photos: [],
     });
@@ -952,7 +951,7 @@ export default function ProjectDetail() {
     setIsCustomCompletedLocation(true);
   };
 
-  const handleActivitySubmit = (e: React.FormEvent) => {
+  const handleActivitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activityData.date || completedActivities.length === 0) {
       toast({
@@ -963,26 +962,43 @@ export default function ProjectDetail() {
       return;
     }
 
-    // Combine all completed activities into a single string
-    const combinedCompletedTasks = completedActivities
-      .map(activity => `${activity.location ? `[${activity.location}] ` : ''}${activity.tasks}`)
-      .join('\n');
-
     // Create proper date object from the date string with timezone handling
     const activityDate = new Date(activityData.date + 'T00:00:00.000Z');
 
-    const submitData: CreateActivityData = {
-      projectId: parseInt(id!),
-      date: activityDate,
-      location: activityData.location || "",
-      completedTasks: combinedCompletedTasks,
-      plannedTasks: activityData.plannedTasks || "",
-      remarks: activityData.remarks || "",
-      photos: [],
-    };
-    console.log("submitData", submitData);
+    try {
+      // Create a separate record for each completed activity
+      for (const activity of completedActivities) {
+        const submitData: CreateActivityData = {
+          projectId: parseInt(id!),
+          date: activityDate,
+          location: activity.location || "",
+          completedTasks: activity.tasks,
+          plannedTasks: activityData.plannedTasks || "",
+          hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
+          remarks: activityData.remarks || "",
+          photos: [],
+        };
 
-    createActivityMutation.mutate(submitData);
+        await apiRequest(`/api/projects/${id}/activities`, {
+          method: "POST",
+          body: submitData,
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
+      toast({
+        title: "Activities Added",
+        description: "Daily activities have been logged successfully.",
+      });
+      setIsActivityDialogOpen(false);
+      resetActivityForm();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add activities",
+        variant: "destructive",
+      });
+    }
   };
 
   const addCompletedActivity = () => {
@@ -1851,7 +1867,7 @@ export default function ProjectDetail() {
   }) || [];
 
   const handleAddWorkRemainingRow = () => {
-    const lastRow = workRemainingRows[workRemainingRows.length - 1];
+    const lastRow = newWorkRemainingRows[newWorkRemainingRows.length - 1];
     if (lastRow && (!lastRow.location.trim() || !lastRow.days.trim())) {
       toast({
         title: "Empty Fields",
@@ -1860,22 +1876,19 @@ export default function ProjectDetail() {
       });
       return;
     }
-    setIsWorkRemainingDirty(true);
-    setWorkRemainingRows(prev => [...prev, { location: "", days: "" }]);
+    setNewWorkRemainingRows(prev => [...prev, { location: "", days: "" }]);
   };
 
   const handleRemoveWorkRemainingRow = (index: number) => {
-    setIsWorkRemainingDirty(true);
-    if (workRemainingRows.length === 1) {
-      setWorkRemainingRows([{ location: "", days: "" }]);
+    if (newWorkRemainingRows.length === 1) {
+      setNewWorkRemainingRows([{ location: "", days: "" }]);
     } else {
-      setWorkRemainingRows(prev => prev.filter((_, i) => i !== index));
+      setNewWorkRemainingRows(prev => prev.filter((_, i) => i !== index));
     }
   };
 
   const handleWorkRemainingChange = (index: number, field: 'location' | 'days', value: string) => {
-    setIsWorkRemainingDirty(true);
-    setWorkRemainingRows(prev => {
+    setNewWorkRemainingRows(prev => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
       return updated;
@@ -1883,20 +1896,22 @@ export default function ProjectDetail() {
   };
 
   const saveWorkRemainingMutation = useMutation({
-    mutationFn: async (data: { workRemainingDays: Array<{ location: string; days: string }> }) => {
+    mutationFn: async (data: { workRemainingDays: Array<{ location: string; days: string }>, isAddition?: boolean }) => {
       const response = await apiRequest(`/api/projects/${id}`, {
         method: "PUT",
-        body: data,
+        body: { workRemainingDays: data.workRemainingDays },
       });
       if (!response.ok) throw new Error("Failed to save work remaining days");
-      return response.json();
+      return { data: await response.json(), isAddition: data.isAddition };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
-      setIsWorkRemainingDirty(false);
+      if (result.isAddition) {
+        setNewWorkRemainingRows([{ location: "", days: "" }]);
+      }
       toast({
         title: "Success",
-        description: "Work remaining days updated successfully",
+        description: result.isAddition ? "Work remaining days updated successfully" : "Record deleted successfully",
       });
     },
     onError: (error: Error) => {
@@ -1908,10 +1923,39 @@ export default function ProjectDetail() {
     },
   });
 
+  const handleDeleteSavedWorkRemaining = (index: number) => {
+    if (confirm("Are you sure you want to delete this record?")) {
+      const updated = (project?.workRemainingDays || []).filter((_, i) => i !== index);
+      saveWorkRemainingMutation.mutate({ workRemainingDays: updated, isAddition: false });
+    }
+  };
+
   const handleSaveWorkRemaining = () => {
-    // Filter out completely empty rows
-    const filteredRows = workRemainingRows.filter(row => row.location.trim() !== "" || row.days.trim() !== "");
-    saveWorkRemainingMutation.mutate({ workRemainingDays: filteredRows });
+    // Filter out rows where both fields are empty
+    const validNewRows = newWorkRemainingRows.filter(row => row.location.trim() !== "" || row.days.trim() !== "");
+
+    // Check if any partially filled rows exist
+    const hasIncompleteRow = validNewRows.some(row => !row.location.trim() || !row.days.trim());
+    if (hasIncompleteRow) {
+      toast({
+        title: "Incomplete Fields",
+        description: "Please fill in both location and days for all rows.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (validNewRows.length === 0) {
+      toast({
+        title: "No Data",
+        description: "Please add at least one location and days.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const updated = [...(project?.workRemainingDays || []), ...validNewRows];
+    saveWorkRemainingMutation.mutate({ workRemainingDays: updated, isAddition: true });
   };
 
 
@@ -2883,16 +2927,30 @@ export default function ProjectDetail() {
                         <DialogTitle>Log Daily Activity</DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handleActivitySubmit} className="space-y-6">
-                        <div className="space-y-2">
-                          <Label htmlFor="date">Date *</Label>
-                          <Input
-                            id="date"
-                            type="date"
-                            value={activityData.date}
-                            onChange={(e) => setActivityData(prev => ({ ...prev, date: e.target.value }))}
-                            required
-                            className="w-full"
-                          />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="date">Date *</Label>
+                            <Input
+                              id="date"
+                              type="date"
+                              value={activityData.date}
+                              onChange={(e) => setActivityData(prev => ({ ...prev, date: e.target.value }))}
+                              required
+                              className="w-full"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="hbmDailyRunningHours">HBM Daily Running Hours</Label>
+                            <Input
+                              id="hbmDailyRunningHours"
+                              type="number"
+                              step="0.01"
+                              value={activityData.hbmDailyRunningHours}
+                              onChange={(e) => setActivityData(prev => ({ ...prev, hbmDailyRunningHours: e.target.value }))}
+                              placeholder="Enter running hours..."
+                              className="w-full"
+                            />
+                          </div>
                         </div>
 
                         <div className="space-y-4">
@@ -3069,10 +3127,16 @@ export default function ProjectDetail() {
                   {filteredActivities.map((activity) => (
                     <div key={activity.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
-                        <div>
+                        <div className="space-y-1">
                           <p className="font-medium text-slate-900 dark:text-slate-100">
                             {activity.date ? formatDate(activity.date) : "Unknown Date"}
                           </p>
+                          {activity.hbmDailyRunningHours && (
+                            <div className="flex items-center text-sm text-ocean-600 dark:text-ocean-400 font-medium">
+                              <Clock className="h-3.5 w-3.5 mr-1" />
+                              HBM Hours: {activity.hbmDailyRunningHours}
+                            </div>
+                          )}
                           {activity.location && (
                             <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center">
                               <MapPin className="h-3 w-3 mr-1" />
@@ -3087,43 +3151,49 @@ export default function ProjectDetail() {
                           <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">Completed Tasks</p>
                           <div className="space-y-3">
                             {(() => {
-                              // Parse completed tasks that are in format "[Location] Task\n[Location] Task"
-                              const tasks = activity.completedTasks.split('\n').filter(task => task.trim());
-                              return tasks.map((task, index) => {
-                                const locationMatch = task.match(/^\[([^\]]+)\]\s*(.*)$/);
-                                if (locationMatch) {
-                                  const [, location, taskText] = locationMatch;
-                                  return (
-                                    <div key={index} className="space-y-2">
-                                      <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
-                                        <MapPin className="h-4 w-4 mr-2" />
-                                        {location}
+                              // Check if it's a legacy combined record or a new separate record
+                              const isCombined = activity.completedTasks.includes('\n') || activity.completedTasks.match(/^\[([^\]]+)\]\s*(.*)$/);
+
+                              if (isCombined) {
+                                // Parse completed tasks that are in format "[Location] Task\n[Location] Task"
+                                const tasks = activity.completedTasks.split('\n').filter(task => task.trim());
+                                return tasks.map((task, index) => {
+                                  const locationMatch = task.match(/^\[([^\]]+)\]\s*(.*)$/);
+                                  if (locationMatch) {
+                                    const [, location, taskText] = locationMatch;
+                                    return (
+                                      <div key={index} className="space-y-2">
+                                        <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
+                                          <MapPin className="h-4 w-4 mr-2" />
+                                          {location}
+                                        </div>
+                                        <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+                                          {taskText}
+                                        </div>
                                       </div>
-                                      <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
-                                        {taskText}
+                                    );
+                                  } else {
+                                    // Task without location
+                                    return (
+                                      <div key={index} className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                                        {task}
                                       </div>
-                                    </div>
-                                  );
-                                } else {
-                                  // Task without location
-                                  return (
-                                    <div key={index} className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                                      {task}
-                                    </div>
-                                  );
-                                }
-                              });
+                                    );
+                                  }
+                                });
+                              } else {
+                                // New format: direct task display (location is already shown above)
+                                return (
+                                  <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                                    {activity.completedTasks}
+                                  </div>
+                                );
+                              }
                             })()}
                           </div>
                         </div>
                       )}
 
-                      {activity.plannedTasks && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Planned Tasks</p>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{activity.plannedTasks}</p>
-                        </div>
-                      )}
 
                       {activity.remarks && (
                         <div>
@@ -4645,48 +4715,83 @@ export default function ProjectDetail() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
+              <div className="space-y-8">
+                {/* Saved Data Section */}
+                {project?.workRemainingDays && project.workRemainingDays.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Saved Data</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {project?.workRemainingDays.map((row, index) => (
+                        <div key={index} className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 relative group">
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Location</p>
+                            <p className="font-semibold">{row.location}</p>
+                          </div>
+                          <div className="space-y-1 mt-3">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Remaining Days</p>
+                            <p className="font-semibold">{row.days}</p>
+                          </div>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteSavedWorkRemaining(index)}
+                              className="absolute top-2 right-2 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* New Entries Section */}
                 <div className="space-y-4">
-                  {workRemainingRows.map((row, index) => (
-                    <div key={index} className="flex flex-col sm:flex-row items-end gap-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/50">
-                      <div className="w-full sm:flex-1 space-y-2">
-                        <Label>Location</Label>
-                        <Autocomplete
-                          options={(project?.locations || []).map(loc => ({ value: loc, label: loc }))}
-                          value={row.location}
-                          onValueChange={(val) => handleWorkRemainingChange(index, 'location', val)}
-                          placeholder="Select location..."
-                        />
+                  <h3 className="text-lg font-medium">Add New Entries</h3>
+                  <div className="space-y-4">
+                    {newWorkRemainingRows.map((row, index) => (
+                      <div key={index} className="flex flex-col sm:flex-row items-end gap-4 p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/50">
+                        <div className="w-full sm:flex-1 space-y-2">
+                          <Label>Location</Label>
+                          <Autocomplete
+                            options={(project?.locations || []).map(loc => ({ value: loc, label: loc }))}
+                            value={row.location}
+                            onValueChange={(val) => handleWorkRemainingChange(index, 'location', val)}
+                            placeholder="Select location..."
+                          />
+                        </div>
+                        <div className="w-full sm:flex-1 space-y-2">
+                          <Label>Remaining Work Days</Label>
+                          <Input
+                            type="text"
+                            value={row.days}
+                            onChange={(e) => handleWorkRemainingChange(index, 'days', e.target.value)}
+                            placeholder="Enter days..."
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveWorkRemainingRow(index)}
+                          className="text-red-500 hover:text-red-700 shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <div className="w-full sm:flex-1 space-y-2">
-                        <Label>Remaining Work Days</Label>
-                        <Input
-                          type="text"
-                          value={row.days}
-                          onChange={(e) => handleWorkRemainingChange(index, 'days', e.target.value)}
-                          placeholder="Enter days..."
-                        />
-                      </div>
+                    ))}
+
+                    <div className="flex justify-end">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => handleRemoveWorkRemainingRow(index)}
-                        className="text-red-500 hover:text-red-700 shrink-0"
+                        onClick={handleAddWorkRemainingRow}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Row
                       </Button>
                     </div>
-                  ))}
-
-                  <div className="flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAddWorkRemainingRow}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Row
-                    </Button>
                   </div>
                 </div>
 

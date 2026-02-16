@@ -344,6 +344,10 @@ export const dailyActivities = pgTable("daily_activities", {
   location: text("location"),
   completedTasks: text("completed_tasks"),
   plannedTasks: text("planned_tasks"),
+  hbmDailyRunningHours: decimal("hbm_daily_running_hours", {
+    precision: 10,
+    scale: 2,
+  }),
   remarks: text("remarks"),
   photos: json("photos").$type<string[]>().default([]),
 });
@@ -1317,9 +1321,18 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems)
     unitPrice: z.number().optional(),
   });
 
-export const insertDailyActivitySchema = createInsertSchema(
-  dailyActivities,
-).omit({ id: true });
+export const insertDailyActivitySchema = createInsertSchema(dailyActivities)
+  .omit({ id: true })
+  .extend({
+    hbmDailyRunningHours: z
+      .string()
+      .transform((val) => {
+        if (!val || val.trim() === "") return undefined;
+        const num = parseFloat(val);
+        return isNaN(num) ? undefined : num.toFixed(2);
+      })
+      .optional(),
+  });
 
 export const insertSalesQuotationSchema = createInsertSchema(
   salesQuotations,

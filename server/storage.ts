@@ -2143,6 +2143,7 @@ class Storage {
           tasks: dailyActivities.completedTasks,
           date: dailyActivities.date,
           remarks: dailyActivities.remarks,
+          hbmDailyRunningHours: dailyActivities.hbmDailyRunningHours,
         })
         .from(dailyActivities)
         .where(
@@ -3740,18 +3741,25 @@ class Storage {
     offset: number,
   ): Promise<{ data: DailyActivity[]; total: number }> {
     try {
+
+      const whereCondition = and(
+        eq(dailyActivities.projectId, projectId),
+        isNotNull(dailyActivities.completedTasks),
+        ne(dailyActivities.completedTasks, ""),
+      );
+
       const [data, countResult] = await Promise.all([
         db
           .select()
           .from(dailyActivities)
-          .where(eq(dailyActivities.projectId, projectId))
+          .where(whereCondition)
           .orderBy(desc(dailyActivities.date))
           .limit(limit)
           .offset(offset),
         db
           .select({ count: sql<number>`count(*)` })
           .from(dailyActivities)
-          .where(eq(dailyActivities.projectId, projectId)),
+          .where(whereCondition),
       ]);
 
       const total = Number(countResult[0]?.count || 0);
