@@ -1,0 +1,1 @@
+ALTER TABLE "daily_activities" ADD COLUMN "hbm_daily_running_hours" numeric(10, 2);

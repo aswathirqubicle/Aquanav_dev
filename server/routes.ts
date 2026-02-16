@@ -1600,9 +1600,9 @@ Work done for the Week - ${week}
 <tr>
 <th>Day</th>
 <th>Date</th>
-<th>HBM Hours</th>
 <th>Location</th>
 <th>Activities</th>
+${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
 </tr>
 </thead>
 <tbody>
@@ -1612,9 +1612,9 @@ ${reports
 <tr>
 <td>Day ${r.day_num}</td>
 <td>${r.date}</td>
-<td>${r.hbmHours || ""}</td>
 <td>${r.location || ""}</td>
 <td>${r.activities || ""}</td>
+${data?.includeHBMHours ? `<td>${r.hbmHours || ""}</td>` : ``}
 </tr>
 `,
   )
@@ -1678,10 +1678,6 @@ Consumables Used - ${week}
 <th>Date</th>
 <th>Item</th>
 <th>Qty</th>
-<th>Unit</th>
-<th>Unit Cost</th>
-<th>Total</th>
-<th>Created By</th>
 </tr>
 </thead>
 <tbody>
@@ -1692,10 +1688,6 @@ ${items
 <td>${i.date}</td>
 <td>${i.itemName}</td>
 <td>${i.quantity}</td>
-<td>${i.unit}</td>
-<td>${i.unitCost}</td>
-<td>${i.total}</td>
-<td>${i.createdBy}</td>
 </tr>
 `,
   )
@@ -2170,10 +2162,6 @@ Consumables Used - ${week}
 <th>Date</th>
 <th>Item</th>
 <th>Qty</th>
-<th>Unit</th>
-<th>Unit Cost</th>
-<th>Total</th>
-<th>Created By</th>
 </tr>
 </thead>
 <tbody>
@@ -2184,10 +2172,6 @@ ${items
 <td>${i.date}</td>
 <td>${i.itemName}</td>
 <td>${i.quantity}</td>
-<td>${i.unit}</td>
-<td>${i.unitCost}</td>
-<td>${i.total}</td>
-<td>${i.createdBy}</td>
 </tr>
 `,
   )

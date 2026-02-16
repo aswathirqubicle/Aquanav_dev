@@ -2230,6 +2230,7 @@ class Storage {
         res.reportDate = reportDate;
         if(!includeRemainingDays)
           res.workRemainingDays = [];
+        res.includeHBMHours = includeHBMHours;
         console.log("hhhhh",res);
       return res as Project;
     } catch (error: any) {
