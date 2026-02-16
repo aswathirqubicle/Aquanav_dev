@@ -2240,6 +2240,77 @@ class Storage {
     }
   }
 
+  async getConsumablesPrint(id: number,
+          fromDate,
+          toDate,
+          reportDate): Promise<Project | undefined> {
+    try {
+      const result = await db
+        .select({
+          id: projects.id,
+          title: projects.title,
+          description: projects.description,
+          vesselName: projects.vesselName,
+          vesselImage: projects.vesselImage,
+          vesselImoNumber: projects.vesselImoNumber,
+          startDate: projects.startDate,
+          plannedEndDate: projects.plannedEndDate,
+          actualEndDate: projects.actualEndDate,
+          status: projects.status,
+          estimatedBudget: projects.estimatedBudget,
+          actualCost: projects.actualCost,
+          totalRevenue: projects.totalRevenue,
+          customerId: projects.customerId,
+          customerName: customers.name,
+          locations: projects.locations,
+          ridgingCrewNos: projects.ridgingCrewNos,
+          modeOfContract: projects.modeOfContract,
+          workingHours: projects.workingHours,
+          ppe: projects.ppe,
+          additionalField1Title: projects.additionalField1Title,
+          additionalField1Description: projects.additionalField1Description,
+          additionalField2Title: projects.additionalField2Title,
+          additionalField2Description: projects.additionalField2Description,
+          additionalField3Title: projects.additionalField3Title,
+          additionalField3Description: projects.additionalField3Description,
+          additionalField4Title: projects.additionalField4Title,
+          additionalField4Description: projects.additionalField4Description,
+          additionalField5Title: projects.additionalField5Title,
+          additionalField5Description: projects.additionalField5Description,
+          additionalField6Title: projects.additionalField6Title,
+          additionalField6Description: projects.additionalField6Description,
+        })
+        .from(projects)
+        .leftJoin(customers, eq(projects.customerId, customers.id))
+        .where(eq(projects.id, id))
+        .limit(1);
+        const res = result[0];
+        const dateConditions: any[] = [];
+
+        if (fromDate) {
+          dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
+        }
+
+        if (toDate) {
+          dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+        }        
+        res.consumables = await storage.getProjectConsumables(id,fromDate,toDate);
+        res.reportDate = reportDate;
+        console.log("hhhhh",res);
+      return res as Project;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getProject (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProject",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getProjectsByCustomer(customerId: number): Promise<Project[]> {
     try {
       return await db
