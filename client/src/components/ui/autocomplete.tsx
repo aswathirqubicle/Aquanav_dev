@@ -39,13 +39,16 @@ export function Autocomplete({
 
   // Filter options based on input
   const filteredOptions = React.useMemo(() => {
+    // If not actively editing (typing), show all options
+    if (!isEditing) return options
     if (!inputValue.trim()) return options
+
     const searchTerm = inputValue.toLowerCase()
     return options.filter(option => 
       option.label.toLowerCase().includes(searchTerm) ||
       option.searchText?.toLowerCase().includes(searchTerm)
     )
-  }, [options, inputValue])
+  }, [options, inputValue, isEditing])
 
   // Set input value when value prop changes (only when not editing)
   useEffect(() => {

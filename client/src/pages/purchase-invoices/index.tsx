@@ -816,24 +816,9 @@ export default function PurchaseInvoicesIndex() {
                       }))}
                       value={filters.supplierId?.toString() || ""}
                       onValueChange={(value) => {
-                        const supplier = suppliers.find(s => s.id.toString() === value);
-                        const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
-
-                        setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "", }));
-
-                        // Update existing items ONLY if user hasn’t overridden tax
-                        setInvoiceItems(items =>
-                          items.map(item =>
-                            item.taxRate === "0"
-                              ? { ...item, taxRate: String(taxRate) }
-                              : item
-                          )
-                        );
-
-                        // Default tax for new items
-                        setNewItem(prev => ({
+                        setFilters(prev => ({
                           ...prev,
-                          taxRate: String(taxRate),
+                          supplierId: value ? parseInt(value) : undefined
                         }));
                       }}
                       placeholder="Select supplier..."

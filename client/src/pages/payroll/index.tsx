@@ -65,7 +65,7 @@ import {
 import { Employee } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { Company } from "@shared/schema";
-import { generateCommonHeader, generateCommonFooter, getPayslipStyles } from "../../lib/utils";
+import { generateCommonHeader, generateCommonFooter, getPayslipStyles, getReportStyles } from "../../lib/utils";
 import { printHtml } from "../../lib/print-utils";
 
 interface PayrollEntry {
@@ -637,17 +637,6 @@ export default function PayrollIndex() {
     }
 
     try {
-      // Create a new window for the summary report
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate the report",
-          variant: "destructive",
-        });
-        return;
-      }
-
       // Calculate summary statistics
       const totalGrossPay = summaryEnrichedEntries.reduce(
         (sum, entry) => sum + parseFloat(entry.basicSalary) + parseFloat(entry.totalAdditions || "0"),
@@ -686,198 +675,119 @@ export default function PayrollIndex() {
         <html>
         <head>
           <title>Monthly Payroll Summary - ${getMonthName(selectedMonth)} ${selectedYear}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 20px; 
-              font-size: 12px;
-              color: #333;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .company-name { 
-              font-size: 24px; 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-            }
-            .report-title { 
-              font-size: 18px; 
-              color: #666; 
-              margin-bottom: 5px;
-            }
-            .period { 
-              font-size: 16px; 
-              color: #888; 
-            }
-            .summary-grid { 
-              display: grid; 
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-              gap: 20px; 
-              margin-bottom: 30px; 
-            }
-            .summary-card { 
-              border: 1px solid #ddd; 
-              border-radius: 8px; 
-              padding: 20px; 
-              text-align: center;
-              background-color: #f9f9f9;
-            }
-            .summary-label { 
-              font-size: 14px; 
-              color: #666; 
-              margin-bottom: 5px; 
-            }
-            .summary-value { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #333; 
-            }
-            .currency { color: #059669; }
-            .count { color: #3b82f6; }
-            .section-title { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin: 30px 0 15px 0; 
-              border-bottom: 1px solid #ddd; 
-              padding-bottom: 5px;
-            }
-            .table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin-bottom: 20px;
-            }
-            .table th, .table td { 
-              border: 1px solid #ddd; 
-              padding: 12px; 
-              text-align: left; 
-            }
-            .table th { 
-              background-color: #f5f5f5; 
-              font-weight: bold; 
-            }
-            .table .number { text-align: right; }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #666; 
-              border-top: 1px solid #eee; 
-              padding-top: 20px; 
-              margin-top: 40px;
-            }
-            @media print {
-              body { margin: 0; }
-              .summary-grid { grid-template-columns: repeat(4, 1fr); }
-            }
-          </style>
+          ${getReportStyles()}
         </head>
         <body>
-          <div class="header">
-            <div class="company-name">AquaNav Marine Solutions</div>
-            <div class="report-title">Monthly Payroll Summary</div>
-            <div class="period">${getMonthName(month)} ${year}</div>
+          <div class="report-header-container">
+            ${generateCommonHeader({ company })}
+          </div>
+          <div class="report-footer-container">
+            ${generateCommonFooter({ company })}
           </div>
 
-          <div class="summary-grid">
-            <div class="summary-card">
-              <div class="summary-label">Total Employees</div>
-              <div class="summary-value count">${summaryEnrichedEntries.length}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Gross Payroll</div>
-              <div class="summary-value currency">${formatCurrency(totalGrossPay)}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Total Deductions</div>
-              <div class="summary-value currency">${formatCurrency(totalDeductions)}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Net Payroll</div>
-              <div class="summary-value currency">${formatCurrency(totalNetPay)}</div>
-            </div>
-          </div>
-
-          <div class="section-title">Department Breakdown</div>
-          <table class="table">
+          <table class="report-wrapper">
             <thead>
-              <tr>
-                <th>Department</th>
-                <th class="number">Employees</th>
-                <th class="number">Gross Pay</th>
-                <th class="number">Deductions</th>
-                <th class="number">Net Pay</th>
-              </tr>
+              <tr><td><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
-              ${Object.entries(departmentSummary).map(([dept, summary]) => `
-                <tr>
-                  <td>${dept}</td>
-                  <td class="number">${summary.count}</td>
-                  <td class="number">${formatCurrency(summary.totalGross)}</td>
-                  <td class="number">${formatCurrency(summary.totalDeductions)}</td>
-                  <td class="number">${formatCurrency(summary.totalNet)}</td>
-                </tr>
-              `).join('')}
-              <tr style="font-weight: bold; background-color: #f0f0f0;">
-                <td>Total</td>
-                <td class="number">${summaryEnrichedEntries.length}</td>
-                <td class="number">${formatCurrency(totalGrossPay)}</td>
-                <td class="number">${formatCurrency(totalDeductions)}</td>
-                <td class="number">${formatCurrency(totalNetPay)}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div class="section-title">Employee Details</div>
-          <table class="table">
-            <thead>
               <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Position</th>
-                <th class="number">Basic Salary</th>
-                <th class="number">Additions</th>
-                <th class="number">Deductions</th>
-                <th class="number">Net Pay</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${summaryEnrichedEntries.map(entry => `
-                <tr>
-                  <td>${entry.employee?.firstName || 'N/A'} ${entry.employee?.lastName || ''}</td>
-                  <td>${entry.employee?.department || 'N/A'}</td>
-                  <td>${entry.employee?.position || 'N/A'}</td>
-                  <td class="number">${formatCurrency(entry.basicSalary)}</td>
-                  <td class="number">${formatCurrency(entry.totalAdditions || "0")}</td>
-                  <td class="number">${formatCurrency(entry.totalDeductions || "0")}</td>
-                  <td class="number">${formatCurrency(entry.totalAmount)}</td>
-                  <td style="text-transform: capitalize">${entry.status}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+                <td class="report-content-cell">
+                  <div class="report-title-section">
+                    <div class="report-title">Monthly Payroll Summary</div>
+                    <div class="report-period">${getMonthName(month)} ${year}</div>
+                  </div>
 
-          <div class="footer">
-            <p>Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-            <p>This report contains confidential payroll information</p>
-          </div>
+                  <div class="summary-grid">
+                    <div class="summary-card">
+                      <div class="summary-label">Total Employees</div>
+                      <div class="summary-value count">${summaryEnrichedEntries.length}</div>
+                    </div>
+                    <div class="summary-card">
+                      <div class="summary-label">Gross Payroll</div>
+                      <div class="summary-value currency">${formatCurrency(totalGrossPay)}</div>
+                    </div>
+                    <div class="summary-card">
+                      <div class="summary-label">Total Deductions</div>
+                      <div class="summary-value currency">${formatCurrency(totalDeductions)}</div>
+                    </div>
+                    <div class="summary-card">
+                      <div class="summary-label">Net Payroll</div>
+                      <div class="summary-value currency">${formatCurrency(totalNetPay)}</div>
+                    </div>
+                  </div>
+
+                  <div class="section-title">Department Breakdown</div>
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Department</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Gross Pay</th>
+                        <th class="number">Deductions</th>
+                        <th class="number">Net Pay</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${Object.entries(departmentSummary).map(([dept, summary]) => `
+                        <tr>
+                          <td>${dept}</td>
+                          <td class="number">${summary.count}</td>
+                          <td class="number">${formatCurrency(summary.totalGross)}</td>
+                          <td class="number">${formatCurrency(summary.totalDeductions)}</td>
+                          <td class="number">${formatCurrency(summary.totalNet)}</td>
+                        </tr>
+                      `).join('')}
+                      <tr class="total-row">
+                        <td>Total</td>
+                        <td class="number">${summaryEnrichedEntries.length}</td>
+                        <td class="number">${formatCurrency(totalGrossPay)}</td>
+                        <td class="number">${formatCurrency(totalDeductions)}</td>
+                        <td class="number">${formatCurrency(totalNetPay)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div class="section-title">Employee Details</div>
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Position</th>
+                        <th class="number">Basic Salary</th>
+                        <th class="number">Additions</th>
+                        <th class="number">Deductions</th>
+                        <th class="number">Net Pay</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${summaryEnrichedEntries.map(entry => `
+                        <tr>
+                          <td>${entry.employee?.firstName || 'N/A'} ${entry.employee?.lastName || ''}</td>
+                          <td>${entry.employee?.department || 'N/A'}</td>
+                          <td>${entry.employee?.position || 'N/A'}</td>
+                          <td class="number">${formatCurrency(entry.basicSalary)}</td>
+                          <td class="number">${formatCurrency(entry.totalAdditions || "0")}</td>
+                          <td class="number">${formatCurrency(entry.totalDeductions || "0")}</td>
+                          <td class="number">${formatCurrency(entry.totalAmount)}</td>
+                          <td style="text-transform: capitalize">${entry.status}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr><td><div class="report-footer-space"></div></td></tr>
+            </tfoot>
+          </table>
         </body>
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
@@ -1474,11 +1384,13 @@ export default function PayrollIndex() {
                       employees={employees || []}
                       formatCurrency={formatCurrency}
                       getMonthName={getMonthName}
+                      company={company}
                     />
                     <EmployeeCostAnalysisDialog
                       employees={employees || []}
                       formatCurrency={formatCurrency}
                       getMonthName={getMonthName}
+                      company={company}
                     />
                     {/* <Button variant="outline" className="w-full justify-start h-auto py-3">
                       <Download className="h-4 w-4 mr-2 flex-shrink-0" />
@@ -3093,17 +3005,6 @@ function AnnualPayrollReportDialog({
     setIsGenerating(true);
 
     try {
-      // Create a new window for the annual report
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate the annual report",
-          variant: "destructive",
-        });
-        setIsGenerating(false);
-        return;
-      }
 
       // Fetch payroll data for all 12 months of the selected year
       const monthlyData: any[] = [];
@@ -3216,347 +3117,209 @@ function AnnualPayrollReportDialog({
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Annual Payroll Report ${selectedYear} - AquaNav Marine Solutions</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 20px; 
-              font-size: 12px;
-              color: #333;
-              line-height: 1.4;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 3px solid #333; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .company-name { 
-              font-size: 28px; 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              color: #1e40af;
-            }
-            .report-title { 
-              font-size: 22px; 
-              color: #666; 
-              margin-bottom: 5px;
-              font-weight: 600;
-            }
-            .year { 
-              font-size: 18px; 
-              color: #888; 
-              font-weight: 500;
-            }
-            .executive-summary {
-              background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-              border: 2px solid #0ea5e9;
-              border-radius: 12px;
-              padding: 25px;
-              margin-bottom: 30px;
-            }
-            .summary-title {
-              font-size: 18px;
-              font-weight: bold;
-              color: #0c4a6e;
-              margin-bottom: 15px;
-              text-align: center;
-            }
-            .summary-grid { 
-              display: grid; 
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-              gap: 20px; 
-            }
-            .summary-card { 
-              background: white;
-              border: 1px solid #bae6fd; 
-              border-radius: 8px; 
-              padding: 20px; 
-              text-align: center;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .summary-label { 
-              font-size: 14px; 
-              color: #475569; 
-              margin-bottom: 8px;
-              font-weight: 500;
-            }
-            .summary-value { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #0c4a6e; 
-            }
-            .currency { color: #059669; }
-            .count { color: #3b82f6; }
-            .percentage { color: #dc2626; }
-            .section-title { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin: 30px 0 15px 0; 
-              border-bottom: 2px solid #e2e8f0; 
-              padding-bottom: 8px;
-              color: #1e293b;
-            }
-            .table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin-bottom: 25px;
-              background: white;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            .table th, .table td { 
-              border: 1px solid #e2e8f0; 
-              padding: 12px 8px; 
-              text-align: left; 
-              font-size: 11px;
-            }
-            .table th { 
-              background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
-              font-weight: bold; 
-              color: #1e293b;
-              font-size: 12px;
-            }
-            .table .number { text-align: right; }
-            .table .center { text-align: center; }
-            .table-striped tbody tr:nth-child(even) {
-              background-color: #f8fafc;
-            }
-            .total-row {
-              font-weight: bold;
-              background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-              border-top: 2px solid #d97706;
-            }
-            .chart-section {
-              margin: 30px 0;
-              padding: 20px;
-              background: #f8fafc;
-              border-radius: 8px;
-              border: 1px solid #e2e8f0;
-            }
-            .chart-title {
-              font-size: 16px;
-              font-weight: bold;
-              color: #1e293b;
-              margin-bottom: 15px;
-              text-align: center;
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #64748b; 
-              border-top: 2px solid #e2e8f0; 
-              padding-top: 20px; 
-              margin-top: 40px;
-            }
-            .page-break {
-              page-break-before: always;
-            }
-            .highlight {
-              background-color: #fef3c7;
-              padding: 2px 4px;
-              border-radius: 3px;
-            }
-            @media print {
-              body { margin: 0; }
-              .summary-grid { grid-template-columns: repeat(4, 1fr); }
-              .page-break { page-break-before: always; }
-            }
-          </style>
+          <title>Annual Payroll Report ${selectedYear} - ${company?.name || "AquaNav Marine Solutions"}</title>
+          ${getReportStyles()}
         </head>
         <body>
-          <div class="header">
-            <div class="company-name">AquaNav Marine Solutions</div>
-            <div class="report-title">Annual Payroll Report</div>
-            <div class="year">Year ${selectedYear}</div>
+          <div class="report-header-container">
+            ${generateCommonHeader({ company })}
+          </div>
+          <div class="report-footer-container">
+            ${generateCommonFooter({ company })}
           </div>
 
-          <div class="executive-summary">
-            <div class="summary-title">Executive Summary</div>
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-label">Total Annual Payroll</div>
-                <div class="summary-value currency">${formatCurrency(totalAnnualPayroll)}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Average Monthly Payroll</div>
-                <div class="summary-value currency">${formatCurrency(totalAnnualPayroll / 12)}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Active Employees</div>
-                <div class="summary-value count">${totalEmployeesProcessed}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Departments</div>
-                <div class="summary-value count">${Object.keys(departmentTotals).length}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-title">Monthly Payroll Breakdown</div>
-          <table class="table table-striped">
+          <table class="report-wrapper">
             <thead>
-              <tr>
-                <th>Month</th>
-                <th class="number">Employees</th>
-                <th class="number">Total Payroll</th>
-                <th class="number">Average per Employee</th>
-                <th class="number">% of Annual Total</th>
-              </tr>
+              <tr><td><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
-              ${monthlyData.map((monthData, index) => {
+              <tr>
+                <td class="report-content-cell">
+                  <div class="report-title-section">
+                    <div class="report-title">Annual Payroll Report</div>
+                    <div class="report-period">Year ${selectedYear}</div>
+                  </div>
+
+                  <div class="executive-summary">
+                    <div class="summary-title">Executive Summary</div>
+                    <div class="summary-grid">
+                      <div class="summary-card">
+                        <div class="summary-label">Total Annual Payroll</div>
+                        <div class="summary-value currency">${formatCurrency(totalAnnualPayroll)}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Average Monthly Payroll</div>
+                        <div class="summary-value currency">${formatCurrency(totalAnnualPayroll / 12)}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Active Employees</div>
+                        <div class="summary-value count">${totalEmployeesProcessed}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Departments</div>
+                        <div class="summary-value count">${Object.keys(departmentTotals).length}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="section-title">Monthly Payroll Breakdown</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Month</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Total Payroll</th>
+                        <th class="number">Average per Employee</th>
+                        <th class="number">% of Annual Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${monthlyData.map((monthData, index) => {
         const percentage = totalAnnualPayroll > 0 ? (monthData.total / totalAnnualPayroll * 100) : 0;
         const avgPerEmployee = monthData.employeeCount > 0 ? monthData.total / monthData.employeeCount : 0;
         return `
-                  <tr>
-                    <td><strong>${getMonthName(monthData.month)}</strong></td>
-                    <td class="number">${monthData.employeeCount}</td>
-                    <td class="number">${formatCurrency(monthData.total)}</td>
-                    <td class="number">${formatCurrency(avgPerEmployee)}</td>
-                    <td class="number">${percentage.toFixed(1)}%</td>
-                  </tr>
-                `;
+                          <tr>
+                            <td><strong>${getMonthName(monthData.month)}</strong></td>
+                            <td class="number">${monthData.employeeCount}</td>
+                            <td class="number">${formatCurrency(monthData.total)}</td>
+                            <td class="number">${formatCurrency(avgPerEmployee)}</td>
+                            <td class="number">${percentage.toFixed(1)}%</td>
+                          </tr>
+                        `;
       }).join('')}
-              <tr class="total-row">
-                <td><strong>Annual Total</strong></td>
-                <td class="number"><strong>${totalEmployeesProcessed}</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll / 12 / (totalEmployeesProcessed || 1))}</strong></td>
-                <td class="number"><strong>100.0%</strong></td>
-              </tr>
-            </tbody>
-          </table>
+                      <tr class="total-row">
+                        <td><strong>Annual Total</strong></td>
+                        <td class="number"><strong>${totalEmployeesProcessed}</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll / 12 / (totalEmployeesProcessed || 1))}</strong></td>
+                        <td class="number"><strong>100.0%</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-          <div class="section-title">Department-wise Annual Summary</div>
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th class="number">Employees</th>
-                <th class="number">Total Annual Payroll</th>
-                <th class="number">Average per Employee</th>
-                <th class="number">% of Total Payroll</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${Object.entries(departmentTotals)
+                  <div class="section-title">Department-wise Annual Summary</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Department</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Total Annual Payroll</th>
+                        <th class="number">Average per Employee</th>
+                        <th class="number">% of Total Payroll</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${Object.entries(departmentTotals)
           .sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)
           .map(([dept, data]) => {
             const percentage = totalAnnualPayroll > 0 ? (data.totalPayroll / totalAnnualPayroll * 100) : 0;
             const avgPerEmployee = data.employeeCount > 0 ? data.totalPayroll / data.employeeCount : 0;
             return `
-                    <tr>
-                      <td><strong>${dept}</strong></td>
-                      <td class="number">${data.employeeCount}</td>
-                      <td class="number">${formatCurrency(data.totalPayroll)}</td>
-                      <td class="number">${formatCurrency(avgPerEmployee)}</td>
-                      <td class="number">${percentage.toFixed(1)}%</td>
-                    </tr>
-                  `;
+                            <tr>
+                              <td><strong>${dept}</strong></td>
+                              <td class="number">${data.employeeCount}</td>
+                              <td class="number">${formatCurrency(data.totalPayroll)}</td>
+                              <td class="number">${formatCurrency(avgPerEmployee)}</td>
+                              <td class="number">${percentage.toFixed(1)}%</td>
+                            </tr>
+                          `;
           }).join('')}
-              <tr class="total-row">
-                <td><strong>Grand Total</strong></td>
-                <td class="number"><strong>${Object.values(departmentTotals).reduce((sum, dept) => sum + dept.employeeCount, 0)}</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll / Object.values(departmentTotals).reduce((sum, dept) => sum + dept.employeeCount, 0))}</strong></td>
-                <td class="number"><strong>100.0%</strong></td>
-              </tr>
-            </tbody>
-          </table>
+                      <tr class="total-row">
+                        <td><strong>Grand Total</strong></td>
+                        <td class="number"><strong>${Object.values(departmentTotals).reduce((sum, dept) => sum + dept.employeeCount, 0)}</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll / Object.values(departmentTotals).reduce((sum, dept) => sum + dept.employeeCount, 0))}</strong></td>
+                        <td class="number"><strong>100.0%</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-          <div class="page-break"></div>
+                  <div class="page-break"></div>
 
-          <div class="section-title">Employee Annual Summary</div>
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Position</th>
-                <th class="number">Months Worked</th>
-                <th class="number">Total Annual Pay</th>
-                <th class="number">Average Monthly Pay</th>
-                <th class="number">% of Total Payroll</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${Object.values(employeeAnnualTotals)
+                  <div class="section-title">Employee Annual Summary</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Position</th>
+                        <th class="number">Months Worked</th>
+                        <th class="number">Total Annual Pay</th>
+                        <th class="number">Average Monthly Pay</th>
+                        <th class="number">% of Total Payroll</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${Object.values(employeeAnnualTotals)
           .sort((a, b) => b.totalPayroll - a.totalPayroll)
           .map((empData) => {
             const percentage = totalAnnualPayroll > 0 ? (empData.totalPayroll / totalAnnualPayroll * 100) : 0;
             return `
-                    <tr>
-                      <td><strong>${empData.employee?.firstName || 'N/A'} ${empData.employee?.lastName || ''}</strong></td>
-                      <td>${empData.employee?.department || 'N/A'}</td>
-                      <td>${empData.employee?.position || 'N/A'}</td>
-                      <td class="number">${empData.monthsWorked}</td>
-                      <td class="number">${formatCurrency(empData.totalPayroll)}</td>
-                      <td class="number">${formatCurrency(empData.averageMonthly)}</td>
-                      <td class="number">${percentage.toFixed(1)}%</td>
-                    </tr>
-                  `;
+                            <tr>
+                              <td><strong>${empData.employee?.firstName || 'N/A'} ${empData.employee?.lastName || ''}</strong></td>
+                              <td>${empData.employee?.department || 'N/A'}</td>
+                              <td>${empData.employee?.position || 'N/A'}</td>
+                              <td class="number">${empData.monthsWorked}</td>
+                              <td class="number">${formatCurrency(empData.totalPayroll)}</td>
+                              <td class="number">${formatCurrency(empData.averageMonthly)}</td>
+                              <td class="number">${percentage.toFixed(1)}%</td>
+                            </tr>
+                          `;
           }).join('')}
-              <tr class="total-row">
-                <td colspan="4"><strong>Grand Total</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
-                <td class="number"><strong>${formatCurrency(totalAnnualPayroll / 12)}</strong></td>
-                <td class="number"><strong>100.0%</strong></td>
+                      <tr class="total-row">
+                        <td colspan="4"><strong>Grand Total</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll)}</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalAnnualPayroll / 12)}</strong></td>
+                        <td class="number"><strong>100.0%</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div class="chart-section">
+                    <div class="chart-title">Key Performance Indicators</div>
+                    <div class="summary-grid">
+                      <div class="summary-card">
+                        <div class="summary-label">Highest Monthly Payroll</div>
+                        <div class="summary-value currency">${formatCurrency(Math.max(...monthlyData.map(m => m.total)))}</div>
+                        <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
+                          ${getMonthName(monthlyData.find(m => m.total === Math.max(...monthlyData.map(m => m.total)))?.month || 1)}
+                        </div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Lowest Monthly Payroll</div>
+                        <div class="summary-value currency">${formatCurrency(Math.min(...monthlyData.map(m => m.total)))}</div>
+                        <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
+                          ${getMonthName(monthlyData.find(m => m.total === Math.min(...monthlyData.map(m => m.total)))?.month || 1)}
+                        </div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Payroll Variance</div>
+                        <div class="summary-value percentage">${((Math.max(...monthlyData.map(m => m.total)) - Math.min(...monthlyData.map(m => m.total))) / (totalAnnualPayroll / 12) * 100).toFixed(1)}%</div>
+                        <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
+                          From average monthly
+                        </div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Top Department</div>
+                        <div class="summary-value" style="font-size: 16px;">${Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[0] || 'N/A'}</div>
+                        <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
+                          ${formatCurrency(Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[1]?.totalPayroll || 0)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr><td><div class="report-footer-space"></div></td></tr>
+            </tfoot>
           </table>
-
-          <div class="chart-section">
-            <div class="chart-title">Key Performance Indicators</div>
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-label">Highest Monthly Payroll</div>
-                <div class="summary-value currency">${formatCurrency(Math.max(...monthlyData.map(m => m.total)))}</div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
-                  ${getMonthName(monthlyData.find(m => m.total === Math.max(...monthlyData.map(m => m.total)))?.month || 1)}
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Lowest Monthly Payroll</div>
-                <div class="summary-value currency">${formatCurrency(Math.min(...monthlyData.map(m => m.total)))}</div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
-                  ${getMonthName(monthlyData.find(m => m.total === Math.min(...monthlyData.map(m => m.total)))?.month || 1)}
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Payroll Variance</div>
-                <div class="summary-value percentage">${((Math.max(...monthlyData.map(m => m.total)) - Math.min(...monthlyData.map(m => m.total))) / (totalAnnualPayroll / 12) * 100).toFixed(1)}%</div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
-                  From average monthly
-                </div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Top Department</div>
-                <div class="summary-value" style="font-size: 16px;">${Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[0] || 'N/A'}</div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 5px;">
-                  ${formatCurrency(Object.entries(departmentTotals).sort(([, a], [, b]) => b.totalPayroll - a.totalPayroll)[0]?.[1]?.totalPayroll || 0)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="footer">
-            <p><strong>Report Generated:</strong> ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-            <p><strong>Generated by:</strong> AquaNav Marine Solutions Payroll Management System</p>
-            <p style="margin-top: 10px; font-style: italic;">This report contains confidential payroll information and should be handled accordingly.</p>
-          </div>
         </body>
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
@@ -3675,10 +3438,12 @@ function EmployeeCostAnalysisDialog({
   employees,
   formatCurrency,
   getMonthName,
+  company,
 }: {
   employees: Employee[];
   formatCurrency: (amount: string | number) => string;
   getMonthName: (month: number) => string;
+  company?: Company;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -3700,17 +3465,6 @@ function EmployeeCostAnalysisDialog({
     setIsGenerating(true);
 
     try {
-      // Create a new window for the cost analysis report
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate the cost analysis report",
-          variant: "destructive",
-        });
-        setIsGenerating(false);
-        return;
-      }
 
       // Fetch payroll data for the selected year
       const yearlyPayrollData: any[] = [];
@@ -3855,397 +3609,235 @@ function EmployeeCostAnalysisDialog({
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Employee Cost Analysis ${selectedYear} - AquaNav Marine Solutions</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 20px; 
-              font-size: 12px;
-              color: #333;
-              line-height: 1.4;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 3px solid #333; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .company-name { 
-              font-size: 28px; 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              color: #1e40af;
-            }
-            .report-title { 
-              font-size: 22px; 
-              color: #666; 
-              margin-bottom: 5px;
-              font-weight: 600;
-            }
-            .year { 
-              font-size: 18px; 
-              color: #888; 
-              font-weight: 500;
-            }
-            .executive-summary {
-              background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-              border: 2px solid #0ea5e9;
-              border-radius: 12px;
-              padding: 25px;
-              margin-bottom: 30px;
-            }
-            .summary-title {
-              font-size: 18px;
-              font-weight: bold;
-              color: #0c4a6e;
-              margin-bottom: 15px;
-              text-align: center;
-            }
-            .summary-grid { 
-              display: grid; 
-              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-              gap: 20px; 
-            }
-            .summary-card { 
-              background: white;
-              border: 1px solid #bae6fd; 
-              border-radius: 8px; 
-              padding: 20px; 
-              text-align: center;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .summary-label { 
-              font-size: 14px; 
-              color: #475569; 
-              margin-bottom: 8px;
-              font-weight: 500;
-            }
-            .summary-value { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #0c4a6e; 
-            }
-            .currency { color: #059669; }
-            .count { color: #3b82f6; }
-            .percentage { color: #dc2626; }
-            .section-title { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin: 30px 0 15px 0; 
-              border-bottom: 2px solid #e2e8f0; 
-              padding-bottom: 8px;
-              color: #1e293b;
-            }
-            .table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin-bottom: 25px;
-              background: white;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            .table th, .table td { 
-              border: 1px solid #e2e8f0; 
-              padding: 12px 8px; 
-              text-align: left; 
-              font-size: 11px;
-            }
-            .table th { 
-              background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
-              font-weight: bold; 
-              color: #1e293b;
-              font-size: 12px;
-            }
-            .table .number { text-align: right; }
-            .table .center { text-align: center; }
-            .table-striped tbody tr:nth-child(even) {
-              background-color: #f8fafc;
-            }
-            .total-row {
-              font-weight: bold;
-              background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-              border-top: 2px solid #d97706;
-            }
-            .highlight-box {
-              background: #f8fafc;
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              padding: 20px;
-              margin: 20px 0;
-            }
-            .metrics-grid {
-              display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-              gap: 15px;
-              margin: 20px 0;
-            }
-            .metric-item {
-              background: white;
-              border: 1px solid #e2e8f0;
-              border-radius: 6px;
-              padding: 15px;
-            }
-            .metric-label {
-              font-size: 12px;
-              color: #64748b;
-              margin-bottom: 5px;
-            }
-            .metric-value {
-              font-size: 16px;
-              font-weight: bold;
-              color: #1e293b;
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #64748b; 
-              border-top: 2px solid #e2e8f0; 
-              padding-top: 20px; 
-              margin-top: 40px;
-            }
-            .page-break {
-              page-break-before: always;
-            }
-            .cost-efficiency {
-              background: #fef3c7;
-              border: 2px solid #f59e0b;
-              border-radius: 8px;
-              padding: 20px;
-              margin: 20px 0;
-            }
-            .efficiency-title {
-              font-size: 16px;
-              font-weight: bold;
-              color: #92400e;
-              margin-bottom: 10px;
-            }
-            @media print {
-              body { margin: 0; }
-              .summary-grid { grid-template-columns: repeat(4, 1fr); }
-              .page-break { page-break-before: always; }
-              .metrics-grid { grid-template-columns: repeat(3, 1fr); }
-            }
-          </style>
+          <title>Employee Cost Analysis ${selectedYear} - ${company?.name || "AquaNav Marine Solutions"}</title>
+          ${getReportStyles()}
         </head>
         <body>
-          <div class="header">
-            <div class="company-name">AquaNav Marine Solutions</div>
-            <div class="report-title">Employee Cost Analysis Report</div>
-            <div class="year">Year ${selectedYear}</div>
+          <div class="report-header-container">
+            ${generateCommonHeader({ company })}
+          </div>
+          <div class="report-footer-container">
+            ${generateCommonFooter({ company })}
           </div>
 
-          <div class="executive-summary">
-            <div class="summary-title">Executive Summary</div>
-            <div class="summary-grid">
-              <div class="summary-card">
-                <div class="summary-label">Total Payroll Cost</div>
-                <div class="summary-value currency">${formatCurrency(totalYearlyPayroll)}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Average Cost per Employee</div>
-                <div class="summary-value currency">${formatCurrency(avgCostPerEmployee)}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Total Employees Analyzed</div>
-                <div class="summary-value count">${totalEmployees}</div>
-              </div>
-              <div class="summary-card">
-                <div class="summary-label">Departments</div>
-                <div class="summary-value count">${Object.keys(departmentAnalysis).length}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="cost-efficiency">
-            <div class="efficiency-title">Cost Efficiency Highlights</div>
-            <div class="metrics-grid">
-              <div class="metric-item">
-                <div class="metric-label">Highest Paid Employee</div>
-                <div class="metric-value">${highestPaidEmployee?.firstName} ${highestPaidEmployee?.lastName}</div>
-                <div class="metric-label" style="margin-top: 5px;">${formatCurrency(highestPaidEmployee?.totalPaid || 0)}</div>
-              </div>
-              <div class="metric-item">
-                <div class="metric-label">Most Expensive Department</div>
-                <div class="metric-value">${mostExpensiveDept ? mostExpensiveDept[0] : 'N/A'}</div>
-                <div class="metric-label" style="margin-top: 5px;">${formatCurrency(mostExpensiveDept ? mostExpensiveDept[1].totalCost : 0)}</div>
-              </div>
-              <div class="metric-item">
-                <div class="metric-label">Cost per Employee Range</div>
-                <div class="metric-value">${formatCurrency(lowestPaidEmployee?.totalPaid || 0)} - ${formatCurrency(highestPaidEmployee?.totalPaid || 0)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-title">Department Cost Analysis</div>
-          <table class="table table-striped">
+          <table class="report-wrapper">
             <thead>
-              <tr>
-                <th>Department</th>
-                <th class="number">Total Cost</th>
-                <th class="number">Employees</th>
-                <th class="number">Avg Cost/Employee</th>
-                <th class="number">Max Monthly Cost</th>
-                <th class="number">Min Monthly Cost</th>
-                <th class="number">% of Total Cost</th>
-              </tr>
+              <tr><td><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
-              ${Object.entries(departmentAnalysis)
+              <tr>
+                <td class="report-content-cell">
+                  <div class="report-title-section">
+                    <div class="report-title">Employee Cost Analysis Report</div>
+                    <div class="report-period">Year ${selectedYear}</div>
+                  </div>
+
+                  <div class="executive-summary">
+                    <div class="summary-title">Executive Summary</div>
+                    <div class="summary-grid">
+                      <div class="summary-card">
+                        <div class="summary-label">Total Payroll Cost</div>
+                        <div class="summary-value currency">${formatCurrency(totalYearlyPayroll)}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Average Cost per Employee</div>
+                        <div class="summary-value currency">${formatCurrency(avgCostPerEmployee)}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Total Employees Analyzed</div>
+                        <div class="summary-value count">${totalEmployees}</div>
+                      </div>
+                      <div class="summary-card">
+                        <div class="summary-label">Departments</div>
+                        <div class="summary-value count">${Object.keys(departmentAnalysis).length}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="cost-efficiency">
+                    <div class="efficiency-title">Cost Efficiency Highlights</div>
+                    <div class="metrics-grid">
+                      <div class="metric-item">
+                        <div class="metric-label">Highest Paid Employee</div>
+                        <div class="metric-value">${highestPaidEmployee?.firstName} ${highestPaidEmployee?.lastName}</div>
+                        <div class="metric-label" style="margin-top: 5px;">${formatCurrency(highestPaidEmployee?.totalPaid || 0)}</div>
+                      </div>
+                      <div class="metric-item">
+                        <div class="metric-label">Most Expensive Department</div>
+                        <div class="metric-value">${mostExpensiveDept ? mostExpensiveDept[0] : 'N/A'}</div>
+                        <div class="metric-label" style="margin-top: 5px;">${formatCurrency(mostExpensiveDept ? mostExpensiveDept[1].totalCost : 0)}</div>
+                      </div>
+                      <div class="metric-item">
+                        <div class="metric-label">Cost per Employee Range</div>
+                        <div class="metric-value">${formatCurrency(lowestPaidEmployee?.totalPaid || 0)} - ${formatCurrency(highestPaidEmployee?.totalPaid || 0)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="section-title">Department Cost Analysis</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Department</th>
+                        <th class="number">Total Cost</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Avg Cost/Employee</th>
+                        <th class="number">Max Monthly Cost</th>
+                        <th class="number">Min Monthly Cost</th>
+                        <th class="number">% of Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${Object.entries(departmentAnalysis)
           .sort(([, a], [, b]) => b.totalCost - a.totalCost)
           .map(([dept, analysis]) => {
             const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
             const avgCostPerEmp = analysis.employeeCount > 0 ? analysis.totalCost / analysis.employeeCount : 0;
             return `
-                    <tr>
-                      <td><strong>${dept}</strong></td>
-                      <td class="number">${formatCurrency(analysis.totalCost)}</td>
-                      <td class="number">${analysis.employeeCount}</td>
-                      <td class="number">${formatCurrency(avgCostPerEmp)}</td>
-                      <td class="number">${formatCurrency(analysis.maxMonthlyCost)}</td>
-                      <td class="number">${formatCurrency(analysis.minMonthlyCost)}</td>
-                      <td class="number">${percentage.toFixed(1)}%</td>
-                    </tr>
-                  `;
+                            <tr>
+                              <td><strong>${dept}</strong></td>
+                              <td class="number">${formatCurrency(analysis.totalCost)}</td>
+                              <td class="number">${analysis.employeeCount}</td>
+                              <td class="number">${formatCurrency(avgCostPerEmp)}</td>
+                              <td class="number">${formatCurrency(analysis.maxMonthlyCost)}</td>
+                              <td class="number">${formatCurrency(analysis.minMonthlyCost)}</td>
+                              <td class="number">${percentage.toFixed(1)}%</td>
+                            </tr>
+                          `;
           }).join('')}
-              <tr class="total-row">
-                <td><strong>Total</strong></td>
-                <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
-                <td class="number"><strong>${totalEmployees}</strong></td>
-                <td class="number"><strong>${formatCurrency(avgCostPerEmployee)}</strong></td>
-                <td class="number"><strong>-</strong></td>
-                <td class="number"><strong>-</strong></td>
-                <td class="number"><strong>100.0%</strong></td>
-              </tr>
-            </tbody>
-          </table>
+                      <tr class="total-row">
+                        <td><strong>Total</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
+                        <td class="number"><strong>${totalEmployees}</strong></td>
+                        <td class="number"><strong>${formatCurrency(avgCostPerEmployee)}</strong></td>
+                        <td class="number"><strong>-</strong></td>
+                        <td class="number"><strong>-</strong></td>
+                        <td class="number"><strong>100.0%</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-          <div class="section-title">Position-Based Cost Analysis</div>
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Position</th>
-                <th class="number">Total Cost</th>
-                <th class="number">Employees</th>
-                <th class="number">Avg Annual Salary</th>
-                <th class="number">Departments</th>
-                <th class="number">% of Total Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${Object.entries(positionAnalysis)
+                  <div class="section-title">Position-Based Cost Analysis</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Position</th>
+                        <th class="number">Total Cost</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Avg Annual Salary</th>
+                        <th class="number">Departments</th>
+                        <th class="number">% of Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${Object.entries(positionAnalysis)
           .sort(([, a], [, b]) => b.totalCost - a.totalCost)
           .map(([position, analysis]) => {
             const percentage = totalYearlyPayroll > 0 ? (analysis.totalCost / totalYearlyPayroll * 100) : 0;
             return `
-                    <tr>
-                      <td><strong>${position}</strong></td>
-                      <td class="number">${formatCurrency(analysis.totalCost)}</td>
-                      <td class="number">${analysis.employeeCount}</td>
-                      <td class="number">${formatCurrency(analysis.avgSalary)}</td>
-                      <td class="number">${analysis.departmentCount}</td>
-                      <td class="number">${percentage.toFixed(1)}%</td>
-                    </tr>
-                  `;
+                            <tr>
+                              <td><strong>${position}</strong></td>
+                              <td class="number">${formatCurrency(analysis.totalCost)}</td>
+                              <td class="number">${analysis.employeeCount}</td>
+                              <td class="number">${formatCurrency(analysis.avgSalary)}</td>
+                              <td class="number">${analysis.departmentCount}</td>
+                              <td class="number">${percentage.toFixed(1)}%</td>
+                            </tr>
+                          `;
           }).join('')}
-            </tbody>
-          </table>
+                    </tbody>
+                  </table>
 
-          <div class="page-break"></div>
+                  <div class="page-break"></div>
 
-          <div class="section-title">Individual Employee Cost Analysis</div>
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Department</th>
-                <th>Position</th>
-                <th class="number">Total Paid</th>
-                <th class="number">Months Worked</th>
-                <th class="number">Avg Monthly</th>
-                <th class="number">Annual Salary</th>
-                <th class="number">Utilization %</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${individualAnalysis.map(emp => `
-                <tr>
-                  <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
-                  <td>${emp.department || 'N/A'}</td>
-                  <td>${emp.position || 'N/A'}</td>
-                  <td class="number">${formatCurrency(emp.totalPaid)}</td>
-                  <td class="number">${emp.monthsWorked}</td>
-                  <td class="number">${formatCurrency(emp.avgMonthlySalary)}</td>
-                  <td class="number">${formatCurrency(emp.annualSalary)}</td>
-                  <td class="number">${emp.utilizationRate.toFixed(1)}%</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+                  <div class="section-title">Individual Employee Cost Analysis</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Position</th>
+                        <th class="number">Total Paid</th>
+                        <th class="number">Months Worked</th>
+                        <th class="number">Avg Monthly</th>
+                        <th class="number">Annual Salary</th>
+                        <th class="number">Utilization %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${individualAnalysis.map(emp => `
+                        <tr>
+                          <td><strong>${emp.firstName} ${emp.lastName}</strong></td>
+                          <td>${emp.department || 'N/A'}</td>
+                          <td>${emp.position || 'N/A'}</td>
+                          <td class="number">${formatCurrency(emp.totalPaid)}</td>
+                          <td class="number">${emp.monthsWorked}</td>
+                          <td class="number">${formatCurrency(emp.avgMonthlySalary)}</td>
+                          <td class="number">${formatCurrency(emp.annualSalary)}</td>
+                          <td class="number">${emp.utilizationRate.toFixed(1)}%</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
 
-          <div class="section-title">Monthly Cost Trends</div>
-          <table class="table table-striped">
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th class="number">Total Cost</th>
-                <th class="number">Employees</th>
-                <th class="number">Avg Cost/Employee</th>
-                <th class="number">% of Annual Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${monthlyTrends.map(trend => {
+                  <div class="section-title">Monthly Cost Trends</div>
+                  <table class="table table-striped">
+                    <thead>
+                      <tr>
+                        <th>Month</th>
+                        <th class="number">Total Cost</th>
+                        <th class="number">Employees</th>
+                        <th class="number">Avg Cost/Employee</th>
+                        <th class="number">% of Annual Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${monthlyTrends.map(trend => {
             const percentage = totalYearlyPayroll > 0 ? (trend.totalCost / totalYearlyPayroll * 100) : 0;
             return `
-                  <tr>
-                    <td><strong>${trend.monthName}</strong></td>
-                    <td class="number">${formatCurrency(trend.totalCost)}</td>
-                    <td class="number">${trend.employeeCount}</td>
-                    <td class="number">${formatCurrency(trend.avgCostPerEmployee)}</td>
-                    <td class="number">${percentage.toFixed(1)}%</td>
-                  </tr>
-                `;
+                          <tr>
+                            <td><strong>${trend.monthName}</strong></td>
+                            <td class="number">${formatCurrency(trend.totalCost)}</td>
+                            <td class="number">${trend.employeeCount}</td>
+                            <td class="number">${formatCurrency(trend.avgCostPerEmployee)}</td>
+                            <td class="number">${percentage.toFixed(1)}%</td>
+                          </tr>
+                        `;
           }).join('')}
-              <tr class="total-row">
-                <td><strong>Annual Total</strong></td>
-                <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
-                <td class="number"><strong>-</strong></td>
-                <td class="number"><strong>${formatCurrency(totalYearlyPayroll / 12)}</strong></td>
-                <td class="number"><strong>100.0%</strong></td>
+                      <tr class="total-row">
+                        <td><strong>Annual Total</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalYearlyPayroll)}</strong></td>
+                        <td class="number"><strong>-</strong></td>
+                        <td class="number"><strong>${formatCurrency(totalYearlyPayroll / 12)}</strong></td>
+                        <td class="number"><strong>100.0%</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div class="highlight-box">
+                    <h3 style="color: #1e293b; margin-bottom: 15px;">Key Cost Insights</h3>
+                    <ul style="margin: 0; padding-left: 20px;">
+                      <li>Average monthly payroll: <strong>${formatCurrency(totalYearlyPayroll / 12)}</strong></li>
+                      <li>Highest cost month: <strong>${monthlyTrends.reduce((max, trend) => trend.totalCost > max.totalCost ? trend : max).monthName}</strong>
+                          (${formatCurrency(Math.max(...monthlyTrends.map(t => t.totalCost)))})</li>
+                      <li>Lowest cost month: <strong>${monthlyTrends.reduce((min, trend) => trend.totalCost < min.totalCost ? trend : min).monthName}</strong>
+                          (${formatCurrency(Math.min(...monthlyTrends.map(t => t.totalCost)))})</li>
+                      <li>Cost variance: <strong>${((Math.max(...monthlyTrends.map(t => t.totalCost)) - Math.min(...monthlyTrends.map(t => t.totalCost))) / (totalYearlyPayroll / 12) * 100).toFixed(1)}%</strong> from average</li>
+                      <li>Department with highest cost efficiency: <strong>${leastExpensiveDept ? leastExpensiveDept[0] : 'N/A'}</strong></li>
+                    </ul>
+                  </div>
+                </td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr><td><div class="report-footer-space"></div></td></tr>
+            </tfoot>
           </table>
-
-          <div class="highlight-box">
-            <h3 style="color: #1e293b; margin-bottom: 15px;">Key Cost Insights</h3>
-            <ul style="margin: 0; padding-left: 20px;">
-              <li>Average monthly payroll: <strong>${formatCurrency(totalYearlyPayroll / 12)}</strong></li>
-              <li>Highest cost month: <strong>${monthlyTrends.reduce((max, trend) => trend.totalCost > max.totalCost ? trend : max).monthName}</strong> 
-                  (${formatCurrency(Math.max(...monthlyTrends.map(t => t.totalCost)))})</li>
-              <li>Lowest cost month: <strong>${monthlyTrends.reduce((min, trend) => trend.totalCost < min.totalCost ? trend : min).monthName}</strong> 
-                  (${formatCurrency(Math.min(...monthlyTrends.map(t => t.totalCost)))})</li>
-              <li>Cost variance: <strong>${((Math.max(...monthlyTrends.map(t => t.totalCost)) - Math.min(...monthlyTrends.map(t => t.totalCost))) / (totalYearlyPayroll / 12) * 100).toFixed(1)}%</strong> from average</li>
-              <li>Department with highest cost efficiency: <strong>${leastExpensiveDept ? leastExpensiveDept[0] : 'N/A'}</strong></li>
-            </ul>
-          </div>
-
-          <div class="footer">
-            <p><strong>Report Generated:</strong> ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-            <p><strong>Generated by:</strong> AquaNav Marine Solutions Payroll Management System</p>
-            <p style="margin-top: 10px; font-style: italic;">This report contains confidential employee cost information and should be handled accordingly.</p>
-          </div>
         </body>
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
@@ -4364,10 +3956,12 @@ function EmployeeSalarySlipsDialog({
   employees,
   formatCurrency,
   getMonthName,
+  company,
 }: {
   employees: Employee[];
   formatCurrency: (amount: string | number) => string;
   getMonthName: (month: number) => string;
+  company?: Company;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
@@ -4426,16 +4020,6 @@ function EmployeeSalarySlipsDialog({
     }
 
     try {
-      // Create a new window for all payslips
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate payslips",
-          variant: "destructive",
-        });
-        return;
-      }
 
       // Generate HTML content for all payslips
       let htmlContent = `
@@ -4457,6 +4041,12 @@ function EmployeeSalarySlipsDialog({
             // Fetch payroll entries for this employee and month
             const payrollResponse = await queryClient.fetchQuery({
               queryKey: ["/api/payroll", { month: monthYear.month, year: monthYear.year }],
+              queryFn: async () => {
+                const response = await apiRequest(`/api/payroll?month=${monthYear.month}&year=${monthYear.year}`, {
+                  method: "GET"
+                });
+                return response.json();
+              },
             });
 
             const employeePayroll = payrollResponse.find((entry: any) => entry.employeeId === employee.id);
@@ -4508,9 +4098,21 @@ function EmployeeSalarySlipsDialog({
             const [additionsRes, deductionsRes] = await Promise.all([
               queryClient.fetchQuery({
                 queryKey: [`/api/payroll/${employeePayroll.id}/additions`],
+                queryFn: async () => {
+                  const response = await apiRequest(`/api/payroll/${employeePayroll.id}/additions`, {
+                    method: "GET"
+                  });
+                  return response.json();
+                },
               }).catch(() => []),
               queryClient.fetchQuery({
                 queryKey: [`/api/payroll/${employeePayroll.id}/deductions`],
+                queryFn: async () => {
+                  const response = await apiRequest(`/api/payroll/${employeePayroll.id}/deductions`, {
+                    method: "GET"
+                  });
+                  return response.json();
+                },
               }).catch(() => []),
             ]);
 
