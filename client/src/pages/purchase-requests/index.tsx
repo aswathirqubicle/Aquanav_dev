@@ -1092,10 +1092,11 @@ export default function PurchaseRequestsIndex() {
                               </Badge>
                             </TableCell>
                             <TableCell className="font-medium">
-                              {item.itemType === "product"
+                              {/* {item.itemType === "product"
                                 ? item.inventoryItemName || "-"
                                 : item.description || "-"
-                              }
+                              } */}
+                              {item.inventoryItemName}
                             </TableCell>
                             <TableCell>
                               {item.quantity}

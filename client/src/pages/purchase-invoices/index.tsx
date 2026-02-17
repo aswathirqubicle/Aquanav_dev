@@ -902,7 +902,7 @@ export default function PurchaseInvoicesIndex() {
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950 dark:to-yellow-900 border-yellow-200 dark:border-yellow-800">
+          {/* <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-950 dark:to-yellow-900 border-yellow-200 dark:border-yellow-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Pending Amount</CardTitle>
               <TrendingUp className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -911,7 +911,7 @@ export default function PurchaseInvoicesIndex() {
               <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">AED {stats.pendingAmount}</div>
               <p className="text-xs text-yellow-600 dark:text-yellow-400">Outstanding payments</p>
             </CardContent>
-          </Card>
+          </Card> */}
 
           <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border-red-200 dark:border-red-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
