@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,7 @@ import {
 import { Employee } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { Company } from "@shared/schema";
-import { generateCommonHeader,generateCommonFooter } from "../../lib/utils";
+import { generateCommonHeader, generateCommonFooter } from "../../lib/utils";
 
 interface PayrollEntry {
   id: number;
@@ -137,6 +137,11 @@ export default function PayrollIndex() {
 
   const { data: payrollEntries = [] } = useQuery<PayrollEntry[]>({
     queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }],
+    enabled: isAuthenticated,
+  });
+
+  const { data: allPayrollEntries = [] } = useQuery<PayrollEntry[]>({
+    queryKey: ["/api/payroll"],
     enabled: isAuthenticated,
   });
 
@@ -562,7 +567,7 @@ export default function PayrollIndex() {
 
         htmlContent += `
           <div class="payslip">
-            ${generateCommonHeader({company})}  
+            ${generateCommonHeader({ company })}  
           <div>
             <div class="info-grid">
               <div class="info-section">
@@ -655,7 +660,7 @@ export default function PayrollIndex() {
               <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
             </div>
 
-            ${generateCommonFooter({company})}
+            ${generateCommonFooter({ company })}
           </div>
         `;
       });
@@ -1069,21 +1074,34 @@ export default function PayrollIndex() {
     0,
   );
 
-  const enrichedPayrollEntries = payrollEntries
-    .map((entry) => ({
+  const employeeMap = useMemo(() => {
+    return new Map((employees || []).map(emp => [emp.id, emp]));
+  }, [employees]);
+
+  const enrichedPayrollEntries = useMemo(() => {
+    return payrollEntries
+      .map((entry) => ({
+        ...entry,
+        employee: employeeMap.get(entry.employeeId),
+      }))
+      .sort((a, b) => {
+        // Sort by status: draft/generated first, then approved, then paid
+        const statusOrder: Record<string, number> = { draft: 0, generated: 0, approved: 1, paid: 2 };
+        const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+        if (statusDiff !== 0) return statusDiff;
+        // Within same status, sort by total amount descending
+        const amountA = parseFloat(String(a.totalAmount || 0));
+        const amountB = parseFloat(String(b.totalAmount || 0));
+        return amountB - amountA;
+      });
+  }, [payrollEntries, employeeMap]);
+
+  const enrichedAllPayrollEntries = useMemo(() => {
+    return allPayrollEntries.map((entry) => ({
       ...entry,
-      employee: employees?.find((emp) => emp.id === entry.employeeId),
-    }))
-    .sort((a, b) => {
-      // Sort by status: draft/generated first, then approved, then paid
-      const statusOrder: Record<string, number> = { draft: 0, generated: 0, approved: 1, paid: 2 };
-      const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
-      if (statusDiff !== 0) return statusDiff;
-      // Within same status, sort by total amount descending
-      const amountA = parseFloat(String(a.totalAmount || 0));
-      const amountB = parseFloat(String(b.totalAmount || 0));
-      return amountB - amountA;
-    });
+      employee: employeeMap.get(entry.employeeId),
+    }));
+  }, [allPayrollEntries, employeeMap]);
 
   const statusCounts = enrichedPayrollEntries.reduce(
     (acc, entry) => {
@@ -1513,7 +1531,7 @@ export default function PayrollIndex() {
         </TabsContent>
 
         <TabsContent value="history">
-          <PayrollHistoryTab payrollEntries={enrichedPayrollEntries} formatCurrency={formatCurrency} getMonthName={getMonthName} />
+          <PayrollHistoryTab payrollEntries={enrichedAllPayrollEntries} formatCurrency={formatCurrency} getMonthName={getMonthName} />
         </TabsContent>
 
         <TabsContent value="reports">
@@ -1629,10 +1647,10 @@ export default function PayrollIndex() {
                       formatCurrency={formatCurrency}
                       getMonthName={getMonthName}
                     />
-                    <Button variant="outline" className="w-full justify-start h-auto py-3">
+                    {/* <Button variant="outline" className="w-full justify-start h-auto py-3">
                       <Download className="h-4 w-4 mr-2 flex-shrink-0" />
                       <span className="text-left">Budget vs Actual</span>
-                    </Button>
+                    </Button> */}
                   </div>
                 </div>
               </div>
@@ -2399,7 +2417,7 @@ function PrintPayslipButton({
         </head>
         <body>
           <div class="payslip">
-  ${generateCommonHeader({company})}
+  ${generateCommonHeader({ company })}
 
   <div class="header">
     <div class="payslip-title">Payroll Slip</div>
@@ -2796,6 +2814,7 @@ function PayrollHistoryTab({
   formatCurrency: (amount: string | number) => string,
   getMonthName: (month: number) => string
 }) {
+  const { toast } = useToast();
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedPeriod, setSelectedPeriod] = useState<any>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -2869,17 +2888,137 @@ function PayrollHistoryTab({
     setIsViewDialogOpen(true);
   };
 
-  const handleExportPeriod = async (period: any) => {
-    // In a real implementation, this would generate and download an Excel/CSV file
-    console.log("Exporting period:", period);
-    // For now, just show a toast
-    alert(`Exporting data for ${getMonthName(period.month)} ${period.year}`);
+
+  const handleExportPeriod = (period: any) => {
+    if (!period.entries.length) {
+      toast({
+        title: "No Data",
+        description: "No payroll entries found for this period",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const data = period.entries.map((entry: any) => ({
+        Employee: `${entry.employee?.firstName} ${entry.employee?.lastName}`,
+        Code: entry.employee?.employeeCode,
+        Position: entry.employee?.position,
+        Department: entry.employee?.department,
+        Month: getMonthName(entry.month),
+        Year: entry.year,
+        "Working Days": entry.workingDays,
+        "Basic Salary": parseFloat(entry.basicSalary),
+        "Total Additions": parseFloat(entry.totalAdditions || "0"),
+        "Total Deductions": parseFloat(entry.totalDeductions || "0"),
+        "Net Amount": parseFloat(entry.totalAmount),
+        Status: entry.status.toUpperCase(),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Payroll");
+
+      // Set column widths
+      const wscols = [
+        { wch: 25 }, // Employee
+        { wch: 10 }, // Code
+        { wch: 20 }, // Position
+        { wch: 15 }, // Department
+        { wch: 12 }, // Month
+        { wch: 8 },  // Year
+        { wch: 12 }, // Working Days
+        { wch: 15 }, // Basic Salary
+        { wch: 15 }, // Total Additions
+        { wch: 15 }, // Total Deductions
+        { wch: 15 }, // Net Amount
+        { wch: 12 }, // Status
+      ];
+      worksheet["!cols"] = wscols;
+
+      XLSX.writeFile(
+        workbook,
+        `Payroll_${getMonthName(period.month)}_${period.year}.xlsx`
+      );
+
+      toast({
+        title: "Success",
+        description: `Payroll data for ${getMonthName(period.month)} ${period.year} exported successfully`,
+      });
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export payroll data to Excel",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleExportAll = async () => {
-    // In a real implementation, this would generate and download all history
-    console.log("Exporting all payroll history");
-    alert("Exporting all payroll history");
+  const handleExportAll = () => {
+    if (!payrollEntries.length) {
+      toast({
+        title: "No Data",
+        description: "No payroll history found to export",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const data = payrollEntries.map((entry: any) => ({
+        Employee: `${entry.employee?.firstName} ${entry.employee?.lastName}`,
+        Code: entry.employee?.employeeCode,
+        Position: entry.employee?.position,
+        Department: entry.employee?.department,
+        Month: getMonthName(entry.month),
+        Year: entry.year,
+        "Working Days": entry.workingDays,
+        "Basic Salary": parseFloat(entry.basicSalary),
+        "Total Additions": parseFloat(entry.totalAdditions || "0"),
+        "Total Deductions": parseFloat(entry.totalDeductions || "0"),
+        "Net Amount": parseFloat(entry.totalAmount),
+        Status: entry.status.toUpperCase(),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Payroll History");
+
+      // Set column widths
+      const wscols = [
+        { wch: 25 }, // Employee
+        { wch: 10 }, // Code
+        { wch: 20 }, // Position
+        { wch: 15 }, // Department
+        { wch: 12 }, // Month
+        { wch: 8 },  // Year
+        { wch: 12 }, // Working Days
+        { wch: 15 }, // Basic Salary
+        { wch: 15 }, // Total Additions
+        { wch: 15 }, // Total Deductions
+        { wch: 15 }, // Net Amount
+        { wch: 12 }, // Status
+      ];
+      worksheet["!cols"] = wscols;
+
+      XLSX.writeFile(
+        workbook,
+        `Payroll_History_${new Date().toISOString().split('T')[0]}.xlsx`
+      );
+
+      toast({
+        title: "Success",
+        description: "All payroll history exported successfully",
+      });
+    } catch (error) {
+      console.error("Error exporting history to Excel:", error);
+      toast({
+        title: "Error",
+        description: "Failed to export payroll history to Excel",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -5188,7 +5327,7 @@ function PayrollDetailsDialog({
 
   const deleteAdditionMutation = useMutation({
     mutationFn: async (id: number) => {
-       return apiRequest(`/api/payroll/additions/${id}`, {
+      return apiRequest(`/api/payroll/additions/${id}`, {
         method: "DELETE",
       });
     },
