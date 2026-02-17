@@ -64,6 +64,8 @@ import {
 } from "lucide-react";
 import { Employee } from "@shared/schema";
 import * as XLSX from "xlsx";
+import { Company } from "@shared/schema";
+import { generateCommonHeader,generateCommonFooter } from "../../lib/utils";
 
 interface PayrollEntry {
   id: number;
@@ -111,6 +113,11 @@ export default function PayrollIndex() {
   const [clearMonth, setClearMonth] = useState(new Date().getMonth() + 1);
   const [clearYear, setClearYear] = useState(new Date().getFullYear());
   const [selectedPayrollIds, setSelectedPayrollIds] = useState<number[]>([]);
+
+  const { data: company, isLoading } = useQuery<Company>({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
     // Only redirect after authentication loading is complete
@@ -451,6 +458,64 @@ export default function PayrollIndex() {
               body { margin: 0; padding: 0; }
               .payslip { margin: 0; border: none; }
             }
+
+            .print-header {
+              border-bottom: 2px solid #333;
+              padding-bottom: 10px;
+              margin-bottom: 15px;
+            }
+
+            .header-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+
+            .header-left {
+              flex: 0 0 auto;
+            }
+
+            .header-right {
+              text-align: right;
+              flex: 1;
+            }
+
+            .company-logo {
+              max-height: 70px;
+            }
+
+            .company-name {
+              font-size: 16px;
+              font-weight: bold;
+            }
+
+            .address {
+              font-size: 12px;
+              color: #555;
+            }
+            .print-footer {
+              border-top: 1px solid #ccc;
+              margin-top: 20px;
+              padding-top: 10px;
+              font-size: 11px;
+            }
+
+            .footer-content {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              flex-wrap: wrap;
+            }
+
+            .footer-item {
+              margin: 5px 0;
+            }
+
+            .footer-item a {
+              text-decoration: none;
+              color: #333;
+            }
+
           </style>
         </head>
         <body>
@@ -497,11 +562,8 @@ export default function PayrollIndex() {
 
         htmlContent += `
           <div class="payslip">
-            <div class="header">
-              <div class="company-name">AquaNav Marine Solutions</div>
-              <div class="payslip-title">Payroll Slip</div>
-            </div>
-
+            ${generateCommonHeader({company})}  
+          <div>
             <div class="info-grid">
               <div class="info-section">
                 <h3>Employee Information</h3>
@@ -593,10 +655,7 @@ export default function PayrollIndex() {
               <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
             </div>
 
-            <div class="footer">
-              <p>This is a computer-generated payslip and does not require a signature.</p>
-              <p>Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</p>
-            </div>
+            ${generateCommonFooter({company})}
           </div>
         `;
       });
@@ -2340,10 +2399,12 @@ function PrintPayslipButton({
         </head>
         <body>
           <div class="payslip">
-            <div class="header">
-              <div class="company-name">AquaNav Marine Solutions</div>
-              <div class="payslip-title">Payroll Slip            </div>
+  ${generateCommonHeader({company})}
 
+  <div class="header">
+    <div class="payslip-title">Payroll Slip</div>
+  </div>
+            <div>
             <div class="info-grid">
               <div class="info-section">
                 <h3>Employee Information</h3>

@@ -86,3 +86,50 @@ export async function apiRequest(
     throw error;
   }
 }
+
+export function generateCommonHeader(options?: { company?: any }) {
+  const company = options?.company;
+
+  return `
+    <div class="print-header">
+      <div class="header-row">
+        <div class="header-left">
+          ${company?.logo ? `<img src="${company.logo}" class="company-logo" />` : ""}
+        </div>
+        <div class="header-right">
+          <div class="company-name">${company?.name || ""}</div>
+          <div class="address">${company?.address || ""}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function generateCommonFooter(options?: { company?: any }) {
+  const company = options?.company;
+
+  return `
+    <div class="print-footer">
+      <div class="footer-content">
+        ${company?.website ? `
+          <div class="footer-item">
+            🌐 <a href="${company.website}" target="_blank">${company.website}</a>
+          </div>
+        ` : ""}
+
+        ${company?.email ? `
+          <div class="footer-item">
+            ✉ <a href="mailto:${company.email}">${company.email}</a>
+          </div>
+        ` : ""}
+
+        ${company?.phone ? `
+          <div class="footer-item">
+            ☎ <a href="tel:${company.phone}">${company.phone}</a>
+          </div>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
