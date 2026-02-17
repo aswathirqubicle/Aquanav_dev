@@ -1843,7 +1843,7 @@ export default function ProjectDetail() {
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'AED',
     }).format(parseFloat(amount));
   };
 
@@ -2754,7 +2754,7 @@ export default function ProjectDetail() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <DollarSign className="h-5 w-5 mr-2" />
+                  {/* <DollarSign className="h-5 w-5 mr-2" /> */}
                   Revenue & Profit
                 </CardTitle>
               </CardHeader>
