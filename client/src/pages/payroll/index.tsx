@@ -65,7 +65,8 @@ import {
 import { Employee } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { Company } from "@shared/schema";
-import { generateCommonHeader, generateCommonFooter } from "../../lib/utils";
+import { generateCommonHeader, generateCommonFooter, getPayslipStyles } from "../../lib/utils";
+import { printHtml } from "../../lib/print-utils";
 
 interface PayrollEntry {
   id: number;
@@ -97,6 +98,7 @@ interface PayrollDeduction {
   amount: string;
   note?: string;
 }
+
 
 export default function PayrollIndex() {
   const [, setLocation] = useLocation();
@@ -178,9 +180,18 @@ export default function PayrollIndex() {
     },
     onError: (error: Error) => {
       console.error("Payroll generation error:", error);
+
+      let cleanMessage = error.message;
+
+      // If message contains JSON (like 500{"message":"..."})
+      const match = error.message?.match(/"message":"([^"]+)"/);
+      if (match && match[1]) {
+        cleanMessage = match[1];
+      }
+
       toast({
         title: "Payroll Generation Failed",
-        description: error.message || "An unexpected error occurred while generating payroll",
+        description: cleanMessage || "An unexpected error occurred while generating payroll",
         variant: "destructive",
       });
     },
@@ -337,191 +348,13 @@ export default function PayrollIndex() {
     }
 
     try {
-      // Create a new window for all payslips
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate payslips",
-          variant: "destructive",
-        });
-        return;
-      }
-
       // Generate HTML content for all payslips
       let htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
           <title>Payroll Slips - ${getMonthName(selectedMonth)} ${selectedYear}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              font-size: 12px;
-            }
-            .payslip { 
-              page-break-after: always; 
-              margin-bottom: 40px; 
-              border: 1px solid #ddd; 
-              padding: 20px;
-              min-height: 600px;
-            }
-            .payslip:last-child { page-break-after: avoid; }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
-            .company-name { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .payslip-title { 
-              font-size: 14px; 
-              color: #666; 
-            }
-            .info-grid { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin-bottom: 20px; 
-            }
-            .info-section h3 { 
-              font-size: 14px; 
-              margin-bottom: 10px; 
-              border-bottom: 1px solid #eee; 
-              padding-bottom: 5px; 
-            }
-            .info-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .info-label { color: #666; }
-            .info-value { font-weight: bold; }
-            .earnings-section, .deductions-section { 
-              margin-bottom: 20px; 
-              padding: 15px; 
-              border-radius: 5px; 
-            }
-            .earnings-section { 
-              background-color: #f0f9ff; 
-              border: 1px solid #bae6fd; 
-            }
-            .deductions-section { 
-              background-color: #fef2f2; 
-              border: 1px solid #fecaca; 
-            }
-            .section-title { 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              font-size: 13px; 
-            }
-            .earnings-title { color: #059669; }
-            .deductions-title { color: #dc2626; }
-            .amount-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .total-row { 
-              border-top: 1px solid #999; 
-              padding-top: 5px; 
-              font-weight: bold; 
-            }
-            .net-pay { 
-              background-color: #f3f4f6; 
-              border: 2px solid #d1d5db; 
-              padding: 15px; 
-              text-align: center; 
-              margin-bottom: 20px; 
-            }
-            .net-pay-label { 
-              font-size: 16px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .net-pay-amount { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #059669; 
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #666; 
-              border-top: 1px solid #eee; 
-              padding-top: 10px; 
-            }
-            @media print {
-              body { margin: 0; padding: 0; }
-              .payslip { margin: 0; border: none; }
-            }
-
-            .print-header {
-              border-bottom: 2px solid #333;
-              padding-bottom: 10px;
-              margin-bottom: 15px;
-            }
-
-            .header-row {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            }
-
-            .header-left {
-              flex: 0 0 auto;
-            }
-
-            .header-right {
-              text-align: right;
-              flex: 1;
-            }
-
-            .company-logo {
-              max-height: 70px;
-            }
-
-            .company-name {
-              font-size: 16px;
-              font-weight: bold;
-            }
-
-            .address {
-              font-size: 12px;
-              color: #555;
-            }
-            .print-footer {
-              border-top: 1px solid #ccc;
-              margin-top: 20px;
-              padding-top: 10px;
-              font-size: 11px;
-            }
-
-            .footer-content {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              flex-wrap: wrap;
-            }
-
-            .footer-item {
-              margin: 5px 0;
-            }
-
-            .footer-item a {
-              text-decoration: none;
-              color: #333;
-            }
-
-          </style>
+          ${getPayslipStyles()}
         </head>
         <body>
       `;
@@ -566,98 +399,104 @@ export default function PayrollIndex() {
           : 0;
 
         htmlContent += `
-          <div class="payslip">
-            ${generateCommonHeader({ company })}  
-          <div>
-            <div class="info-grid">
-              <div class="info-section">
-                <h3>Employee Information</h3>
-                <div class="info-row">
-                  <span class="info-label">Name:</span>
-                  <span class="info-value">${entry.employee?.firstName || "N/A"} ${entry.employee?.lastName || ""}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Employee Code:</span>
-                  <span class="info-value">${entry.employee?.employeeCode || "N/A"}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Position:</span>
-                  <span class="info-value">${entry.employee?.position || "N/A"}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Department:</span>
-                  <span class="info-value">${entry.employee?.department || "N/A"}</span>
-                </div>
-              </div>
+          <div class="payslip-container">
+            ${generateCommonHeader({ company })}
 
-              <div class="info-section">
-                <h3>Pay Period</h3>
-                <div class="info-row">
-                  <span class="info-label">Month:</span>
-                  <span class="info-value">${getMonthName(entry.month)} ${entry.year}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Calendar Days:</span>
-                  <span class="info-value">${entry.workingDays}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Generated Date:</span>
-                  <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Status:</span>
-                  <span class="info-value" style="text-transform: capitalize">${entry.status}</span>
-                </div>
-              </div>
+            <div class="payslip-title-section">
+              <div class="payslip-title">Payroll Slip</div>
             </div>
 
-            <div class="earnings-section">
-              <div class="section-title earnings-title">Earnings</div>
-              <div class="amount-row">
-                <span>Basic Salary</span>
-                <span>${formatCurrency(entry.basicSalary)}</span>
+            <div class="payslip-content">
+              <div class="info-grid">
+                <div class="info-section">
+                  <h3>Employee Information</h3>
+                  <div class="info-row">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">${entry.employee?.firstName || "N/A"} ${entry.employee?.lastName || ""}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Employee Code:</span>
+                    <span class="info-value">${entry.employee?.employeeCode || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Position:</span>
+                    <span class="info-value">${entry.employee?.position || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Department:</span>
+                    <span class="info-value">${entry.employee?.department || "N/A"}</span>
+                  </div>
+                </div>
+
+                <div class="info-section">
+                  <h3>Pay Period</h3>
+                  <div class="info-row">
+                    <span class="info-label">Month:</span>
+                    <span class="info-value">${getMonthName(entry.month)} ${entry.year}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Calendar Days:</span>
+                    <span class="info-value">${entry.workingDays}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Generated Date:</span>
+                    <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" style="text-transform: capitalize">${entry.status}</span>
+                  </div>
+                </div>
               </div>
-              ${additions
+
+              <div class="earnings-section">
+                <div class="section-title earnings-title">Earnings</div>
+                <div class="amount-row">
+                  <span>Basic Salary</span>
+                  <span>${formatCurrency(entry.basicSalary)}</span>
+                </div>
+                ${additions
             .map(
               (addition) => `
-                <div class="amount-row">
-                  <span>${addition.description}</span>
-                  <span>${formatCurrency(addition.amount)}</span>
-                </div>
-              `,
+                  <div class="amount-row">
+                    <span>${addition.description}</span>
+                    <span>${formatCurrency(addition.amount)}</span>
+                  </div>
+                `,
             )
             .join("")}
-              <div class="amount-row total-row">
-                <span>Total Earnings</span>
-                <span>${formatCurrency(totalEarnings)}</span>
+                <div class="amount-row total-row">
+                  <span>Total Earnings</span>
+                  <span>${formatCurrency(totalEarnings)}</span>
+                </div>
               </div>
-            </div>
 
-            <div class="deductions-section">
-              <div class="section-title deductions-title">Deductions</div>
-              ${deductions.length === 0
+              <div class="deductions-section">
+                <div class="section-title deductions-title">Deductions</div>
+                ${deductions.length === 0
             ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
             : deductions
               .map(
                 (deduction) => `
-                  <div class="amount-row">
-                    <span>${deduction.description}</span>
-                    <span>${formatCurrency(deduction.amount)}</span>
-                  </div>
-                `,
+                    <div class="amount-row">
+                      <span>${deduction.description}</span>
+                      <span>${formatCurrency(deduction.amount)}</span>
+                    </div>
+                  `,
               )
               .join("") +
             `
-                <div class="amount-row total-row">
-                  <span>Total Deductions</span>
-                  <span>${formatCurrency(totalDeductions)}</span>
-                </div>`
+                  <div class="amount-row total-row">
+                    <span>Total Deductions</span>
+                    <span>${formatCurrency(totalDeductions)}</span>
+                  </div>`
           }
-            </div>
+              </div>
 
-            <div class="net-pay">
-              <div class="net-pay-label">Net Pay</div>
-              <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
+              <div class="net-pay">
+                <div class="net-pay-label">Net Pay</div>
+                <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
+              </div>
             </div>
 
             ${generateCommonFooter({ company })}
@@ -670,15 +509,7 @@ export default function PayrollIndex() {
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
@@ -1512,6 +1343,7 @@ export default function PayrollIndex() {
                             entry={entry}
                             isAdmin={user?.role === "admin"}
                             isSelected={selectedPayrollIds.includes(entry.id)}
+            company={company}
                             onSelect={(id, checked) => {
                               if (checked) {
                                 setSelectedPayrollIds(prev => [...prev, id]);
@@ -1628,6 +1460,7 @@ export default function PayrollIndex() {
                       employees={employees || []}
                       formatCurrency={formatCurrency}
                       getMonthName={getMonthName}
+                      company={company}
                     />
                   </div>
                 </div>
@@ -1667,12 +1500,14 @@ function PayslipTableRow({
   entry,
   isSelected,
   onSelect,
-  isAdmin
+  isAdmin,
+  company
 }: {
   entry: PayrollEntry;
   isSelected?: boolean;
   onSelect?: (id: number, checked: boolean) => void;
   isAdmin?: boolean;
+  company?: Company;
 }) {
   const [isPayslipOpen, setIsPayslipOpen] = useState(false);
   const { toast } = useToast();
@@ -1827,10 +1662,10 @@ function PayslipTableRow({
             </Button>
           )}
           {entry.status === "approved" && (
-            <GeneratePayslipButton payrollEntry={entry} />
+            <GeneratePayslipButton payrollEntry={entry} company={company} />
           )}
           {entry.status === "paid" && (
-            <PrintPayslipButton payrollEntry={entry} />
+            <PrintPayslipButton payrollEntry={entry} company={company} />
           )}
         </div>
       </TableCell>
@@ -1839,6 +1674,7 @@ function PayslipTableRow({
         payrollEntry={entry}
         isOpen={isPayslipOpen}
         onOpenChange={setIsPayslipOpen}
+        company={company}
       />
     </TableRow>
   );
@@ -1847,8 +1683,10 @@ function PayslipTableRow({
 // Generate Payslip Button Component
 function GeneratePayslipButton({
   payrollEntry,
+  company,
 }: {
   payrollEntry: PayrollEntry;
+  company?: Company;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1912,17 +1750,6 @@ function GeneratePayslipButton({
 
   const generateSinglePayslip = async () => {
     try {
-      // Create a new window for the payslip
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to generate payslip",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const totalEarnings =
         parseFloat(payrollEntry.basicSalary) +
         parseFloat(payrollEntry.totalAdditions || "0");
@@ -1938,171 +1765,66 @@ function GeneratePayslipButton({
         <html>
         <head>
           <title>Payroll Slip - ${payrollEntry.employee?.firstName} ${payrollEntry.employee?.lastName}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              font-size: 12px;
-            }
-            .payslip { 
-              border: 1px solid #ddd; 
-              padding: 20px;
-              max-width: 800px;
-              margin: 0 auto;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
-            .company-name { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .payslip-title { 
-              font-size: 14px; 
-              color: #666; 
-            }
-            .info-grid { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin-bottom: 20px; 
-            }
-            .info-section h3 { 
-              font-size: 14px; 
-              margin-bottom: 10px; 
-              border-bottom: 1px solid #eee; 
-              padding-bottom: 5px; 
-            }
-            .info-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .info-label { color: #666; }
-            .info-value { font-weight: bold; }
-            .earnings-section, .deductions-section { 
-              margin-bottom: 20px; 
-              padding: 15px; 
-              border-radius: 5px; 
-            }
-            .earnings-section { 
-              background-color: #f0f9ff; 
-              border: 1px solid #bae6fd; 
-            }
-            .deductions-section { 
-              background-color: #fef2f2; 
-              border: 1px solid #fecaca; 
-            }
-            .section-title { 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              font-size: 13px; 
-            }
-            .earnings-title { color: #059669; }
-            .deductions-title { color: #dc2626; }
-            .amount-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .total-row { 
-              border-top: 1px solid #999; 
-              padding-top: 5px; 
-              font-weight: bold; 
-            }
-            .net-pay { 
-              background-color: #f3f4f6; 
-              border: 2px solid #d1d5db; 
-              padding: 15px; 
-              text-align: center; 
-              margin-bottom: 20px; 
-            }
-            .net-pay-label { 
-              font-size: 16px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .net-pay-amount { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #059669; 
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #666; 
-              border-top: 1px solid #eee; 
-              padding-top: 10px; 
-            }
-            @media print {
-              body { margin: 0; padding: 0; }
-              .payslip { margin: 0; border: none; }
-            }
-          </style>
+          ${getPayslipStyles()}
         </head>
         <body>
-          <div class="payslip">
-            <div class="header">
-              <div class="company-name">AquaNav Marine Solutions</div>
+          <div class="payslip-container">
+            ${generateCommonHeader({ company })}
+
+            <div class="payslip-title-section">
               <div class="payslip-title">Payroll Slip</div>
             </div>
 
-            <div class="info-grid">
-              <div class="info-section">
-                <h3>Employee Information</h3>
-                <div class="info-row">
-                  <span class="info-label">Name:</span>
-                  <span class="info-value">${payrollEntry.employee?.firstName || "N/A"} ${payrollEntry.employee?.lastName || ""}</span>
+            <div class="payslip-content">
+              <div class="info-grid">
+                <div class="info-section">
+                  <h3>Employee Information</h3>
+                  <div class="info-row">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">${payrollEntry.employee?.firstName || "N/A"} ${payrollEntry.employee?.lastName || ""}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Employee Code:</span>
+                    <span class="info-value">${payrollEntry.employee?.employeeCode || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Position:</span>
+                    <span class="info-value">${payrollEntry.employee?.position || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Department:</span>
+                    <span class="info-value">${payrollEntry.employee?.department || "N/A"}</span>
+                  </div>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">Employee Code:</span>
-                  <span class="info-value">${payrollEntry.employee?.employeeCode || "N/A"}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Position:</span>
-                  <span class="info-value">${payrollEntry.employee?.position || "N/A"}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Department:</span>
-                  <span class="info-value">${payrollEntry.employee?.department || "N/A"}</span>
+
+                <div class="info-section">
+                  <h3>Pay Period</h3>
+                  <div class="info-row">
+                    <span class="info-label">Month:</span>
+                    <span class="info-value">${getMonthName(payrollEntry.month)} ${payrollEntry.year}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Calendar Days:</span>
+                    <span class="info-value">${payrollEntry.workingDays}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Generated Date:</span>
+                    <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" style="text-transform: capitalize">${payrollEntry.status}</span>
+                  </div>
                 </div>
               </div>
 
-              <div class="info-section">
-                <h3>Pay Period</h3>
-                <div class="info-row">
-                  <span class="info-label">Month:</span>
-                  <span class="info-value">${getMonthName(payrollEntry.month)} ${payrollEntry.year}</span>
+              <div class="earnings-section">
+                <div class="section-title earnings-title">Earnings</div>
+                <div class="amount-row">
+                  <span>Basic Salary</span>
+                  <span>${formatCurrency(payrollEntry.basicSalary)}</span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">Calendar Days:</span>
-                  <span class="info-value">${payrollEntry.workingDays}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Generated Date:</span>
-                  <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Status:</span>
-                  <span class="info-value" style="text-transform: capitalize">${payrollEntry.status}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="earnings-section">
-              <div class="section-title earnings-title">Earnings</div>
-              <div class="amount-row">
-                <span>Basic Salary</span>
-                <span>${formatCurrency(payrollEntry.basicSalary)}</span>
-              </div>
-              ${additions
+                ${additions
           .map(
             (addition) => `
                 <div class="amount-row">
@@ -2112,15 +1834,15 @@ function GeneratePayslipButton({
               `,
           )
           .join("")}
-              <div class="amount-row total-row">
-                <span>Total Earnings</span>
-                <span>${formatCurrency(totalEarnings)}</span>
+                <div class="amount-row total-row">
+                  <span>Total Earnings</span>
+                  <span>${formatCurrency(totalEarnings)}</span>
+                </div>
               </div>
-            </div>
 
-            <div class="deductions-section">
-              <div class="section-title deductions-title">Deductions</div>
-              ${deductions.length === 0
+              <div class="deductions-section">
+                <div class="section-title deductions-title">Deductions</div>
+                ${deductions.length === 0
           ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
           : deductions
             .map(
@@ -2138,31 +1860,21 @@ function GeneratePayslipButton({
                   <span>${formatCurrency(totalDeductions)}</span>
                 </div>`
         }
+              </div>
+
+              <div class="net-pay">
+                <div class="net-pay-label">Net Pay</div>
+                <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
+              </div>
             </div>
 
-            <div class="net-pay">
-              <div class="net-pay-label">Net Pay</div>
-              <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
-            </div>
-
-            <div class="footer">
-              <p>This is a computer-generated payslip and does not require a signature.</p>
-              <p>Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</p>
-            </div>
+            ${generateCommonFooter({ company })}
           </div>
         </body>
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
@@ -2243,8 +1955,10 @@ function GeneratePayslipButton({
 // Print Payslip Button Component for Paid Entries
 function PrintPayslipButton({
   payrollEntry,
+  company,
 }: {
   payrollEntry: PayrollEntry;
+  company?: Company;
 }) {
   const { toast } = useToast();
   const { data: additions = [] } = useQuery<PayrollAddition[]>({
@@ -2280,17 +1994,6 @@ function PrintPayslipButton({
 
   const printPayslip = async () => {
     try {
-      // Create a new window for the payslip
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        toast({
-          title: "Error",
-          description: "Please allow popups to print payslip",
-          variant: "destructive",
-        });
-        return;
-      }
-
       const totalEarnings =
         parseFloat(payrollEntry.basicSalary) +
         parseFloat(payrollEntry.totalAdditions || "0");
@@ -2306,123 +2009,210 @@ function PrintPayslipButton({
         <html>
         <head>
           <title>Payroll Slip - ${payrollEntry.employee?.firstName} ${payrollEntry.employee?.lastName}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              font-size: 12px;
-            }
-            .payslip { 
-              border: 1px solid #ddd; 
-              padding: 20px;
-              max-width: 800px;
-              margin: 0 auto;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
-            .company-name { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .payslip-title { 
-              font-size: 14px; 
-              color: #666; 
-            }
-            .info-grid { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin-bottom: 20px; 
-            }
-            .info-section h3 { 
-              font-size: 14px; 
-              margin-bottom: 10px; 
-              border-bottom: 1px solid #eee; 
-              padding-bottom: 5px; 
-            }
-            .info-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .info-label { color: #666; }
-            .info-value { font-weight: bold; }
-            .earnings-section, .deductions-section { 
-              margin-bottom: 20px; 
-              padding: 15px; 
-              border-radius: 5px; 
-            }
-            .earnings-section { 
-              background-color: #f0f9ff; 
-              border: 1px solid #bae6fd; 
-            }
-            .deductions-section { 
-              background-color: #fef2f2; 
-              border: 1px solid #fecaca; 
-            }
-            .section-title { 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              font-size: 13px; 
-            }
-            .earnings-title { color: #059669; }
-            .deductions-title { color: #dc2626; }
-            .amount-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .total-row { 
-              border-top: 1px solid #999; 
-              padding-top: 5px; 
-              font-weight: bold; 
-            }
-            .net-pay { 
-              background-color: #f3f4f6; 
-              border: 2px solid #d1d5db; 
-              padding: 15px; 
-              text-align: center; 
-              margin-bottom: 20px; 
-            }
-            .net-pay-label { 
-              font-size: 16px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .net-pay-amount { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #059669; 
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #666; 
-              border-top: 1px solid #eee; 
-              padding-top: 10px; 
-            }
-            @media print {
-              body { margin: 0; padding: 0; }
-              .payslip { margin: 0; border: none; }
-            }
-          </style>
+          ${getPayslipStyles()}
         </head>
         <body>
-          <div class="payslip">
-  ${generateCommonHeader({ company })}
+          <div class="payslip-container">
+            ${generateCommonHeader({ company })}
 
-  <div class="header">
-    <div class="payslip-title">Payroll Slip</div>
-  </div>
-            <div>
+            <div class="payslip-title-section">
+              <div class="payslip-title">Payroll Slip</div>
+            </div>
+
+            <div class="payslip-content">
+              <div class="info-grid">
+                <div class="info-section">
+                  <h3>Employee Information</h3>
+                  <div class="info-row">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">${payrollEntry.employee?.firstName || "N/A"} ${payrollEntry.employee?.lastName || ""}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Employee Code:</span>
+                    <span class="info-value">${payrollEntry.employee?.employeeCode || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Position:</span>
+                    <span class="info-value">${payrollEntry.employee?.position || "N/A"}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Department:</span>
+                    <span class="info-value">${payrollEntry.employee?.department || "N/A"}</span>
+                  </div>
+                </div>
+
+                <div class="info-section">
+                  <h3>Pay Period</h3>
+                  <div class="info-row">
+                    <span class="info-label">Month:</span>
+                    <span class="info-value">${getMonthName(payrollEntry.month)} ${payrollEntry.year}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Calendar Days:</span>
+                    <span class="info-value">${payrollEntry.workingDays}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Generated Date:</span>
+                    <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" style="text-transform: capitalize">${payrollEntry.status}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="earnings-section">
+                <div class="section-title earnings-title">Earnings</div>
+                <div class="amount-row">
+                  <span>Basic Salary</span>
+                  <span>${formatCurrency(payrollEntry.basicSalary)}</span>
+                </div>
+                ${additions
+          .map(
+            (addition) => `
+                <div class="amount-row">
+                  <span>${addition.description}</span>
+                  <span>${formatCurrency(addition.amount)}</span>
+                </div>
+              `,
+          )
+          .join("")}
+                <div class="amount-row total-row">
+                  <span>Total Earnings</span>
+                  <span>${formatCurrency(totalEarnings)}</span>
+                </div>
+              </div>
+
+              <div class="deductions-section">
+                <div class="section-title deductions-title">Deductions</div>
+                ${deductions.length === 0
+          ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+          : deductions
+            .map(
+              (deduction) => `
+                  <div class="amount-row">
+                    <span>${deduction.description}</span>
+                    <span>${formatCurrency(deduction.amount)}</span>
+                  </div>
+                `,
+            )
+            .join("") +
+          `
+                <div class="amount-row total-row">
+                  <span>Total Deductions</span>
+                  <span>${formatCurrency(totalDeductions)}</span>
+                </div>`
+        }
+              </div>
+
+              <div class="net-pay">
+                <div class="net-pay-label">Net Pay</div>
+                <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
+              </div>
+            </div>
+
+            ${generateCommonFooter({ company })}
+          </div>
+        </body>
+        </html>
+      `;
+
+      await printHtml(htmlContent);
+
+      toast({
+        title: "Success",
+        description: `Payslip printed for ${payrollEntry.employee?.firstName} ${payrollEntry.employee?.lastName}`,
+      });
+    } catch (error) {
+      console.error("Error printing payslip:", error);
+      toast({
+        title: "Error",
+        description: "Failed to print payslip",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={printPayslip}>
+      <Download className="h-4 w-4 mr-1" />
+      Print Payslip
+    </Button>
+  );
+}
+
+// Payslip Dialog Component
+function PayslipDialog({
+  payrollEntry,
+  isOpen,
+  onOpenChange,
+  company,
+}: {
+  payrollEntry: PayrollEntry;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  company?: Company;
+}) {
+  const { data: additions = [] } = useQuery<PayrollAddition[]>({
+    queryKey: [`/api/payroll/${payrollEntry.id}/additions`],
+    enabled: isOpen,
+  });
+
+  const { data: deductions = [] } = useQuery<PayrollDeduction[]>({
+    queryKey: [`/api/payroll/${payrollEntry.id}/deductions`],
+    enabled: isOpen,
+  });
+
+  const formatCurrency = (amount: string | number) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return `AED ${num.toFixed(2)}`;
+  };
+
+  const getMonthName = (month: number) => {
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return months[month - 1];
+  };
+
+  const handlePrint = async () => {
+    const totalEarnings =
+      parseFloat(payrollEntry.basicSalary) +
+      parseFloat(payrollEntry.totalAdditions || "0");
+
+    const totalDeductions = deductions.reduce(
+      (sum, deduction) => sum + parseFloat(deduction.amount),
+      0,
+    );
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payroll Slip - ${payrollEntry.employee?.firstName} ${payrollEntry.employee?.lastName}</title>
+        ${getPayslipStyles()}
+      </head>
+      <body>
+        <div class="payslip-container">
+          ${generateCommonHeader({ company })}
+
+          <div class="payslip-title-section">
+            <div class="payslip-title">Payroll Slip</div>
+          </div>
+
+          <div class="payslip-content">
             <div class="info-grid">
               <div class="info-section">
                 <h3>Employee Information</h3>
@@ -2472,15 +2262,15 @@ function PrintPayslipButton({
                 <span>${formatCurrency(payrollEntry.basicSalary)}</span>
               </div>
               ${additions
-          .map(
-            (addition) => `
+        .map(
+          (addition) => `
                 <div class="amount-row">
                   <span>${addition.description}</span>
                   <span>${formatCurrency(addition.amount)}</span>
                 </div>
               `,
-          )
-          .join("")}
+        )
+        .join("")}
               <div class="amount-row total-row">
                 <span>Total Earnings</span>
                 <span>${formatCurrency(totalEarnings)}</span>
@@ -2490,116 +2280,38 @@ function PrintPayslipButton({
             <div class="deductions-section">
               <div class="section-title deductions-title">Deductions</div>
               ${deductions.length === 0
-          ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
-          : deductions
-            .map(
-              (deduction) => `
+        ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
+        : deductions
+          .map(
+            (deduction) => `
                   <div class="amount-row">
                     <span>${deduction.description}</span>
                     <span>${formatCurrency(deduction.amount)}</span>
                   </div>
                 `,
-            )
-            .join("") +
-          `
+          )
+          .join("") +
+        `
                 <div class="amount-row total-row">
                   <span>Total Deductions</span>
                   <span>${formatCurrency(totalDeductions)}</span>
                 </div>`
-        }
+      }
             </div>
 
             <div class="net-pay">
               <div class="net-pay-label">Net Pay</div>
               <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
             </div>
-
-            <div class="footer">
-              <p>This is a computer-generated payslip and does not require a signature.</p>
-              <p>Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}</p>
-            </div>
           </div>
-        </body>
-        </html>
-      `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
+          ${generateCommonFooter({ company })}
+        </div>
+      </body>
+      </html>
+    `;
 
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
-
-      toast({
-        title: "Success",
-        description: `Payslip printed for ${payrollEntry.employee?.firstName} ${payrollEntry.employee?.lastName}`,
-      });
-    } catch (error) {
-      console.error("Error printing payslip:", error);
-      toast({
-        title: "Error",
-        description: "Failed to print payslip",
-        variant: "destructive",
-      });
-    }
-  };
-
-  return (
-    <Button variant="outline" size="sm" onClick={printPayslip}>
-      <Download className="h-4 w-4 mr-1" />
-      Print Payslip
-    </Button>
-  );
-}
-
-// Payslip Dialog Component
-function PayslipDialog({
-  payrollEntry,
-  isOpen,
-  onOpenChange,
-}: {
-  payrollEntry: PayrollEntry;
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { data: additions = [] } = useQuery<PayrollAddition[]>({
-    queryKey: [`/api/payroll/${payrollEntry.id}/additions`],
-    enabled: isOpen,
-  });
-
-  const { data: deductions = [] } = useQuery<PayrollDeduction[]>({
-    queryKey: [`/api/payroll/${payrollEntry.id}/deductions`],
-    enabled: isOpen,
-  });
-
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `AED ${num.toFixed(2)}`;
-  };
-
-  const getMonthName = (month: number) => {
-    const months = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
-    return months[month - 1];
-  };
-
-  const handlePrint = () => {
-    window.print();
+    await printHtml(htmlContent);
   };
 
   return (
@@ -2611,9 +2323,17 @@ function PayslipDialog({
 
         <div className="payslip-content space-y-6 p-6">
           {/* Header */}
-          <div className="text-center border-b pb-4">
-            <h2 className="text-xl font-bold">AquaNav Marine Solutions</h2>
-            <p className="text-sm text-slate-600">Payroll Slip</p>
+          <div className="flex justify-between items-center border-b pb-4">
+            <div className="flex items-center gap-4">
+              {company?.logo && <img src={company.logo} alt={company.name} className="h-12 w-auto object-contain" />}
+              <div>
+                <h2 className="text-xl font-bold">{company?.name || "AquaNav Marine Solutions"}</h2>
+                <p className="text-xs text-slate-500 whitespace-pre-wrap max-w-xs">{company?.address}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold text-ocean-600 uppercase tracking-wider">Payroll Slip</p>
+            </div>
           </div>
 
           {/* Employee & Period Info */}
@@ -2764,6 +2484,11 @@ function PayslipDialog({
 
           {/* Footer */}
           <div className="text-center text-xs text-slate-500 border-t pt-4">
+            <div className="flex justify-center gap-4 mb-2">
+              {company?.website && <span>🌐 {company.website}</span>}
+              {company?.email && <span>✉ {company.email}</span>}
+              {company?.phone && <span>☎ {company.phone}</span>}
+            </div>
             <p>
               This is a computer-generated payslip and does not require a
               signature.
@@ -3342,10 +3067,12 @@ function AnnualPayrollReportDialog({
   employees,
   formatCurrency,
   getMonthName,
+  company,
 }: {
   employees: Employee[];
   formatCurrency: (amount: string | number) => string;
   getMonthName: (month: number) => string;
+  company?: Company;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -4716,122 +4443,7 @@ function EmployeeSalarySlipsDialog({
         <html>
         <head>
           <title>Employee Salary Slips</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              font-size: 12px;
-            }
-            .payslip { 
-              page-break-after: always; 
-              margin-bottom: 40px; 
-              border: 1px solid #ddd; 
-              padding: 20px;
-              min-height: 600px;
-            }
-            .payslip:last-child { page-break-after: avoid; }
-            .header { 
-              text-align: center; 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
-            .company-name { 
-              font-size: 18px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .payslip-title { 
-              font-size: 14px; 
-              color: #666; 
-            }
-            .info-grid { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 20px; 
-              margin-bottom: 20px; 
-            }
-            .info-section h3 { 
-              font-size: 14px; 
-              margin-bottom: 10px; 
-              border-bottom: 1px solid #eee; 
-              padding-bottom: 5px; 
-            }
-            .info-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .info-label { color: #666; }
-            .info-value { font-weight: bold; }
-            .earnings-section, .deductions-section { 
-              margin-bottom: 20px; 
-              padding: 15px; 
-              border-radius: 5px; 
-            }
-            .earnings-section { 
-              background-color: #f0f9ff; 
-              border: 1px solid #bae6fd; 
-            }
-            .deductions-section { 
-              background-color: #fef2f2; 
-              border: 1px solid #fecaca; 
-            }
-            .section-title { 
-              font-weight: bold; 
-              margin-bottom: 10px; 
-              font-size: 13px; 
-            }
-            .earnings-title { color: #059669; }
-            .deductions-title { color: #dc2626; }
-            .amount-row { 
-              display: flex; 
-              justify-content: space-between; 
-              margin-bottom: 5px; 
-              font-size: 11px; 
-            }
-            .total-row { 
-              border-top: 1px solid #999; 
-              padding-top: 5px; 
-              font-weight: bold; 
-            }
-            .net-pay { 
-              background-color: #f3f4f6; 
-              border: 2px solid #d1d5db; 
-              padding: 15px; 
-              text-align: center; 
-              margin-bottom: 20px; 
-            }
-            .net-pay-label { 
-              font-size: 16px; 
-              font-weight: bold; 
-              margin-bottom: 5px; 
-            }
-            .net-pay-amount { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #059669; 
-            }
-            .footer { 
-              text-align: center; 
-              font-size: 10px; 
-              color: #666; 
-              border-top: 1px solid #eee; 
-              padding-top: 10px; 
-            }
-            .no-data { 
-              text-align: center; 
-              color: #666; 
-              font-style: italic; 
-              padding: 20px; 
-            }
-            @media print {
-              body { margin: 0; padding: 0; }
-              .payslip { margin: 0; border: none; }
-            }
-          </style>
+          ${getPayslipStyles()}
         </head>
         <body>
       `;
@@ -4852,35 +4464,41 @@ function EmployeeSalarySlipsDialog({
             if (!employeePayroll) {
               // Add a "no data" payslip
               htmlContent += `
-                <div class="payslip">
-                  <div class="header">
-                    <div class="company-name">AquaNav Marine Solutions</div>
+                <div class="payslip-container">
+                  ${generateCommonHeader({ company })}
+
+                  <div class="payslip-title-section">
                     <div class="payslip-title">Payroll Slip</div>
                   </div>
-                  <div class="info-grid">
-                    <div class="info-section">
-                      <h3>Employee Information</h3>
-                      <div class="info-row">
-                        <span class="info-label">Name:</span>
-                        <span class="info-value">${employee.firstName} ${employee.lastName}</span>
+
+                  <div class="payslip-content">
+                    <div class="info-grid">
+                      <div class="info-section">
+                        <h3>Employee Information</h3>
+                        <div class="info-row">
+                          <span class="info-label">Name:</span>
+                          <span class="info-value">${employee.firstName} ${employee.lastName}</span>
+                        </div>
+                        <div class="info-row">
+                          <span class="info-label">Employee Code:</span>
+                          <span class="info-value">${employee.employeeCode}</span>
+                        </div>
                       </div>
-                      <div class="info-row">
-                        <span class="info-label">Employee Code:</span>
-                        <span class="info-value">${employee.employeeCode}</span>
+                      <div class="info-section">
+                        <h3>Pay Period</h3>
+                        <div class="info-row">
+                          <span class="info-label">Month:</span>
+                          <span class="info-value">${getMonthName(monthYear.month)} ${monthYear.year}</span>
+                        </div>
                       </div>
                     </div>
-                    <div class="info-section">
-                      <h3>Pay Period</h3>
-                      <div class="info-row">
-                        <span class="info-label">Month:</span>
-                        <span class="info-value">${getMonthName(monthYear.month)} ${monthYear.year}</span>
-                      </div>
+                    <div style="text-align: center; color: #666; font-style: italic; padding: 40px; border: 1px dashed #ccc; border-radius: 8px;">
+                      <h3>No Payroll Data Available</h3>
+                      <p>No payroll entry found for ${employee.firstName} ${employee.lastName} in ${getMonthName(monthYear.month)} ${monthYear.year}</p>
                     </div>
                   </div>
-                  <div class="no-data">
-                    <h3>No Payroll Data Available</h3>
-                    <p>No payroll entry found for ${employee.firstName} ${employee.lastName} in ${getMonthName(monthYear.month)} ${monthYear.year}</p>
-                  </div>
+
+                  ${generateCommonFooter({ company })}
                 </div>
               `;
               continue;
@@ -4903,98 +4521,98 @@ function EmployeeSalarySlipsDialog({
             const totalDeductions = deductions.reduce((sum: number, deduction: any) => sum + parseFloat(deduction.amount), 0);
 
             htmlContent += `
-              <div class="payslip">
-                <div class="header">
-                  <div class="company-name">AquaNav Marine Solutions</div>
+              <div class="payslip-container">
+                ${generateCommonHeader({ company })}
+
+                <div class="payslip-title-section">
                   <div class="payslip-title">Payroll Slip</div>
                 </div>
 
-                <div class="info-grid">
-                  <div class="info-section">
-                    <h3>Employee Information</h3>
-                    <div class="info-row">
-                      <span class="info-label">Name:</span>
-                      <span class="info-value">${employee.firstName} ${employee.lastName}</span>
+                <div class="payslip-content">
+                  <div class="info-grid">
+                    <div class="info-section">
+                      <h3>Employee Information</h3>
+                      <div class="info-row">
+                        <span class="info-label">Name:</span>
+                        <span class="info-value">${employee.firstName} ${employee.lastName}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Employee Code:</span>
+                        <span class="info-value">${employee.employeeCode}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Position:</span>
+                        <span class="info-value">${employee.position || "N/A"}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Department:</span>
+                        <span class="info-value">${employee.department || "N/A"}</span>
+                      </div>
                     </div>
-                    <div class="info-row">
-                      <span class="info-label">Employee Code:</span>
-                      <span class="info-value">${employee.employeeCode}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Position:</span>
-                      <span class="info-value">${employee.position || "N/A"}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Department:</span>
-                      <span class="info-value">${employee.department || "N/A"}</span>
+
+                    <div class="info-section">
+                      <h3>Pay Period</h3>
+                      <div class="info-row">
+                        <span class="info-label">Month:</span>
+                        <span class="info-value">${getMonthName(monthYear.month)} ${monthYear.year}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Calendar Days:</span>
+                        <span class="info-value">${employeePayroll.workingDays}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Generated Date:</span>
+                        <span class="info-value">${new Date(employeePayroll.generatedDate).toLocaleDateString()}</span>
+                      </div>
+                      <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" style="text-transform: capitalize">${employeePayroll.status}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div class="info-section">
-                    <h3>Pay Period</h3>
-                    <div class="info-row">
-                      <span class="info-label">Month:</span>
-                      <span class="info-value">${getMonthName(monthYear.month)} ${monthYear.year}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Calendar Days:</span>
-                      <span class="info-value">${employeePayroll.workingDays}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Generated Date:</span>
-                      <span class="info-value">${new Date(employeePayroll.generatedDate).toLocaleDateString()}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Status:</span>
-                      <span class="info-value" style="text-transform: capitalize">${employeePayroll.status}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="earnings-section">
-                  <div class="section-title earnings-title">Earnings</div>
-                  <div class="amount-row">
-                    <span>Basic Salary</span>
-                    <span>${formatCurrency(employeePayroll.basicSalary)}</span>
-                  </div>
-                  ${additions.map((addition: any) => `
+                  <div class="earnings-section">
+                    <div class="section-title earnings-title">Earnings</div>
                     <div class="amount-row">
-                      <span>${addition.description}</span>
-                      <span>${formatCurrency(addition.amount)}</span>
+                      <span>Basic Salary</span>
+                      <span>${formatCurrency(employeePayroll.basicSalary)}</span>
                     </div>
-                  `).join("")}
-                  <div class="amount-row total-row">
-                    <span>Total Earnings</span>
-                    <span>${formatCurrency(totalEarnings)}</span>
+                    ${additions.map((addition: any) => `
+                      <div class="amount-row">
+                        <span>${addition.description}</span>
+                        <span>${formatCurrency(addition.amount)}</span>
+                      </div>
+                    `).join("")}
+                    <div class="amount-row total-row">
+                      <span>Total Earnings</span>
+                      <span>${formatCurrency(totalEarnings)}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div class="deductions-section">
-                  <div class="section-title deductions-title">Deductions</div>
-                  ${deductions.length === 0
+                  <div class="deductions-section">
+                    <div class="section-title deductions-title">Deductions</div>
+                    ${deductions.length === 0
                 ? '<div style="text-align: center; color: #666; font-style: italic;">No deductions for this period</div>'
                 : deductions.map((deduction: any) => `
-                      <div class="amount-row">
-                        <span>${deduction.description}</span>
-                        <span>${formatCurrency(deduction.amount)}</span>
-                      </div>
-                    `).join("") + `
-                    <div class="amount-row total-row">
-                      <span>Total Deductions</span>
-                      <span>${formatCurrency(totalDeductions)}</span>
-                    </div>`
+                        <div class="amount-row">
+                          <span>${deduction.description}</span>
+                          <span>${formatCurrency(deduction.amount)}</span>
+                        </div>
+                      `).join("") + `
+                      <div class="amount-row total-row">
+                        <span>Total Deductions</span>
+                        <span>${formatCurrency(totalDeductions)}</span>
+                      </div>`
               }
+                  </div>
+
+                  <div class="net-pay">
+                    <div class="net-pay-label">Net Pay</div>
+                    <div class="net-pay-amount">${formatCurrency(employeePayroll.totalAmount)}</div>
+                  </div>
                 </div>
 
-                <div class="net-pay">
-                  <div class="net-pay-label">Net Pay</div>
-                  <div class="net-pay-amount">${formatCurrency(employeePayroll.totalAmount)}</div>
-                </div>
-
-                <div class="footer">
-                  <p>This is a computer-generated payslip and does not require a signature.</p>
-                  <p>Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-                </div>
+                ${generateCommonFooter({ company })}
               </div>
             `;
 
@@ -5010,15 +4628,7 @@ function EmployeeSalarySlipsDialog({
         </html>
       `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1000);
-      };
+      await printHtml(htmlContent);
 
       toast({
         title: "Success",
