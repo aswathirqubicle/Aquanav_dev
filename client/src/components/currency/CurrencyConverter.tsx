@@ -8,8 +8,8 @@ import { CurrencyConverter as Converter } from "@shared/currency";
 
 export function CurrencyConverterWidget() {
   const [amount, setAmount] = useState<string>("1000");
-  const [fromCurrency, setFromCurrency] = useState<string>("USD");
-  const [toCurrency, setToCurrency] = useState<string>("AED");
+  const [fromCurrency, setFromCurrency] = useState<string>("AED");
+  const [toCurrency, setToCurrency] = useState<string>("USD");
 
   const convertedAmount = () => {
     try {

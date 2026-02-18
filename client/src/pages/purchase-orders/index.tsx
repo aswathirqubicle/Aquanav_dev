@@ -43,6 +43,8 @@ interface PurchaseOrder {
   subtotal: string;
   taxAmount: string;
   totalAmount: string;
+  discountPercentage?: string;
+  discountAmount?: string;
   notes?: string;
   items?: PurchaseOrderItem[];
   files?: PurchaseOrderFile[];
@@ -101,6 +103,8 @@ export default function PurchaseOrdersIndex() {
     deliveryTerms: "",
     bankAccount: "",
     notes: "",
+    discountPercentage: "0",
+    discountAmount: "0",
   });
 
   const [orderItems, setOrderItems] = useState<{
@@ -382,6 +386,8 @@ export default function PurchaseOrdersIndex() {
       deliveryTerms: "",
       bankAccount: "",
       notes: "",
+      discountPercentage: "0",
+      discountAmount: "0",
     });
     setOrderItems([]);
     setNewItem({
@@ -406,6 +412,8 @@ export default function PurchaseOrdersIndex() {
       deliveryTerms: order.deliveryTerms || "",
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
+      discountPercentage: order.discountPercentage || "0",
+      discountAmount: order.discountAmount || "0",
     });
 
     if (order.items && order.items.length > 0) {
@@ -549,10 +557,14 @@ export default function PurchaseOrdersIndex() {
     // Calculate and append totals
     const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
     const taxAmount = calculateTotalTax();
-    const totalAmount = subtotal + taxAmount;
+    const discountPct = parseFloat(formData.discountPercentage) || 0;
+    const discountAmt = parseFloat(formData.discountAmount) || 0;
+    const totalAmount = subtotal + taxAmount - discountAmt;
     formDataInstance.append("subtotal", subtotal.toFixed(2));
     formDataInstance.append("taxAmount", taxAmount.toFixed(2));
     formDataInstance.append("totalAmount", totalAmount.toFixed(2));
+    formDataInstance.append("discountPercentage", discountPct.toFixed(2));
+    formDataInstance.append("discountAmount", discountAmt.toFixed(2));
 
     // Append files
     if (selectedFiles) {
@@ -1104,6 +1116,46 @@ export default function PurchaseOrdersIndex() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="discountPercentage">Discount (%)</Label>
+                  <Input
+                    id="discountPercentage"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={formData.discountPercentage}
+                    onChange={(e) => {
+                      const pct = parseFloat(e.target.value) || 0;
+                      const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                      const calcDiscount = (subtotal * pct / 100).toFixed(2);
+                      setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                    }}
+                    placeholder="0.00"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="discountAmount">Discount Value (AED)</Label>
+                  <Input
+                    id="discountAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.discountAmount}
+                    onChange={(e) => {
+                      const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                      const val = parseFloat(e.target.value) || 0;
+                      const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
+                      setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                    }}
+                    placeholder="0.00"
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1667,6 +1719,12 @@ export default function PurchaseOrdersIndex() {
                         <span className="text-muted-foreground">Subtotal</span>
                         <span className="font-medium">AED {viewingOrder.subtotal}</span>
                       </div>
+                      {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
+                        <div className="flex justify-between items-center text-sm mt-2">
+                          <span className="text-muted-foreground">Discount ({viewingOrder.discountPercentage || "0"}%)</span>
+                          <span className="font-medium text-red-600">- AED {parseFloat(viewingOrder.discountAmount || "0").toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center text-sm mt-2">
                         <span className="text-muted-foreground">Tax</span>
                         <span className="font-medium">AED {viewingOrder.taxAmount}</span>

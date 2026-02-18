@@ -33,6 +33,8 @@ const createCreditNoteSchema = insertCreditNoteSchema.extend({
   taxAmount: z.string().optional(),
   discount: z.string().optional(),
   totalAmount: z.string().optional(),
+  currency: z.string().default("AED"),
+  exchangeRate: z.string().default("1"),
 });
 
 type CreditNoteFormData = z.infer<typeof createCreditNoteSchema>;
@@ -57,14 +59,14 @@ export default function CreditNotesIndex() {
   }, [location]);
 
   // Fetch credit notes
-  const { data: creditNotes = [], isLoading: creditNotesLoading } = useQuery({
+  const { data: creditNotes = [], isLoading: creditNotesLoading } = useQuery<any[]>({
     queryKey: ["/api/credit-notes"],
   });
 
   // Fetch sales invoices for linking
   const { data: salesInvoicesResponse } = useQuery({
     // queryKey: ["/api/sales-invoices"],
-     queryKey: ["/api/sales-invoices", { limit: 1000 }],
+    queryKey: ["/api/sales-invoices", { limit: 1000 }],
     queryFn: async () => {
       const response = await fetch("/api/sales-invoices?limit=1000");
       if (!response.ok) throw new Error("Failed to fetch sales invoices");
@@ -186,9 +188,9 @@ export default function CreditNotesIndex() {
     );
   };
 
-  const formatCurrency = (amount: string | number) => {
+  const formatCurrency = (amount: string | number, currency?: string) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `AED ${num.toFixed(2)}`;
+    return `${currency || "AED"} ${num.toFixed(2)}`;
   };
 
   const CreditNoteForm = ({ creditNote, onSubmit }: { creditNote?: any; onSubmit: (data: CreditNoteFormData) => void }) => {
@@ -204,6 +206,8 @@ export default function CreditNotesIndex() {
       taxAmount: creditNote?.taxAmount || "0.00",
       discount: creditNote?.discount || "0.00",
       totalAmount: creditNote?.totalAmount || "0.00",
+      currency: creditNote?.currency || "AED",
+      exchangeRate: creditNote?.exchangeRate || "1",
     });
 
     const selectedInvoice = salesInvoices.find((inv: any) => inv.id === formData.salesInvoiceId);
@@ -211,11 +215,25 @@ export default function CreditNotesIndex() {
     useEffect(() => {
       if (selectedInvoice) {
         const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice.customerId) : null;
+        const invoiceCurrency = selectedInvoice.currency || selectedCustomer?.currency || "AED";
+        const invoiceExchangeRate = selectedInvoice.exchangeRate || "1";
         setFormData(prev => ({
           ...prev,
           customerId: selectedInvoice.customerId || 0,
           billingAddress: selectedCustomer?.address || "",
+          currency: invoiceCurrency,
+          exchangeRate: invoiceExchangeRate,
         }));
+        if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice.exchangeRate) {
+          fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
+            .then(r => r.json())
+            .then(data => {
+              if (data.rate) {
+                setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
+              }
+            })
+            .catch(() => { });
+        }
       }
     }, [selectedInvoice]);
 
@@ -301,16 +319,30 @@ export default function CreditNotesIndex() {
           <div className="space-y-2">
             <Label htmlFor="salesInvoiceId">Linked Sales Invoice *</Label>
             <Select
-              value={formData.salesInvoiceId.toString()}
+              value={formData.salesInvoiceId ? formData.salesInvoiceId.toString() : "0"}
               onValueChange={(value) => {
                 const selectedInvoice = salesInvoices.find((inv: any) => inv.id === parseInt(value));
                 const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice?.customerId) : null;
+                const invoiceCurrency = selectedInvoice?.currency || selectedCustomer?.currency || "AED";
+                const invoiceExchangeRate = selectedInvoice?.exchangeRate || "1";
                 setFormData(prev => ({
                   ...prev,
                   salesInvoiceId: parseInt(value),
                   customerId: selectedInvoice?.customerId || 0,
                   billingAddress: selectedCustomer?.address || "",
+                  currency: invoiceCurrency,
+                  exchangeRate: invoiceExchangeRate,
                 }));
+                if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice?.exchangeRate) {
+                  fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
+                    .then(r => r.json())
+                    .then(data => {
+                      if (data.rate) {
+                        setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
+                      }
+                    })
+                    .catch(() => { });
+                }
               }}
             >
               <SelectTrigger>
@@ -497,7 +529,7 @@ export default function CreditNotesIndex() {
           <div className="w-80 space-y-2">
             <div className="flex justify-between">
               <span>Subtotal:</span>
-              <span>{formatCurrency(formData.subtotal)}</span>
+              <span>{formatCurrency(formData.subtotal || "0")}</span>
             </div>
             <div className="flex justify-between">
               <span>Discount:</span>
@@ -505,18 +537,18 @@ export default function CreditNotesIndex() {
                 type="number"
                 min="0"
                 step="0.01"
-                value={formData.discount}
+                value={formData.discount || "0"}
                 onChange={(e) => setFormData(prev => ({ ...prev, discount: e.target.value }))}
                 className="w-24 text-right"
               />
             </div>
             <div className="flex justify-between">
               <span>Tax Amount:</span>
-              <span>{formatCurrency(formData.taxAmount)}</span>
+              <span>{formatCurrency(formData.taxAmount || "0")}</span>
             </div>
             <div className="flex justify-between font-bold text-lg border-t pt-2">
               <span>Total:</span>
-              <span>{formatCurrency(formData.totalAmount)}</span>
+              <span>{formatCurrency(formData.totalAmount || "0")}</span>
             </div>
           </div>
         </div>
@@ -528,6 +560,7 @@ export default function CreditNotesIndex() {
             onClick={() => {
               setIsCreateOpen(false);
               setEditingCreditNote(null);
+              setFormData(prev => ({ ...prev, currency: "AED", exchangeRate: "1" }));
             }}
           >
             Cancel
@@ -600,8 +633,8 @@ export default function CreditNotesIndex() {
                     <TableCell>
                       {new Date(creditNote.creditNoteDate).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>{creditNote.reason}</TableCell>
-                    <TableCell>{formatCurrency(creditNote.totalAmount)}</TableCell>
+                    <TableCell>{creditNote.reason || '-'}</TableCell>
+                    <TableCell>{formatCurrency(creditNote.totalAmount || 0, creditNote.currency)}</TableCell>
                     <TableCell>{getStatusBadge(creditNote.status)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -749,10 +782,10 @@ export default function CreditNotesIndex() {
                             <TableRow key={index}>
                               <TableCell>{item.description}</TableCell>
                               <TableCell className="text-right">{item.quantity}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingCreditNote.currency)}</TableCell>
                               <TableCell className="text-right">{item.taxRate || 0}%</TableCell>
-                              <TableCell className="text-right">{formatCurrency(taxAmount)}</TableCell>
-                              <TableCell className="text-right">{formatCurrency(lineTotal)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(taxAmount, viewingCreditNote.currency)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(lineTotal, viewingCreditNote.currency)}</TableCell>
                             </TableRow>
                           );
                         })}
@@ -766,22 +799,27 @@ export default function CreditNotesIndex() {
                   <div className="w-80 space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                     <div className="flex justify-between">
                       <span className="font-medium">Subtotal:</span>
-                      <span>{formatCurrency(viewingCreditNote.subtotal || 0)}</span>
+                      <span>{formatCurrency(viewingCreditNote.subtotal || 0, viewingCreditNote.currency)}</span>
                     </div>
                     {viewingCreditNote.discount && parseFloat(viewingCreditNote.discount) > 0 && (
                       <div className="flex justify-between">
                         <span className="font-medium">Discount:</span>
-                        <span>-{formatCurrency(viewingCreditNote.discount)}</span>
+                        <span>-{formatCurrency(viewingCreditNote.discount, viewingCreditNote.currency)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span className="font-medium">Tax Amount:</span>
-                      <span>{formatCurrency(viewingCreditNote.taxAmount || 0)}</span>
+                      <span>{formatCurrency(viewingCreditNote.taxAmount || 0, viewingCreditNote.currency)}</span>
                     </div>
                     <div className="flex justify-between font-bold text-lg border-t pt-3">
                       <span>Total Amount:</span>
-                      <span>{formatCurrency(viewingCreditNote.totalAmount || 0)}</span>
+                      <span>{formatCurrency(viewingCreditNote.totalAmount || 0, viewingCreditNote.currency)}</span>
                     </div>
+                    {viewingCreditNote.currency && viewingCreditNote.currency !== "AED" && (
+                      <div className="text-sm text-muted-foreground">
+                        AED Equivalent: AED {(parseFloat(viewingCreditNote.totalAmount || "0") * parseFloat(viewingCreditNote.exchangeRate || "1")).toFixed(2)}
+                      </div>
+                    )}
                   </div>
                 </div>
 

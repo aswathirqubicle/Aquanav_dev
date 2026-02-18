@@ -70,6 +70,9 @@ import {
   creditNotes,
 } from "../migrations/schema";
 import sanitizeHtml from "sanitize-html";
+import { purchaseInvoices, purchaseInvoicePayments } from "@shared/schema";
+import { db } from "./db";
+import { sql as sqlRaw } from "./db";
 
 function getCommonStyles(): string {
   return `
@@ -1197,7 +1200,7 @@ export function generateProjectPrintHTML(data: any): string {
         date: new Date(activity.date).toLocaleDateString(),
         location: activity.location,
         activities: activity.tasks,
-        hbmHours: activity.hbmDailyRunningHours,  
+        hbmHours: activity.hbmDailyRunningHours,
       });
 
       return acc;
@@ -1736,7 +1739,9 @@ ${reports
   )
   .join("")}
 
-  ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
+  ${
+    data.workRemainingDays && data.workRemainingDays.length > 0
+      ? `
   <div class="page-break">
 <h2 style="text-align:center;color:red;">
 Work Remaining Days
@@ -1750,16 +1755,22 @@ Work Remaining Days
         </tr>
       </thead>
       <tbody>
-        ${data.workRemainingDays.map((item: any) => `
+        ${data.workRemainingDays
+          .map(
+            (item: any) => `
           <tr>
             <td style="padding:8px;">${item.location || "-"}</td>
             <td style="padding:8px;">${item.days || "-"}</td>
           </tr>
-        `).join("")}
+        `,
+          )
+          .join("")}
       </tbody>
     </table>
   </div>
-` : ""}
+`
+      : ""
+  }
 
 <div class="footer">
 <div class="footer-content">
@@ -8648,6 +8659,407 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: error.message });
     }
   });
+
+  // Exchange Rate routes
+  app.get(
+    "/api/exchange-rates",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const rates = await storage.getExchangeRates();
+        res.json(rates);
+      } catch (error) {
+        console.error("Get exchange rates error:", error);
+        res.status(500).json({ message: "Failed to get exchange rates" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/exchange-rates",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const { fromCurrency, toCurrency, rate, isActive } = req.body;
+        if (!fromCurrency || !toCurrency || !rate) {
+          return res.status(400).json({
+            message: "From currency, to currency, and rate are required",
+          });
+        }
+        if (fromCurrency === toCurrency) {
+          return res
+            .status(400)
+            .json({ message: "From and To currencies must be different" });
+        }
+        if (parseFloat(rate) <= 0) {
+          return res
+            .status(400)
+            .json({ message: "Rate must be a positive number" });
+        }
+        const existingRates = await storage.getExchangeRates();
+        const duplicate = existingRates.find(
+          (r) => r.fromCurrency === fromCurrency && r.toCurrency === toCurrency,
+        );
+        if (duplicate) {
+          return res.status(400).json({
+            message: `Exchange rate from ${fromCurrency} to ${toCurrency} already exists. Please edit the existing rate instead.`,
+          });
+        }
+        const newRate = await storage.createExchangeRate({
+          fromCurrency,
+          toCurrency,
+          rate: String(rate),
+          isActive: isActive !== undefined ? isActive : true,
+          updatedById: req.session.userId,
+        });
+        res.status(201).json(newRate);
+      } catch (error) {
+        console.error("Create exchange rate error:", error);
+        res.status(500).json({ message: "Failed to create exchange rate" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/exchange-rates/:id",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const { fromCurrency, toCurrency, rate, isActive } = req.body;
+        const updated = await storage.updateExchangeRate(id, {
+          ...(fromCurrency && { fromCurrency }),
+          ...(toCurrency && { toCurrency }),
+          ...(rate !== undefined && { rate: String(rate) }),
+          ...(isActive !== undefined && { isActive }),
+          updatedById: req.session.userId,
+        });
+        if (!updated) {
+          return res.status(404).json({ message: "Exchange rate not found" });
+        }
+        res.json(updated);
+      } catch (error) {
+        console.error("Update exchange rate error:", error);
+        res.status(500).json({ message: "Failed to update exchange rate" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/exchange-rates/:id",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const deleted = await storage.deleteExchangeRate(id);
+        if (!deleted) {
+          return res.status(404).json({ message: "Exchange rate not found" });
+        }
+        res.json({ message: "Exchange rate deleted" });
+      } catch (error) {
+        console.error("Delete exchange rate error:", error);
+        res.status(500).json({ message: "Failed to delete exchange rate" });
+      }
+    },
+  );
+
+  app.get("/api/exchange-rates/lookup", requireAuth, async (req, res) => {
+    try {
+      const from = req.query.from as string;
+      const to = (req.query.to as string) || "AED";
+      if (!from) {
+        return res.status(400).json({ message: "Missing 'from' parameter" });
+      }
+      const rate = await storage.getExchangeRateForCurrency(from, to);
+      res.json({ fromCurrency: from, toCurrency: to, rate });
+    } catch (error) {
+      console.error("Lookup exchange rate error:", error);
+      res.status(500).json({ message: "Failed to lookup exchange rate" });
+    }
+  });
+
+  app.get(
+    "/api/exchange-rates/available-currencies",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const rates = await storage.getExchangeRates();
+        const currencySet = new Set<string>(["AED"]);
+        for (const rate of rates) {
+          if (rate.isActive) {
+            currencySet.add(rate.fromCurrency);
+            currencySet.add(rate.toCurrency);
+          }
+        }
+        const currencies = Array.from(currencySet).sort();
+        res.json(currencies);
+      } catch (error) {
+        console.error("Get available currencies error:", error);
+        res.status(500).json({ message: "Failed to get available currencies" });
+      }
+    },
+  );
+
+  // ==================== System Administration Endpoints ====================
+
+  // System Health Check
+  app.get(
+    "/api/system/health",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const healthStart = Date.now();
+
+        // Check database connectivity
+        const dbCheck = await sqlRaw`SELECT 1 as check`;
+        const dbLatency = Date.now() - healthStart;
+
+        // Get table row counts
+        const tableCounts = await sqlRaw`
+        SELECT schemaname, relname as table_name, n_live_tup as row_count
+        FROM pg_stat_user_tables
+        ORDER BY n_live_tup DESC
+      `;
+
+        // Get database size
+        const dbSize = await sqlRaw`
+        SELECT pg_size_pretty(pg_database_size(current_database())) as size
+      `;
+
+        // Get total rows across all tables
+        const totalRows = tableCounts.reduce(
+          (sum: number, t: any) => sum + parseInt(t.row_count || "0"),
+          0,
+        );
+
+        // Get index usage stats
+        const indexStats = await sqlRaw`
+        SELECT count(*) as total_indexes,
+               sum(idx_scan) as total_index_scans
+        FROM pg_stat_user_indexes
+      `;
+
+        // Get dead tuple count (rows needing vacuum)
+        const deadTuples = await sqlRaw`
+        SELECT sum(n_dead_tup) as total_dead_tuples
+        FROM pg_stat_user_tables
+      `;
+
+        res.json({
+          status: "healthy",
+          database: {
+            connected: true,
+            latency: `${dbLatency}ms`,
+            size: dbSize[0]?.size || "Unknown",
+            totalTables: tableCounts.length,
+            totalRows,
+            totalIndexes: parseInt(indexStats[0]?.total_indexes || "0"),
+            totalIndexScans: parseInt(indexStats[0]?.total_index_scans || "0"),
+            deadTuples: parseInt(deadTuples[0]?.total_dead_tuples || "0"),
+          },
+          tables: tableCounts.map((t: any) => ({
+            name: t.table_name,
+            rows: parseInt(t.row_count || "0"),
+          })),
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Health check error:", error);
+        res
+          .status(500)
+          .json({ status: "unhealthy", error: "Database connection failed" });
+      }
+    },
+  );
+
+  // Optimize Database
+  app.post(
+    "/api/system/optimize",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const startTime = Date.now();
+
+        // Get dead tuples before optimization
+        const beforeStats = await sqlRaw`
+        SELECT sum(n_dead_tup) as dead_tuples
+        FROM pg_stat_user_tables
+      `;
+
+        // Run VACUUM ANALYZE on all tables
+        await sqlRaw`VACUUM ANALYZE`;
+
+        // Reindex all user tables
+        const tables = await sqlRaw`
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      `;
+
+        let reindexedTables = 0;
+        for (const table of tables) {
+          try {
+            await sqlRaw.unsafe(`REINDEX TABLE "${table.tablename}"`);
+            reindexedTables++;
+          } catch (e) {
+            // Some tables may fail to reindex, skip them
+          }
+        }
+
+        // Get dead tuples after optimization
+        const afterStats = await sqlRaw`
+        SELECT sum(n_dead_tup) as dead_tuples
+        FROM pg_stat_user_tables
+      `;
+
+        const duration = Date.now() - startTime;
+
+        res.json({
+          success: true,
+          duration: `${duration}ms`,
+          details: {
+            vacuumAnalyze: "Completed",
+            tablesReindexed: reindexedTables,
+            totalTables: tables.length,
+            deadTuplesBefore: parseInt(beforeStats[0]?.dead_tuples || "0"),
+            deadTuplesAfter: parseInt(afterStats[0]?.dead_tuples || "0"),
+          },
+        });
+      } catch (error) {
+        console.error("Optimize database error:", error);
+        res
+          .status(500)
+          .json({ success: false, error: "Failed to optimize database" });
+      }
+    },
+  );
+
+  // Download System Backup (JSON)
+  app.get(
+    "/api/system/backup",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const tables = await sqlRaw`
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+      `;
+
+        const backup: Record<string, any[]> = {};
+        for (const table of tables) {
+          try {
+            const rows = await sqlRaw.unsafe(
+              `SELECT * FROM "${table.tablename}"`,
+            );
+            backup[table.tablename] = rows;
+          } catch (e) {
+            backup[table.tablename] = [];
+          }
+        }
+
+        const backupData = JSON.stringify(
+          {
+            version: "1.0.0",
+            exportDate: new Date().toISOString(),
+            database: "aquanav_erp",
+            tables: backup,
+          },
+          null,
+          2,
+        );
+
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename=aquanav_backup_${new Date().toISOString().split("T")[0]}.json`,
+        );
+        res.send(backupData);
+      } catch (error) {
+        console.error("Backup error:", error);
+        res.status(500).json({ error: "Failed to generate backup" });
+      }
+    },
+  );
+
+  // Export All Data (CSV format in JSON wrapper)
+  app.get(
+    "/api/system/export",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const tables = await sqlRaw`
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+      `;
+
+        const exportData: Record<string, { headers: string[]; rows: any[][] }> =
+          {};
+
+        for (const table of tables) {
+          try {
+            const rows = await sqlRaw.unsafe(
+              `SELECT * FROM "${table.tablename}"`,
+            );
+            if (rows.length > 0) {
+              const headers = Object.keys(rows[0]);
+              exportData[table.tablename] = {
+                headers,
+                rows: rows.map((row: any) =>
+                  headers.map((h) => {
+                    const val = row[h];
+                    if (val === null || val === undefined) return "";
+                    if (val instanceof Date) return val.toISOString();
+                    if (typeof val === "object") return JSON.stringify(val);
+                    return String(val);
+                  }),
+                ),
+              };
+            } else {
+              exportData[table.tablename] = { headers: [], rows: [] };
+            }
+          } catch (e) {
+            exportData[table.tablename] = { headers: [], rows: [] };
+          }
+        }
+
+        // Build CSV content for each table
+        const csvFiles: Record<string, string> = {};
+        for (const [tableName, data] of Object.entries(exportData)) {
+          if (data.headers.length === 0) continue;
+          const escapeCsv = (val: string) => {
+            if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+              return `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+          };
+          const headerLine = data.headers.map(escapeCsv).join(",");
+          const dataLines = data.rows.map((row) =>
+            row.map(escapeCsv).join(","),
+          );
+          csvFiles[tableName] = [headerLine, ...dataLines].join("\n");
+        }
+
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename=aquanav_export_${new Date().toISOString().split("T")[0]}.json`,
+        );
+        res.json({
+          version: "1.0.0",
+          exportDate: new Date().toISOString(),
+          format: "csv",
+          tables: csvFiles,
+        });
+      } catch (error) {
+        console.error("Export error:", error);
+        res.status(500).json({ error: "Failed to export data" });
+      }
+    },
+  );
 
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

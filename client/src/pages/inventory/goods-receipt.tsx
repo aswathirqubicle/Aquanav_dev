@@ -247,7 +247,7 @@ export default function GoodsReceipt() {
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: "AED",
     }).format(parseFloat(amount));
   };
 

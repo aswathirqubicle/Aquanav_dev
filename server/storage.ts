@@ -66,8 +66,11 @@ import {
   customerDocuments,
   supplierDocuments,
   reimbursements,
+  exchangeRates,
   type Reimbursement,
   type InsertReimbursement,
+  type ExchangeRate,
+  type InsertExchangeRate,
   type User,
   type InsertUser,
   type Company,
@@ -2079,12 +2082,14 @@ class Storage {
     }
   }
 
-  async getProjectPrint(id: number,
-          fromDate,
-          toDate,
-          reportDate,
-          includeRemainingDays,
-          includeHBMHours): Promise<Project | undefined> {
+  async getProjectPrint(
+    id: number,
+    fromDate,
+    toDate,
+    reportDate,
+    includeRemainingDays,
+    includeHBMHours,
+  ): Promise<Project | undefined> {
     try {
       const result = await db
         .select({
@@ -2126,17 +2131,17 @@ class Storage {
         .leftJoin(customers, eq(projects.customerId, customers.id))
         .where(eq(projects.id, id))
         .limit(1);
-        const res = result[0];
-        const dateConditions: any[] = [];
+      const res = result[0];
+      const dateConditions: any[] = [];
 
-        if (fromDate) {
-          dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
-        }
+      if (fromDate) {
+        dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
+      }
 
-        if (toDate) {
-          dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
-        }
-        res.dailyActivities = await db
+      if (toDate) {
+        dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+      }
+      res.dailyActivities = await db
         .select({
           id: dailyActivities.id,
           location: dailyActivities.location,
@@ -2151,12 +2156,12 @@ class Storage {
             eq(dailyActivities.projectId, id),
             isNotNull(dailyActivities.completedTasks),
             ne(dailyActivities.completedTasks, ""),
-            ...dateConditions
+            ...dateConditions,
           ),
         )
         .orderBy(asc(dailyActivities.date));
 
-        res.plannedActivities = await db
+      res.plannedActivities = await db
         .select({
           id: dailyActivities.id,
           location: dailyActivities.location,
@@ -2170,68 +2175,72 @@ class Storage {
             eq(dailyActivities.projectId, id),
             isNotNull(dailyActivities.plannedTasks),
             ne(dailyActivities.plannedTasks, ""),
-            ...dateConditions
+            ...dateConditions,
           ),
         )
         .orderBy(asc(dailyActivities.date));
 
-        const photoDateConditions: any[] = [];
+      const photoDateConditions: any[] = [];
 
-        if (fromDate) {
-          photoDateConditions.push(gte(projectPhotoGroups.createdAt, new Date(fromDate)));
-        }
+      if (fromDate) {
+        photoDateConditions.push(
+          gte(projectPhotoGroups.createdAt, new Date(fromDate)),
+        );
+      }
 
-        if (toDate) {
-          photoDateConditions.push(lte(projectPhotoGroups.createdAt, new Date(toDate)));
-        }
+      if (toDate) {
+        photoDateConditions.push(
+          lte(projectPhotoGroups.createdAt, new Date(toDate)),
+        );
+      }
 
-        const groups = await db
+      const groups = await db
+        .select()
+        .from(projectPhotoGroups)
+        .where(
+          and(eq(projectPhotoGroups.projectId, id), ...photoDateConditions),
+        )
+        .orderBy(desc(projectPhotoGroups.createdAt));
+
+      const groupIds = groups.map((g) => g.id);
+
+      let photos: any[] = [];
+
+      if (groupIds.length > 0) {
+        photos = await db
           .select()
-          .from(projectPhotoGroups)
-          .where(
-            and(
-              eq(projectPhotoGroups.projectId, id),
-              ...photoDateConditions
-            )
-          )
-          .orderBy(desc(projectPhotoGroups.createdAt));
+          .from(projectPhotos)
+          .where(inArray(projectPhotos.groupId, groupIds));
+      }
 
-        const groupIds = groups.map((g) => g.id);
-
-        let photos: any[] = [];
-
-        if (groupIds.length > 0) {
-          photos = await db
-            .select()
-            .from(projectPhotos)
-            .where(inArray(projectPhotos.groupId, groupIds));
+      // Group photos by groupId (optimized)
+      const photoMap = photos.reduce((acc: any, photo) => {
+        if (!acc[photo.groupId]) {
+          acc[photo.groupId] = [];
         }
+        acc[photo.groupId].push(photo);
+        return acc;
+      }, {});
 
-        // Group photos by groupId (optimized)
-        const photoMap = photos.reduce((acc: any, photo) => {
-          if (!acc[photo.groupId]) {
-            acc[photo.groupId] = [];
-          }
-          acc[photo.groupId].push(photo);
-          return acc;
-        }, {});
+      // Final gallery structure
+      const gallery = groups.map((group) => ({
+        id: group.id,
+        title: group.title, // 👈 photo group title becomes gallery title
+        description: group.description, // 👈 photo group title becomes gallery description
+        createdAt: group.createdAt,
+        photos: photoMap[group.id] || [],
+      }));
 
-        // Final gallery structure
-        const gallery = groups.map((group) => ({
-          id: group.id,
-          title: group.title, // 👈 photo group title becomes gallery title
-          description: group.description, // 👈 photo group title becomes gallery description
-          createdAt: group.createdAt,
-          photos: photoMap[group.id] || [],
-        }));
-
-        res.gallery = gallery;
-        res.consumables = await storage.getProjectConsumables(id,fromDate,toDate);
-        res.reportDate = reportDate;
-        if(!includeRemainingDays)
-          res.workRemainingDays = [];
-        res.includeHBMHours = includeHBMHours;
-        console.log("hhhhh",res);
+      res.gallery = gallery;
+      res.consumables = await storage.getProjectConsumables(
+        id,
+        fromDate,
+        toDate,
+      );
+      res.reportDate = reportDate;
+      if (!includeRemainingDays) res.workRemainingDays = [];
+      res.includeHBMHours = includeHBMHours;
+      console.log("hhhhh", res);
       return res as Project;
     } catch (error: any) {
       await this.createErrorLog({
@@ -2246,10 +2255,12 @@ class Storage {
     }
   }
 
-  async getConsumablesPrint(id: number,
-          fromDate,
-          toDate,
-          reportDate): Promise<Project | undefined> {
+  async getConsumablesPrint(
+    id: number,
+    fromDate,
+    toDate,
+    reportDate,
+  ): Promise<Project | undefined> {
     try {
       const result = await db
         .select({
@@ -2290,19 +2301,23 @@ class Storage {
         .leftJoin(customers, eq(projects.customerId, customers.id))
         .where(eq(projects.id, id))
         .limit(1);
-        const res = result[0];
-        const dateConditions: any[] = [];
+      const res = result[0];
+      const dateConditions: any[] = [];
 
-        if (fromDate) {
-          dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
-        }
+      if (fromDate) {
+        dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
+      }
 
-        if (toDate) {
-          dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
-        }        
-        res.consumables = await storage.getProjectConsumables(id,fromDate,toDate);
-        res.reportDate = reportDate;
-        console.log("hhhhh",res);
+      if (toDate) {
+        dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+      }
+      res.consumables = await storage.getProjectConsumables(
+        id,
+        fromDate,
+        toDate,
+      );
+      res.reportDate = reportDate;
+      console.log("hhhhh", res);
       return res as Project;
     } catch (error: any) {
       await this.createErrorLog({
@@ -3742,7 +3757,6 @@ class Storage {
     offset: number,
   ): Promise<{ data: DailyActivity[]; total: number }> {
     try {
-
       const whereCondition = and(
         eq(dailyActivities.projectId, projectId),
         isNotNull(dailyActivities.completedTasks),
@@ -4681,26 +4695,35 @@ class Storage {
           }`,
         );
 
-        // Create double-entry accounting records for credit note
+        const cnCurrency = createdCreditNote.currency || "AED";
+        const cnExchangeRate = parseFloat(
+          createdCreditNote.exchangeRate || "1",
+        );
+        const cnOriginalAmount = parseFloat(
+          (createdCreditNote.totalAmount as string) || "0",
+        );
+        const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+        const cnCurrencyNote =
+          cnCurrency !== "AED"
+            ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
+            : "";
 
-        // 1. Debit: Sales Returns and Allowances (contra-revenue account)
+        // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
         try {
           const debitEntry = await this.createGeneralLedgerEntry({
             entryType: "receivable",
             referenceType: "credit_note",
             referenceId: createdCreditNote.id,
             accountName: "Sales Returns and Allowances",
-            description: `Credit Note: ${
-              createdCreditNote.creditNoteNumber || "N/A"
-            } for Invoice: ${invoice?.invoiceNumber || "N/A"}`,
-            debitAmount: createdCreditNote.totalAmount as string,
+            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+            debitAmount: cnAedAmount,
             creditAmount: "0",
             entityId: createdCreditNote.customerId as number,
             entityName: customer?.name || "Unknown Customer",
             projectId: invoice?.projectId || undefined,
             invoiceNumber: invoice?.invoiceNumber || undefined,
             transactionDate:
-              createdCreditNote.creditNoteDate || // Already a string
+              createdCreditNote.creditNoteDate ||
               new Date().toISOString().split("T")[0],
             status: "issued",
           });
@@ -4720,18 +4743,16 @@ class Storage {
           );
         }
 
-        // 2. Credit: Accounts Receivable (reduce what customer owes)
+        // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
         try {
           const creditEntry = await this.createGeneralLedgerEntry({
             entryType: "receivable",
             referenceType: "credit_note",
             referenceId: createdCreditNote.id,
             accountName: "Accounts Receivable",
-            description: `Credit Note: ${
-              createdCreditNote.creditNoteNumber || "N/A"
-            } for Invoice: ${invoice?.invoiceNumber || "N/A"}`,
+            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
             debitAmount: "0",
-            creditAmount: createdCreditNote.totalAmount as string,
+            creditAmount: cnAedAmount,
             entityId: createdCreditNote.customerId as number,
             entityName: customer?.name || "Unknown Customer",
             projectId: invoice?.projectId || undefined,
@@ -7440,6 +7461,8 @@ class Storage {
         customerId: proformaData.customerId,
         projectId: proformaData.projectId || null,
         quotationId: proformaData.quotationId || null,
+        currency: proformaData.currency || "AED",
+        exchangeRate: proformaData.exchangeRate || "1",
         status: proformaData.status || "draft",
         validUntil: proformaData.validUntil
           ? new Date(proformaData.validUntil).toISOString()
@@ -7539,6 +7562,10 @@ class Storage {
         updateData.discount = proformaData.discount || "0";
       if (proformaData.totalAmount !== undefined)
         updateData.totalAmount = proformaData.totalAmount || null;
+      if (proformaData.currency !== undefined)
+        updateData.currency = proformaData.currency;
+      if (proformaData.exchangeRate !== undefined)
+        updateData.exchangeRate = proformaData.exchangeRate;
       if (proformaData.isArchived !== undefined)
         updateData.isArchived = proformaData.isArchived || false;
 
@@ -8070,6 +8097,8 @@ class Storage {
           deliveryTerms: orderData.deliveryTerms || null,
           bankAccount: orderData.bankAccount || null,
           subtotal: orderData.subtotal || "0",
+          discountPercentage: orderData.discountPercentage || "0",
+          discountAmount: orderData.discountAmount || "0",
           taxAmount: orderData.taxAmount || "0",
           totalAmount: orderData.totalAmount || "0",
           notes: orderData.notes || null,
@@ -8148,6 +8177,10 @@ class Storage {
         updateData.bankAccount = data.bankAccount || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
+      if (data.discountPercentage !== undefined)
+        updateData.discountPercentage = data.discountPercentage;
+      if (data.discountAmount !== undefined)
+        updateData.discountAmount = data.discountAmount;
       if (data.taxAmount !== undefined) updateData.taxAmount = data.taxAmount;
       if (data.totalAmount !== undefined)
         updateData.totalAmount = data.totalAmount;
@@ -8363,6 +8396,8 @@ class Storage {
           paymentTerms: po.paymentTerms,
           notes: po.notes,
           subtotal: po.subtotal,
+          discountPercentage: po.discountPercentage || "0",
+          discountAmount: po.discountAmount || "0",
           taxAmount: po.taxAmount,
           totalAmount: po.totalAmount,
           paidAmount: "0",
@@ -8613,13 +8648,15 @@ class Storage {
           poId: invoiceData.poId || null,
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
-          invoiceData.assetInventoryInstanceId || null,
+            invoiceData.assetInventoryInstanceId || null,
           status: invoiceData.status || "draft",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: invoiceData.paymentTerms || null,
           bankAccount: invoiceData.bankAccount || null,
           subtotal: invoiceData.subtotal,
+          discountPercentage: invoiceData.discountPercentage || "0",
+          discountAmount: invoiceData.discountAmount || "0",
           taxAmount: invoiceData.taxAmount || "0",
           totalAmount: invoiceData.totalAmount,
           paidAmount: "0",
@@ -9113,17 +9150,15 @@ class Storage {
     toDate?: string,
   ): Promise<ProjectConsumableWithItems[]> {
     try {
-      const conditions: any[] = [
-      eq(projectConsumables.projectId, projectId),
-    ];
+      const conditions: any[] = [eq(projectConsumables.projectId, projectId)];
 
-    if (fromDate) {
-      conditions.push(gte(projectConsumables.date, new Date(fromDate)));
-    }
+      if (fromDate) {
+        conditions.push(gte(projectConsumables.date, new Date(fromDate)));
+      }
 
-    if (toDate) {
-      conditions.push(lte(projectConsumables.date, new Date(toDate)));
-    }
+      if (toDate) {
+        conditions.push(lte(projectConsumables.date, new Date(toDate)));
+      }
       const consumables: Array<Omit<ProjectConsumableWithItems, "items">> =
         await db
           .select({
@@ -11397,16 +11432,23 @@ class Storage {
       const invoiceData = invoice[0].sales_invoices;
       const customerData = invoice[0].customers;
 
-      // Create receivable entry (Debit Accounts Receivable)
+      const invoiceCurrency = invoiceData.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
+      const originalAmount = parseFloat(invoiceData.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      // Create receivable entry (Debit Accounts Receivable) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "receivable",
         referenceType: "sales_invoice",
         referenceId: invoiceId,
         accountName: "Accounts Receivable",
-        description: `Sales Invoice ${invoiceData.invoiceNumber} - ${
-          customerData?.name || "Unknown Customer"
-        }`,
-        debitAmount: invoiceData.totalAmount || "0",
+        description: `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
+        debitAmount: aedAmount,
         creditAmount: "0",
         entityId: invoiceData.customerId,
         entityName: customerData?.name || null,
@@ -11417,17 +11459,15 @@ class Storage {
         status: "pending",
       });
 
-      // Create revenue entry (Credit Sales Revenue)
+      // Create revenue entry (Credit Sales Revenue) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "receivable",
         referenceType: "sales_invoice",
         referenceId: invoiceId,
         accountName: "Sales Revenue",
-        description: `Sales Invoice ${invoiceData.invoiceNumber} - ${
-          customerData?.name || "Unknown Customer"
-        }`,
+        description: `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
         debitAmount: "0",
-        creditAmount: invoiceData.totalAmount || "0",
+        creditAmount: aedAmount,
         entityId: invoiceData.customerId,
         entityName: customerData?.name || null,
         projectId: invoiceData.projectId,
@@ -11488,6 +11528,86 @@ class Storage {
       });
       throw error;
     }
+  }
+
+  // Exchange Rate methods
+  async getExchangeRates(): Promise<ExchangeRate[]> {
+    return await db
+      .select()
+      .from(exchangeRates)
+      .orderBy(exchangeRates.fromCurrency, exchangeRates.toCurrency);
+  }
+
+  async getExchangeRate(id: number): Promise<ExchangeRate | undefined> {
+    const results = await db
+      .select()
+      .from(exchangeRates)
+      .where(eq(exchangeRates.id, id))
+      .limit(1);
+    return results[0];
+  }
+
+  async createExchangeRate(data: InsertExchangeRate): Promise<ExchangeRate> {
+    const [rate] = await db
+      .insert(exchangeRates)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return rate;
+  }
+
+  async updateExchangeRate(
+    id: number,
+    data: Partial<InsertExchangeRate>,
+  ): Promise<ExchangeRate | undefined> {
+    const [updated] = await db
+      .update(exchangeRates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(exchangeRates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteExchangeRate(id: number): Promise<boolean> {
+    const result = await db
+      .delete(exchangeRates)
+      .where(eq(exchangeRates.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getExchangeRateForCurrency(
+    fromCurrency: string,
+    toCurrency: string = "AED",
+  ): Promise<string> {
+    if (fromCurrency === toCurrency) return "1";
+    const results = await db
+      .select()
+      .from(exchangeRates)
+      .where(
+        and(
+          eq(exchangeRates.fromCurrency, fromCurrency),
+          eq(exchangeRates.toCurrency, toCurrency),
+          eq(exchangeRates.isActive, true),
+        ),
+      )
+      .limit(1);
+    if (results.length > 0) return results[0].rate;
+    const reverseResults = await db
+      .select()
+      .from(exchangeRates)
+      .where(
+        and(
+          eq(exchangeRates.fromCurrency, toCurrency),
+          eq(exchangeRates.toCurrency, fromCurrency),
+          eq(exchangeRates.isActive, true),
+        ),
+      )
+      .limit(1);
+    if (reverseResults.length > 0) {
+      const reverseRate = parseFloat(reverseResults[0].rate);
+      return reverseRate > 0 ? (1 / reverseRate).toFixed(8) : "1";
+    }
+    return "1";
   }
 }
 
@@ -11698,7 +11818,9 @@ export interface IStorage {
 
   // Project Consumables methods
   getProjectConsumables(
-    projectId: number,fromDate,toDate
+    projectId: number,
+    fromDate,
+    toDate,
   ): Promise<ProjectConsumableWithItems[]>;
   createProjectConsumables(
     projectId: number,
@@ -11965,6 +12087,20 @@ export interface IStorage {
     currentPassword: string,
     newPassword: string,
   ): Promise<boolean>;
+
+  // Exchange Rate methods
+  getExchangeRates(): Promise<ExchangeRate[]>;
+  getExchangeRate(id: number): Promise<ExchangeRate | undefined>;
+  getExchangeRateForCurrency(
+    fromCurrency: string,
+    toCurrency?: string,
+  ): Promise<string>;
+  createExchangeRate(data: InsertExchangeRate): Promise<ExchangeRate>;
+  updateExchangeRate(
+    id: number,
+    data: Partial<InsertExchangeRate>,
+  ): Promise<ExchangeRate | undefined>;
+  deleteExchangeRate(id: number): Promise<boolean>;
 }
 
 import {

@@ -160,6 +160,8 @@ export default function SalesIndex() {
     status: "draft",
     items: [],
     discount: "0",
+    currency: "AED",
+    exchangeRate: "1",
   });
 
   const [invoiceFormData, setInvoiceFormData] =
@@ -177,6 +179,8 @@ export default function SalesIndex() {
       subtotal: "0",
       taxAmount: "0",
       totalAmount: "0",
+      currency: "AED",
+      exchangeRate: "1",
     });
 
   const getDefaultTaxRate = () =>
@@ -623,6 +627,8 @@ export default function SalesIndex() {
       status: "draft",
       items: [],
       discount: "0",
+      currency: "AED",
+      exchangeRate: "1",
     });
 
     setNewItem({
@@ -973,9 +979,9 @@ export default function SalesIndex() {
     );
   };
 
-  const formatCurrency = (amount: string | number) => {
+  const formatCurrency = (amount: string | number, currency?: string) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `AED ${num.toFixed(2)}`;
+    return `${currency || "AED"} ${num.toFixed(2)}`;
   };
 
   const formatDate = (date: string | Date) => {
@@ -1415,14 +1421,29 @@ export default function SalesIndex() {
                         onValueChange={(value) => {
                           const customerId = parseInt(value);
                           const selectedCustomer = customers?.find(c => c.id === customerId);
-
+                          const customerCurrency = selectedCustomer?.currency || "AED";
                           startTransition(() => {
                             setFormData(prev => ({
                               ...prev,
                               customerId,
-                              billingAddress: selectedCustomer?.address || "", // ✅ AUTO POPULATE
+                              billingAddress: selectedCustomer?.address || "",
+                              currency: customerCurrency,
+                              exchangeRate: customerCurrency === "AED" ? "1" : prev.exchangeRate,
                             }));
                           });
+                          if (customerCurrency && customerCurrency !== "AED") {
+                            fetch(`/api/exchange-rates/lookup?from=${customerCurrency}&to=AED`)
+                              .then(res => res.json())
+                              .then(data => {
+                                if (data.rate) {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    exchangeRate: data.rate.toString(),
+                                  }));
+                                }
+                              })
+                              .catch(() => { });
+                          }
                         }}
                       >
                         <SelectTrigger>
@@ -1439,6 +1460,11 @@ export default function SalesIndex() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {formData.currency && formData.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Currency: {formData.currency} | Exchange Rate: {formData.exchangeRate} (to AED)
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="validUntil">Valid Until</Label>
@@ -1669,16 +1695,16 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        AED {item.unitPrice.toFixed(2)}
+                                        {formData.currency || "AED"} {item.unitPrice.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        AED {taxAmount.toFixed(2)}
+                                        {formData.currency || "AED"} {taxAmount.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
-                                        AED {lineTotal.toFixed(2)}
+                                        {formData.currency || "AED"} {lineTotal.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <Button
@@ -1739,7 +1765,7 @@ export default function SalesIndex() {
                                 },
                                 0,
                               );
-                              return formatCurrency(taxTotal);
+                              return formatCurrency(taxTotal, formData.currency);
                             })()}
                           </div>
                         </div>
@@ -1769,7 +1795,7 @@ export default function SalesIndex() {
                                 0,
                               );
                               const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total);
+                              return formatCurrency(total, formData.currency);
                             })()}
                           </div>
                         </div>
@@ -1839,13 +1865,29 @@ export default function SalesIndex() {
                           const selectedCustomer = customers?.find(
                             (c) => c.id === parseInt(value)
                           );
+                          const customerCurrency = selectedCustomer?.currency || "AED";
                           startTransition(() =>
                             setInvoiceFormData((prev) => ({
                               ...prev,
                               customerId: parseInt(value),
                               billingAddress: selectedCustomer?.address || "",
+                              currency: customerCurrency,
+                              exchangeRate: customerCurrency === "AED" ? "1" : prev.exchangeRate,
                             })),
                           );
+                          if (customerCurrency && customerCurrency !== "AED") {
+                            fetch(`/api/exchange-rates/lookup?from=${customerCurrency}&to=AED`)
+                              .then(res => res.json())
+                              .then(data => {
+                                if (data.rate) {
+                                  setInvoiceFormData(prev => ({
+                                    ...prev,
+                                    exchangeRate: data.rate.toString(),
+                                  }));
+                                }
+                              })
+                              .catch(() => { });
+                          }
                         }}
                       >
                         <SelectTrigger>
@@ -1862,6 +1904,11 @@ export default function SalesIndex() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {invoiceFormData.currency && invoiceFormData.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Currency: {invoiceFormData.currency} | Exchange Rate: {invoiceFormData.exchangeRate} (to AED)
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="invoiceProjectId">
@@ -2149,16 +2196,16 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        AED {item.unitPrice.toFixed(2)}
+                                        {invoiceFormData.currency || "AED"} {item.unitPrice.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        AED {taxAmount.toFixed(2)}
+                                        {invoiceFormData.currency || "AED"} {taxAmount.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
-                                        AED {lineTotal.toFixed(2)}
+                                        {invoiceFormData.currency || "AED"} {lineTotal.toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <Button
@@ -2221,7 +2268,7 @@ export default function SalesIndex() {
                                 },
                                 0,
                               );
-                              return formatCurrency(taxTotal);
+                              return formatCurrency(taxTotal, invoiceFormData.currency);
                             })()}
                           </div>
                         </div>
@@ -2251,7 +2298,7 @@ export default function SalesIndex() {
                                 0,
                               );
                               const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total);
+                              return formatCurrency(total, invoiceFormData.currency);
                             })()}
                           </div>
                         </div>
@@ -3344,14 +3391,14 @@ export default function SalesIndex() {
                                   {item.quantity}
                                 </td>
                                 <td className="text-right p-3">
-                                  {formatCurrency(item.unitPrice)}
+                                  {formatCurrency(item.unitPrice, selectedQuotation?.currency)}
                                 </td>
                                 <td className="text-right p-3">{taxRate}%</td>
                                 <td className="text-right p-3">
-                                  {formatCurrency(taxAmount)}
+                                  {formatCurrency(taxAmount, selectedQuotation?.currency)}
                                 </td>
                                 <td className="text-right p-3 font-medium">
-                                  {formatCurrency(lineTotal)}
+                                  {formatCurrency(lineTotal, selectedQuotation?.currency)}
                                 </td>
                               </tr>
                             );
@@ -3377,7 +3424,7 @@ export default function SalesIndex() {
                     <div className="flex justify-between">
                       <span className="font-medium">Subtotal:</span>
                       <span>
-                        {formatCurrency(selectedQuotation.subtotal || "0")}
+                        {formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}
                       </span>
                     </div>
                     {selectedQuotation.discount &&
@@ -3385,23 +3432,28 @@ export default function SalesIndex() {
                         <div className="flex justify-between">
                           <span className="font-medium">Discount:</span>
                           <span className="text-red-600">
-                            -{formatCurrency(selectedQuotation.discount)}
+                            -{formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}
                           </span>
                         </div>
                       )}
                     <div className="flex justify-between">
                       <span className="font-medium">Tax Amount:</span>
                       <span>
-                        {formatCurrency(selectedQuotation.taxAmount || "0")}
+                        {formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}
                       </span>
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between text-lg font-bold">
                         <span>Total Amount:</span>
                         <span className="text-blue-600">
-                          {formatCurrency(selectedQuotation.totalAmount || "0")}
+                          {formatCurrency(selectedQuotation.totalAmount || "0", selectedQuotation?.currency)}
                         </span>
                       </div>
+                      {selectedQuotation.currency && selectedQuotation.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          AED Equivalent: AED {(parseFloat(selectedQuotation.totalAmount || "0") * parseFloat(selectedQuotation.exchangeRate || "1")).toFixed(2)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -3628,10 +3680,10 @@ export default function SalesIndex() {
                                   {item.quantity}
                                 </td>
                                 <td className="text-right p-3">
-                                  {formatCurrency(item.unitPrice)}
+                                  {formatCurrency(item.unitPrice, selectedInvoice?.currency)}
                                 </td>
                                 <td className="text-right p-3 font-medium">
-                                  {formatCurrency(lineTotal)}
+                                  {formatCurrency(lineTotal, selectedInvoice?.currency)}
                                 </td>
                               </tr>
                             );
@@ -3657,7 +3709,7 @@ export default function SalesIndex() {
                     <div className="flex justify-between">
                       <span className="font-medium">Subtotal:</span>
                       <span>
-                        {formatCurrency(selectedInvoice.subtotal || "0")}
+                        {formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}
                       </span>
                     </div>
                     {selectedInvoice.discount &&
@@ -3665,23 +3717,28 @@ export default function SalesIndex() {
                         <div className="flex justify-between">
                           <span className="font-medium">Discount:</span>
                           <span className="text-red-600">
-                            -{formatCurrency(selectedInvoice.discount)}
+                            -{formatCurrency(selectedInvoice.discount, selectedInvoice?.currency)}
                           </span>
                         </div>
                       )}
                     <div className="flex justify-between">
                       <span className="font-medium">Tax Amount:</span>
                       <span>
-                        {formatCurrency(selectedInvoice.taxAmount || "0")}
+                        {formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}
                       </span>
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between text-lg font-bold">
                         <span>Total Amount:</span>
                         <span className="text-blue-600">
-                          {formatCurrency(selectedInvoice.totalAmount || "0")}
+                          {formatCurrency(selectedInvoice.totalAmount || "0", selectedInvoice?.currency)}
                         </span>
                       </div>
+                      {selectedInvoice.currency && selectedInvoice.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          AED Equivalent: AED {(parseFloat(selectedInvoice.totalAmount || "0") * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2)}
+                        </div>
+                      )}
                     </div>
                     {selectedInvoice.paidAmount &&
                       parseFloat(selectedInvoice.paidAmount) > 0 && (
@@ -3689,7 +3746,7 @@ export default function SalesIndex() {
                           <div className="flex justify-between text-lg font-bold">
                             <span>Paid Amount:</span>
                             <span className="text-green-600">
-                              {formatCurrency(selectedInvoice.paidAmount)}
+                              {formatCurrency(selectedInvoice.paidAmount, selectedInvoice?.currency)}
                             </span>
                           </div>
                           <div className="flex justify-between text-sm text-gray-600 mt-1">
@@ -3698,6 +3755,7 @@ export default function SalesIndex() {
                               {formatCurrency(
                                 parseFloat(selectedInvoice.totalAmount || "0") -
                                 parseFloat(selectedInvoice.paidAmount),
+                                selectedInvoice?.currency,
                               )}
                             </span>
                           </div>
@@ -3736,7 +3794,7 @@ export default function SalesIndex() {
                               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                                   <span className="font-medium text-green-600">
-                                    {formatCurrency(payment.amount)}
+                                     {formatCurrency(payment.amount, selectedInvoice?.currency)}
                                   </span>
                                   <span className="text-sm text-gray-600 dark:text-gray-400">
                                     {formatDate(payment.paymentDate)}
@@ -3813,6 +3871,7 @@ export default function SalesIndex() {
                                     0,
                                   )
                                   .toFixed(2),
+                                  selectedInvoice?.currency,
                               )}
                             </span>
                           </div>
@@ -3916,13 +3975,13 @@ export default function SalesIndex() {
                     <div className="flex justify-between">
                       <span className="font-medium">Total Amount:</span>
                       <span>
-                        {formatCurrency(selectedInvoice.totalAmount || "0")}
+                        {formatCurrency(selectedInvoice.totalAmount || "0", selectedInvoice?.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Paid Amount:</span>
                       <span className="text-green-600">
-                        {formatCurrency(selectedInvoice.paidAmount || "0")}
+                        {formatCurrency(selectedInvoice.paidAmount || "0", selectedInvoice?.currency)}
                       </span>
                     </div>
                     <div className="flex justify-between border-t pt-2">
@@ -3933,6 +3992,7 @@ export default function SalesIndex() {
                             parseFloat(selectedInvoice.totalAmount || "0") -
                             parseFloat(selectedInvoice.paidAmount || "0")
                           ).toFixed(2),
+                          selectedInvoice?.currency,
                         )}
                       </span>
                     </div>

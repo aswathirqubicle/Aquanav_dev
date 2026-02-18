@@ -380,6 +380,10 @@ export const salesQuotations = pgTable("sales_quotations", {
   id: serial("id").primaryKey(),
   quotationNumber: text("quotation_number").notNull().unique(),
   customerId: integer("customer_id").references(() => customers.id),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   status: text("status").notNull().default("draft"), // draft, sent, approved, rejected, converted
   validUntil: timestamp("valid_until", { mode: "string" }),
   paymentTerms: text("payment_terms"),
@@ -434,6 +438,8 @@ export const salesInvoices = pgTable("sales_invoices", {
   customerId: integer("customer_id").references(() => customers.id),
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
   status: text("status").notNull().default("draft"), // draft, approved, unpaid, partially_paid, paid, overdue
   invoiceDate: timestamp("invoice_date", { mode: "string" }).notNull(),
   dueDate: timestamp("due_date", { mode: "string" }).notNull(),
@@ -710,6 +716,8 @@ export const proformaInvoices = pgTable("proforma_invoices", {
   customerId: integer("customer_id").references(() => customers.id),
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
   status: text("status").notNull().default("draft"), // draft, sent, approved, rejected, expired, converted
   createdDate: timestamp("created_date", { mode: "string" })
     .notNull()
@@ -755,6 +763,8 @@ export const creditNotes = pgTable("credit_notes", {
     () => salesInvoices.id,
   ),
   customerId: integer("customer_id").references(() => customers.id),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
   status: text("status").notNull().default("draft"), // draft, issued, cancelled
   creditNoteDate: timestamp("credit_note_date", { mode: "string" }).notNull(),
   billingAddress: text("billing_address"),
@@ -838,6 +848,14 @@ export const purchaseOrders = pgTable("purchase_orders", {
   bankAccount: text("bank_account"),
   notes: text("notes"),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
+  discountAmount: decimal("discount_amount", {
+    precision: 12,
+    scale: 2,
+  }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   submittedById: integer("submitted_by_id").references(() => users.id),
@@ -897,6 +915,14 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   bankAccount: text("bank_account"),
   notes: text("notes"),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
+  discountAmount: decimal("discount_amount", {
+    precision: 12,
+    scale: 2,
+  }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   paidAmount: decimal("paid_amount", { precision: 12, scale: 2 }).default("0"),
@@ -1101,6 +1127,17 @@ export const supplierDocuments = pgTable("supplier_documents", {
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Currency Exchange Rates
+export const exchangeRates = pgTable("exchange_rates", {
+  id: serial("id").primaryKey(),
+  fromCurrency: text("from_currency").notNull().default("AED"),
+  toCurrency: text("to_currency").notNull(),
+  rate: decimal("rate", { precision: 18, scale: 8 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedById: integer("updated_by_id").references(() => users.id),
 });
 
 // Insert Schemas
@@ -1720,3 +1757,11 @@ export const insertReimbursementSchema = createInsertSchema(
 });
 export type Reimbursement = typeof reimbursements.$inferSelect;
 export type InsertReimbursement = z.infer<typeof insertReimbursementSchema>;
+
+// Exchange Rate schemas and types
+export const insertExchangeRateSchema = createInsertSchema(exchangeRates).omit({
+  id: true,
+  updatedAt: true,
+});
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type InsertExchangeRate = z.infer<typeof insertExchangeRateSchema>;

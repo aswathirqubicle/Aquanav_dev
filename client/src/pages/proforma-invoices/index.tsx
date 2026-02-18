@@ -111,6 +111,8 @@ interface ProformaInvoice {
   discount?: string;
   totalAmount?: string;
   isArchived?: boolean;
+  currency?: string;
+  exchangeRate?: string;
 }
 
 interface ProformaItem {
@@ -134,11 +136,13 @@ export default function ProformaInvoicesIndex() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [archivedFilter, setArchivedFilter] = useState<string>("active");
   const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
-  const [formData, setFormData] = useState<CreateProformaInvoiceData>({
+  const [formData, setFormData] = useState<CreateProformaInvoiceData & { currency?: string; exchangeRate?: string }>({
     customerId: 0,
     invoiceDate: new Date().toISOString().split('T')[0],
     items: [],
     discount: "0",
+    currency: "AED",
+    exchangeRate: "1",
   });
 
   const [newItem, setNewItem] = useState<ProformaItem>({
@@ -249,6 +253,8 @@ export default function ProformaInvoicesIndex() {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         totalAmount: totalAmount.toString(),
+        currency: (data as any).currency || "AED",
+        exchangeRate: (data as any).exchangeRate || "1",
       };
 
       const url = isEditingProforma && selectedProforma
@@ -350,6 +356,8 @@ export default function ProformaInvoicesIndex() {
       invoiceDate: new Date().toISOString().split('T')[0],
       items: [],
       discount: "0",
+      currency: "AED",
+      exchangeRate: "1",
     });
     setNewItem({
       description: "",
@@ -456,9 +464,9 @@ export default function ProformaInvoicesIndex() {
     );
   };
 
-  const formatCurrency = (amount: string | number) => {
+  const formatCurrency = (amount: string | number, currency?: string) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `AED ${num.toFixed(2)}`;
+    return `${currency || "AED"} ${num.toFixed(2)}`;
   };
 
   const formatDate = (date: string | Date) => {
@@ -535,7 +543,7 @@ export default function ProformaInvoicesIndex() {
     }
   };
 
-    const handleDuplicateProforma = (proforma: ProformaInvoice) => {
+  const handleDuplicateProforma = (proforma: ProformaInvoice) => {
     const selectedCustomer = customers?.find(
       (c) => c.id === proforma.customerId
     );
@@ -621,6 +629,7 @@ export default function ProformaInvoicesIndex() {
                             (c) => c.id === parseInt(value)
                           );
 
+                          const customerCurrency = selectedCustomer?.currency || "AED";
                           const vatTreatment = selectedCustomer?.vatTreatment || null;
                           const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
 
@@ -631,6 +640,8 @@ export default function ProformaInvoicesIndex() {
                               ...prev,
                               customerId: parseInt(value),
                               billingAddress: selectedCustomer?.address || "",
+                              currency: customerCurrency,
+                              exchangeRate: customerCurrency === "AED" ? "1" : prev.exchangeRate,
                               // 🔹 optional: update existing items taxRate
                               items: prev.items.map(item => ({
                                 ...item,
@@ -644,6 +655,19 @@ export default function ProformaInvoicesIndex() {
                               taxRate: defaultTaxRate,
                             }));
                           });
+                          if (customerCurrency && customerCurrency !== "AED") {
+                            fetch('/api/exchange-rates/lookup?from=' + customerCurrency + '&to=AED')
+                              .then(r => r.json())
+                              .then(data => {
+                                if (data.rate) {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    exchangeRate: String(data.rate),
+                                  }));
+                                }
+                              })
+                              .catch(() => { });
+                          }
                         }}
                       >
                         <SelectTrigger>
@@ -660,6 +684,11 @@ export default function ProformaInvoicesIndex() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {formData.currency && formData.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Currency: {formData.currency} | Exchange Rate: {formData.exchangeRate} (to AED)
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="projectId">Project (Optional)</Label>
@@ -1268,7 +1297,7 @@ export default function ProformaInvoicesIndex() {
                   <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                     <div className="text-right">
                       <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                        {formatCurrency(proforma.totalAmount || "0")}
+                        {formatCurrency(proforma.totalAmount || "0", proforma.currency)}
                       </p>
                       <p className="text-sm text-slate-500 dark:text-slate-500">
                         {proforma.items?.length || 0} item{(proforma.items?.length || 0) !== 1 ? "s" : ""}
@@ -1507,9 +1536,9 @@ export default function ProformaInvoicesIndex() {
                               <tr key={index} className="border-b">
                                 <td className="p-3">{item.description}</td>
                                 <td className="text-right p-3">{item.quantity}</td>
-                                <td className="text-right p-3">{formatCurrency(item.unitPrice)}</td>
+                                <td className="text-right p-3">{formatCurrency(item.unitPrice, selectedProforma.currency)}</td>
                                 <td className="text-right p-3">{item.taxRate || 0}%</td>
-                                <td className="text-right p-3 font-medium">{formatCurrency(lineTotal)}</td>
+                                <td className="text-right p-3 font-medium">{formatCurrency(lineTotal, selectedProforma.currency)}</td>
                               </tr>
                             );
                           })}
@@ -1531,25 +1560,30 @@ export default function ProformaInvoicesIndex() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="font-medium">Subtotal:</span>
-                      <span>{formatCurrency(selectedProforma.subtotal || "0")}</span>
+                      <span>{formatCurrency(selectedProforma.subtotal || "0", selectedProforma.currency)}</span>
                     </div>
                     {selectedProforma.discount && parseFloat(selectedProforma.discount) > 0 && (
                       <div className="flex justify-between">
                         <span className="font-medium">Discount:</span>
-                        <span className="text-red-600">-{formatCurrency(selectedProforma.discount)}</span>
+                        <span className="text-red-600">-{formatCurrency(selectedProforma.discount, selectedProforma.currency)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span className="font-medium">Tax Amount:</span>
-                      <span>{formatCurrency(selectedProforma.taxAmount || "0")}</span>
+                      <span>{formatCurrency(selectedProforma.taxAmount || "0", selectedProforma.currency)}</span>
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between text-lg font-bold">
                         <span>Total Amount:</span>
                         <span className="text-blue-600">
-                          {formatCurrency(selectedProforma.totalAmount || "0")}
+                          {formatCurrency(selectedProforma.totalAmount || "0", selectedProforma.currency)}
                         </span>
                       </div>
+                      {selectedProforma.currency && selectedProforma.currency !== "AED" && (
+                        <div className="text-sm text-muted-foreground">
+                          AED Equivalent: AED {(parseFloat(selectedProforma.totalAmount || "0") * parseFloat(selectedProforma.exchangeRate || "1")).toFixed(2)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -1603,6 +1637,8 @@ export default function ProformaInvoicesIndex() {
                         remarks: selectedProforma.remarks || '',
                         items: selectedProforma.items || [],
                         discount: selectedProforma.discount || '0',
+                        currency: selectedProforma.currency || 'AED',
+                        exchangeRate: selectedProforma.exchangeRate || '1',
                       });
                       // 🔹 ensure new item uses correct tax
                       setNewItem({

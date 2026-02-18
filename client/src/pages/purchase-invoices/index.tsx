@@ -47,6 +47,8 @@ interface PurchaseInvoice {
   paidAmount: string;
   paymentTerms?: string;
   bankAccount?: string;
+  discountPercentage?: string;
+  discountAmount?: string;
   notes?: string;
   items?: PurchaseInvoiceItem[];
   payments?: Payment[];
@@ -139,6 +141,8 @@ export default function PurchaseInvoicesIndex() {
     paymentTerms: "Net 30 days",
     bankAccount: "",
     notes: "",
+    discountPercentage: "0",
+    discountAmount: "0",
   });
 
   const [invoiceItems, setInvoiceItems] = useState<{
@@ -308,12 +312,15 @@ export default function PurchaseInvoicesIndex() {
 
       const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
       const calculatedTaxAmount = items.reduce((sum, item) => sum + item.taxAmount, 0);
-      const totalAmount = subtotal + calculatedTaxAmount;
+      const discountPct = parseFloat(formData.discountPercentage) || 0;
+      const discountAmt = parseFloat(formData.discountAmount) || 0;
+      const totalAmount = subtotal + calculatedTaxAmount - discountAmt;
+
 
       const invoiceData = {
         supplierId: parseInt(formData.supplierId),
-        projectId: formData.projectId ? parseInt(formData.projectId) : null,
-        assetInventoryInstanceId: formData.assetInventoryInstanceId ? parseInt(formData.assetInventoryInstanceId) : null,
+        // projectId: formData.projectId ? parseInt(formData.projectId) : null,
+        // assetInventoryInstanceId: formData.assetInventoryInstanceId ? parseInt(formData.assetInventoryInstanceId) : null,
         invoiceDate: formData.invoiceDate,
         dueDate: formData.dueDate,
         paymentTerms: formData.paymentTerms,
@@ -321,6 +328,8 @@ export default function PurchaseInvoicesIndex() {
         notes: formData.notes,
         subtotal: subtotal.toFixed(2),
         taxAmount: calculatedTaxAmount.toFixed(2),
+        discountPercentage: discountPct.toFixed(2),
+        discountAmount: discountAmt.toFixed(2),
         totalAmount: totalAmount.toFixed(2),
         items,
       };
@@ -493,6 +502,8 @@ export default function PurchaseInvoicesIndex() {
       paymentTerms: "Net 30 days",
       bankAccount: "",
       notes: "",
+      discountPercentage: "0",
+      discountAmount: "0",
     });
     setInvoiceItems([]);
     setNewItem({
@@ -1319,6 +1330,47 @@ export default function PurchaseInvoicesIndex() {
                           className="min-h-[80px] resize-none"
                         />
                       </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="discountPercentage">Discount (%)</Label>
+                          <Input
+                            id="discountPercentage"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={formData.discountPercentage}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value) || 0;
+                              const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                              const calcDiscount = (subtotal * pct / 100).toFixed(2);
+                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                            }}
+                            placeholder="0.00"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="discountAmount">Discount Value (AED)</Label>
+                          <Input
+                            id="discountAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.discountAmount}
+                            onChange={(e) => {
+                              const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                              const val = parseFloat(e.target.value) || 0;
+                              const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
+                              setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                            }}
+                            placeholder="0.00"
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+
                     </div>
                   </CardContent>
                 </Card>
@@ -1580,17 +1632,23 @@ export default function PurchaseInvoicesIndex() {
                               return sum + (lineSubtotal * taxRate / 100);
                             }, 0).toFixed(2)}</span>
                           </div>
+                          {parseFloat(formData.discountAmount) > 0 && (
+                            <div className="flex justify-between text-sm text-red-600">
+                              <span>Discount ({formData.discountPercentage}%):</span>
+                              <span className="font-medium">- AED {parseFloat(formData.discountAmount).toFixed(2)}</span>
+                            </div>
+                          )}
                           <div className="border-t pt-2">
                             <div className="flex justify-between text-lg font-bold">
                               <span>Total Amount:</span>
-                              <span className="text-green-600">AED {invoiceItems.reduce((sum, item) => {
+                              <span className="text-green-600">AED {(invoiceItems.reduce((sum, item) => {
                                 const quantity = parseInt(item.quantity) || 0;
                                 const unitPrice = parseFloat(item.unitPrice) || 0;
                                 const taxRate = parseFloat(item.taxRate) || 0;
                                 const lineSubtotal = quantity * unitPrice;
                                 const lineTax = lineSubtotal * taxRate / 100;
                                 return sum + lineSubtotal + lineTax;
-                              }, 0).toFixed(2)}</span>
+                              }, 0) - (parseFloat(formData.discountAmount) || 0)).toFixed(2)}</span>
                             </div>
                           </div>
                         </div>
@@ -1861,6 +1919,12 @@ export default function PurchaseInvoicesIndex() {
                       <span className="font-medium">Tax:</span>
                       <span className="text-lg font-semibold">AED {viewingInvoice.taxAmount}</span>
                     </div>
+                    {parseFloat(viewingInvoice.discountAmount || "0") > 0 && (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Discount ({viewingInvoice.discountPercentage || "0"}%):</span>
+                        <span className="text-lg font-semibold text-red-600">- AED {parseFloat(viewingInvoice.discountAmount || "0").toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
                       <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">AED {viewingInvoice.totalAmount}</span>
