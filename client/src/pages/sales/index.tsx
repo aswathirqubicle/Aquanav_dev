@@ -43,6 +43,7 @@ import {
   ArchiveRestore,
   Download,
   Copy,
+  Pencil,
 } from "lucide-react";
 import {
   SalesQuotation,
@@ -122,6 +123,7 @@ export default function SalesIndex() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [selectedQuotation, setSelectedQuotation] =
     useState<SalesQuotation | null>(null);
   const [isQuotationDetailsOpen, setIsQuotationDetailsOpen] = useState(false);
@@ -132,6 +134,10 @@ export default function SalesIndex() {
   const [isInvoiceDetailsOpen, setIsInvoiceDetailsOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isReceivablesOpen, setIsReceivablesOpen] = useState(false);
+  const [isQuotationRejectDialogOpen, setIsQuotationRejectDialogOpen] = useState(false);
+  const [quotationRejectionReason, setQuotationRejectionReason] = useState("");
+  const [isInvoiceRejectDialogOpen, setIsInvoiceRejectDialogOpen] = useState(false);
+  const [invoiceRejectionReason, setInvoiceRejectionReason] = useState("");
   // Quotation filters
   const [searchFilter, setSearchFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -185,6 +191,33 @@ export default function SalesIndex() {
 
   const getDefaultTaxRate = () =>
     customerVatTreatment === "standard" ? 5 : 0;
+
+
+  const handleCustomerChange = async (customerId: string) => {
+    const id = parseInt(customerId);
+    const customer = customers?.find((c) => c.id === id);
+    if (customer) {
+      const currency = customer.currency || "AED";
+      let exchangeRate = "1";
+
+      if (currency !== "AED") {
+        try {
+          const response = await apiRequest(`/api/exchange-rates/lookup?from=${currency}`);
+          const data = await response.json();
+          exchangeRate = data.rate;
+        } catch (error) {
+          console.error("Failed to lookup exchange rate:", error);
+        }
+      }
+
+      setInvoiceFormData((prev) => ({
+        ...prev,
+        customerId: id,
+        currency,
+        exchangeRate,
+      }));
+    }
+  };
 
   const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
@@ -530,6 +563,88 @@ export default function SalesIndex() {
     },
   });
 
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const subtotal = data.items.reduce(
+        (sum: number, item: any) => sum + item.quantity * item.unitPrice,
+        0,
+      );
+      const discount = parseFloat(data.discount || "0");
+      const taxAmount = data.items.reduce((sum: number, item: any) => {
+        const itemTotal = item.quantity * item.unitPrice;
+        const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
+        return sum + itemTax;
+      }, 0);
+      const totalAmount = subtotal - discount + taxAmount;
+
+      const processedData = {
+        ...data,
+        customerId: parseInt(data.customerId.toString()),
+        projectId: data.projectId ? parseInt(data.projectId.toString()) : null,
+        quotationId: data.quotationId ? parseInt(data.quotationId.toString()) : null,
+        invoiceDate: data.invoiceDate,
+        dueDate: data.dueDate,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        discount: discount.toFixed(2),
+      };
+
+      const response = await apiRequest(`/api/sales-invoices/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(processedData),
+        headers: { "Content-Type": "application/json" },
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "Invoice Updated",
+        description: "The sales invoice has been updated successfully.",
+      });
+      setIsInvoiceDialogOpen(false);
+      setEditingInvoiceId(null);
+      resetInvoiceForm();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update invoice.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const submitInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: number) => {
+      const response = await apiRequest(
+        `/api/sales-invoices/${invoiceId}/submit`,
+        {
+          method: "PATCH",
+        },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "Invoice Submitted",
+        description: "The sales invoice has been submitted for approval.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
   const approveInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: number) => {
       const response = await apiRequest(
@@ -556,6 +671,69 @@ export default function SalesIndex() {
       });
     },
   });
+
+
+  const rejectInvoiceMutation = useMutation({
+    mutationFn: async ({ invoiceId, reason }: { invoiceId: number; reason: string }) => {
+      const response = await apiRequest(
+        `/api/sales-invoices/${invoiceId}/reject`,
+        {
+          method: "PATCH",
+          body: { reason },
+        },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "Invoice Rejected",
+        description: "The sales invoice has been rejected.",
+        variant: "destructive",
+      });
+      setIsInvoiceRejectDialogOpen(false);
+      setInvoiceRejectionReason("");
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: number) => {
+      const response = await apiRequest(
+        `/api/sales-invoices/${invoiceId}/cancel`,
+        { method: "PATCH" },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
+      toast({
+        title: "Invoice Cancelled",
+        description: "The sales invoice has been cancelled and reversal ledger entries have been posted.",
+      });
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Cannot Cancel Invoice",
+        description: error.message || "Failed to cancel invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
 
   const recordPaymentMutation = useMutation({
     mutationFn: async (data: CreatePaymentData & { files?: FileList }) => {
@@ -781,7 +959,11 @@ export default function SalesIndex() {
     }
 
     console.log("Submitting invoice data:", invoiceFormData);
-    createInvoiceMutation.mutate(invoiceFormData);
+    if (editingInvoiceId) {
+      updateInvoiceMutation.mutate({ id: editingInvoiceId, data: invoiceFormData });
+    } else {
+      createInvoiceMutation.mutate(invoiceFormData);
+    }
   };
 
   const addItem = () => {
@@ -936,11 +1118,22 @@ export default function SalesIndex() {
           "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400",
         label: "Draft",
       },
+      pending_approval: {
+        icon: AlertTriangle,
+        class:
+          "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
+        label: "Pending Approval",
+      },
       approved: {
         icon: CheckCircle,
         class:
           "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400",
         label: "Approved",
+      },
+      rejected: {
+        icon: XCircle,
+        class: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
+        label: "Rejected",
       },
       unpaid: {
         icon: Clock,
@@ -964,6 +1157,11 @@ export default function SalesIndex() {
         icon: XCircle,
         class: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
         label: "Overdue",
+      },
+      cancelled: {
+        icon: XCircle,
+        class: "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400 line-through",
+        label: "Cancelled",
       },
     };
 
@@ -989,17 +1187,30 @@ export default function SalesIndex() {
   };
 
   const totalQuotationValue = quotations?.length
-    ? quotations.reduce(
-      (sum, quotation) => sum + parseFloat(quotation.totalAmount || "0"),
-      0,
-    )
+    ? quotations
+      .filter(q => q.status === "approved")
+      .reduce(
+        (sum, quotation) => sum + (parseFloat(quotation.totalAmount || "0") * parseFloat(quotation.exchangeRate || "1")),
+        0,
+      )
     : 0;
 
   const totalInvoiceValue = invoices?.length
-    ? invoices.reduce(
-      (sum, invoice) => sum + parseFloat(invoice.totalAmount || "0"),
-      0,
-    )
+    ? invoices
+      .filter(inv => inv.status !== "draft" && inv.status !== "pending_approval" && inv.status !== "rejected" && inv.status !== "cancelled")
+      .reduce(
+        (sum, invoice) => sum + (parseFloat(invoice.totalAmount || "0") * parseFloat(invoice.exchangeRate || "1")),
+        0,
+      )
+    : 0;
+
+  const totalReceivablesValue = invoices?.length
+    ? invoices
+      .filter(inv => inv.status !== "draft" && inv.status !== "pending_approval" && inv.status !== "rejected" && inv.status !== "cancelled")
+      .reduce((sum, invoice) => {
+        const outstanding = parseFloat(invoice.totalAmount || "0") - parseFloat(invoice.paidAmount || "0");
+        return sum + (Math.max(0, outstanding) * parseFloat(invoice.exchangeRate || "1"));
+      }, 0)
     : 0;
 
   const getCustomerName = (customerId: number, customerName?: string) => {
@@ -1241,6 +1452,27 @@ export default function SalesIndex() {
     }
   };
 
+
+  const handleEditInvoice = (invoice: any) => {
+    setEditingInvoiceId(invoice.id);
+    setInvoiceFormData({
+      customerId: invoice.customerId,
+      projectId: invoice.projectId || undefined,
+      quotationId: invoice.quotationId || undefined,
+      status: invoice.status,
+      invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split("T")[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      items: invoice.items || [],
+      discount: invoice.discount || "0",
+      subtotal: invoice.subtotal || "0",
+      taxAmount: invoice.taxAmount || "0",
+      totalAmount: invoice.totalAmount || "0",
+      currency: invoice.currency || "AED",
+      exchangeRate: invoice.exchangeRate || "1",
+    });
+    setIsInvoiceDialogOpen(true);
+  };
+
   const handleConvertToInvoice = (quotation: SalesQuotation) => {
     setInvoiceFormData({
       customerId: quotation.customerId,
@@ -1261,7 +1493,9 @@ export default function SalesIndex() {
       taxAmount: quotation.taxAmount || "0",
       totalAmount: quotation.totalAmount || "0",
       paymentTerms: quotation.paymentTerms || "",
-      termsAndConditions: quotation.termsAndConditions || ""
+      termsAndConditions: quotation.termsAndConditions || "",
+      currency: quotation.currency || "AED",
+      exchangeRate: quotation.exchangeRate || "1",
     });
 
     setIsInvoiceDialogOpen(true);
@@ -1833,7 +2067,7 @@ export default function SalesIndex() {
 
             <Dialog
               open={isInvoiceDialogOpen}
-              onOpenChange={setIsInvoiceDialogOpen}
+              onOpenChange={(open) => { setIsInvoiceDialogOpen(open); if (!open) setEditingInvoiceId(null); }}
             >
               <DialogTrigger asChild>
                 <Button
@@ -1841,6 +2075,7 @@ export default function SalesIndex() {
                   className="w-full sm:w-auto"
                   onClick={() => {
                     resetInvoiceForm();
+                    setEditingInvoiceId(null);
                     setIsInvoiceDialogOpen(true);
                   }}
                 >
@@ -1850,9 +2085,9 @@ export default function SalesIndex() {
               </DialogTrigger>
               <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create Sales Invoice</DialogTitle>
+                  <DialogTitle>{editingInvoiceId ? "Edit Sales Invoice" : "Create Sales Invoice"}</DialogTitle>
                   <DialogDescription>
-                    Fill in the details to create a new sales invoice.
+                    {editingInvoiceId ? "Update the details of this draft invoice." : "Fill in the details to create a new sales invoice."}
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleInvoiceSubmit} className="space-y-6">
@@ -2311,19 +2546,19 @@ export default function SalesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsInvoiceDialogOpen(false)}
+                      onClick={() => { setIsInvoiceDialogOpen(false); setEditingInvoiceId(null); }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
                     </Button>
                     <Button
                       type="submit"
-                      disabled={createInvoiceMutation.isPending}
+                      disabled={createInvoiceMutation.isPending || updateInvoiceMutation.isPending}
                       className="w-full sm:w-auto"
                     >
-                      {createInvoiceMutation.isPending
-                        ? "Creating..."
-                        : "Create Invoice"}
+                      {editingInvoiceId
+                        ? (updateInvoiceMutation.isPending ? "Updating..." : "Update Invoice")
+                        : (createInvoiceMutation.isPending ? "Creating..." : "Create Invoice")}
                     </Button>
                   </div>
                 </form>
@@ -2381,10 +2616,30 @@ export default function SalesIndex() {
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   Quotation Value
                 </p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatCurrency(totalQuotationValue)}
-                </p>
+                <div className="flex flex-col">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {formatCurrency(totalQuotationValue, "AED")}
+                  </p>
+                  <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6 text-center py-12">
+            <div className="flex flex-col items-center">
+              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
+              </div>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Total Receivables
+              </p>
+              <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
+                {formatCurrency(totalReceivablesValue, "AED")}
+              </p>
+              <p className="text-xs text-slate-500 italic mt-1">AED Equivalent</p>
             </div>
           </CardContent>
         </Card>
@@ -2399,9 +2654,12 @@ export default function SalesIndex() {
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   Invoice Value
                 </p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatCurrency(totalInvoiceValue)}
-                </p>
+                <div className="flex flex-col">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {formatCurrency(totalInvoiceValue, "AED")}
+                  </p>
+                  <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -2654,7 +2912,7 @@ export default function SalesIndex() {
                       <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                         <div className="text-right">
                           <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                            {formatCurrency(quotation.totalAmount || "0")}
+                            {formatCurrency(quotation.totalAmount || "0", quotation.currency)}
                           </p>
                           <p className="text-sm text-slate-500 dark:text-slate-500">
                             {quotation.items?.length || 0} service
@@ -3071,12 +3329,12 @@ export default function SalesIndex() {
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                         <div className="text-left sm:text-right">
                           <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100">
-                            {formatCurrency(invoice.totalAmount || "0")}
+                            {formatCurrency(invoice.totalAmount || "0", invoice.currency)}
                           </p>
                           {invoice.paidAmount &&
                             parseFloat(invoice.paidAmount) > 0 && (
                               <p className="text-sm text-green-600 dark:text-green-400">
-                                Paid: {formatCurrency(invoice.paidAmount)}
+                                Paid: {formatCurrency(invoice.paidAmount, invoice.currency)}
                               </p>
                             )}
                         </div>
@@ -3087,6 +3345,7 @@ export default function SalesIndex() {
                             size="sm"
                             onClick={() => openInvoiceDetails(invoice)}
                             className="w-full sm:w-auto"
+                            data-testid={`button-view-invoice-${invoice.id}`}
                           >
                             View Details
                           </Button>
@@ -3095,6 +3354,7 @@ export default function SalesIndex() {
                             size="sm"
                             onClick={() => handlePrintInvoice(invoice)}
                             className="w-full sm:w-auto"
+                            data-testid={`button-print-invoice-${invoice.id}`}
                           >
                             <Download className="h-4 w-4 mr-1" />
                             <span className="hidden sm:inline">
@@ -3102,43 +3362,97 @@ export default function SalesIndex() {
                             </span>
                             <span className="sm:hidden">Print</span>
                           </Button>
-                          {invoice.status === "draft" && user?.role === "admin" && (
-                            <Button
-                              size="sm"
-                              onClick={() => approveInvoiceMutation.mutate(invoice.id)}
-                              disabled={approveInvoiceMutation.isPending}
-                              className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
-                            >
-                              {approveInvoiceMutation.isPending ? "Approving..." : "Approve Invoice"}
-                            </Button>
-                          )}
-                          {invoice.status !== "paid" && invoice.status !== "draft" && invoice.invoiceNumber && (
-                            <Button
-                              size="sm"
-                              onClick={() => openPaymentDialog(invoice)}
-                              className="w-full sm:w-auto"
-                            >
-                              Record Payment
-                            </Button>
-                          )}
-                          {invoice.invoiceNumber &&
-                            invoice.status !== "draft" &&
-                            invoice.status !== "paid" &&
-                            parseFloat(invoice.totalAmount || "0") > 0 && (
+                          {invoice.status === "draft" && (
+                            <>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
-                                  window.open(
-                                    `/credit-notes?invoiceId=${invoice.id}`,
-                                    "_blank",
-                                  )
-                                }
+                                onClick={() => handleEditInvoice(invoice)}
                                 className="w-full sm:w-auto"
                               >
-                                Credit Note
+                                <Pencil className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  startTransition(() =>
+                                    submitInvoiceMutation.mutate(invoice.id),
+                                  )
+                                }
+                                disabled={submitInvoiceMutation.isPending}
+                                className="w-full sm:w-auto"
+                                data-testid={`button-submit-invoice-${invoice.id}`}
+                              >
+                                {submitInvoiceMutation.isPending
+                                  ? "Submitting..."
+                                  : "Submit"}
+                              </Button>
+                            </>
+                          )}
+                          {user?.role === "admin" &&
+                            invoice.status === "pending_approval" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    startTransition(() =>
+                                      approveInvoiceMutation.mutate(invoice.id),
+                                    )
+                                  }
+                                  disabled={approveInvoiceMutation.isPending}
+                                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                                  data-testid={`button-approve-invoice-${invoice.id}`}
+                                >
+                                  {approveInvoiceMutation.isPending
+                                    ? "Approving..."
+                                    : "Approve"}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedInvoice(invoice);
+                                    setIsInvoiceRejectDialogOpen(true);
+                                  }}
+                                  disabled={rejectInvoiceMutation.isPending}
+                                  className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
+                                  data-testid={`button-reject-invoice-${invoice.id}`}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                          {(invoice.status === "unpaid" ||
+                            invoice.status === "partially_paid" ||
+                            invoice.status === "overdue" ||
+                            invoice.status === "approved") &&
+                            invoice.invoiceNumber && (
+                              <Button
+                                size="sm"
+                                onClick={() => openPaymentDialog(invoice)}
+                                className="w-full sm:w-auto"
+                                data-testid={`button-record-payment-${invoice.id}`}
+                              >
+                                Record Payment
                               </Button>
                             )}
+                          {invoice.invoiceNumber && (invoice.status === "unpaid" || invoice.status === "partially_paid") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                window.open(
+                                  `/credit-notes?invoiceId=${invoice.id}`,
+                                  "_blank",
+                                )
+                              }
+                              className="w-full sm:w-auto"
+                              data-testid={`button-credit-note-${invoice.id}`}
+                            >
+                              Credit Note
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3794,7 +4108,7 @@ export default function SalesIndex() {
                               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                                   <span className="font-medium text-green-600">
-                                     {formatCurrency(payment.amount, selectedInvoice?.currency)}
+                                    {formatCurrency(payment.amount, selectedInvoice?.currency)}
                                   </span>
                                   <span className="text-sm text-gray-600 dark:text-gray-400">
                                     {formatDate(payment.paymentDate)}
@@ -3871,7 +4185,7 @@ export default function SalesIndex() {
                                     0,
                                   )
                                   .toFixed(2),
-                                  selectedInvoice?.currency,
+                                selectedInvoice?.currency,
                               )}
                             </span>
                           </div>
@@ -3892,34 +4206,107 @@ export default function SalesIndex() {
               <div className="flex flex-col gap-3 pt-4 border-t">
                 {/* Primary Actions Row */}
                 <div className="flex flex-col sm:flex-row justify-end gap-3">
-                  {selectedInvoice.status === "draft" && user?.role === "admin" && (
-                    <Button
-                      onClick={() => approveInvoiceMutation.mutate(selectedInvoice.id)}
-                      disabled={approveInvoiceMutation.isPending}
-                      className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
-                    >
-                      {approveInvoiceMutation.isPending ? "Approving..." : "Approve Invoice"}
-                    </Button>
+                  {selectedInvoice.status === "draft" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsInvoiceDetailsOpen(false);
+                          handleEditInvoice(selectedInvoice);
+                        }}
+                        className="w-full sm:w-auto"
+                      >
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          startTransition(() =>
+                            submitInvoiceMutation.mutate(selectedInvoice.id),
+                          )
+                        }
+                        disabled={submitInvoiceMutation.isPending}
+                        className="w-full sm:w-auto"
+                        data-testid="button-submit-invoice-dialog"
+                      >
+                        {submitInvoiceMutation.isPending
+                          ? "Submitting..."
+                          : "Submit"}
+                      </Button>
+                    </>
                   )}
+                  {user?.role === "admin" &&
+                    selectedInvoice.status === "pending_approval" && (
+                      <>
+                        <Button
+                          onClick={() =>
+                            startTransition(() =>
+                              approveInvoiceMutation.mutate(selectedInvoice.id),
+                            )
+                          }
+                          disabled={approveInvoiceMutation.isPending}
+                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                          data-testid="button-approve-invoice-dialog"
+                        >
+                          {approveInvoiceMutation.isPending
+                            ? "Approving..."
+                            : "Approve"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsInvoiceDetailsOpen(false);
+                            setIsInvoiceRejectDialogOpen(true);
+                          }}
+                          disabled={rejectInvoiceMutation.isPending}
+                          className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
+                          data-testid="button-reject-invoice-dialog"
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
                   <Button
                     variant="outline"
                     className="w-full sm:w-auto"
                     onClick={() => handlePrintInvoice(selectedInvoice)}
+                    data-testid="button-print-invoice-dialog"
                   >
                     <Download className="h-4 w-4 mr-1" />
                     Print Invoice
                   </Button>
-                  {selectedInvoice.status !== "paid" && selectedInvoice.status !== "draft" && selectedInvoice.invoiceNumber && (
-                    <Button
-                      onClick={() => {
-                        setIsInvoiceDetailsOpen(false);
-                        openPaymentDialog(selectedInvoice);
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      Record Payment
-                    </Button>
-                  )}
+                  {(selectedInvoice.status === "unpaid" ||
+                    selectedInvoice.status === "partially_paid" ||
+                    selectedInvoice.status === "overdue" ||
+                    selectedInvoice.status === "approved") &&
+                    selectedInvoice.invoiceNumber && (
+                      <Button
+                        onClick={() => {
+                          setIsInvoiceDetailsOpen(false);
+                          openPaymentDialog(selectedInvoice);
+                        }}
+                        className="w-full sm:w-auto"
+                        data-testid="button-record-payment-dialog"
+                      >
+                        Record Payment
+                      </Button>
+                    )}
+                  {user?.role === "admin" &&
+                    selectedInvoice.status === "approved" &&
+                    parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to cancel this invoice? This will create reversal ledger entries.")) {
+                            startTransition(() => cancelInvoiceMutation.mutate(selectedInvoice.id));
+                          }
+                        }}
+                        disabled={cancelInvoiceMutation.isPending}
+                        className="w-full sm:w-auto"
+                      >
+                        {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
+                      </Button>
+                    )}
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -3935,6 +4322,7 @@ export default function SalesIndex() {
                       }
                     }}
                     className="w-full sm:w-auto"
+                    data-testid="button-view-payment-history"
                   >
                     View Payment History
                   </Button>
@@ -4002,7 +4390,7 @@ export default function SalesIndex() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="paymentAmount">Payment Amount *</Label>
+                  <Label htmlFor="paymentAmount">Payment Amount ({selectedInvoice?.currency || "AED"}) *</Label>
                   <Input
                     id="paymentAmount"
                     type="number"
@@ -4017,6 +4405,11 @@ export default function SalesIndex() {
                     placeholder="0.00"
                     required
                   />
+                  {selectedInvoice?.currency && selectedInvoice.currency !== "AED" && selectedInvoice.exchangeRate && (
+                    <p className="text-xs text-slate-500">
+                      AED Equivalent: {formatCurrency((parseFloat(paymentFormData.amount || "0") * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2), "AED")}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -4364,6 +4757,6 @@ export default function SalesIndex() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

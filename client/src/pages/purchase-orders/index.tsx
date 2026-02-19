@@ -1118,46 +1118,6 @@ export default function PurchaseOrdersIndex() {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="discountPercentage">Discount (%)</Label>
-                  <Input
-                    id="discountPercentage"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={formData.discountPercentage}
-                    onChange={(e) => {
-                      const pct = parseFloat(e.target.value) || 0;
-                      const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                      const calcDiscount = (subtotal * pct / 100).toFixed(2);
-                      setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
-                    }}
-                    placeholder="0.00"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="discountAmount">Discount Value (AED)</Label>
-                  <Input
-                    id="discountAmount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.discountAmount}
-                    onChange={(e) => {
-                      const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                      const val = parseFloat(e.target.value) || 0;
-                      const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
-                      setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
-                    }}
-                    placeholder="0.00"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
               <div>
                 <Label htmlFor="notes">Notes</Label>
                 <Textarea
@@ -1406,7 +1366,7 @@ export default function PurchaseOrdersIndex() {
 
                     {/* Order Summary */}
                     <div className="bg-muted/30 rounded-lg p-4">
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-4 text-sm">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
                           <span>AED {orderItems.reduce((sum, item) => {
@@ -1419,13 +1379,60 @@ export default function PurchaseOrdersIndex() {
                           <span>Total Tax:</span>
                           <span>AED {calculateTotalTax().toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between font-bold border-t pt-2">
+
+                        <div className="grid grid-cols-2 gap-4 py-4 border-y">
+                          <div>
+                            <Label htmlFor="discountPercentage">Discount (%)</Label>
+                            <Input
+                              id="discountPercentage"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={formData.discountPercentage}
+                              onChange={(e) => {
+                                const pct = parseFloat(e.target.value) || 0;
+                                const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const calcDiscount = (subtotal * pct / 100).toFixed(2);
+                                setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                              }}
+                              placeholder="0.00"
+                              className="mt-1 h-8"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="discountAmount">Discount Value (AED)</Label>
+                            <Input
+                              id="discountAmount"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={formData.discountAmount}
+                              onChange={(e) => {
+                                const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const val = parseFloat(e.target.value) || 0;
+                                const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
+                                setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                              }}
+                              placeholder="0.00"
+                              className="mt-1 h-8"
+                            />
+                          </div>
+                        </div>
+
+                        {parseFloat(formData.discountAmount) > 0 && (
+                          <div className="flex justify-between text-red-600">
+                            <span>Discount:</span>
+                            <span>- AED {parseFloat(formData.discountAmount).toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold border-t pt-2 text-base">
                           <span>Total Amount:</span>
                           <span>AED {(orderItems.reduce((sum, item) => {
                             const quantity = parseInt(item.quantity) || 0;
                             const unitPrice = parseFloat(item.unitPrice) || 0;
                             return sum + (quantity * unitPrice);
-                          }, 0) + calculateTotalTax()).toFixed(2)}</span>
+                          }, 0) + calculateTotalTax() - (parseFloat(formData.discountAmount) || 0)).toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
