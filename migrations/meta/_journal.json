@@ -50,6 +50,13 @@
       "when": 1771267214546,
       "tag": "0006_optimal_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771483498095,
+      "tag": "0007_chemical_archangel",
+      "breakpoints": true
     }
   ]
 }
