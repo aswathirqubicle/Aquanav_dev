@@ -2759,23 +2759,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.get("/api/exchange-rates/available-currencies", requireAuth, async (req, res) => {
-    try {
-      const rates = await storage.getExchangeRates();
-      const currencySet = new Set<string>(["AED"]);
-      for (const rate of rates) {
-        if (rate.isActive) {
-          currencySet.add(rate.fromCurrency);
-          currencySet.add(rate.toCurrency);
+  app.get(
+    "/api/exchange-rates/available-currencies",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const rates = await storage.getExchangeRates();
+        const currencySet = new Set<string>(["AED"]);
+        for (const rate of rates) {
+          if (rate.isActive) {
+            currencySet.add(rate.fromCurrency);
+            currencySet.add(rate.toCurrency);
+          }
         }
+        const currencies = Array.from(currencySet).sort();
+        res.json(currencies);
+      } catch (error) {
+        console.error("Get available currencies error:", error);
+        res.status(500).json({ message: "Failed to get available currencies" });
       }
-      const currencies = Array.from(currencySet).sort();
-      res.json(currencies);
-    } catch (error) {
-      console.error("Get available currencies error:", error);
-      res.status(500).json({ message: "Failed to get available currencies" });
-    }
-  });
+    },
+  );
 
   // Customer routes
   app.get("/api/customers", requireAuth, async (req, res) => {
@@ -5337,6 +5341,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.patch(
+    "/api/sales-quotations/:id/submit",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const quotation = await storage.getSalesQuotation(id);
+
+        if (!quotation) {
+          return res.status(404).json({ message: "Sales quotation not found" });
+        }
+
+        if (quotation.status !== "draft") {
+          return res
+            .status(400)
+            .json({ message: "Only draft quotations can be submitted" });
+        }
+
+        const updated = await storage.submitSalesQuotationForApproval(
+          id,
+          req.session.userId!,
+        );
+        res.json({
+          message: "Sales quotation submitted for approval",
+          quotation: updated,
+        });
+      } catch (error) {
+        console.error("Submit sales quotation error:", error);
+        res.status(500).json({ message: "Failed to submit sales quotation" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/sales-quotations/:id/approve",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const quotation = await storage.getSalesQuotation(id);
+
+        if (!quotation) {
+          return res.status(404).json({ message: "Sales quotation not found" });
+        }
+
+        if (quotation.status === "approved") {
+          return res
+            .status(400)
+            .json({ message: "Quotation is already approved" });
+        }
+
+        if (quotation.status !== "pending_approval") {
+          return res
+            .status(400)
+            .json({ message: "Only pending quotations can be approved" });
+        }
+
+        await storage.approveSalesQuotation(id, req.session.userId!);
+        res.json({ message: "Sales quotation approved successfully" });
+      } catch (error) {
+        console.error("Approve sales quotation error:", error);
+        res.status(500).json({ message: "Failed to approve sales quotation" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/sales-quotations/:id/reject",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const quotation = await storage.getSalesQuotation(id);
+
+        if (!quotation) {
+          return res.status(404).json({ message: "Sales quotation not found" });
+        }
+
+        if (quotation.status !== "pending_approval") {
+          return res
+            .status(400)
+            .json({ message: "Only pending quotations can be rejected" });
+        }
+
+        const { reason } = req.body;
+        const updated = await storage.rejectSalesQuotation(
+          id,
+          req.session.userId!,
+          reason,
+        );
+        res.json({ message: "Sales quotation rejected", quotation: updated });
+      } catch (error) {
+        console.error("Reject sales quotation error:", error);
+        res.status(500).json({ message: "Failed to reject sales quotation" });
+      }
+    },
+  );
+
   app.post(
     "/api/sales-quotations/:id/approve",
     requireAuth,
@@ -5692,7 +5796,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Invoice not found" });
         }
         if (existingInvoice.status !== "draft") {
-          return res.status(400).json({ message: "Only draft invoices can be edited" });
+          return res
+            .status(400)
+            .json({ message: "Only draft invoices can be edited" });
         }
         const invoiceData = req.body;
         const invoice = await storage.updateSalesInvoice(
@@ -5712,18 +5818,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-   app.patch(
+  app.patch("/api/sales-invoices/:id/submit", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const invoice = await storage.getSalesInvoice(id);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Sales invoice not found" });
+      }
+
+      if (invoice.status !== "draft") {
+        return res
+          .status(400)
+          .json({ message: "Only draft invoices can be submitted" });
+      }
+
+      const updated = await storage.submitSalesInvoiceForApproval(
+        id,
+        req.session.userId!,
+      );
+      res.json({
+        message: "Sales invoice submitted for approval",
+        invoice: updated,
+      });
+    } catch (error) {
+      console.error("Submit sales invoice error:", error);
+      res.status(500).json({ message: "Failed to submit sales invoice" });
+    }
+  });
+
+  app.patch(
+    "/api/sales-invoices/:id/approve",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const invoice = await storage.getSalesInvoice(id);
+
+        if (!invoice) {
+          return res.status(404).json({ message: "Sales invoice not found" });
+        }
+
+        if (invoice.status === "approved") {
+          return res
+            .status(400)
+            .json({ message: "Invoice is already approved" });
+        }
+
+        if (invoice.status !== "pending_approval") {
+          return res
+            .status(400)
+            .json({ message: "Only pending invoices can be approved" });
+        }
+
+        await storage.approveSalesInvoice(id, req.session.userId!);
+        res.json({ message: "Sales invoice approved successfully" });
+      } catch (error) {
+        console.error("Approve sales invoice error:", error);
+        res.status(500).json({ message: "Failed to approve sales invoice" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/sales-invoices/:id/reject",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const invoice = await storage.getSalesInvoice(id);
+
+        if (!invoice) {
+          return res.status(404).json({ message: "Sales invoice not found" });
+        }
+
+        if (invoice.status !== "pending_approval") {
+          return res
+            .status(400)
+            .json({ message: "Only pending invoices can be rejected" });
+        }
+
+        const { reason } = req.body;
+        const updated = await storage.rejectSalesInvoice(
+          id,
+          req.session.userId!,
+          reason,
+        );
+        res.json({ message: "Sales invoice rejected", invoice: updated });
+      } catch (error) {
+        console.error("Reject sales invoice error:", error);
+        res.status(500).json({ message: "Failed to reject sales invoice" });
+      }
+    },
+  );
+
+  app.patch(
     "/api/sales-invoices/:id/cancel",
     requireAuth,
     requireRole(["admin"]),
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const updated = await storage.cancelSalesInvoice(id, req.session.userId!);
-        res.json({ message: "Sales invoice cancelled successfully", invoice: updated });
+        const updated = await storage.cancelSalesInvoice(
+          id,
+          req.session.userId!,
+        );
+        res.json({
+          message: "Sales invoice cancelled successfully",
+          invoice: updated,
+        });
       } catch (error: any) {
         console.error("Cancel sales invoice error:", error);
-        res.status(400).json({ message: error.message || "Failed to cancel sales invoice" });
+        res
+          .status(400)
+          .json({ message: error.message || "Failed to cancel sales invoice" });
       }
     },
   );

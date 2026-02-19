@@ -349,7 +349,10 @@ export default function SalesIndex() {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0,
       );
+      console.log("discount=>", data.discount);
+
       const discount = parseFloat(data.discount || "0");
+      console.log("discount=>", discount);
       const taxAmount = data.items.reduce((sum, item) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
@@ -369,6 +372,7 @@ export default function SalesIndex() {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         totalAmount: totalAmount.toString(),
+        discount: discount,
       };
 
       const url =
@@ -404,12 +408,38 @@ export default function SalesIndex() {
     },
   });
 
+  const submitQuotationMutation = useMutation({
+    mutationFn: async (quotationId: number) => {
+      const response = await apiRequest(
+        `/api/sales-quotations/${quotationId}/submit`,
+        {
+          method: "PATCH",
+        },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations"] });
+      toast({
+        title: "Quotation Submitted",
+        description: "The sales quotation has been submitted for approval.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit quotation",
+        variant: "destructive",
+      });
+    },
+  });
+
   const approveQuotationMutation = useMutation({
     mutationFn: async (quotationId: number) => {
       const response = await apiRequest(
         `/api/sales-quotations/${quotationId}/approve`,
         {
-          method: "POST",
+          method: "PATCH",
         },
       );
       return response;
@@ -420,11 +450,44 @@ export default function SalesIndex() {
         title: "Quotation Approved",
         description: "The sales quotation has been approved successfully.",
       });
+      setIsQuotationDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
         description: error.message || "Failed to approve quotation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const rejectQuotationMutation = useMutation({
+    mutationFn: async ({ quotationId, reason }: { quotationId: number; reason: string }) => {
+      const response = await apiRequest(
+        `/api/sales-quotations/${quotationId}/reject`,
+        {
+          method: "PATCH",
+          body: { reason },
+        },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations"] });
+      toast({
+        title: "Quotation Rejected",
+        description: "The sales quotation has been rejected.",
+        variant: "destructive",
+      });
+      setIsQuotationRejectDialogOpen(false);
+      setQuotationRejectionReason("");
+      setSelectedQuotation(null);
+      setIsQuotationDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject quotation",
         variant: "destructive",
       });
     },
@@ -650,7 +713,7 @@ export default function SalesIndex() {
       const response = await apiRequest(
         `/api/sales-invoices/${invoiceId}/approve`,
         {
-          method: "POST",
+          method: "PATCH",
         },
       );
       return response;
@@ -977,8 +1040,8 @@ export default function SalesIndex() {
     }
 
     // 🔥 Force correct tax rate here
-    const taxRate =
-      customerVatTreatment === "standard" ? 5 : 0;
+    const taxRate = newItem.taxRate;
+    // customerVatTreatment === "standard" ? 5 : newItem.taxRate;
 
     const lineSubtotal = newItem.quantity * newItem.unitPrice;
     const calculatedTaxAmount = lineSubtotal * (taxRate / 100);
@@ -1000,7 +1063,7 @@ export default function SalesIndex() {
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate, // keep VAT for next item
+      taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
     });
   };
@@ -1023,8 +1086,8 @@ export default function SalesIndex() {
     }
 
     // 🔥 FORCE VAT HERE
-    const taxRate =
-      customerVatTreatment === "standard" ? 5 : 0;
+    const taxRate = newItem.taxRate;
+    // customerVatTreatment === "standard" ? 5 : newItem.taxRate;
 
     const lineSubtotal = newItem.quantity * newItem.unitPrice;
     const taxAmount = lineSubtotal * (taxRate / 100);
@@ -1046,7 +1109,7 @@ export default function SalesIndex() {
       description: "",
       quantity: 1,
       unitPrice: 0,
-      taxRate, // keep VAT for next item
+      taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
     });
   };
@@ -1072,6 +1135,12 @@ export default function SalesIndex() {
         class:
           "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400",
         label: "Draft",
+      },
+      pending_approval: {
+        icon: AlertTriangle,
+        class:
+          "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
+        label: "Pending Approval",
       },
       sent: {
         icon: AlertTriangle,
@@ -2925,26 +2994,73 @@ export default function SalesIndex() {
                             variant="outline"
                             size="sm"
                             onClick={() => openQuotationDetails(quotation)}
+                            data-testid={`button-view-quotation-${quotation.id}`}
                           >
                             View Details
                           </Button>
+                          {quotation.status === "draft" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                handleEditQuotation();
+                                setSelectedQuotation(quotation);
+                              }}
+                              data-testid={`button-edit-quotation-${quotation.id}`}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                          {quotation.status === "draft" && (
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                startTransition(() =>
+                                  submitQuotationMutation.mutate(quotation.id),
+                                )
+                              }
+                              disabled={submitQuotationMutation.isPending}
+                              data-testid={`button-submit-quotation-${quotation.id}`}
+                            >
+                              {submitQuotationMutation.isPending
+                                ? "Submitting..."
+                                : "Submit"}
+                            </Button>
+                          )}
                           {user?.role === "admin" &&
-                            quotation.status === "draft" && (
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  startTransition(() =>
-                                    approveQuotationMutation.mutate(
-                                      quotation.id,
-                                    ),
-                                  )
-                                }
-                                disabled={approveQuotationMutation.isPending}
-                              >
-                                {approveQuotationMutation.isPending
-                                  ? "Approving..."
-                                  : "Approve"}
-                              </Button>
+                            quotation.status === "pending_approval" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    startTransition(() =>
+                                      approveQuotationMutation.mutate(
+                                        quotation.id,
+                                      ),
+                                    )
+                                  }
+                                  disabled={approveQuotationMutation.isPending}
+                                  data-testid={`button-approve-quotation-${quotation.id}`}
+                                  className="bg-green-600 hover:bg-green-700"
+                                >
+                                  {approveQuotationMutation.isPending
+                                    ? "Approving..."
+                                    : "Approve"}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedQuotation(quotation);
+                                    setIsQuotationRejectDialogOpen(true);
+                                  }}
+                                  disabled={rejectQuotationMutation.isPending}
+                                  data-testid={`button-reject-quotation-${quotation.id}`}
+                                  className="border-red-300 text-red-600 hover:bg-red-50"
+                                >
+                                  Reject
+                                </Button>
+                              </>
                             )}
                           {user?.role === "admin" &&
                             (quotation.isArchived ? (
@@ -2959,6 +3075,7 @@ export default function SalesIndex() {
                                   )
                                 }
                                 disabled={unarchiveQuotationMutation.isPending}
+                                data-testid={`button-unarchive-quotation-${quotation.id}`}
                               >
                                 <ArchiveRestore className="h-4 w-4 mr-1" />
                                 {unarchiveQuotationMutation.isPending
@@ -2977,6 +3094,7 @@ export default function SalesIndex() {
                                   )
                                 }
                                 disabled={archiveQuotationMutation.isPending}
+                                data-testid={`button-archive-quotation-${quotation.id}`}
                               >
                                 <Archive className="h-4 w-4 mr-1" />
                                 {archiveQuotationMutation.isPending
@@ -2988,6 +3106,7 @@ export default function SalesIndex() {
                             <Button
                               size="sm"
                               onClick={() => handleConvertToInvoice(quotation)}
+                              data-testid={`button-convert-quotation-${quotation.id}`}
                             >
                               Convert to Invoice
                             </Button>
@@ -3778,28 +3897,87 @@ export default function SalesIndex() {
                 <Button
                   variant="outline"
                   onClick={() => setIsQuotationDetailsOpen(false)}
+                  data-testid="button-close-quotation-details"
                 >
                   Close
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => handlePrintPDF(selectedQuotation)}
+                  data-testid="button-print-quotation-pdf"
                 >
                   <Download className="h-4 w-4 mr-1" />
                   Print PDF
                 </Button>
-                <Button variant="outline" onClick={handleDuplicateQuotation}>
+                <Button
+                  variant="outline"
+                  onClick={handleDuplicateQuotation}
+                  data-testid="button-duplicate-quotation"
+                >
                   <Copy className="h-4 w-4 mr-1" />
                   Duplicate
                 </Button>
                 {selectedQuotation.status === "draft" && (
-                  <Button variant="outline" onClick={handleEditQuotation}>
-                    Edit Quotation
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleEditQuotation}
+                      data-testid="button-edit-quotation-dialog"
+                    >
+                      Edit Quotation
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        startTransition(() =>
+                          submitQuotationMutation.mutate(selectedQuotation.id),
+                        )
+                      }
+                      disabled={submitQuotationMutation.isPending}
+                      data-testid="button-submit-quotation-dialog"
+                    >
+                      {submitQuotationMutation.isPending
+                        ? "Submitting..."
+                        : "Submit"}
+                    </Button>
+                  </>
                 )}
+                {user?.role === "admin" &&
+                  selectedQuotation.status === "pending_approval" && (
+                    <>
+                      <Button
+                        onClick={() =>
+                          startTransition(() =>
+                            approveQuotationMutation.mutate(
+                              selectedQuotation.id,
+                            ),
+                          )
+                        }
+                        disabled={approveQuotationMutation.isPending}
+                        data-testid="button-approve-quotation-dialog"
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        {approveQuotationMutation.isPending
+                          ? "Approving..."
+                          : "Approve"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsQuotationDetailsOpen(false);
+                          setIsQuotationRejectDialogOpen(true);
+                        }}
+                        disabled={rejectQuotationMutation.isPending}
+                        data-testid="button-reject-quotation-dialog"
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  )}
                 {selectedQuotation.status === "approved" && (
                   <Button
                     onClick={() => handleConvertToInvoice(selectedQuotation)}
+                    data-testid="button-convert-quotation-dialog"
                   >
                     Convert to Invoice
                   </Button>
@@ -4754,6 +4932,134 @@ export default function SalesIndex() {
             >
               Close
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quotation Reject Dialog */}
+      <Dialog
+        open={isQuotationRejectDialogOpen}
+        onOpenChange={setIsQuotationRejectDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Sales Quotation</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this quotation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quotationRejectionReason">Rejection Reason *</Label>
+              <Textarea
+                id="quotationRejectionReason"
+                value={quotationRejectionReason}
+                onChange={(e) => setQuotationRejectionReason(e.target.value)}
+                placeholder="Explain why this quotation is being rejected..."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsQuotationRejectDialogOpen(false);
+                  setQuotationRejectionReason("");
+                }}
+                disabled={rejectQuotationMutation.isPending}
+                data-testid="button-cancel-reject-quotation"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!quotationRejectionReason.trim()) {
+                    toast({
+                      title: "Error",
+                      description: "Please provide a rejection reason",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (selectedQuotation) {
+                    rejectQuotationMutation.mutate({
+                      quotationId: selectedQuotation.id,
+                      reason: quotationRejectionReason,
+                    });
+                  }
+                }}
+                disabled={rejectQuotationMutation.isPending}
+                data-testid="button-confirm-reject-quotation"
+              >
+                {rejectQuotationMutation.isPending ? "Rejecting..." : "Reject Quotation"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Reject Dialog */}
+      <Dialog
+        open={isInvoiceRejectDialogOpen}
+        onOpenChange={setIsInvoiceRejectDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Sales Invoice</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this invoice.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invoiceRejectionReason">Rejection Reason *</Label>
+              <Textarea
+                id="invoiceRejectionReason"
+                value={invoiceRejectionReason}
+                onChange={(e) => setInvoiceRejectionReason(e.target.value)}
+                placeholder="Explain why this invoice is being rejected..."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsInvoiceRejectDialogOpen(false);
+                  setInvoiceRejectionReason("");
+                }}
+                disabled={rejectInvoiceMutation.isPending}
+                data-testid="button-cancel-reject-invoice"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!invoiceRejectionReason.trim()) {
+                    toast({
+                      title: "Error",
+                      description: "Please provide a rejection reason",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (selectedInvoice) {
+                    rejectInvoiceMutation.mutate({
+                      invoiceId: selectedInvoice.id,
+                      reason: invoiceRejectionReason,
+                    });
+                  }
+                }}
+                disabled={rejectInvoiceMutation.isPending}
+                data-testid="button-confirm-reject-invoice"
+              >
+                {rejectInvoiceMutation.isPending ? "Rejecting..." : "Reject Invoice"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
