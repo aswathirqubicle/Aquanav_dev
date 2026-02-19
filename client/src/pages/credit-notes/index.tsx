@@ -376,7 +376,7 @@ export default function CreditNotesIndex() {
                         <span className="font-medium">Customer:</span> {selectedCustomer.name}
                       </div>
                       <div>
-                        <span className="font-medium">Amount:</span> {formatCurrency(selectedInvoice.totalAmount)}
+                        <span className="font-medium">Amount:</span> {formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}
                       </div>
                       <div>
                         <span className="font-medium">Date:</span> {new Date(selectedInvoice.invoiceDate).toLocaleDateString()}
@@ -529,7 +529,7 @@ export default function CreditNotesIndex() {
           <div className="w-80 space-y-2">
             <div className="flex justify-between">
               <span>Subtotal:</span>
-              <span>{formatCurrency(formData.subtotal || "0")}</span>
+              <span>{formatCurrency(formData.subtotal || "0", formData.currency)}</span>
             </div>
             <div className="flex justify-between">
               <span>Discount:</span>
@@ -544,11 +544,11 @@ export default function CreditNotesIndex() {
             </div>
             <div className="flex justify-between">
               <span>Tax Amount:</span>
-              <span>{formatCurrency(formData.taxAmount || "0")}</span>
+              <span>{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
             </div>
             <div className="flex justify-between font-bold text-lg border-t pt-2">
               <span>Total:</span>
-              <span>{formatCurrency(formData.totalAmount || "0")}</span>
+              <span>{formatCurrency(formData.totalAmount || "0", formData.currency)}</span>
             </div>
           </div>
         </div>

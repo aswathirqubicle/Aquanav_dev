@@ -2759,6 +2759,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.get("/api/exchange-rates/available-currencies", requireAuth, async (req, res) => {
+    try {
+      const rates = await storage.getExchangeRates();
+      const currencySet = new Set<string>(["AED"]);
+      for (const rate of rates) {
+        if (rate.isActive) {
+          currencySet.add(rate.fromCurrency);
+          currencySet.add(rate.toCurrency);
+        }
+      }
+      const currencies = Array.from(currencySet).sort();
+      res.json(currencies);
+    } catch (error) {
+      console.error("Get available currencies error:", error);
+      res.status(500).json({ message: "Failed to get available currencies" });
+    }
+  });
+
   // Customer routes
   app.get("/api/customers", requireAuth, async (req, res) => {
     try {
@@ -5669,6 +5687,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const invoiceId = parseInt(req.params.id);
+        const existingInvoice = await storage.getSalesInvoice(invoiceId);
+        if (!existingInvoice) {
+          return res.status(404).json({ message: "Invoice not found" });
+        }
+        if (existingInvoice.status !== "draft") {
+          return res.status(400).json({ message: "Only draft invoices can be edited" });
+        }
         const invoiceData = req.body;
         const invoice = await storage.updateSalesInvoice(
           invoiceId,
@@ -5683,6 +5708,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Sales invoice update error:", error);
         res.status(500).json({ message: "Failed to update sales invoice" });
+      }
+    },
+  );
+
+   app.patch(
+    "/api/sales-invoices/:id/cancel",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const updated = await storage.cancelSalesInvoice(id, req.session.userId!);
+        res.json({ message: "Sales invoice cancelled successfully", invoice: updated });
+      } catch (error: any) {
+        console.error("Cancel sales invoice error:", error);
+        res.status(400).json({ message: error.message || "Failed to cancel sales invoice" });
       }
     },
   );
@@ -7896,6 +7937,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           customerId: proforma.customerId,
           projectId: proforma.projectId,
           quotationId: proforma.quotationId,
+          currency: proforma.currency || "AED",
+          exchangeRate: proforma.exchangeRate || "1",
           status: "draft",
           invoiceDate: new Date().toISOString().split("T")[0],
           dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)

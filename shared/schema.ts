@@ -1174,7 +1174,7 @@ export const insertCustomerSchema = createInsertSchema(customers)
         "net_90",
       ])
       .default("30_days"),
-    currency: z.enum(["AED", "USD", "EUR", "GBP", "SAR"]).default("AED"),
+    currency: z.string().default("AED"),
     creditLimit: z.string().nullable().optional(),
     isVatApplicable: z.boolean().default(true),
   });
@@ -1204,7 +1204,7 @@ export const insertSupplierSchema = createInsertSchema(suppliers)
         "net_90",
       ])
       .default("30_days"),
-    currency: z.enum(["AED", "USD", "EUR", "GBP", "SAR"]).default("AED"),
+    currency: z.string().default("AED"),
     creditLimit: z.string().nullable().optional(),
     isVatApplicable: z.boolean().default(true),
     bankAccountDetails: z

@@ -17,7 +17,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { Users, Plus, Mail, Phone, MapPin, FileText, Ship, Archive, ArchiveRestore, Filter, Files } from "lucide-react";
 import { z } from "zod";
 import { DocumentManager } from "@/components/documents/DocumentManager";
-import { CurrencySelector } from "@/components/currency/CurrencySelector";
 import { CurrencyDisplay } from "@/components/currency/CurrencyDisplay";
 
 const customerSchema = z.object({
@@ -61,7 +60,7 @@ const createCustomerSchema = z.object({
   customerType: z.enum(["business", "individual", "government", "non_profit"]).default("business"),
   taxCategory: z.enum(["standard", "export", "gcc_customer", "free_zone"]).default("standard"),
   paymentTerms: z.enum(["30_days", "15_days", "7_days", "immediate", "net_30", "net_60", "net_90"]).default("30_days"),
-  currency: z.enum(["AED", "USD", "EUR", "GBP", "SAR"]).default("AED"),
+  currency: z.string().default("AED"),
   creditLimit: z.string().optional(),
   isVatApplicable: z.boolean().default(true),
   notes: z.string().optional(),
@@ -153,6 +152,11 @@ export default function CustomersIndex() {
   });
 
   const customers = customersResponse?.data || [];
+
+  const { data: availableCurrencies = ["AED"] } = useQuery<string[]>({
+    queryKey: ["/api/exchange-rates/available-currencies"],
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
     if (customersResponse?.pagination) {
@@ -616,12 +620,16 @@ export default function CustomersIndex() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="currency">Currency</Label>
-                      <CurrencySelector
-                        value={formData.currency}
-                        onChange={(value) => handleChange("currency", value)}
-                        variant="major"
-                        placeholder="Select currency"
-                      />
+                      <Select value={formData.currency} onValueChange={(value) => handleChange("currency", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCurrencies.map((cur) => (
+                          <SelectItem key={cur} value={cur}>{cur}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="creditLimit">Credit Limit</Label>
@@ -851,11 +859,9 @@ export default function CustomersIndex() {
                         <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="AED">AED (UAE Dirham)</SelectItem>
-                        <SelectItem value="USD">USD (US Dollar)</SelectItem>
-                        <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                        <SelectItem value="GBP">GBP (British Pound)</SelectItem>
-                        <SelectItem value="SAR">SAR (Saudi Riyal)</SelectItem>
+                        {availableCurrencies.map((cur) => (
+                          <SelectItem key={cur} value={cur}>{cur}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

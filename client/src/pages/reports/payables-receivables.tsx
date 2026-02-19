@@ -323,12 +323,19 @@ export default function PayablesReceivablesReport() {
   today.setHours(0, 0, 0, 0);
 
   const receivableSummary = (() => {
-    const totalDebits = filteredReceivableEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const totalCredits = filteredReceivableEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
-    const totalOutstanding = totalDebits - totalCredits;
+    const activeEntries = filteredReceivableEntries.filter(e => e.status !== "cancelled");
+    const cancelledEntries = filteredReceivableEntries.filter(e => e.status === "cancelled");
+
+    const totalDebits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const totalCredits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    const cancelledDebits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const cancelledCredits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+
+    const netDebits = totalDebits - cancelledCredits;
+    const totalOutstanding = netDebits - totalCredits;
     
     // Calculate overdue: entries with due date in the past that have debit amounts (invoices)
-    const overdueAmount = filteredReceivableEntries
+    const overdueAmount = activeEntries
       .filter(e => {
         if (!e.dueDate) return false;
         const dueDate = new Date(e.dueDate);
@@ -337,7 +344,7 @@ export default function PayablesReceivablesReport() {
       })
       .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
     
-    // Current = outstanding that is not overdue
+    
     const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
     
     return {
@@ -345,17 +352,24 @@ export default function PayablesReceivablesReport() {
       current: currentAmount,
       overdue: overdueAmount,
       collected: totalCredits,
-      count: filteredReceivableEntries.length,
+      count: activeEntries.length,
     };
   })();
 
   const payableSummary = (() => {
-    const totalCredits = filteredPayableEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
-    const totalDebits = filteredPayableEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const totalOutstanding = totalCredits - totalDebits;
+    const activeEntries = filteredPayableEntries.filter(e => e.status !== "cancelled");
+    const cancelledEntries = filteredPayableEntries.filter(e => e.status === "cancelled");
+
+    const totalCredits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    const totalDebits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const cancelledDebits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+    const cancelledCredits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+
+    const netCredits = totalCredits - cancelledDebits;
+    const totalOutstanding = netCredits - totalDebits;
     
     // Calculate overdue: entries with due date in the past that have credit amounts (invoices)
-    const overdueAmount = filteredPayableEntries
+    const overdueAmount = activeEntries
       .filter(e => {
         if (!e.dueDate) return false;
         const dueDate = new Date(e.dueDate);
@@ -364,7 +378,6 @@ export default function PayablesReceivablesReport() {
       })
       .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
     
-    // Current = outstanding that is not overdue
     const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
     
     return {
@@ -372,7 +385,7 @@ export default function PayablesReceivablesReport() {
       current: currentAmount,
       overdue: overdueAmount,
       paid: totalDebits,
-      count: filteredPayableEntries.length,
+      count: activeEntries.length,
     };
   })();
 

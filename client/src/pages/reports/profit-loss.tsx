@@ -244,12 +244,13 @@ export default function ProfitLossReport() {
     expenseAccountNames.includes(entry.accountName)
   ) || [];
 
-  // Calculate financial metrics - Revenue uses credit amounts, Expenses use debit amounts
+  // Calculate financial metrics - Revenue = credits minus debits (debits are reversals from cancellations)
+  // Expenses = debits minus credits (credits are reversals from cancellations)
   const totalRevenue = revenueOnlyEntries.reduce((sum, entry) => 
-    sum + parseFloat(entry.creditAmount || "0"), 0) || 0;
+    sum + parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0"), 0) || 0;
 
   const totalExpenses = expenseOnlyEntries.reduce((sum, entry) => 
-    sum + parseFloat(entry.debitAmount || "0"), 0) || 0;
+    sum + parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0"), 0) || 0;
 
   const grossProfit = totalRevenue - totalExpenses;
   // Calculate profit margin - show negative percentage when in loss
@@ -261,7 +262,7 @@ export default function ProfitLossReport() {
   const revenueByAccount = revenueOnlyEntries.reduce((acc, entry) => {
     const key = entry.accountName || "Other Revenue";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.creditAmount || "0");
+    acc[key] += parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0");
     return acc;
   }, {} as Record<string, number>);
 
@@ -269,7 +270,7 @@ export default function ProfitLossReport() {
   const expensesByAccount = expenseOnlyEntries.reduce((acc, entry) => {
     const key = entry.accountName || "Other Expenses";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.debitAmount || "0");
+    acc[key] += parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0");
     return acc;
   }, {} as Record<string, number>) || {};
 
@@ -277,14 +278,14 @@ export default function ProfitLossReport() {
   const revenueByProject = revenueOnlyEntries.reduce((acc, entry) => {
     const key = entry.projectTitle || "General";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.creditAmount || "0");
+    acc[key] += parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0");
     return acc;
   }, {} as Record<string, number>);
 
   const expensesByProject = expenseOnlyEntries.reduce((acc, entry) => {
     const key = entry.projectTitle || "General";
     if (!acc[key]) acc[key] = 0;
-    acc[key] += parseFloat(entry.debitAmount || "0");
+    acc[key] += parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0");
     return acc;
   }, {} as Record<string, number>) || {};
 
@@ -292,11 +293,11 @@ export default function ProfitLossReport() {
   const filteredProjectPL = projects?.map(project => {
     const projectRevenue = revenueOnlyEntries
       .filter(entry => entry.projectId === project.id)
-      .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+      .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0"), 0);
     
     const projectExpenses = expenseOnlyEntries
       .filter(entry => entry.projectId === project.id)
-      .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+      .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0"), 0);
     
     const revenueTransactions = revenueOnlyEntries.filter(entry => entry.projectId === project.id).length;
     

@@ -4342,8 +4342,8 @@ class Storage {
         throw new Error(`Project with ID ${projectId} not found`);
       }
 
-      // Get all invoice payments for this project
-      const projectInvoicePayments: InvoicePaymentWithCustomerName[] = await db
+      // Get all invoice payments for this project with currency info
+      const projectInvoicePaymentsRaw = await db
         .select({
           // Explicitly list all fields from InvoicePayment schema type
           id: invoicePayments.id,
@@ -4359,6 +4359,8 @@ class Storage {
           creditNoteId: invoicePayments.creditNoteId,
           // Joined field
           customerName: customers.name,
+          invoiceCurrency: salesInvoices.currency,
+          invoiceExchangeRate: salesInvoices.exchangeRate,
         })
         .from(invoicePayments)
         .leftJoin(
@@ -4368,6 +4370,21 @@ class Storage {
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
         .where(eq(salesInvoices.projectId, projectId))
         .orderBy(desc(invoicePayments.paymentDate));
+
+        const projectInvoicePayments: InvoicePaymentWithCustomerName[] = projectInvoicePaymentsRaw.map(p => ({
+        id: p.id,
+        invoiceId: p.invoiceId,
+        amount: p.amount,
+        paymentDate: p.paymentDate,
+        paymentMethod: p.paymentMethod,
+        referenceNumber: p.referenceNumber,
+        notes: p.notes,
+        recordedBy: p.recordedBy,
+        recordedAt: p.recordedAt,
+        paymentType: p.paymentType,
+        creditNoteId: p.creditNoteId,
+        customerName: p.customerName,
+      }));
 
       // Get purchase invoice items linked to this project
       const purchaseItemsData = await db
@@ -4449,9 +4466,10 @@ class Storage {
         0,
       );
 
-      // Calculate total revenue from payments
-      const totalRevenue = projectInvoicePayments.reduce((sum, payment) => {
-        return sum + parseFloat(payment.amount || "0");
+      // Calculate total revenue from payments (convert to AED using exchange rate)
+      const totalRevenue = projectInvoicePaymentsRaw.reduce((sum, payment) => {
+        const exchangeRate = parseFloat(payment.invoiceExchangeRate || "1");
+        return sum + (parseFloat(payment.amount || "0") * exchangeRate);
       }, 0);
 
       // Get project cost
@@ -4492,6 +4510,7 @@ class Storage {
       const projectPayments = await db
         .select({
           amount: invoicePayments.amount,
+          exchangeRate: salesInvoices.exchangeRate,
         })
         .from(invoicePayments)
         .leftJoin(
@@ -4500,9 +4519,11 @@ class Storage {
         )
         .where(eq(salesInvoices.projectId, projectId));
 
-      // Calculate total revenue
+      // Calculate total revenue in AED (convert using exchange rate)
       const totalRevenue = projectPayments.reduce((sum, payment) => {
         return sum + parseFloat(payment.amount || "0");
+        const exchangeRate = parseFloat(payment.exchangeRate || "1");
+        return sum + (parseFloat(payment.amount || "0") * exchangeRate);
       }, 0);
 
       // Update project total revenue
@@ -5293,6 +5314,8 @@ class Storage {
           taxAmount: salesQuotations.taxAmount,
           discount: salesQuotations.discount,
           totalAmount: salesQuotations.totalAmount,
+          currency: salesQuotations.currency,
+          exchangeRate: salesQuotations.exchangeRate,
           isArchived: salesQuotations.isArchived,
           createdDate: salesQuotations.createdDate,
         })
@@ -5402,6 +5425,8 @@ class Storage {
           discount: salesInvoices.discount,
           totalAmount: salesInvoices.totalAmount,
           paidAmount: salesInvoices.paidAmount,
+          currency: salesInvoices.currency,
+          exchangeRate: salesInvoices.exchangeRate,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
@@ -7381,6 +7406,8 @@ class Storage {
           taxAmount: proformaInvoices.taxAmount,
           discount: proformaInvoices.discount,
           totalAmount: proformaInvoices.totalAmount,
+          currency: proformaInvoices.currency,
+          exchangeRate: proformaInvoices.exchangeRate,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -7424,6 +7451,8 @@ class Storage {
           taxAmount: proformaInvoices.taxAmount,
           discount: proformaInvoices.discount,
           totalAmount: proformaInvoices.totalAmount,
+          currency: proformaInvoices.currency,
+          exchangeRate: proformaInvoices.exchangeRate,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -9551,6 +9580,8 @@ class Storage {
           taxAmount: purchaseCreditNotes.taxAmount,
           discount: purchaseCreditNotes.discount,
           totalAmount: purchaseCreditNotes.totalAmount,
+          currency: creditNotes.currency,
+          exchangeRate: creditNotes.exchangeRate,
           createdAt: purchaseCreditNotes.createdAt,
         })
         .from(purchaseCreditNotes)
@@ -11357,17 +11388,84 @@ class Storage {
     invoiceData: InsertSalesInvoice,
   ): Promise<SalesInvoice> {
     try {
-      const result = await db
+      // Generate a temporary invoice number if not provided, ensuring it fits in 20 chars
+      // INV-DRAFT- + 10 digits (from timestamp) = 20 chars
+      const timestamp = Date.now().toString().slice(-10);
+      const invoiceNumber = invoiceData.invoiceNumber || `INV-DRFT-${timestamp}`;
+      const [invoice] = await db
         .insert(salesInvoices)
-        .values(invoiceData)
+        .values({
+          ...invoiceData,
+          invoiceNumber,
+          status: invoiceData.status || "draft",
+          paidAmount: "0",
+        })
         .returning();
-      return result[0];
+      return invoice;
     } catch (error: any) {
       await this.createErrorLog({
         message:
           "Error in createSalesInvoice: " + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async approveSalesInvoice(id: number, userId: number): Promise<void> {
+    try {
+      const invoice = await this.getSalesInvoice(id);
+      if (!invoice) throw new Error("Invoice not found");
+
+      // Generate permanent invoice number if it was a draft, ensuring it fits in 20 chars
+      // INV- + 13 digits (full timestamp) = 17 chars
+      const invoiceNumber = invoice.invoiceNumber?.startsWith('INV-DRFT-') 
+        ? `INV-${Date.now()}` 
+        : (invoice.invoiceNumber || `INV-${Date.now()}`);
+
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "approved",
+          invoiceNumber,
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+
+      // Create GL entries
+      await this.createInvoiceGLEntries(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in approveSalesInvoice (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "approveSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async rejectSalesInvoice(id: number, userId: number, reason?: string): Promise<any> {
+    try {
+      await db
+        .update(salesInvoices)
+        .set({
+          status: 'rejected',
+          rejectionReason: reason || null,
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+
+      return this.getSalesInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in rejectSalesInvoice (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "rejectSalesInvoice",
         severity: "error",
       });
       throw error;
@@ -11409,6 +11507,107 @@ class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "deleteSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async cancelSalesInvoice(id: number, userId: number): Promise<any> {
+    try {
+      const invoice = await this.getSalesInvoice(id);
+      if (!invoice) throw new Error("Invoice not found");
+      if (invoice.status !== "approved") throw new Error("Only approved invoices can be cancelled");
+
+      const payments = await this.getInvoicePayments(id);
+      if (payments && payments.length > 0) {
+        throw new Error("Cannot cancel invoice with payments received");
+      }
+
+      const creditNotesList = await this.getCreditNotesByInvoice(id);
+      if (creditNotesList && creditNotesList.length > 0) {
+        throw new Error("Cannot cancel invoice with credit notes issued");
+      }
+
+      await db
+        .update(salesInvoices)
+        .set({ status: "cancelled" })
+        .where(eq(salesInvoices.id, id));
+
+      await this.createCancellationGLEntries(id);
+
+      return this.getSalesInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in cancelSalesInvoice (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "cancelSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createCancellationGLEntries(invoiceId: number): Promise<void> {
+    try {
+      const invoice = await db
+        .select()
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .where(eq(salesInvoices.id, invoiceId))
+        .limit(1);
+
+      if (!invoice[0]) throw new Error(`Invoice with ID ${invoiceId} not found`);
+
+      const invoiceData = invoice[0].sales_invoices;
+      const customerData = invoice[0].customers;
+
+      const invoiceCurrency = invoiceData.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
+      const originalAmount = parseFloat(invoiceData.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote = invoiceCurrency !== "AED" ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})` : "";
+
+      await db.insert(generalLedgerEntries).values({
+        entryType: "receivable",
+        referenceType: "sales_invoice",
+        referenceId: invoiceId,
+        accountName: "Accounts Receivable",
+        description: `CANCELLED - Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || 'Unknown Customer'}${currencyNote}`,
+        debitAmount: "0",
+        creditAmount: aedAmount,
+        entityId: invoiceData.customerId,
+        entityName: customerData?.name || null,
+        projectId: invoiceData.projectId,
+        invoiceNumber: invoiceData.invoiceNumber,
+        transactionDate: new Date().toISOString(),
+        dueDate: invoiceData.dueDate,
+        status: "cancelled",
+      });
+
+      await db.insert(generalLedgerEntries).values({
+        entryType: "receivable",
+        referenceType: "sales_invoice",
+        referenceId: invoiceId,
+        accountName: "Sales Revenue",
+        description: `CANCELLED - Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || 'Unknown Customer'}${currencyNote}`,
+        debitAmount: aedAmount,
+        creditAmount: "0",
+        entityId: invoiceData.customerId,
+        entityName: customerData?.name || null,
+        projectId: invoiceData.projectId,
+        invoiceNumber: invoiceData.invoiceNumber,
+        transactionDate: new Date().toISOString(),
+        dueDate: invoiceData.dueDate,
+        status: "cancelled",
+      });
+
+      console.log(`Cancellation GL entries created for invoice ${invoiceData.invoiceNumber}`);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in createCancellationGLEntries (invoiceId: ${invoiceId}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createCancellationGLEntries",
         severity: "error",
       });
       throw error;

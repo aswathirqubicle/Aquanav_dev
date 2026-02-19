@@ -17,7 +17,6 @@ import { Users, Plus, Mail, Phone, MapPin, FileText, Package, Archive, ArchiveRe
 import { z } from "zod";
 import { CustomPagination } from "@/components/ui/pagination";
 import { DocumentManager } from "@/components/documents/DocumentManager";
-import { CurrencySelector } from "@/components/currency/CurrencySelector";
 import { CurrencyDisplay } from "@/components/currency/CurrencyDisplay";
 
 const supplierSchema = z.object({
@@ -162,6 +161,11 @@ export default function SuppliersIndex() {
   });
 
   const suppliers = suppliersResponse?.data || [];
+
+  const { data: availableCurrencies = ["AED"] } = useQuery<string[]>({
+    queryKey: ["/api/exchange-rates/available-currencies"],
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
     if (suppliersResponse?.pagination) {
@@ -681,12 +685,16 @@ export default function SuppliersIndex() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="currency">Currency</Label>
-                      <CurrencySelector
-                        value={formData.currency}
-                        onChange={(value) => handleChange("currency", value)}
-                        variant="major"
-                        placeholder="Select currency"
-                      />
+                      <Select value={formData.currency} onValueChange={(value) => handleChange("currency", value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select currency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableCurrencies.map((cur) => (
+                            <SelectItem key={cur} value={cur}>{cur}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="creditLimit">Credit Limit</Label>

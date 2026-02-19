@@ -1025,7 +1025,7 @@ export default function ProformaInvoicesIndex() {
                                 const itemTotal = item.quantity * item.unitPrice;
                                 return sum + (itemTotal * (item.taxRate || 0)) / 100;
                               }, 0);
-                              return formatCurrency(taxTotal);
+                              return formatCurrency(taxTotal, formData.currency);
                             })()}
                           </div>
                         </div>
@@ -1043,7 +1043,7 @@ export default function ProformaInvoicesIndex() {
                                 return sum + (itemTotal * (item.taxRate || 0)) / 100;
                               }, 0);
                               const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total);
+                              return formatCurrency(total, formData.currency);
                             })()}
                           </div>
                         </div>
@@ -1145,14 +1145,18 @@ export default function ProformaInvoicesIndex() {
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   Total Value
                 </p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatCurrency(
-                    proformaInvoices?.reduce(
-                      (sum, p) => sum + parseFloat(p.totalAmount || "0"),
-                      0,
-                    ) || 0
-                  )}
-                </p>
+                <div className="flex flex-col">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {formatCurrency(
+                      proformaInvoices?.reduce(
+                        (sum, p) => sum + (parseFloat(p.totalAmount || "0") * parseFloat(p.exchangeRate || "1")),
+                        0,
+                      ) || 0,
+                      "AED"
+                    )}
+                  </p>
+                  <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1712,7 +1716,7 @@ export default function ProformaInvoicesIndex() {
                   Customer: {getCustomerName(convertingProforma.customerId, convertingProforma.customerName)}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Amount: {formatCurrency(convertingProforma.totalAmount || "0")}
+                  Amount: {formatCurrency(convertingProforma.totalAmount || "0", convertingProforma.currency)}
                 </p>
               </div>
               <div className="flex justify-end gap-2">
