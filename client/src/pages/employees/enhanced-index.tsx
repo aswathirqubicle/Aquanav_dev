@@ -12,11 +12,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, FileText, Calendar, User, Heart, GraduationCap, Download, Plus, Edit, Trash2, Eye } from "lucide-react";
+import { AlertTriangle, FileText, Calendar, User, Heart, GraduationCap, Download, Plus, Edit, Trash2, Eye, MessageSquare, Save, X, Search } from "lucide-react";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
-import { Employee, EmployeeNextOfKin, EmployeeTrainingRecord, EmployeeDocument, insertEmployeeSchema, insertEmployeeNextOfKinSchema, insertEmployeeTrainingRecordSchema, insertEmployeeDocumentSchema } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Employee, EmployeeNextOfKin, EmployeeTrainingRecord, EmployeeDocument, insertEmployeeSchema, insertEmployeeNextOfKinSchema, insertEmployeeTrainingRecordSchema, insertEmployeeDocumentSchema, type EmployeeFeedback } from "@shared/schema";
 import { z } from "zod";
 
 const createEmployeeSchema = insertEmployeeSchema.extend({
@@ -84,6 +85,343 @@ type CreateDocumentData = z.infer<typeof createDocumentSchema>;
 interface ExpiringDocument {
   visas: Array<Employee & { documentType: string; expiryDate: string; daysToExpiry: number }>;
   trainings: Array<EmployeeTrainingRecord & { employee: Employee; daysToExpiry: number }>;
+}
+
+interface EmployeeProject {
+  id: number;
+  projectId: number;
+  startDate: string | null;
+  endDate: string | null;
+  assignedAt: string;
+  projectTitle: string;
+  projectStatus: string;
+  vesselName: string | null;
+}
+
+function EmployeeProjectsTab({ employeeId }: { employeeId: number }) {
+  const { data: projectAssignments, isLoading } = useQuery<EmployeeProject[]>({
+    queryKey: ["/api/employees", employeeId, "projects"],
+    queryFn: async () => {
+      const res = await apiRequest(`/api/employees/${employeeId}/projects`);
+      return res.json();
+    },
+  });
+
+  const statusColors: Record<string, string> = {
+    not_started: "bg-gray-100 text-gray-800",
+    in_progress: "bg-blue-100 text-blue-800",
+    on_hold: "bg-yellow-100 text-yellow-800",
+    completed: "bg-green-100 text-green-800",
+    cancelled: "bg-red-100 text-red-800",
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString();
+  };
+
+  if (isLoading) {
+    return <div className="text-sm text-muted-foreground py-4 text-center">Loading projects...</div>;
+  }
+
+  if (!projectAssignments || projectAssignments.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-8 text-center">
+        No project assignments found for this employee.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{projectAssignments.length} project(s) assigned</p>
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2 px-3 font-medium">Project</th>
+              <th className="text-left py-2 px-3 font-medium">Vessel</th>
+              <th className="text-left py-2 px-3 font-medium">Status</th>
+              <th className="text-left py-2 px-3 font-medium">Start Date</th>
+              <th className="text-left py-2 px-3 font-medium">End Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {projectAssignments.map((pa) => (
+              <tr key={pa.id} className="border-b hover:bg-gray-50">
+                <td className="py-2 px-3 font-medium">{pa.projectTitle}</td>
+                <td className="py-2 px-3">{pa.vesselName || "—"}</td>
+                <td className="py-2 px-3">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[pa.projectStatus] || "bg-gray-100 text-gray-800"}`}>
+                    {pa.projectStatus.replace(/_/g, " ")}
+                  </span>
+                </td>
+                <td className="py-2 px-3">{formatDate(pa.startDate)}</td>
+                <td className="py-2 px-3">{formatDate(pa.endDate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="sm:hidden space-y-3">
+        {projectAssignments.map((pa) => (
+          <Card key={pa.id}>
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-sm">{pa.projectTitle}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[pa.projectStatus] || "bg-gray-100 text-gray-800"}`}>
+                  {pa.projectStatus.replace(/_/g, " ")}
+                </span>
+              </div>
+              {pa.vesselName && (
+                <p className="text-xs text-muted-foreground">Vessel: {pa.vesselName}</p>
+              )}
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Start: {formatDate(pa.startDate)}</span>
+                <span>End: {formatDate(pa.endDate)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmployeeFeedbackTab({ employeeId, user }: { employeeId: number; user: any }) {
+  const { toast } = useToast();
+  const [feedbackText, setFeedbackText] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editFeedbackText, setEditFeedbackText] = useState("");
+  const [editProjectId, setEditProjectId] = useState<string>("");
+
+  const { data: feedbackList = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/employees", employeeId, "feedback"],
+    queryFn: async () => {
+      const res = await apiRequest(`/api/employees/${employeeId}/feedback`);
+      return res.json();
+    },
+  });
+
+  const { data: projects = [] } = useQuery<any[]>({
+    queryKey: ["/api/projects"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(`/api/employees/${employeeId}/feedback`, {
+        method: "POST",
+        body: {
+          feedback: feedbackText,
+          projectId: selectedProjectId && selectedProjectId !== "none" ? parseInt(selectedProjectId) : null,
+        },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "feedback"] });
+      setFeedbackText("");
+      setSelectedProjectId("");
+      toast({ title: "Feedback added successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to add feedback", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(`/api/employees/feedback/${id}`, {
+        method: "PUT",
+        body: {
+          feedback: editFeedbackText,
+          projectId: editProjectId && editProjectId !== "none" ? parseInt(editProjectId) : null,
+        },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "feedback"] });
+      setEditingId(null);
+      toast({ title: "Feedback updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update feedback", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest(`/api/employees/feedback/${id}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "feedback"] });
+      toast({ title: "Feedback deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to delete feedback", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const canEditDelete = (fb: any) => {
+    if (user?.role === "admin") return true;
+    if (user?.role === "project_manager" && fb.createdById === user?.id) return true;
+    return false;
+  };
+
+  const startEdit = (fb: any) => {
+    setEditingId(fb.id);
+    setEditFeedbackText(fb.feedback);
+    setEditProjectId(fb.projectId ? String(fb.projectId) : "");
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center">
+            <MessageSquare className="h-5 w-5 mr-2" />
+            Add Feedback
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label>Project (Optional)</Label>
+            <Autocomplete
+              options={projects.map((p: any) => ({ value: String(p.id), label: p.title }))}
+              value={selectedProjectId}
+              onValueChange={setSelectedProjectId}
+              placeholder="Search for a project..."
+            />
+          </div>
+          <div>
+            <Label>Feedback</Label>
+            <Textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Enter feedback for this employee..."
+              rows={3}
+            />
+          </div>
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={!feedbackText.trim() || createMutation.isPending}
+            className="w-full"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {createMutation.isPending ? "Adding..." : "Add Feedback"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Feedback History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading feedback...</p>
+          ) : feedbackList.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No feedback recorded yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {feedbackList.map((fb: any) => (
+                <div key={fb.id} className="border rounded-lg p-4 space-y-2">
+                  {editingId === fb.id ? (
+                    <div className="space-y-3">
+                      <div>
+                        <Label>Project (Optional)</Label>
+                        <Autocomplete
+                          options={projects.map((p: any) => ({ value: String(p.id), label: p.title }))}
+                          value={editProjectId}
+                          onValueChange={setEditProjectId}
+                          placeholder="Search for a project..."
+                        />
+                      </div>
+                      <div>
+                        <Label>Feedback</Label>
+                        <Textarea
+                          value={editFeedbackText}
+                          onChange={(e) => setEditFeedbackText(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => updateMutation.mutate(fb.id)}
+                          disabled={!editFeedbackText.trim() || updateMutation.isPending}
+                        >
+                          <Save className="h-4 w-4 mr-1" />
+                          {updateMutation.isPending ? "Saving..." : "Save"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingId(null)}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          {fb.projectTitle && (
+                            <Badge variant="secondary" className="mb-2">
+                              {fb.projectTitle}
+                            </Badge>
+                          )}
+                          <p className="text-sm whitespace-pre-wrap">{fb.feedback}</p>
+                        </div>
+                        {canEditDelete(fb) && (
+                          <div className="flex gap-1 ml-2 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEdit(fb)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm("Are you sure you want to delete this feedback?")) {
+                                  deleteMutation.mutate(fb.id);
+                                }
+                              }}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <User className="h-3 w-3" />
+                        <span>{fb.createdByUsername}</span>
+                        <span className="mx-1">-</span>
+                        <Calendar className="h-3 w-3" />
+                        <span>{new Date(fb.createdAt).toLocaleString()}</span>
+                        {fb.updatedAt && fb.updatedAt !== fb.createdAt && (
+                          <span className="italic">(edited)</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function EmployeesIndex() {
@@ -175,6 +513,7 @@ export default function EmployeesIndex() {
   const [editingDocument, setEditingDocument] = useState<EmployeeDocument | null>(null);
 
   const [createUserAccount, setCreateUserAccount] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -208,6 +547,19 @@ export default function EmployeesIndex() {
   const { data: expiringDocuments } = useQuery<ExpiringDocument>({
     queryKey: ["/api/employees/expiring-documents"],
     enabled: isAuthenticated && (user?.role === "admin" || user?.role === "project_manager"),
+  });
+
+  const filteredEmployees = employees?.filter((emp) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(q) ||
+      emp.firstName.toLowerCase().includes(q) ||
+      emp.lastName.toLowerCase().includes(q) ||
+      (emp.email && emp.email.toLowerCase().includes(q)) ||
+      (emp.phone && emp.phone.toLowerCase().includes(q)) ||
+      (emp.employeeCode && emp.employeeCode.toLowerCase().includes(q))
+    );
   });
 
   // Generate employee code automatically
@@ -859,15 +1211,15 @@ export default function EmployeesIndex() {
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="personal">Personal</TabsTrigger>
-                <TabsTrigger value="banking">Banking</TabsTrigger>
-                <TabsTrigger value="other">Other Details</TabsTrigger>
+              <TabsList className="flex flex-wrap h-auto gap-1 w-full">
+                <TabsTrigger value="basic" className="text-xs sm:text-sm flex-1 min-w-fit">Basic Info</TabsTrigger>
+                <TabsTrigger value="personal" className="text-xs sm:text-sm flex-1 min-w-fit">Personal</TabsTrigger>
+                <TabsTrigger value="banking" className="text-xs sm:text-sm flex-1 min-w-fit">Banking</TabsTrigger>
+                <TabsTrigger value="other" className="text-xs sm:text-sm flex-1 min-w-fit">Other Details</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="employeeCode">Employee Code *</Label>
                     <Input
@@ -989,7 +1341,7 @@ export default function EmployeesIndex() {
               </TabsContent>
 
               <TabsContent value="personal" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="dateOfBirth">Date of Birth</Label>
                     <Input
@@ -1047,7 +1399,7 @@ export default function EmployeesIndex() {
               </TabsContent>
 
               <TabsContent value="banking" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="bankName">Bank Name</Label>
                     <Input
@@ -1135,15 +1487,15 @@ export default function EmployeesIndex() {
             </DialogHeader>
             
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="personal">Personal</TabsTrigger>
-                <TabsTrigger value="banking">Banking</TabsTrigger>
-                <TabsTrigger value="other">Other Details</TabsTrigger>
+              <TabsList className="flex flex-wrap h-auto gap-1 w-full">
+                <TabsTrigger value="basic" className="text-xs sm:text-sm flex-1 min-w-fit">Basic Info</TabsTrigger>
+                <TabsTrigger value="personal" className="text-xs sm:text-sm flex-1 min-w-fit">Personal</TabsTrigger>
+                <TabsTrigger value="banking" className="text-xs sm:text-sm flex-1 min-w-fit">Banking</TabsTrigger>
+                <TabsTrigger value="other" className="text-xs sm:text-sm flex-1 min-w-fit">Other Details</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="editEmployeeCode">Employee Code</Label>
                     <Input
@@ -1268,7 +1620,7 @@ export default function EmployeesIndex() {
               </TabsContent>
 
               <TabsContent value="personal" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="editDateOfBirth">Date of Birth</Label>
                     <Input
@@ -1322,7 +1674,7 @@ export default function EmployeesIndex() {
               </TabsContent>
 
               <TabsContent value="banking" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="editBankName">Bank Name</Label>
                     <Input
@@ -1444,14 +1796,28 @@ export default function EmployeesIndex() {
       {/* Employee List */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <User className="h-5 w-5 mr-2" />
-            Employees ({employees?.length || 0})
-          </CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="flex items-center">
+              <User className="h-5 w-5 mr-2" />
+              Employees ({filteredEmployees?.length || 0})
+            </CardTitle>
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by name, email or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
-            {employees?.map((employee) => (
+            {filteredEmployees?.length === 0 && searchQuery.trim() && (
+              <p className="text-sm text-muted-foreground text-center py-4">No employees found matching "{searchQuery}"</p>
+            )}
+            {filteredEmployees?.map((employee) => (
               <div
                 key={employee.id}
                 className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
@@ -1516,25 +1882,29 @@ export default function EmployeesIndex() {
 
       {/* Employee Detail Dialog */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-base sm:text-lg">
               {selectedEmployee?.firstName} {selectedEmployee?.lastName} - Employee Details
             </DialogTitle>
           </DialogHeader>
 
           {selectedEmployee && (
             <Tabs value={detailActiveTab} onValueChange={setDetailActiveTab}>
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="personal">Personal Info</TabsTrigger>
-                <TabsTrigger value="nextofkin">Next of Kin</TabsTrigger>
-                <TabsTrigger value="training">Training Records</TabsTrigger>
-                <TabsTrigger value="visas">Visas & Permits</TabsTrigger>
-                <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsList className={`flex flex-wrap h-auto gap-1 w-full`}>
+                <TabsTrigger value="personal" className="text-xs sm:text-sm flex-1 min-w-fit">Personal Info</TabsTrigger>
+                <TabsTrigger value="nextofkin" className="text-xs sm:text-sm flex-1 min-w-fit">Next of Kin</TabsTrigger>
+                <TabsTrigger value="training" className="text-xs sm:text-sm flex-1 min-w-fit">Training</TabsTrigger>
+                <TabsTrigger value="visas" className="text-xs sm:text-sm flex-1 min-w-fit">Visas</TabsTrigger>
+                <TabsTrigger value="documents" className="text-xs sm:text-sm flex-1 min-w-fit">Documents</TabsTrigger>
+                <TabsTrigger value="projects" className="text-xs sm:text-sm flex-1 min-w-fit">Projects</TabsTrigger>
+                {(user?.role === "admin" || user?.role === "project_manager") && (
+                  <TabsTrigger value="feedback" className="text-xs sm:text-sm flex-1 min-w-fit">Feedback</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="personal" className="space-y-6">
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-lg">Basic Information</CardTitle>
@@ -1629,7 +1999,7 @@ export default function EmployeesIndex() {
                       <CardTitle className="text-lg">Banking Information</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <Label className="text-sm font-medium text-gray-600">Bank Name</Label>
                           <p className="font-semibold">{selectedEmployee.bankName || "Not specified"}</p>
@@ -1679,7 +2049,7 @@ export default function EmployeesIndex() {
                     <CardTitle className="text-base">Add New Next of Kin</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="nokName">Name *</Label>
                         <Input
@@ -1794,7 +2164,7 @@ export default function EmployeesIndex() {
                     <Card key={nok.id}>
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start">
-                          <div className="grid grid-cols-2 gap-4 flex-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
                             <div>
                               <Label className="text-sm font-medium text-gray-600">Name</Label>
                               <p className="font-semibold">{nok.name}</p>
@@ -1878,7 +2248,7 @@ export default function EmployeesIndex() {
                     <CardTitle className="text-base">Add New Training Record</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="trainingName">Training Name *</Label>
                         <Input
@@ -2010,7 +2380,7 @@ export default function EmployeesIndex() {
                     <Card key={training.id}>
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start">
-                          <div className="grid grid-cols-3 gap-4 flex-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
                             <div>
                               <Label className="text-sm font-medium text-gray-600">Training Name</Label>
                               <p className="font-semibold">{training.trainingName}</p>
@@ -2126,7 +2496,7 @@ export default function EmployeesIndex() {
                         </DialogTitle>
                       </DialogHeader>
                       
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="documentType">Document Type</Label>
                           <Select 
@@ -2337,7 +2707,7 @@ export default function EmployeesIndex() {
                         }>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start">
-                            <div className="grid grid-cols-3 gap-4 flex-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
                               <div>
                                 <Label className="text-sm font-medium text-gray-600">Document Type</Label>
                                 <p className="font-semibold capitalize">
@@ -2461,7 +2831,7 @@ export default function EmployeesIndex() {
                         </DialogTitle>
                       </DialogHeader>
                       
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="documentType">Document Type</Label>
                           <Select 
@@ -2676,7 +3046,7 @@ export default function EmployeesIndex() {
                         }>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start">
-                            <div className="grid grid-cols-3 gap-4 flex-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
                               <div>
                                 <Label className="text-sm font-medium text-gray-600">Document Type</Label>
                                 <p className="font-semibold capitalize">
@@ -2788,6 +3158,19 @@ export default function EmployeesIndex() {
                   </Card>
                 </div>
               </TabsContent>
+
+              <TabsContent value="projects" className="space-y-4">
+                <EmployeeProjectsTab employeeId={selectedEmployee.id} />
+              </TabsContent>
+
+              {(user?.role === "admin" || user?.role === "project_manager") && (
+                <TabsContent value="feedback" className="space-y-4">
+                  <EmployeeFeedbackTab
+                    employeeId={selectedEmployee.id}
+                    user={user}
+                  />
+                </TabsContent>
+              )}
             </Tabs>
           )}
         </DialogContent>

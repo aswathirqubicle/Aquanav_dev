@@ -73,6 +73,8 @@ const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
         description: z.string(),
         quantity: z.number(),
         unitPrice: z.number(),
+        taxRate: z.number().optional(),
+        taxAmount: z.number().optional(),
       }),
     )
     .default([]),
@@ -91,6 +93,8 @@ const createSalesInvoiceSchema = insertSalesInvoiceSchema.extend({
         description: z.string(),
         quantity: z.number(),
         unitPrice: z.number(),
+        taxRate: z.number().optional(),
+        taxAmount: z.number().optional(),
       }),
     )
     .default([]),
@@ -349,10 +353,8 @@ export default function SalesIndex() {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0,
       );
-      console.log("discount=>", data.discount);
 
       const discount = parseFloat(data.discount || "0");
-      console.log("discount=>", discount);
       const taxAmount = data.items.reduce((sum, item) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
@@ -1405,23 +1407,23 @@ export default function SalesIndex() {
     setIsInvoiceDetailsOpen(true);
   };
 
-  const handleEditQuotation = () => {
-    if (selectedQuotation) {
+  const handleEditQuotation = (quotation?: SalesQuotation) => {
+    if (quotation) {
       setFormData({
-        customerId: selectedQuotation.customerId,
-        status: selectedQuotation.status,
-        validUntil: selectedQuotation.validUntil
-          ? new Date(selectedQuotation.validUntil).toISOString().split("T")[0]
+        customerId: quotation.customerId,
+        status: quotation.status,
+        validUntil: quotation.validUntil
+          ? new Date(quotation.validUntil).toISOString().split("T")[0]
           : "",
-        items: selectedQuotation.items || [],
-        discount: selectedQuotation.discount || "0",
-        subtotal: selectedQuotation.subtotal || "0",
-        taxAmount: selectedQuotation.taxAmount || "0",
-        totalAmount: selectedQuotation.totalAmount || "0",
-        paymentTerms: selectedQuotation.paymentTerms || "",
-        bankAccount: selectedQuotation.bankAccount || "",
-        billingAddress: selectedQuotation.billingAddress || "",
-        termsAndConditions: selectedQuotation.termsAndConditions || "",
+        items: quotation.items || [],
+        discount: quotation.discount || "0",
+        subtotal: quotation.subtotal || "0",
+        taxAmount: quotation.taxAmount || "0",
+        totalAmount: quotation.totalAmount || "0",
+        paymentTerms: quotation.paymentTerms || "",
+        bankAccount: quotation.bankAccount || "",
+        billingAddress: quotation.billingAddress || "",
+        termsAndConditions: quotation.termsAndConditions || "",
       });
       setIsEditingQuotation(true);
       setIsQuotationDetailsOpen(false);
@@ -1429,23 +1431,25 @@ export default function SalesIndex() {
     }
   };
 
-  const handleDuplicateQuotation = () => {
-    if (selectedQuotation) {
+  const handleDuplicateQuotation = (quotation?: SalesQuotation) => {
+    if (quotation) {
       setFormData({
-        customerId: selectedQuotation.customerId,
+        customerId: quotation.customerId,
         status: "draft",
-        validUntil: selectedQuotation.validUntil
-          ? new Date(selectedQuotation.validUntil).toISOString().split("T")[0]
+        validUntil: quotation.validUntil
+          ? new Date(quotation.validUntil).toISOString().split("T")[0]
           : "",
-        items: selectedQuotation.items || [],
-        discount: selectedQuotation.discount || "0",
-        subtotal: selectedQuotation.subtotal || "0",
-        taxAmount: selectedQuotation.taxAmount || "0",
-        totalAmount: selectedQuotation.totalAmount || "0",
-        paymentTerms: selectedQuotation.paymentTerms || "",
-        bankAccount: selectedQuotation.bankAccount || "",
-        billingAddress: selectedQuotation.billingAddress || "",
-        termsAndConditions: selectedQuotation.termsAndConditions || "",
+        items: quotation.items || [],
+        discount: quotation.discount || "0",
+        subtotal: quotation.subtotal || "0",
+        taxAmount: quotation.taxAmount || "0",
+        totalAmount: quotation.totalAmount || "0",
+        paymentTerms: quotation.paymentTerms || "",
+        bankAccount: quotation.bankAccount || "",
+        billingAddress: quotation.billingAddress || "",
+        termsAndConditions: quotation.termsAndConditions || "",
+        currency: quotation.currency || "AED",
+        exchangeRate: quotation.exchangeRate || "1",
       });
       setIsEditingQuotation(false);
       setIsQuotationDetailsOpen(false);
@@ -1638,15 +1642,15 @@ export default function SalesIndex() {
     }));
 
     // OPTIONAL: update existing invoice items
-    setInvoiceFormData(prev => ({
-      ...prev,
-      items: prev.items.map(item => ({
-        ...item,
-        taxRate,
-        taxAmount:
-          item.quantity * item.unitPrice * (taxRate / 100),
-      })),
-    }));
+    // setInvoiceFormData(prev => ({
+    //   ...prev,
+    //   items: prev.items.map(item => ({
+    //     ...item,
+    //     taxRate,
+    //     taxAmount:
+    //       item.quantity * item.unitPrice * (taxRate / 100),
+    //   })),
+    // }));
   }, [invoiceFormData.customerId, customers]);
 
   useEffect(() => {
@@ -1666,14 +1670,14 @@ export default function SalesIndex() {
     }));
 
     // OPTIONAL: update EXISTING items
-    setFormData(prev => ({
-      ...prev,
-      items: prev.items.map(item => ({
-        ...item,
-        taxRate,
-        taxAmount: item.quantity * item.unitPrice * (taxRate / 100),
-      })),
-    }));
+    // setFormData(prev => ({
+    //   ...prev,
+    //   items: prev.items.map(item => ({
+    //     ...item,
+    //     taxRate,
+    //     taxAmount: item.quantity * item.unitPrice * (taxRate / 100),
+    //   })),
+    // }));
   }, [formData.customerId, customers]);
 
 
@@ -3911,7 +3915,7 @@ export default function SalesIndex() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={handleDuplicateQuotation}
+                  onClick={() => handleDuplicateQuotation(selectedQuotation)}
                   data-testid="button-duplicate-quotation"
                 >
                   <Copy className="h-4 w-4 mr-1" />
@@ -3921,7 +3925,7 @@ export default function SalesIndex() {
                   <>
                     <Button
                       variant="outline"
-                      onClick={handleEditQuotation}
+                      onClick={() => handleEditQuotation(selectedQuotation)}
                       data-testid="button-edit-quotation-dialog"
                     >
                       Edit Quotation

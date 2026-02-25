@@ -427,14 +427,6 @@ export default function AssetInventoryIndex() {
       return;
     }
 
-    if (!newAssetInstance.barcode) {
-      toast({
-        title: "Error",
-        description: "Barcode is required",
-        variant: "destructive",
-      });
-      return;
-    }
     if (selectedInstance) {
       // Update existing instance
       const updateData = {
@@ -971,10 +963,10 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="instanceBarcode">Barcode *</Label>
+                    <Label htmlFor="instanceBarcode">Barcode</Label>
                     <Input
                       id="instanceBarcode"
-                      value={newAssetInstance.barcode}
+                      value={newAssetInstance.barcode || ""}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, barcode: e.target.value })}
                       placeholder="Unique barcode"
                     />
@@ -1080,7 +1072,7 @@ export default function AssetInventoryIndex() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="instanceCost">Acquisition Cost</Label>
+                    <Label htmlFor="instanceCost">Acquisition Cost (in AED)</Label>
                     <Input
                       id="instanceCost"
                       type="number"
@@ -1091,7 +1083,7 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="currentValue">Current Value</Label>
+                    <Label htmlFor="currentValue">Current Value (in AED)</Label>
                     <Input
                       id="currentValue"
                       type="number"
@@ -1102,7 +1094,7 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="monthlyRentalRate">Monthly Rent</Label>
+                    <Label htmlFor="monthlyRentalRate">Monthly Rent (in AED)</Label>
                     <Input
                       id="monthlyRentalRate"
                       type="number"
@@ -1221,7 +1213,7 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editInstanceBarcode">Barcode *</Label>
+                    <Label htmlFor="editInstanceBarcode">Barcode </Label>
                     <Input
                       id="editInstanceBarcode"
                       value={newAssetInstance.barcode}
@@ -1350,7 +1342,7 @@ export default function AssetInventoryIndex() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="editInstanceCost">Acquisition Cost</Label>
+                    <Label htmlFor="editInstanceCost">Acquisition Cost (in AED)</Label>
                     <Input
                       id="editInstanceCost"
                       type="number"
@@ -1361,7 +1353,7 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editCurrentValue">Current Value</Label>
+                    <Label htmlFor="editCurrentValue">Current Value (in AED)</Label>
                     <Input
                       id="editCurrentValue"
                       type="number"
@@ -1372,7 +1364,7 @@ export default function AssetInventoryIndex() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editMonthlyRentalRate">Monthly Rent</Label>
+                    <Label htmlFor="editMonthlyRentalRate">Monthly Rent (in AED)</Label>
                     <Input
                       id="editMonthlyRentalRate"
                       type="number"

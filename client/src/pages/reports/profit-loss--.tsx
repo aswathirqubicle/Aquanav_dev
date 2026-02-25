@@ -90,15 +90,15 @@ export default function ProfitLossReport() {
     const fyStartDay = company?.financialYearStartDay || 1;
     const fyEndMonth = (company?.financialYearEndMonth || 12) - 1;
     const fyEndDay = company?.financialYearEndDay || 31;
-
+    
     let fyStartYear = now.getFullYear();
     if (now.getMonth() < fyStartMonth || (now.getMonth() === fyStartMonth && now.getDate() < fyStartDay)) {
       fyStartYear -= 1;
     }
-
+    
     const fyStart = new Date(fyStartYear, fyStartMonth, fyStartDay);
     const fyEnd = new Date(fyStartMonth > fyEndMonth ? fyStartYear + 1 : fyStartYear, fyEndMonth, fyEndDay);
-
+    
     return { fyStart, fyEnd };
   };
 
@@ -121,17 +121,17 @@ export default function ProfitLossReport() {
       const fyStartDay = company?.financialYearStartDay || 1;
       const fyEndMonth = (company?.financialYearEndMonth || 12) - 1;
       const fyEndDay = company?.financialYearEndDay || 31;
-
+      
       // Get current FY start year and subtract 1 for previous year
       let fyStartYear = now.getFullYear();
       if (now.getMonth() < fyStartMonth || (now.getMonth() === fyStartMonth && now.getDate() < fyStartDay)) {
         fyStartYear -= 1;
       }
       fyStartYear -= 1; // Previous year
-
+      
       const prevFyStart = new Date(fyStartYear, fyStartMonth, fyStartDay);
       const prevFyEnd = new Date(fyStartMonth > fyEndMonth ? fyStartYear + 1 : fyStartYear, fyEndMonth, fyEndDay);
-
+      
       setFilters(prev => ({
         ...prev,
         startDate: prevFyStart.toISOString().split('T')[0],
@@ -229,7 +229,7 @@ export default function ProfitLossReport() {
   const revenueAccountNames = chartOfAccountsData
     ?.filter(account => account.accountType?.toLowerCase() === "revenue")
     .map(account => account.accountName) || [];
-
+  
   const expenseAccountNames = chartOfAccountsData
     ?.filter(account => account.accountType?.toLowerCase() === "expense")
     .map(account => account.accountName) || [];
@@ -294,13 +294,13 @@ export default function ProfitLossReport() {
     const projectRevenue = revenueOnlyEntries
       .filter(entry => entry.projectId === project.id)
       .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0"), 0);
-
+    
     const projectExpenses = expenseOnlyEntries
       .filter(entry => entry.projectId === project.id)
       .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0"), 0);
-
+    
     const revenueTransactions = revenueOnlyEntries.filter(entry => entry.projectId === project.id).length;
-
+    
     return {
       ...project,
       revenue: projectRevenue,
@@ -476,7 +476,7 @@ export default function ProfitLossReport() {
               Reset
             </Button>
           </div>
-
+          
           {/* Active Filter Summary */}
           <div className="mt-3 pt-3 border-t flex flex-wrap gap-2 items-center text-sm">
             <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -795,7 +795,7 @@ export default function ProfitLossReport() {
                                 {project.status?.replace('_', ' ').toUpperCase()}
                               </span>
                             </div>
-
+                            
                             {/* Financial Details Grid */}
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
@@ -807,7 +807,7 @@ export default function ProfitLossReport() {
                                 <div className="font-medium text-green-600">{formatCurrency(project.revenue)}</div>
                               </div>
                             </div>
-
+                            
                             {/* Profit/Loss and Margin */}
                             <div className="flex items-center justify-between mt-3 pt-3 border-t">
                               <div>
@@ -982,26 +982,22 @@ export default function ProfitLossReport() {
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {revenueOnlyEntries.map((entry) => {
-                      const isCancelled = entry.status === "cancelled";
-                      const netAmount = parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0");
-                      return (
-                        <div key={entry.id} className={`p-3 border rounded-lg ${isCancelled ? "opacity-60 bg-gray-50 dark:bg-gray-900/30" : ""}`}>
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium">{entry.accountName}</p>
-                              <p className="text-sm text-muted-foreground">{entry.description}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(entry.transactionDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <span className={`font-bold ${netAmount < 0 ? "text-red-600" : "text-green-600"}`}>
-                              {netAmount < 0 ? `(${formatCurrency(Math.abs(netAmount))})` : formatCurrency(netAmount)}
-                            </span>
+                    {revenueOnlyEntries.map((entry) => (
+                      <div key={entry.id} className="p-3 border rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium">{entry.accountName}</p>
+                            <p className="text-sm text-muted-foreground">{entry.description}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(entry.transactionDate).toLocaleDateString()}
+                            </p>
                           </div>
+                          <span className="font-bold text-green-600">
+                            {formatCurrency(entry.creditAmount)}
+                          </span>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
@@ -1022,26 +1018,22 @@ export default function ProfitLossReport() {
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {expenseOnlyEntries.map((entry) => {
-                      const isCancelled = entry.status === "cancelled";
-                      const netAmount = parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0");
-                      return (
-                        <div key={entry.id} className={`p-3 border rounded-lg ${isCancelled ? "opacity-60 bg-gray-50 dark:bg-gray-900/30" : ""}`}>
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium">{entry.accountName}</p>
-                              <p className="text-sm text-muted-foreground">{entry.description}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(entry.transactionDate).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <span className={`font-bold ${netAmount < 0 ? "text-green-600" : "text-red-600"}`}>
-                              {netAmount < 0 ? `(${formatCurrency(Math.abs(netAmount))})` : formatCurrency(netAmount)}
-                            </span>
+                    {expenseOnlyEntries.map((entry) => (
+                      <div key={entry.id} className="p-3 border rounded-lg">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium">{entry.accountName}</p>
+                            <p className="text-sm text-muted-foreground">{entry.description}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(entry.transactionDate).toLocaleDateString()}
+                            </p>
                           </div>
+                          <span className="font-bold text-red-600">
+                            {formatCurrency(entry.debitAmount)}
+                          </span>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>
@@ -1049,7 +1041,7 @@ export default function ProfitLossReport() {
           </div>
         </TabsContent>
       </Tabs>
-      </>
+        </>
       )}
     </div>
   );

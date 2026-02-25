@@ -123,18 +123,6 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    title: "Payroll",
-    href: "/payroll",
-    icon: DollarSign,
-    roles: ["admin", "finance"],
-  },
-  {
-    title: "Reimbursements",
-    href: "/reimbursements",
-    icon: Receipt,
-    roles: ["admin", "finance", "project_manager", "employee", "customer"],
-  },
-  {
     title: "Purchase",
     icon: ShoppingCart,
     roles: ["admin", "project_manager", "finance"],
@@ -158,6 +146,18 @@ const navigation: NavItem[] = [
         roles: ["admin", "finance"],
       },
     ],
+  },
+  {
+    title: "Payroll",
+    href: "/payroll",
+    icon: DollarSign,
+    roles: ["admin", "finance"],
+  },
+  {
+    title: "Reimbursements",
+    href: "/reimbursements",
+    icon: Receipt,
+    roles: ["admin", "finance", "project_manager", "employee", "customer"],
   },
   {
     title: "Goods Receipt",

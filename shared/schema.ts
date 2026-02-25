@@ -307,7 +307,7 @@ export const assetInventoryInstances = pgTable("asset_inventory_instances", {
   instanceNumber: text("instance_number").notNull(), // "Instance 1", "Instance 2", etc.
   assetTag: text("asset_tag").notNull().unique(), // ASSET-0001, ASSET-0002, etc.
   serialNumber: text("serial_number").notNull().unique(), // SN00000001, SN00000002, etc.
-  barcode: text("barcode").notNull().unique(), // unique barcode for scanning
+  barcode: text("barcode").unique(), // unique barcode for scanning
   status: text("status").notNull().default("available"), // available, in_use, maintenance, under_repair, retired, lost, stolen
   condition: text("condition").notNull().default("excellent"), // excellent, good, fair, poor, damaged
   location: text("location"), // current physical location
@@ -545,7 +545,7 @@ export const projectAssetInstanceAssignments = pgTable(
     instanceId: integer("instance_id")
       .references(() => assetInventoryInstances.id)
       .notNull(),
-    barcode: text("barcode").notNull(), // selected barcode for this assignment
+    barcode: text("barcode"),// selected barcode for this assignment
     serialNumber: text("serial_number").notNull(), // reference to the instance's serial number
     startDate: timestamp("start_date").notNull(),
     endDate: timestamp("end_date"),
@@ -847,6 +847,10 @@ export const purchaseOrders = pgTable("purchase_orders", {
   deliveryTerms: text("delivery_terms"),
   bankAccount: text("bank_account"),
   notes: text("notes"),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   discountPercentage: decimal("discount_percentage", {
     precision: 5,
@@ -914,6 +918,10 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   paymentTerms: text("payment_terms"),
   bankAccount: text("bank_account"),
   notes: text("notes"),
+  currency: text("currency").notNull().default("AED"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   discountPercentage: decimal("discount_percentage", {
     precision: 5,
@@ -1757,6 +1765,25 @@ export const insertReimbursementSchema = createInsertSchema(
 });
 export type Reimbursement = typeof reimbursements.$inferSelect;
 export type InsertReimbursement = z.infer<typeof insertReimbursementSchema>;
+
+// Employee Feedback
+export const employeeFeedback = pgTable("employee_feedback", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").notNull().references(() => employees.id),
+  projectId: integer("project_id").references(() => projects.id),
+  feedback: text("feedback").notNull(),
+  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertEmployeeFeedbackSchema = createInsertSchema(employeeFeedback).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type EmployeeFeedback = typeof employeeFeedback.$inferSelect;
+export type InsertEmployeeFeedback = z.infer<typeof insertEmployeeFeedbackSchema>;
 
 // Exchange Rate schemas and types
 export const insertExchangeRateSchema = createInsertSchema(exchangeRates).omit({

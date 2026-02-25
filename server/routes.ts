@@ -70,7 +70,7 @@ import {
   creditNotes,
 } from "../migrations/schema";
 import sanitizeHtml from "sanitize-html";
-import { purchaseInvoices, purchaseInvoicePayments } from "@shared/schema";
+import { purchaseInvoices, purchaseInvoicePayments, projectEmployees } from "@shared/schema";
 import { db } from "./db";
 import { sql as sqlRaw } from "./db";
 
@@ -337,6 +337,7 @@ function generateQuotationHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -482,6 +483,7 @@ function generateCreditNoteHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -631,6 +633,7 @@ function generateInvoiceHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -784,6 +787,7 @@ function generateProformaHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -915,6 +919,7 @@ function generatePurchaseOrderHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -1035,6 +1040,7 @@ function generatePurchaseInvoiceHTML(
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currency,
+      currencyDisplay: "code",
     })
       .format(num)
       .replace(currency, currency + " ");
@@ -9310,6 +9316,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Export error:", error);
         res.status(500).json({ error: "Failed to export data" });
+      }
+    },
+  );
+
+  // Employee Projects route
+  app.get(
+    "/api/employees/:employeeId/projects",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const assignments = await db
+          .select({
+            id: projectEmployees.id,
+            projectId: projectEmployees.projectId,
+            startDate: projectEmployees.startDate,
+            endDate: projectEmployees.endDate,
+            assignedAt: projectEmployees.assignedAt,
+            projectTitle: projects.title,
+            projectStatus: projects.status,
+            vesselName: projects.vesselName,
+          })
+          .from(projectEmployees)
+          .innerJoin(projects, eq(projects.id, projectEmployees.projectId))
+          .where(eq(projectEmployees.employeeId, employeeId))
+          .orderBy(desc(projectEmployees.assignedAt));
+        res.json(assignments);
+      } catch (error) {
+        console.error("Error fetching employee projects:", error);
+        res.status(500).json({ message: "Failed to fetch employee projects" });
+      }
+    },
+  );
+
+  // Employee Feedback routes
+  app.get(
+    "/api/employees/:employeeId/feedback",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const feedback = await storage.getEmployeeFeedback(employeeId);
+        res.json(feedback);
+      } catch (error) {
+        console.error("Error fetching employee feedback:", error);
+        res.status(500).json({ message: "Failed to fetch feedback" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/employees/:employeeId/feedback",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const { feedback, projectId } = req.body;
+        if (!feedback || !feedback.trim()) {
+          return res.status(400).json({ message: "Feedback text is required" });
+        }
+        const result = await storage.createEmployeeFeedback({
+          employeeId,
+          feedback: feedback.trim(),
+          projectId: projectId || null,
+          createdById: req.session.userId,
+        });
+        res.status(201).json(result);
+      } catch (error) {
+        console.error("Error creating employee feedback:", error);
+        res.status(500).json({ message: "Failed to create feedback" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/employees/feedback/:id",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const existing = await storage.getEmployeeFeedbackById(id);
+        if (!existing) {
+          return res.status(404).json({ message: "Feedback not found" });
+        }
+        if (req.session.userRole === "project_manager" && existing.createdById !== req.session.userId) {
+          return res.status(403).json({ message: "You can only edit your own feedback" });
+        }
+        const { feedback, projectId } = req.body;
+        if (!feedback || !feedback.trim()) {
+          return res.status(400).json({ message: "Feedback text is required" });
+        }
+        const result = await storage.updateEmployeeFeedback(id, {
+          feedback: feedback.trim(),
+          projectId: projectId || null,
+        });
+        res.json(result);
+      } catch (error) {
+        console.error("Error updating employee feedback:", error);
+        res.status(500).json({ message: "Failed to update feedback" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/employees/feedback/:id",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const existing = await storage.getEmployeeFeedbackById(id);
+        if (!existing) {
+          return res.status(404).json({ message: "Feedback not found" });
+        }
+        if (req.session.userRole === "project_manager" && existing.createdById !== req.session.userId) {
+          return res.status(403).json({ message: "You can only delete your own feedback" });
+        }
+        await storage.deleteEmployeeFeedback(id);
+        res.json({ message: "Feedback deleted successfully" });
+      } catch (error) {
+        console.error("Error deleting employee feedback:", error);
+        res.status(500).json({ message: "Failed to delete feedback" });
       }
     },
   );

@@ -26,6 +26,8 @@ interface Supplier {
   contactPerson?: string;
   email?: string;
   phone?: string;
+  currency?: string;
+  vatTreatment?: string;
   bankAccountDetails?: SupplierBankDetails[];
 }
 
@@ -34,6 +36,7 @@ interface PurchaseOrder {
   poNumber: string;
   supplierId: number;
   supplierName: string;
+  supplierCurrency?: string;
   status: "draft" | "pending_approval" | "approved" | "rejected" | "converted";
   orderDate: string;
   expectedDeliveryDate?: string;
@@ -97,6 +100,7 @@ export default function PurchaseOrdersIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
+    currency: "AED",
     orderDate: new Date().toISOString().split('T')[0],
     expectedDeliveryDate: "",
     paymentTerms: "",
@@ -412,6 +416,7 @@ export default function PurchaseOrdersIndex() {
       deliveryTerms: order.deliveryTerms || "",
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
+      currency: order.supplierCurrency || "AED",
       discountPercentage: order.discountPercentage || "0",
       discountAmount: order.discountAmount || "0",
     });
@@ -678,9 +683,15 @@ export default function PurchaseOrdersIndex() {
     return counts;
   }, {} as Record<string, number>) || {};
 
-  const formatCurrency = (amount: string | number) => {
+  const formatCurrency = (amount: string | number, currency: string = "AED") => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `AED ${num.toFixed(2)}`;
+    return `${currency} ${num.toFixed(2)}`;
+  };
+
+  const getTaxRateFromVatTreatment = (
+    vatTreatment?: string
+  ): number => {
+    return vatTreatment === "standard" ? 5 : 0;
   };
 
   if (!isAuthenticated) {
@@ -915,7 +926,7 @@ export default function PurchaseOrdersIndex() {
                         {getStatusBadge(order.status)}
                       </TableCell>
                       <TableCell className="font-semibold text-green-600">
-                        {formatCurrency(order.totalAmount)}
+                        {formatCurrency(order.totalAmount, order.supplierCurrency)}
                       </TableCell>
                       <TableCell>
                         {order.expectedDeliveryDate
@@ -1035,7 +1046,32 @@ export default function PurchaseOrdersIndex() {
                   <Label htmlFor="supplierId">Supplier *</Label>
                   <Select
                     value={formData.supplierId}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, supplierId: value, bankAccount: "" }))}
+                    onValueChange={(value) => {
+                      const supplier = suppliers.find(s => s.id.toString() === value);
+                      const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
+
+                      setFormData(prev => ({
+                        ...prev,
+                        supplierId: value,
+                        currency: supplier?.currency || "AED",
+                        bankAccount: ""
+                      }));
+
+                      // Update existing items (only if still 0)
+                      setOrderItems(items =>
+                        items.map(item =>
+                          item.taxRate === "0"
+                            ? { ...item, taxRate: String(taxRate) }
+                            : item
+                        )
+                      );
+
+                      // Default tax for new items
+                      setNewItem(prev => ({
+                        ...prev,
+                        taxRate: String(taxRate),
+                      }));
+                    }}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Select supplier" />
@@ -1342,9 +1378,9 @@ export default function PurchaseOrdersIndex() {
                                   <TableCell>
                                     {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
                                   </TableCell>
-                                  <TableCell>AED {item.unitPrice}</TableCell>
+                                  <TableCell>{formatCurrency(item.unitPrice, formData.currency)}</TableCell>
                                   <TableCell>{item.taxRate}%</TableCell>
-                                  <TableCell className="font-semibold">AED {lineTotal.toFixed(2)}</TableCell>
+                                  <TableCell className="font-semibold">{formatCurrency(lineTotal, formData.currency)}</TableCell>
                                   <TableCell>
                                     <Button
                                       type="button"
@@ -1369,15 +1405,15 @@ export default function PurchaseOrdersIndex() {
                       <div className="space-y-4 text-sm">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
-                          <span>AED {orderItems.reduce((sum, item) => {
+                          <span>{formatCurrency(orderItems.reduce((sum, item) => {
                             const quantity = parseInt(item.quantity) || 0;
                             const unitPrice = parseFloat(item.unitPrice) || 0;
                             return sum + (quantity * unitPrice);
-                          }, 0).toFixed(2)}</span>
+                          }, 0), formData.currency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Total Tax:</span>
-                          <span>AED {calculateTotalTax().toFixed(2)}</span>
+                          <span>{formatCurrency(calculateTotalTax(), formData.currency)}</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 py-4 border-y">
@@ -1401,7 +1437,7 @@ export default function PurchaseOrdersIndex() {
                             />
                           </div>
                           <div>
-                            <Label htmlFor="discountAmount">Discount Value (AED)</Label>
+                            <Label htmlFor="discountAmount">Discount Value ({formData.currency})</Label>
                             <Input
                               id="discountAmount"
                               type="number"
@@ -1423,16 +1459,16 @@ export default function PurchaseOrdersIndex() {
                         {parseFloat(formData.discountAmount) > 0 && (
                           <div className="flex justify-between text-red-600">
                             <span>Discount:</span>
-                            <span>- AED {parseFloat(formData.discountAmount).toFixed(2)}</span>
+                            <span>- {formatCurrency(formData.discountAmount, formData.currency)}</span>
                           </div>
                         )}
                         <div className="flex justify-between font-bold border-t pt-2 text-base">
                           <span>Total Amount:</span>
-                          <span>AED {(orderItems.reduce((sum, item) => {
+                          <span>{formatCurrency((orderItems.reduce((sum, item) => {
                             const quantity = parseInt(item.quantity) || 0;
                             const unitPrice = parseFloat(item.unitPrice) || 0;
                             return sum + (quantity * unitPrice);
-                          }, 0) + calculateTotalTax() - (parseFloat(formData.discountAmount) || 0)).toFixed(2)}</span>
+                          }, 0) + calculateTotalTax() - (parseFloat(formData.discountAmount) || 0)), formData.currency)}</span>
                         </div>
                       </div>
                     </div>
@@ -1711,8 +1747,8 @@ export default function PurchaseOrdersIndex() {
                             <TableCell className="text-right">
                               {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                             </TableCell>
-                            <TableCell className="text-right">AED {item.unitPrice}</TableCell>
-                            <TableCell className="text-right font-semibold">AED {item.lineTotal}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingOrder.supplierCurrency)}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(item.lineTotal, viewingOrder.supplierCurrency)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1724,23 +1760,23 @@ export default function PurchaseOrdersIndex() {
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-medium">AED {viewingOrder.subtotal}</span>
+                        <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.supplierCurrency)}</span>
                       </div>
                       {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
                         <div className="flex justify-between items-center text-sm mt-2">
                           <span className="text-muted-foreground">Discount ({viewingOrder.discountPercentage || "0"}%)</span>
-                          <span className="font-medium text-red-600">- AED {parseFloat(viewingOrder.discountAmount || "0").toFixed(2)}</span>
+                          <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.supplierCurrency)}</span>
                         </div>
                       )}
                       <div className="flex justify-between items-center text-sm mt-2">
                         <span className="text-muted-foreground">Tax</span>
-                        <span className="font-medium">AED {viewingOrder.taxAmount}</span>
+                        <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.supplierCurrency)}</span>
                       </div>
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between items-center">
                         <span className="text-base font-semibold">Total Amount</span>
-                        <span className="text-xl font-bold text-primary">AED {viewingOrder.totalAmount}</span>
+                        <span className="text-xl font-bold text-primary">{formatCurrency(viewingOrder.totalAmount, viewingOrder.supplierCurrency)}</span>
                       </div>
                     </div>
                   </div>

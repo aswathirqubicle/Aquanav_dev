@@ -20,14 +20,14 @@ export function Navbar() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <SidebarTrigger />
-          <div className="relative max-w-sm">
+          {/* <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
             <Input
               type="search"
               placeholder="Search..."
               className="pl-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700"
             />
-          </div>
+          </div> */}
         </div>
 
         <div className="flex items-center space-x-4">

@@ -28,6 +28,7 @@ interface Supplier {
   email?: string;
   phone?: string;
   vatTreatment?: "standard" | "zero_rated" | "exempt";
+  currency?: string;
   bankAccountDetails?: SupplierBankDetails[];
 }
 interface PurchaseInvoice {
@@ -35,6 +36,9 @@ interface PurchaseInvoice {
   invoiceNumber: string;
   supplierId: number;
   supplierName: string;
+  supplierCurrency?: string;
+  currency?: string;
+  exchangeRate?: string;
   poId?: number;
   poNumber?: string;
   status: "draft" | "pending_approval" | "approved" | "rejected";
@@ -136,6 +140,8 @@ export default function PurchaseInvoicesIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
+    currency: "AED",
+    exchangeRate: "1",
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: "",
     paymentTerms: "Net 30 days",
@@ -319,6 +325,8 @@ export default function PurchaseInvoicesIndex() {
 
       const invoiceData = {
         supplierId: parseInt(formData.supplierId),
+        currency: formData.currency,
+        exchangeRate: formData.exchangeRate,
         // projectId: formData.projectId ? parseInt(formData.projectId) : null,
         // assetInventoryInstanceId: formData.assetInventoryInstanceId ? parseInt(formData.assetInventoryInstanceId) : null,
         invoiceDate: formData.invoiceDate,
@@ -364,14 +372,11 @@ export default function PurchaseInvoicesIndex() {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/submit`, {
         method: "PATCH",
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to submit invoice");
-      }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      setIsViewDialogOpen(false);
       toast({
         title: "Invoice Submitted",
         description: "Purchase invoice has been submitted for approval.",
@@ -391,10 +396,6 @@ export default function PurchaseInvoicesIndex() {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/approve`, {
         method: "PATCH",
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to approve invoice");
-      }
       return response.json();
     },
     onSuccess: () => {
@@ -420,10 +421,6 @@ export default function PurchaseInvoicesIndex() {
         method: "PATCH",
         body: { reason },
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to reject invoice");
-      }
       return response.json();
     },
     onSuccess: () => {
@@ -496,7 +493,9 @@ export default function PurchaseInvoicesIndex() {
 
   const resetForm = () => {
     setFormData({
-      supplierId: "",
+      supplierId: "",      
+      currency: "AED",
+      exchangeRate: "1",
       invoiceDate: new Date().toISOString().split('T')[0],
       dueDate: "",
       paymentTerms: "Net 30 days",
@@ -750,8 +749,9 @@ export default function PurchaseInvoicesIndex() {
     return null;
   }
 
-  const formatCurrency = (amount: number) => {
-    return `AED ${amount.toFixed(2)}`;
+  const formatCurrency = (amount: number | string, currency: string = "AED") => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return `${currency} ${num.toFixed(2)}`;
   };
 
   const getTaxRateFromVatTreatment = (
@@ -893,7 +893,7 @@ export default function PurchaseInvoicesIndex() {
               <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-900 dark:text-green-100">AED {stats.totalAmount}</div>
+              <div className="text-2xl font-bold text-green-900 dark:text-green-100">{formatCurrency(stats.totalAmount)}</div>
               <p className="text-xs text-green-600 dark:text-green-400">Approved invoices</p>
             </CardContent>
           </Card>
@@ -904,7 +904,7 @@ export default function PurchaseInvoicesIndex() {
               <TrendingUp className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">AED {stats.pendingAmount}</div>
+              <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-100">{formatCurrency(stats.pendingAmount)}</div>
               <p className="text-xs text-yellow-600 dark:text-yellow-400">Outstanding payments</p>
             </CardContent>
           </Card> */}
@@ -916,7 +916,7 @@ export default function PurchaseInvoicesIndex() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-900 dark:text-red-100">{stats.overdueCount}</div>
-              <p className="text-xs text-red-600 dark:text-red-400">AED {stats.overdueAmount} overdue</p>
+              <p className="text-xs text-red-600 dark:text-red-400">{formatCurrency(stats.overdueAmount)} overdue</p>
             </CardContent>
           </Card>
 
@@ -996,10 +996,10 @@ export default function PurchaseInvoicesIndex() {
                               <div className="text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</div>
                             </td>
                             <td className="p-4 text-right">
-                              <div className="font-semibold">AED {invoice.totalAmount}</div>
+                              <div className="font-semibold">{formatCurrency(invoice.totalAmount, invoice.supplierCurrency)}</div>
                             </td>
                             <td className="p-4 text-right">
-                              <div className="font-medium text-green-600">AED {invoice.paidAmount}</div>
+                              <div className="font-medium text-green-600">{formatCurrency(invoice.paidAmount, invoice.supplierCurrency)}</div>
                             </td>
                             <td className="p-4 text-center">
                               {getApprovalStatusBadge(invoice.status)}{" "}
@@ -1020,8 +1020,10 @@ export default function PurchaseInvoicesIndex() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => submitInvoiceMutation.mutate(invoice.id)}
-                                    disabled={submitInvoiceMutation.isPending}
+                                    onClick={() => {
+                                      setViewingInvoice(invoice);
+                                      setIsViewDialogOpen(true);
+                                    }}
                                     className="h-8 px-2"
                                     data-testid={`button-submit-invoice-${invoice.id}`}
                                   >
@@ -1099,11 +1101,11 @@ export default function PurchaseInvoicesIndex() {
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Amount:</span>
-                          <p className="font-semibold text-lg">AED {invoice.totalAmount}</p>
+                          <p className="font-semibold text-lg">{formatCurrency(invoice.totalAmount, invoice.supplierCurrency)}</p>
                         </div>
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Paid:</span>
-                          <p className="font-semibold text-green-600">AED {invoice.paidAmount}</p>
+                          <p className="font-semibold text-green-600">{formatCurrency(invoice.paidAmount, invoice.supplierCurrency)}</p>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
@@ -1121,8 +1123,10 @@ export default function PurchaseInvoicesIndex() {
                           <Button
                             variant="default"
                             size="sm"
-                            onClick={() => submitInvoiceMutation.mutate(invoice.id)}
-                            disabled={submitInvoiceMutation.isPending}
+                            onClick={() => {
+                              setViewingInvoice(invoice);
+                              setIsViewDialogOpen(true);
+                            }}
                             className="flex-1"
                             data-testid={`button-submit-invoice-${invoice.id}`}
                           >
@@ -1197,13 +1201,29 @@ export default function PurchaseInvoicesIndex() {
                         </Label>
                         <Select
                           value={formData.supplierId}
-                          onValueChange={(value) => {
+                          onValueChange={async (value) => {
                             const supplier = suppliers.find(s => s.id.toString() === value);
                             const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
+                            const currency = supplier?.currency || "AED";
+                            let exchangeRate = "1";
+
+                            if (currency !== "AED") {
+                              try {
+                                const response = await apiRequest(`/api/exchange-rates/lookup?from=${currency}`);
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  exchangeRate = data.rate || "1";
+                                }
+                              } catch (error) {
+                                console.error("Failed to lookup exchange rate:", error);
+                              }
+                            }
 
                             setFormData(prev => ({
                               ...prev,
                               supplierId: value,
+                              currency,
+                              exchangeRate,
                               bankAccount: "", // ✅ REQUIRED
                             }));
 
@@ -1352,7 +1372,7 @@ export default function PurchaseInvoicesIndex() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="discountAmount">Discount Value (AED)</Label>
+                          <Label htmlFor="discountAmount">Discount Value ({formData.currency})</Label>
                           <Input
                             id="discountAmount"
                             type="number"
@@ -1578,13 +1598,13 @@ export default function PurchaseInvoicesIndex() {
                                 <span className="font-medium">{item.quantity}</span>
                               </div>
                               <div className="col-span-2 text-right">
-                                <span className="font-medium">AED {parseFloat(item.unitPrice).toFixed(2)}</span>
+                                <span className="font-medium">{formatCurrency(item.unitPrice, formData.currency)}</span>
                               </div>
                               <div className="col-span-1 text-center">
                                 <Badge variant="outline" className="text-xs">{item.taxRate}%</Badge>
                               </div>
                               <div className="col-span-2 text-right">
-                                <span className="font-semibold text-green-600">AED {lineTotal.toFixed(2)}</span>
+                                <span className="font-semibold text-green-600">{formatCurrency(lineTotal, formData.currency)}</span>
                               </div>
                               <div className="col-span-1 flex justify-end">
                                 <Button
@@ -1616,40 +1636,45 @@ export default function PurchaseInvoicesIndex() {
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span className="font-medium">AED {invoiceItems.reduce((sum, item) => {
+                            <span className="font-medium">{formatCurrency(invoiceItems.reduce((sum, item) => {
                               const quantity = parseInt(item.quantity) || 0;
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               return sum + (quantity * unitPrice);
-                            }, 0).toFixed(2)}</span>
+                            }, 0), formData.currency)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Tax Amount:</span>
-                            <span className="font-medium">AED {invoiceItems.reduce((sum, item) => {
+                            <span className="font-medium">{formatCurrency(invoiceItems.reduce((sum, item) => {
                               const quantity = parseInt(item.quantity) || 0;
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               const taxRate = parseFloat(item.taxRate) || 0;
                               const lineSubtotal = quantity * unitPrice;
                               return sum + (lineSubtotal * taxRate / 100);
-                            }, 0).toFixed(2)}</span>
+                            }, 0), formData.currency)}</span>
                           </div>
                           {parseFloat(formData.discountAmount) > 0 && (
                             <div className="flex justify-between text-sm text-red-600">
                               <span>Discount ({formData.discountPercentage}%):</span>
-                              <span className="font-medium">- AED {parseFloat(formData.discountAmount).toFixed(2)}</span>
+                              <span className="font-medium">- {formatCurrency(formData.discountAmount, formData.currency)}</span>
                             </div>
                           )}
                           <div className="border-t pt-2">
                             <div className="flex justify-between text-lg font-bold">
                               <span>Total Amount:</span>
-                              <span className="text-green-600">AED {(invoiceItems.reduce((sum, item) => {
+                              <span className="text-green-600">{formatCurrency((invoiceItems.reduce((sum, item) => {
                                 const quantity = parseInt(item.quantity) || 0;
                                 const unitPrice = parseFloat(item.unitPrice) || 0;
                                 const taxRate = parseFloat(item.taxRate) || 0;
                                 const lineSubtotal = quantity * unitPrice;
                                 const lineTax = lineSubtotal * taxRate / 100;
                                 return sum + lineSubtotal + lineTax;
-                              }, 0) - (parseFloat(formData.discountAmount) || 0)).toFixed(2)}</span>
+                              }, 0) - (parseFloat(formData.discountAmount) || 0)), formData.currency)}</span>
                             </div>
+                            {formData.currency !== "AED" && (
+                              <div className="text-xs text-muted-foreground mt-2 text-right">
+                                Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1892,9 +1917,9 @@ export default function PurchaseInvoicesIndex() {
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
                                   {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                                 </td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.unitPrice}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">AED {item.taxAmount || "0.00"}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">AED {item.lineTotal}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatCurrency(item.unitPrice, viewingInvoice.supplierCurrency)}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatCurrency(item.taxAmount || "0.00", viewingInvoice.supplierCurrency)}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">{formatCurrency(item.lineTotal, viewingInvoice.supplierCurrency)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1913,30 +1938,35 @@ export default function PurchaseInvoicesIndex() {
                   <div className="space-y-2 sm:space-y-3">
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Subtotal:</span>
-                      <span className="text-lg font-semibold">AED {viewingInvoice.subtotal}</span>
+                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.subtotal, viewingInvoice.supplierCurrency)}</span>
                     </div>
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Tax:</span>
-                      <span className="text-lg font-semibold">AED {viewingInvoice.taxAmount}</span>
+                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.taxAmount, viewingInvoice.supplierCurrency)}</span>
                     </div>
                     {parseFloat(viewingInvoice.discountAmount || "0") > 0 && (
                       <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                         <span className="font-medium">Discount ({viewingInvoice.discountPercentage || "0"}%):</span>
-                        <span className="text-lg font-semibold text-red-600">- AED {parseFloat(viewingInvoice.discountAmount || "0").toFixed(2)}</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(viewingInvoice.discountAmount || "0", viewingInvoice.supplierCurrency)}</span>
                       </div>
                     )}
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">AED {viewingInvoice.totalAmount}</span>
+                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.currency || viewingInvoice.supplierCurrency)}</span>
                     </div>
+                    {(viewingInvoice.currency || viewingInvoice.supplierCurrency) !== "AED" && viewingInvoice.exchangeRate && (
+                      <div className="text-xs text-muted-foreground mt-2 text-right">
+                        Exchange Rate: 1 {viewingInvoice.currency || viewingInvoice.supplierCurrency} = {viewingInvoice.exchangeRate} AED
+                      </div>
+                    )}
                     <div className="flex justify-between items-center text-green-700 dark:text-green-400 print:text-green-700">
                       <span className="font-medium">Paid Amount:</span>
-                      <span className="text-lg font-semibold">AED {viewingInvoice.paidAmount}</span>
+                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.paidAmount, viewingInvoice.supplierCurrency)}</span>
                     </div>
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-red-700 dark:text-red-400 print:text-red-700">Balance Due:</span>
                       <span className="text-2xl font-bold text-red-700 dark:text-red-400 print:text-red-700">
-                        AED {(parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)).toFixed(2)}
+                        {formatCurrency((parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)), viewingInvoice.supplierCurrency)}
                       </span>
                     </div>
                   </div>
@@ -1948,7 +1978,6 @@ export default function PurchaseInvoicesIndex() {
                     <Button
                       onClick={() => {
                         submitInvoiceMutation.mutate(viewingInvoice.id);
-                        setIsViewDialogOpen(false);
                       }}
                       disabled={submitInvoiceMutation.isPending}
                       variant="default"

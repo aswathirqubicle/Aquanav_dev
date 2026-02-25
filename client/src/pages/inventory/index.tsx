@@ -32,6 +32,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { CustomPagination } from "@/components/ui/pagination";
+import { LowStockAlertsDialog } from "@/components/low-stock-alerts-dialog";
 
 const createInventoryItemSchema = insertInventoryItemSchema.extend({
   minStockLevel: z.string().transform((val) => parseInt(val)),
@@ -48,6 +49,7 @@ export default function InventoryIndex() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [isLowStockDialogOpen, setIsLowStockDialogOpen] = useState(false);
   const [viewingItem, setViewingItem] = useState<InventoryItem | null>(null);
   const [viewingSupplierMappings, setViewingSupplierMappings] = useState<any[]>(
     [],
@@ -854,7 +856,7 @@ export default function InventoryIndex() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="unitPrice" className="text-sm font-medium">Unit Price</Label>
+                <Label htmlFor="unitPrice" className="text-sm font-medium">Unit Price (in AED)</Label>
                 <Input
                   id="unitPrice"
                   type="number"
@@ -1302,7 +1304,10 @@ export default function InventoryIndex() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+          onClick={() => setIsLowStockDialogOpen(true)}
+        >
           <CardContent className="p-4 md:p-6">
             <div className="flex items-center">
               <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
@@ -1473,6 +1478,11 @@ export default function InventoryIndex() {
           />
         </div>
       )}
+
+      <LowStockAlertsDialog 
+        open={isLowStockDialogOpen} 
+        onOpenChange={setIsLowStockDialogOpen} 
+      />
     </div>
   );
 }

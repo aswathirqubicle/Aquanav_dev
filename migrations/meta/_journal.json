@@ -57,6 +57,20 @@
       "when": 1771483498095,
       "tag": "0007_chemical_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1771866761441,
+      "tag": "0008_futuristic_luckman",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1771995723380,
+      "tag": "0009_calm_dark_phoenix",
+      "breakpoints": true
     }
   ]
 }

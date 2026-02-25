@@ -3451,6 +3451,13 @@ class Storage {
         },
       );
 
+      // Handle optional unique fields - convert empty strings to null
+      ["barcode"].forEach((field) => {
+        if (cleanData[field] === "") {
+          cleanData[field] = null;
+        }
+      });
+
       // Handle assignment fields - convert "unassigned" to null
       ["assignedProjectId", "assignedToId"].forEach((field) => {
         if (cleanData[field] === "unassigned" || cleanData[field] === "") {
@@ -3524,6 +3531,13 @@ class Storage {
           }
         },
       );
+
+      // Handle optional unique fields - convert empty strings to null
+      ["barcode"].forEach((field) => {
+        if (cleanData[field] === "") {
+          cleanData[field] = null;
+        }
+      });
 
       // Handle assignment fields - convert "unassigned" to null
       ["assignedProjectId", "assignedToId"].forEach((field) => {
@@ -4897,9 +4911,22 @@ class Storage {
               updatedCreditNote.creditNoteDate || // Already a string
               new Date().toISOString().split("T")[0];
 
+            const cnCurrency = updatedCreditNote.currency || "AED";
+            const cnExchangeRate = parseFloat(
+              updatedCreditNote.exchangeRate || "1",
+            );
+            const cnOriginalAmount = parseFloat(
+              (updatedCreditNote.totalAmount as string) || "0",
+            );
+            const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+            const cnCurrencyNote =
+              cnCurrency !== "AED"
+                ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
+                : "";
+
             // Create double-entry GL records for credit note
 
-            // 1. Debit: Sales Returns and Allowances (contra-revenue account)
+            // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
             await this.createGeneralLedgerEntry({
               entryType: "receivable",
               referenceType: "credit_note",
@@ -4907,8 +4934,8 @@ class Storage {
               accountName: "Sales Returns and Allowances",
               description: `Credit Note: ${
                 updatedCreditNote.creditNoteNumber || "N/A"
-              } for Invoice: ${invoice?.invoiceNumber || "N/A"}`,
-              debitAmount: updatedCreditNote.totalAmount as string,
+              } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+              debitAmount: cnAedAmount,
               creditAmount: "0",
               entityId: customer.id,
               entityName: customer.name,
@@ -4918,7 +4945,7 @@ class Storage {
               status: "issued",
             });
 
-            // 2. Credit: Accounts Receivable (reduce what customer owes)
+            // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
             await this.createGeneralLedgerEntry({
               entryType: "receivable",
               referenceType: "credit_note",
@@ -4926,9 +4953,9 @@ class Storage {
               accountName: "Accounts Receivable",
               description: `Credit Note: ${
                 updatedCreditNote.creditNoteNumber || "N/A"
-              } for Invoice: ${invoice?.invoiceNumber || "N/A"}`,
+              } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
               debitAmount: "0",
-              creditAmount: updatedCreditNote.totalAmount as string,
+              creditAmount: cnAedAmount,
               entityId: customer.id,
               entityName: customer.name,
               projectId: invoice?.projectId || undefined,
@@ -5143,9 +5170,18 @@ class Storage {
         }`,
       );
 
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(payment.amount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
       // Create double-entry accounting records for payment
 
-      // 1. Debit: Cash/Bank (increase asset - cash received)
+      // 1. Debit: Cash/Bank (increase asset - cash received) in AED
       try {
         const debitEntry = await this.createGeneralLedgerEntry({
           entryType: "receivable",
@@ -5154,8 +5190,8 @@ class Storage {
           accountName: "Cash/Bank",
           description: `Payment received for Invoice: ${
             invoice.invoiceNumber || "N/A"
-          }`,
-          debitAmount: payment.amount,
+          }${currencyNote}`,
+          debitAmount: aedAmount,
           creditAmount: "0",
           entityId: invoice.customerId,
           entityName: customer?.name || "Unknown Customer",
@@ -5181,7 +5217,7 @@ class Storage {
         );
       }
 
-      // 2. Credit: Accounts Receivable (reduce asset - customer no longer owes this amount)
+      // 2. Credit: Accounts Receivable (reduce asset - customer no longer owes this amount) in AED
       try {
         const creditEntry = await this.createGeneralLedgerEntry({
           entryType: "receivable",
@@ -5190,9 +5226,9 @@ class Storage {
           accountName: "Accounts Receivable",
           description: `Payment received for Invoice: ${
             invoice.invoiceNumber || "N/A"
-          }`,
+          }${currencyNote}`,
           debitAmount: "0",
-          creditAmount: payment.amount,
+          creditAmount: aedAmount,
           entityId: invoice.customerId,
           entityName: customer?.name || "Unknown Customer",
           projectId: invoice.projectId || undefined,
@@ -8071,6 +8107,10 @@ class Storage {
           totalAmount: purchaseOrders.totalAmount,
           notes: purchaseOrders.notes,
           createdAt: purchaseOrders.createdAt,
+          currency: purchaseOrders.currency,
+          exchangeRate: purchaseOrders.exchangeRate,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
         })
         .from(purchaseOrders)
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
@@ -8124,6 +8164,8 @@ class Storage {
           totalAmount: purchaseOrders.totalAmount,
           notes: purchaseOrders.notes,
           createdAt: purchaseOrders.createdAt,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
         })
         .from(purchaseOrders)
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
@@ -8213,6 +8255,8 @@ class Storage {
           taxAmount: orderData.taxAmount || "0",
           totalAmount: orderData.totalAmount || "0",
           notes: orderData.notes || null,
+          currency: orderData.currency || "AED",
+          exchangeRate: orderData.exchangeRate || "1",
         })
         .returning();
 
@@ -8590,6 +8634,8 @@ class Storage {
           rejectionReason: purchaseInvoices.rejectionReason,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id));
@@ -8663,6 +8709,8 @@ class Storage {
           rejectionReason: purchaseInvoices.rejectionReason,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
@@ -8705,6 +8753,10 @@ class Storage {
           createdAt: purchaseInvoices.createdAt,
           approvedBy: purchaseInvoices.approvedById,
           approvedAt: purchaseInvoices.approvedAt,
+          currency: purchaseInvoices.currency,
+          exchangeRate: purchaseInvoices.exchangeRate,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
@@ -8771,6 +8823,8 @@ class Storage {
           taxAmount: invoiceData.taxAmount || "0",
           totalAmount: invoiceData.totalAmount,
           paidAmount: "0",
+          currency: invoiceData.currency || "AED",
+          exchangeRate: invoiceData.exchangeRate || "1",
           notes: invoiceData.notes || null,
           createdBy: invoiceData.createdBy,
         })
@@ -8836,6 +8890,8 @@ class Storage {
           taxAmount: po.taxAmount,
           totalAmount: po.totalAmount,
           paidAmount: "0",
+          currency: po.currency || "AED",
+          exchangeRate: po.exchangeRate || "1",
           notes: invoiceData.notes || null,
           createdBy: invoiceData.createdBy,
         })
@@ -8941,6 +8997,7 @@ class Storage {
     try {
       // Get the invoice details first
       const invoice = await this.getPurchaseInvoice(id);
+      console.log("invoiceinvoice",invoice);
       if (!invoice) {
         throw new Error("Purchase invoice not found");
       }
@@ -8997,6 +9054,25 @@ class Storage {
         }
       }
 
+      // Create Goods Receipt for inventory items in the purchase invoice
+      const inventoryItems_forGR = items.filter(
+        (item) => item.itemType === "product" && item.inventoryItemId
+      );
+
+      if (inventoryItems_forGR.length > 0) {
+        const grReference = `PI-${invoice.invoiceNumber}`;
+        const grItems = inventoryItems_forGR.map((item) => ({
+          inventoryItemId: item.inventoryItemId!,
+          quantity: item.quantity,
+          unitCost: parseFloat(item.unitPrice),
+        }));
+
+        await this.createGoodsReceipt(grReference, grItems, userId);
+        console.log(
+          `Goods receipt ${grReference} created for purchase invoice ${invoice.invoiceNumber} with ${grItems.length} item(s)`,
+        );
+      }
+
       // Create General Ledger entries for the approved purchase invoice
       // Get supplier name
       let supplierName = "Unknown Supplier";
@@ -9010,15 +9086,24 @@ class Storage {
         }
       }
 
-      // Create payable entry (Credit Accounts Payable)
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(invoice.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+console.log("invoiceExchangeRate111",invoiceExchangeRate);
+      // Create payable entry (Credit Accounts Payable) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
         referenceType: "purchase_invoice",
         referenceId: id,
         accountName: "Accounts Payable",
-        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         debitAmount: "0",
-        creditAmount: invoice.totalAmount || "0",
+        creditAmount: aedAmount,
         entityId: invoice.supplierId,
         entityName: supplierName,
         projectId: invoice.projectId || null,
@@ -9027,15 +9112,15 @@ class Storage {
         dueDate: invoice.dueDate.toISOString(),
         status: "pending",
       });
-
-      // Create expense entry (Debit Purchase Expense)
+      console.log("invoiceExchangeRate",invoiceExchangeRate);
+      // Create expense entry (Debit Purchase Expense) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
         referenceType: "purchase_invoice",
         referenceId: id,
         accountName: "Purchase Expense",
-        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
-        debitAmount: invoice.totalAmount || "0",
+        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
+        debitAmount: aedAmount,
         creditAmount: "0",
         entityId: invoice.supplierId,
         entityName: supplierName,
@@ -9148,14 +9233,23 @@ class Storage {
         }
       }
 
-      // 1. Debit: Accounts Payable (reduce liability - we owe less)
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(paymentData.amount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      // 1. Debit: Accounts Payable (reduce liability - we owe less) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
         referenceType: "purchase_payment",
         referenceId: payment.id,
         accountName: "Accounts Payable",
-        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
-        debitAmount: paymentData.amount,
+        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
+        debitAmount: aedAmount,
         creditAmount: "0",
         entityId: invoice.supplierId,
         entityName: supplierName,
@@ -9165,15 +9259,15 @@ class Storage {
         status: "paid",
       });
 
-      // 2. Credit: Cash/Bank (reduce asset - cash outflow)
+      // 2. Credit: Cash/Bank (reduce asset - cash outflow) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
         referenceType: "purchase_payment",
         referenceId: payment.id,
         accountName: "Cash/Bank",
-        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}`,
+        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         debitAmount: "0",
-        creditAmount: paymentData.amount,
+        creditAmount: aedAmount,
         entityId: invoice.supplierId,
         entityName: supplierName,
         projectId: invoice.projectId || null,
@@ -12004,6 +12098,57 @@ class Storage {
     }
     return "1";
   }
+
+  async getEmployeeFeedback(employeeId: number): Promise<any[]> {
+    const results = await db
+      .select({
+        id: employeeFeedback.id,
+        employeeId: employeeFeedback.employeeId,
+        projectId: employeeFeedback.projectId,
+        feedback: employeeFeedback.feedback,
+        createdById: employeeFeedback.createdById,
+        createdAt: employeeFeedback.createdAt,
+        updatedAt: employeeFeedback.updatedAt,
+        createdByUsername: users.username,
+        projectTitle: projects.title,
+      })
+      .from(employeeFeedback)
+      .leftJoin(users, eq(employeeFeedback.createdById, users.id))
+      .leftJoin(projects, eq(employeeFeedback.projectId, projects.id))
+      .where(eq(employeeFeedback.employeeId, employeeId))
+      .orderBy(desc(employeeFeedback.createdAt));
+    return results;
+  }
+
+  async createEmployeeFeedback(data: InsertEmployeeFeedback): Promise<EmployeeFeedback> {
+    const [result] = await db.insert(employeeFeedback).values(data).returning();
+    return result;
+  }
+
+  async updateEmployeeFeedback(id: number, data: { feedback: string; projectId: number | null }): Promise<EmployeeFeedback | undefined> {
+    const [result] = await db
+      .update(employeeFeedback)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(employeeFeedback.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteEmployeeFeedback(id: number): Promise<boolean> {
+    const result = await db
+      .delete(employeeFeedback)
+      .where(eq(employeeFeedback.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined> {
+    const [result] = await db
+      .select()
+      .from(employeeFeedback)
+      .where(eq(employeeFeedback.id, id));
+    return result;
+  }
 }
 
 export interface IStorage {
@@ -12496,6 +12641,13 @@ export interface IStorage {
     data: Partial<InsertExchangeRate>,
   ): Promise<ExchangeRate | undefined>;
   deleteExchangeRate(id: number): Promise<boolean>;
+
+  // Employee Feedback methods
+  getEmployeeFeedback(employeeId: number): Promise<any[]>;
+  createEmployeeFeedback(data: InsertEmployeeFeedback): Promise<EmployeeFeedback>;
+  updateEmployeeFeedback(id: number, data: { feedback: string; projectId: number | null }): Promise<EmployeeFeedback | undefined>;
+  deleteEmployeeFeedback(id: number): Promise<boolean>;
+  getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined>;
 }
 
 import {
@@ -12509,6 +12661,9 @@ import {
   type InsertPurchaseOrder,
   type InsertPurchaseOrderItem,
   type InsertPurchaseInvoice,
+  employeeFeedback,
+  type EmployeeFeedback,
+  type InsertEmployeeFeedback,
 } from "@shared/schema";
 
 export const storage: IStorage = new Storage();
