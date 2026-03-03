@@ -149,15 +149,28 @@ const navigation: NavItem[] = [
   },
   {
     title: "Payroll",
-    href: "/payroll",
     icon: DollarSign,
-    roles: ["admin", "finance"],
-  },
-  {
-    title: "Reimbursements",
-    href: "/reimbursements",
-    icon: Receipt,
-    roles: ["admin", "finance", "project_manager", "employee", "customer"],
+    roles: ["admin", "project_manager", "finance", "employee"],
+    subItems: [
+      {
+        title: "Payroll",
+        href: "/payroll",
+        icon: DollarSign,
+        roles: ["admin", "finance"],
+      },
+      {
+        title: "My Payslips",
+        href: "/my-payslips",
+        icon: FileText,
+        roles: ["admin", "finance", "project_manager", "employee"],
+      },
+      {
+        title: "Reimbursements",
+        href: "/reimbursements",
+        icon: Receipt,
+        roles: ["admin", "finance", "project_manager", "employee", "customer"],
+      },
+    ],
   },
   {
     title: "Goods Receipt",
@@ -268,6 +281,7 @@ const sections = [
     items: [
       "Sales",
       "Payroll",
+      "My Payslips",
       "Reimbursements",
       "Purchase",
       "Goods Receipt",

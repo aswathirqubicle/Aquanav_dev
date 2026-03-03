@@ -5555,6 +5555,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/my-payslips", requireAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeByUserId(req.session.userId!);
+      if (!employee) {
+        return res.json([]);
+      }
+
+      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+
+      const entries = await storage.getPayrollEntries(month, year, employee.id);
+      const paidEntries = entries.filter((e: any) => e.status === "paid");
+      res.json(paidEntries);
+    } catch (error) {
+      console.error("Get my payslips error:", error);
+      res.json([]);
+    }
+  });
+
+  app.get("/api/my-payslips/:id/additions", requireAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeByUserId(req.session.userId!);
+      if (!employee) {
+        return res.status(403).json({ message: "No employee record found" });
+      }
+      const payrollId = parseInt(req.params.id);
+      const entry = await storage.getPayrollEntry(payrollId);
+      if (!entry || entry.employeeId !== employee.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const additions = await storage.getPayrollAdditions(payrollId);
+      res.json(additions);
+    } catch (error) {
+      console.error("Get my payslip additions error:", error);
+      res.status(500).json({ message: "Failed to get additions" });
+    }
+  });
+
+  app.get("/api/my-payslips/:id/deductions", requireAuth, async (req, res) => {
+    try {
+      const employee = await storage.getEmployeeByUserId(req.session.userId!);
+      if (!employee) {
+        return res.status(403).json({ message: "No employee record found" });
+      }
+      const payrollId = parseInt(req.params.id);
+      const entry = await storage.getPayrollEntry(payrollId);
+      if (!entry || entry.employeeId !== employee.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const deductions = await storage.getPayrollDeductions(payrollId);
+      res.json(deductions);
+    } catch (error) {
+      console.error("Get my payslip deductions error:", error);
+      res.status(500).json({ message: "Failed to get deductions" });
+    }
+  });
+
   // Payroll routes
   app.get(
     "/api/payroll",
@@ -7684,16 +7741,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { items, ...requestData } = req.body;
 
       // Get employee ID from current user (use user ID directly if no employee record)
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
+      // const user = await storage.getUser(req.session.userId!);
+      // if (!user) {
+      //   return res.status(401).json({ message: "User not found" });
+      // }
 
-      const employees = await storage.getEmployees();
-      const employee = employees.find((emp) => emp.userId === user.id);
+      const requestedBy = req.session.userId;
+
+      // const employees = await storage.getEmployees();
+      // const employee = employees.find((emp) => emp.userId === user.id);
 
       // Use employee ID if found, otherwise use user ID directly
-      const requestedBy = employee ? employee.id : user.id;
+      // const requestedBy = employee ? employee.id : user.id;
+
+       if (!requestedBy) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
 
       // Validate items
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -7742,13 +7805,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const id = parseInt(req.params.id);
 
         // Get employee ID from current user
-        const user = await storage.getUser(req.session.userId!);
-        if (!user) {
-          return res.status(401).json({ message: "User not found" });
-        }
+        // const user = await storage.getUser(req.session.userId!);
+        // if (!user) {
+        //   return res.status(401).json({ message: "User not found" });
+        // }
 
-        const employees = await storage.getEmployees();
-        const employee = employees.find((emp) => emp.userId === user.id);
+        // const employees = await storage.getEmployees();
+        // const employee = employees.find((emp) => emp.userId === user.id);
+
+         // Get userId from session
+        const approvedBy = req.session.userId;
 
         // if (!employee) {
         //   return res
@@ -7756,10 +7822,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         //     .json({ message: "Employee record not found for current user" });
         // }
 
+        if (!approvedBy) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+
         const request = await storage.updatePurchaseRequest(id, {
           status: "approved",
           // approvedBy: employee.id,
-          approvedBy: employee ? employee.id : user.id,
+          // approvedBy: employee ? employee.id : user.id,
+          approvedBy: approvedBy,
           approvalDate: new Date(),
         });
 
@@ -7786,13 +7857,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const id = parseInt(req.params.id);
 
         // Get employee ID from current user
-        const user = await storage.getUser(req.session.userId!);
-        if (!user) {
-          return res.status(401).json({ message: "User not found" });
-        }
+        // const user = await storage.getUser(req.session.userId!);
+        // if (!user) {
+        //   return res.status(401).json({ message: "User not found" });
+        // }
 
-        const employees = await storage.getEmployees();
-        const employee = employees.find((emp) => emp.userId === user.id);
+        // const employees = await storage.getEmployees();
+        // const employee = employees.find((emp) => emp.userId === user.id);
+
+         // Get userId from session
+        const rejectedBy = req.session.userId;
 
         // if (!employee) {
         //   return res
@@ -7800,10 +7874,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         //     .json({ message: "Employee record not found for current user" });
         // }
 
+        if (!rejectedBy) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+
         const request = await storage.updatePurchaseRequest(id, {
           status: "rejected",
           // approvedBy: employee.id,
-          approvedBy: employee ? employee.id : user.id,
+          // approvedBy: employee ? employee.id : user.id,
+          approvedBy: rejectedBy,
           approvalDate: new Date(),
         });
 

@@ -631,10 +631,10 @@ function ProjectManagerDashboard() {
                       <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{project.title}</p>
                       <p className="text-sm text-slate-500 dark:text-slate-400">{project.vesselName}</p>
                     </div>
-                    <div className="text-right ml-4">
+                    {/* <div className="text-right ml-4">
                       <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{formatCurrency(project.actualCost || "0")}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">of {formatCurrency(project.estimatedBudget || "0")}</p>
-                    </div>
+                    </div> */}
                   </div>
                 ))}
               </div>
@@ -643,7 +643,7 @@ function ProjectManagerDashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/projects")}>
           <FolderOpen className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
           <span className="text-sm">All Projects</span>
@@ -659,6 +659,10 @@ function ProjectManagerDashboard() {
         <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/reimbursements")}>
           <Wallet className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
           <span className="text-sm">Reimbursements</span>
+        </Button>
+        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/my-payslips")}>
+          <FileText className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
+          <span className="text-sm">My Payslips</span>
         </Button>
       </div>
     </div>
@@ -844,7 +848,7 @@ function EmployeeDashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/projects")}>
           <FolderOpen className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
           <span className="text-sm">View Projects</span>
@@ -852,6 +856,10 @@ function EmployeeDashboard() {
         <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/reimbursements")}>
           <Wallet className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
           <span className="text-sm">Reimbursements</span>
+        </Button>
+        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/my-payslips")}>
+          <FileText className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
+          <span className="text-sm">My Payslips</span>
         </Button>
       </div>
     </div>

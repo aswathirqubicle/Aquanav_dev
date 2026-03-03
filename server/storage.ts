@@ -8052,8 +8052,11 @@ class Storage {
     userRole?: string,
   ): Promise<any[]> {
     try {
+      const requester = alias(users, "requester");
       const approver = alias(users, "approver");
       // const approver = alias(employees, "approver");
+      const requesterEmp = alias(employees, "requesterEmp");
+      const approverEmp = alias(employees, "approverEmp");
 
       const conditions = [];
       if (
@@ -8071,21 +8074,27 @@ class Storage {
           requestNumber: purchaseRequests.requestNumber,
           requestedBy: purchaseRequests.requestedBy,
           // requestedByName: sql<string>`COALESCE(CONCAT(employees.first_name, ' ', employees.last_name), 'Unknown')`,
-          requestedByName: sql<string>`COALESCE(users.username, '')`,
+          // requestedByName: sql<string>`COALESCE(users.username, '')`,
+          requestedByName: sql<string>`COALESCE(NULLIF(CONCAT(${requesterEmp.firstName}, ' ', ${requesterEmp.lastName}), ' '), ${requester.username}, 'Unknown')`,
           status: purchaseRequests.status,
           urgency: purchaseRequests.urgency,
           reason: purchaseRequests.reason,
           requestDate: purchaseRequests.requestDate,
           approvedBy: purchaseRequests.approvedBy,
           // approvedByName: sql<string>`COALESCE(CONCAT(approver.first_name, ' ', approver.last_name), '')`,
-          approvedByName: sql<string>`COALESCE(CONCAT(approver.username), '')`,
+          // approvedByName: sql<string>`COALESCE(CONCAT(approver.username), '')`,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvalDate: purchaseRequests.approvalDate,
         })
         .from(purchaseRequests)
         // .leftJoin(employees, eq(purchaseRequests.requestedBy, employees.id))
         // .leftJoin(approver, eq(purchaseRequests.approvedBy, employees.id))
-        .leftJoin(users, eq(purchaseRequests.requestedBy, users.id))
+        // .leftJoin(users, eq(purchaseRequests.requestedBy, users.id))
+
+        .leftJoin(requester, eq(purchaseRequests.requestedBy, requester.id))
+        .leftJoin(requesterEmp, eq(requester.id, requesterEmp.userId))
         .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(purchaseRequests.requestDate));
 
@@ -8132,25 +8141,35 @@ class Storage {
 
   async getPurchaseRequest(id: number): Promise<any> {
     try {
-      const emp = alias(employees, "emp");
-      const approver = alias(employees, "approver");
+      // const emp = alias(employees, "emp");
+      // const approver = alias(employees, "approver");
+      const requester = alias(users, "requester");
+      const approver = alias(users, "approver");
+      const requesterEmp = alias(employees, "requesterEmp");
+      const approverEmp = alias(employees, "approverEmp");
+
       const [request] = await db
         .select({
           id: purchaseRequests.id,
           requestNumber: purchaseRequests.requestNumber,
           requestedBy: purchaseRequests.requestedBy,
-          requestedByName: sql<string>`COALESCE(CONCAT(emp.first_name, ' ', emp.last_name), 'Unknown')`,
+          // requestedByName: sql<string>`COALESCE(CONCAT(emp.first_name, ' ', emp.last_name), 'Unknown')`,
+          requestedByName: sql<string>`COALESCE(NULLIF(CONCAT(${requesterEmp.firstName}, ' ', ${requesterEmp.lastName}), ' '), ${requester.username}, 'Unknown')`,
           status: purchaseRequests.status,
           urgency: purchaseRequests.urgency,
           reason: purchaseRequests.reason,
           requestDate: purchaseRequests.requestDate,
           approvedBy: purchaseRequests.approvedBy,
-          approvedByName: sql<string>`COALESCE(CONCAT(approver.first_name, ' ', approver.last_name), '')`,
+          // approvedByName: sql<string>`COALESCE(CONCAT(approver.first_name, ' ', approver.last_name), '')`,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvalDate: purchaseRequests.approvalDate,
         })
         .from(purchaseRequests)
-        .leftJoin(emp, eq(purchaseRequests.requestedBy, emp.id))
+        // .leftJoin(emp, eq(purchaseRequests.requestedBy, emp.id))
+        .leftJoin(requester, eq(purchaseRequests.requestedBy, requester.id))
+        .leftJoin(requesterEmp, eq(requester.id, requesterEmp.userId))
         .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
         .where(eq(purchaseRequests.id, id));
 
       if (!request) return null;

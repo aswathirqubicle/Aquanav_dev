@@ -52,6 +52,7 @@ const PurchaseInvoicesIndex = lazy(() => import("./pages/purchase-invoices/index
 const CustomersIndex = lazy(() => import("./pages/customers/index"));
 const AssetInventoryIndex = lazy(() => import("./pages/asset-inventory/index"));
 const ReimbursementsIndex = lazy(() => import("./pages/reimbursements/index"));
+const MyPayslips = lazy(() => import("./pages/my-payslips"));
 
 
 function Router() {
@@ -90,6 +91,7 @@ function Router() {
               <Route path="/error-logs" component={lazy(() => import("@/pages/error-logs"))} />
               <Route path="/payroll" component={PayrollIndex} />
               <Route path="/reimbursements" component={ReimbursementsIndex} />
+              <Route path="/my-payslips" component={MyPayslips} />
               <Route path="/customers" component={CustomersIndex} />
               <Route path="/suppliers" component={SuppliersIndex} />
               <Route path="/suppliers/:id/orders" component={SupplierOrders} />

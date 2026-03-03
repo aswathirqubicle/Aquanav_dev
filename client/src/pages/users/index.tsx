@@ -29,6 +29,7 @@ export default function UsersIndex() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithoutPassword | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [formData, setFormData] = useState<CreateUserData>({
     username: "",
@@ -174,8 +175,8 @@ export default function UsersIndex() {
       isActive: true,
       employeeId: "",
     });
-    setIsDialogOpen(false);
     setEditingUser(null);
+    setIsDialogOpen(false);
   };
 
   // Find employee linked to a user
@@ -257,6 +258,23 @@ export default function UsersIndex() {
     // customer: "Customer",
   };
 
+  const filteredUsers = users?.filter((u) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const roleName = roleDisplayNames[u.role]?.toLowerCase() || u.role.toLowerCase();
+    const linkedEmp = employees.find(e => e.userId === u.id);
+    const empName = linkedEmp ? `${linkedEmp.firstName} ${linkedEmp.lastName}`.toLowerCase() : "";
+    const empCode = linkedEmp?.employeeCode?.toLowerCase() || "";
+    return (
+      u.username.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      u.role.toLowerCase().includes(q) ||
+      roleName.includes(q) ||
+      empName.includes(q) ||
+      empCode.includes(q)
+    );
+  });
+
   return (
     <div className="p-3 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
@@ -264,9 +282,32 @@ export default function UsersIndex() {
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">User Management</h1>
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400">Manage user accounts and access permissions</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setEditingUser(null);
+            setFormData({
+              username: "",
+              email: "",
+              password: "",
+              role: "employee",
+              isActive: true,
+              employeeId: "",
+            });
+          }
+        }}>
           <DialogTrigger asChild>
-            <Button onClick={() => setEditingUser(null)}>
+            <Button onClick={() => {
+              setEditingUser(null);
+              setFormData({
+                username: "",
+                email: "",
+                password: "",
+                role: "employee",
+                isActive: true,
+                employeeId: "",
+              });
+            }}>
               <Plus className="h-4 w-4 mr-2" />
               Add User
             </Button>
@@ -452,6 +493,20 @@ export default function UsersIndex() {
         </Card>
       </div>
 
+      {users && users.length > 0 && (
+        <div className="mb-4 sm:mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Search by username, email, role, employee name or code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="text-center py-12">
           <p className="text-slate-500 dark:text-slate-400">Loading users...</p>
@@ -472,7 +527,18 @@ export default function UsersIndex() {
         </Card>
       ) : (
         <div className="grid gap-3 sm:gap-6">
-          {users.map((userItem) => (
+          {filteredUsers && filteredUsers.length === 0 && searchQuery.trim() && (
+            <Card>
+              <CardContent className="text-center py-12">
+                <Search className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">No matching users</h3>
+                <p className="text-slate-500 dark:text-slate-400">
+                  No users match "{searchQuery}". Try a different search term.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {filteredUsers?.map((userItem) => (
             <Card key={userItem.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-3 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
@@ -507,6 +573,14 @@ export default function UsersIndex() {
                             {userItem.email}
                           </span>
                         </div>
+                        {getLinkedEmployee(userItem.id) && (
+                          <div className="flex items-center space-x-1 min-w-0">
+                            <Briefcase className="h-3 w-3 sm:h-4 sm:w-4 text-slate-400 flex-shrink-0" />
+                            <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 truncate">
+                              {getLinkedEmployee(userItem.id)?.firstName} {getLinkedEmployee(userItem.id)?.lastName} ({getLinkedEmployee(userItem.id)?.employeeCode})
+                            </span>
+                          </div>
+                        )}
                         <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
                           ID: {userItem.id}
                         </span>

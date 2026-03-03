@@ -17,7 +17,7 @@ import { Autocomplete } from "@/components/ui/autocomplete";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Employee, EmployeeNextOfKin, EmployeeTrainingRecord, EmployeeDocument, insertEmployeeSchema, insertEmployeeNextOfKinSchema, insertEmployeeTrainingRecordSchema, insertEmployeeDocumentSchema, type EmployeeFeedback } from "@shared/schema";
+import { Employee, EmployeeNextOfKin, EmployeeTrainingRecord, EmployeeDocument, insertEmployeeSchema, insertEmployeeNextOfKinSchema, insertEmployeeTrainingRecordSchema, insertEmployeeDocumentSchema, type EmployeeFeedback, type User as UserType } from "@shared/schema";
 import { z } from "zod";
 
 const createEmployeeSchema = insertEmployeeSchema.extend({
@@ -547,6 +547,11 @@ export default function EmployeesIndex() {
   const { data: expiringDocuments } = useQuery<ExpiringDocument>({
     queryKey: ["/api/employees/expiring-documents"],
     enabled: isAuthenticated && (user?.role === "admin" || user?.role === "project_manager"),
+  });
+
+  const { data: allUsers } = useQuery<Omit<UserType, "password">[]>({
+    queryKey: ["/api/users"],
+    enabled: isAuthenticated && user?.role === "admin",
   });
 
   const filteredEmployees = employees?.filter((emp) => {
@@ -1914,6 +1919,24 @@ export default function EmployeesIndex() {
                         <Label className="text-sm font-medium text-gray-600">Employee Code</Label>
                         <p className="font-semibold">{selectedEmployee.employeeCode}</p>
                       </div>
+                      {allUsers && (() => {
+                        const linkedUser = allUsers.find(u => u.id === selectedEmployee.userId);
+                        return linkedUser ? (
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Linked User Account</Label>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <User className="h-4 w-4 text-ocean-500" />
+                              <p className="font-semibold">{linkedUser.username}</p>
+                              <Badge className="text-xs" variant="outline">{linkedUser.role}</Badge>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Linked User Account</Label>
+                            <p className="text-sm text-slate-400 italic">No user account linked</p>
+                          </div>
+                        );
+                      })()}
                       <div>
                         <Label className="text-sm font-medium text-gray-600">Category</Label>
                         <p className="font-semibold">{selectedEmployee.category}</p>
