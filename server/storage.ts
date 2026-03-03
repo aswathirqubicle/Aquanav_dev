@@ -54,6 +54,7 @@ import {
   purchaseInvoiceItems,
   purchaseCreditNotes,
   purchaseInvoicePayments,
+  purchasePaymentFiles,
   errorLogs,
   invoicePayments,
   projectAssetAssignments,
@@ -2398,7 +2399,9 @@ class Storage {
 
       if (assignments.length === 0) return [];
 
-      const projectIds = assignments.map((a) => a.projectId).filter((id): id is number => id !== null);
+      const projectIds = assignments
+        .map((a) => a.projectId)
+        .filter((id): id is number => id !== null);
       if (projectIds.length === 0) return [];
 
       return await db
@@ -9819,21 +9822,56 @@ class Storage {
 
   async getPurchaseInvoicePayments(invoiceId: number): Promise<any[]> {
     try {
+      if (!invoiceId || isNaN(invoiceId)) {
+        console.error(`Invalid invoiceId provided to getPurchaseInvoicePayments: ${invoiceId}`);
+        return [];
+      }
+
       const payments = await db
         .select({
           id: purchaseInvoicePayments.id,
+          invoiceId: purchaseInvoicePayments.invoiceId,
           amount: purchaseInvoicePayments.amount,
           paymentDate: purchaseInvoicePayments.paymentDate,
           paymentMethod: purchaseInvoicePayments.paymentMethod,
           referenceNumber: purchaseInvoicePayments.referenceNumber,
           notes: purchaseInvoicePayments.notes,
+          recordedBy: purchaseInvoicePayments.recordedBy,
           recordedAt: purchaseInvoicePayments.recordedAt,
         })
         .from(purchaseInvoicePayments)
         .where(eq(purchaseInvoicePayments.invoiceId, invoiceId))
         .orderBy(desc(purchaseInvoicePayments.paymentDate));
 
-      return payments;
+      // Fetch files for each payment
+      const enrichedPayments = await Promise.all(
+        payments.map(async (payment) => {
+          try {
+            const files = await db
+              .select({
+                id: purchasePaymentFiles.id,
+                paymentId: purchasePaymentFiles.paymentId,
+                fileName: purchasePaymentFiles.fileName,
+                originalName: purchasePaymentFiles.originalName,
+                filePath: purchasePaymentFiles.filePath,
+                fileSize: purchasePaymentFiles.fileSize,
+                mimeType: purchasePaymentFiles.mimeType,
+                uploadedAt: purchasePaymentFiles.uploadedAt,
+              })
+              .from(purchasePaymentFiles)
+              .where(eq(purchasePaymentFiles.paymentId, payment.id));
+            return { ...payment, files };
+          } catch (fileError) {
+            console.error(
+              `Error fetching files for payment ${payment.id}:`,
+              fileError,
+            );
+            return { ...payment, files: [] };
+          }
+        }),
+      );
+
+      return enrichedPayments;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -9849,15 +9887,18 @@ class Storage {
 
   async createPurchasePaymentFile(fileData: any): Promise<any> {
     try {
-      // This would be implemented similar to sales payment files
-      // For now, return a basic structure
-      const newFile = {
-        // Added variable to hold the created file data
-        id: Date.now(),
-        ...fileData,
-        uploadedAt: new Date(),
-      };
-      return newFile; // Return the created file data
+      const result = await db
+        .insert(purchasePaymentFiles)
+        .values({
+          paymentId: fileData.paymentId,
+          fileName: fileData.fileName,
+          originalName: fileData.originalName,
+          filePath: fileData.filePath,
+          fileSize: fileData.fileSize || null,
+          mimeType: fileData.mimeType || null,
+        })
+        .returning();
+      return result[0];
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -9865,6 +9906,36 @@ class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createPurchasePaymentFile",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPurchasePaymentFile(id: number): Promise<any | undefined> {
+    try {
+      const result = await db
+        .select({
+          id: purchasePaymentFiles.id,
+          paymentId: purchasePaymentFiles.paymentId,
+          fileName: purchasePaymentFiles.fileName,
+          originalName: purchasePaymentFiles.originalName,
+          filePath: purchasePaymentFiles.filePath,
+          fileSize: purchasePaymentFiles.fileSize,
+          mimeType: purchasePaymentFiles.mimeType,
+          uploadedAt: purchasePaymentFiles.uploadedAt,
+        })
+        .from(purchasePaymentFiles)
+        .where(eq(purchasePaymentFiles.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getPurchasePaymentFile (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchasePaymentFile",
         severity: "error",
       });
       throw error;
@@ -9913,8 +9984,14 @@ class Storage {
                 inventoryItemId: projectConsumableItems.inventoryItemId,
                 quantity: projectConsumableItems.quantity,
                 unitCost: projectConsumableItems.unitCost,
-                itemName: sql<string>`COALESCE(${inventoryItems.name}, ${projectConsumableItems.itemName})`.as("item_name"),
-                itemUnit: sql<string>`COALESCE(${inventoryItems.unit}, ${projectConsumableItems.itemUnit})`.as("item_unit"),
+                itemName:
+                  sql<string>`COALESCE(${inventoryItems.name}, ${projectConsumableItems.itemName})`.as(
+                    "item_name",
+                  ),
+                itemUnit:
+                  sql<string>`COALESCE(${inventoryItems.unit}, ${projectConsumableItems.itemUnit})`.as(
+                    "item_unit",
+                  ),
               })
               .from(projectConsumableItems)
               .leftJoin(
@@ -9975,7 +10052,9 @@ class Storage {
       for (const item of items) {
         if (item.inventoryItemId) {
           // Inventory item - deduct from stock
-          const inventoryItem = await this.getInventoryItem(item.inventoryItemId);
+          const inventoryItem = await this.getInventoryItem(
+            item.inventoryItemId,
+          );
           if (!inventoryItem) {
             throw new Error(
               `Inventory item with ID ${item.inventoryItemId} not found`,
@@ -13160,6 +13239,10 @@ export interface IStorage {
     overrides: any,
   ): Promise<any>;
   getPurchaseInvoices(): Promise<any[]>;
+  getPurchaseInvoicePayments(invoiceId: number): Promise<any[]>;
+  getPurchasePaymentFile(id: number): Promise<any | undefined>;
+  createPurchasePaymentFile(fileData: any): Promise<any>;
+  getPurchaseInvoice(id: number): Promise<any>;
   updatePurchaseInvoice(id: number, invoiceData: any): Promise<any>;
   createPurchaseInvoiceFromPO(poId: number, invoiceData: any): Promise<any>;
 
@@ -13224,21 +13307,5 @@ export interface IStorage {
   deleteEmployeeFeedback(id: number): Promise<boolean>;
   getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined>;
 }
-
-import {
-  invoicePayments,
-  type InsertInvoicePayment,
-  type PurchaseRequest,
-  type InsertPurchaseRequest,
-  purchaseOrders,
-  purchaseOrderItems,
-  purchaseInvoices,
-  type InsertPurchaseOrder,
-  type InsertPurchaseOrderItem,
-  type InsertPurchaseInvoice,
-  employeeFeedback,
-  type EmployeeFeedback,
-  type InsertEmployeeFeedback,
-} from "@shared/schema";
 
 export const storage: IStorage = new Storage();

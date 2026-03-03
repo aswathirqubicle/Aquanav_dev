@@ -131,6 +131,7 @@ export default function PurchaseInvoicesIndex() {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
+  const [expandedPayment, setExpandedPayment] = useState<number | null>(null);
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -1164,10 +1165,7 @@ export default function PurchaseInvoicesIndex() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => {
-                                      setViewingInvoice(invoice);
-                                      setIsViewDialogOpen(true);
-                                    }}
+                                    onClick={() => viewInvoice(invoice)}
                                     className="h-8 px-2"
                                     data-testid={`button-submit-invoice-${invoice.id}`}
                                   >
@@ -1267,10 +1265,7 @@ export default function PurchaseInvoicesIndex() {
                           <Button
                             variant="default"
                             size="sm"
-                            onClick={() => {
-                              setViewingInvoice(invoice);
-                              setIsViewDialogOpen(true);
-                            }}
+                            onClick={() => viewInvoice(invoice)}
                             className="flex-1"
                             data-testid={`button-submit-invoice-${invoice.id}`}
                           >
@@ -2225,59 +2220,126 @@ export default function PurchaseInvoicesIndex() {
             )}
             {/* Payment History */}
             {viewingInvoice?.payments && viewingInvoice.payments.length > 0 && (
-              <div className="mt-4 sm:mt-6 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Payment History
-                </h3>
-                <div className="overflow-x-auto -mx-4 sm:mx-0">
-                  <div className="inline-block min-w-full align-middle">
-                    <div className="border rounded-lg overflow-hidden print:border-gray-300">
-                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-300">
-                        <thead className="bg-gray-100 dark:bg-gray-700 print:bg-gray-100">
-                          <tr>
-                            <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">
-                              Date
-                            </th>
-                            <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">
-                              Method
-                            </th>
-                            <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">
-                              Reference
-                            </th>
-                            <th className="px-3 sm:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">
-                              Amount
-                            </th>
-                            <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">
-                              Notes
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700 print:bg-white print:divide-gray-200">
-                          {viewingInvoice.payments.map((payment: any) => (
-                            <tr key={payment.id}>
-                              <td className="px-3 sm:px-6 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white print:text-black">
-                                {new Date(payment.paymentDate).toLocaleDateString()}
-                              </td>
-                              <td className="px-3 sm:px-6 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white print:text-black">
-                                {payment.paymentMethod || 'N/A'}
-                              </td>
-                              <td className="px-3 sm:px-6 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-900 dark:text-white print:text-black">
-                                {payment.referenceNumber || 'N/A'}
-                              </td>
-                              <td className="px-3 sm:px-6 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">
-                                {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
-                              </td>
-                              <td className="px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm text-gray-900 dark:text-white print:text-black">
-                                <span className="line-clamp-2">{payment.notes || 'N/A'}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+              <div className="mt-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <DollarSign className="w-5 h-5" />
+                      Payment History
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {viewingInvoice.payments.map((payment: any) => (
+                        <div key={payment.id} className="border rounded-lg overflow-hidden">
+                          <div
+                            className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                            onClick={() => setExpandedPayment(expandedPayment === payment.id ? null : payment.id)}
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                <span className="font-medium text-green-600">
+                                  {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
+                                </span>
+                                <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  {new Date(payment.paymentDate).toLocaleDateString()}
+                                </span>
+                                <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                                  {payment.paymentMethod?.replace("_", " ") || "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">
+                                  Recorded: {new Date(payment.recordedAt).toLocaleDateString()}
+                                </span>
+                                <svg
+                                  className={`h-4 w-4 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 9l-7 7-7-7"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                          </div>
+
+                          {expandedPayment === payment.id && (
+                            <div className="px-4 pb-4 border-t bg-gray-50 dark:bg-gray-800/50">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
+                                <div>
+                                  <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Reference Number:
+                                  </label>
+                                  <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
+                                    {payment.referenceNumber || "No reference provided"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Payment ID:
+                                  </label>
+                                  <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
+                                    #{payment.id}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-4">
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                  Notes:
+                                </label>
+                                <p className="text-sm mt-1 p-3 bg-white dark:bg-gray-700 rounded border min-h-[60px]">
+                                  {payment.notes || "No notes provided"}
+                                </p>
+                              </div>
+
+                              <div className="mt-4">
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                  Attachments:
+                                </label>
+                                <div className="mt-2">
+                                  {payment.files && payment.files.length > 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      {payment.files.map((file: any) => (
+                                        <div
+                                          key={file.id}
+                                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
+                                        >
+                                          <div className="flex items-center gap-2 overflow-hidden">
+                                            <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                                            <span className="text-sm truncate" title={file.originalName}>
+                                              {file.originalName}
+                                            </span>
+                                          </div>
+                                          <Button variant="ghost" size="sm" asChild className="h-8 ml-2">
+                                            <a
+                                              href={`/api/purchase-payment-files/${file.id}/download`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                            >
+                                              Download
+                                            </a>
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-500 italic">No attachments</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
           </DialogContent>
