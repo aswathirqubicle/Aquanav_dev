@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ReactQuill from 'react-quill';
+import { Autocomplete } from "@/components/ui/autocomplete";
 import 'react-quill/dist/quill.snow.css';
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -335,21 +336,17 @@ export default function ProjectCreate() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="customerId">Customer *</Label>
-                <Select
+                <Autocomplete
+                  options={(customers || []).map((customer) => ({
+                    value: customer.id.toString(),
+                    label: customer.name,
+                    searchText: customer.name
+                  }))}
                   value={formData.customerId?.toString()}
                   onValueChange={(value) => handleChange("customerId", parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers?.map((customer) => (
-                      <SelectItem key={customer.id} value={customer.id.toString()}>
-                        {customer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Search customer..."
+                  emptyMessage="No customers found"
+                />
               </div>
 
               <div className="space-y-2">
@@ -464,7 +461,7 @@ export default function ProjectCreate() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="ridgingCrewNos">Ridging Crew Numbers</Label>
+                  <Label htmlFor="ridgingCrewNos">Riding Crew Numbers</Label>
                   <Input
                     id="ridgingCrewNos"
                     value={formData.ridgingCrewNos}
@@ -495,9 +492,10 @@ export default function ProjectCreate() {
                       <SelectItem value="day_rate">Day Rate</SelectItem>
                       <SelectItem value="lump_sum">Lump Sum</SelectItem>
                       <SelectItem value="custom">Custom (Enter below)</SelectItem>
+                      <SelectItem value="monthly_contract">Monthly Contract</SelectItem>
                     </SelectContent>
                   </Select>
-                  {(!formData.modeOfContract || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum"].includes(formData.modeOfContract)) && (
+                  {(!formData.modeOfContract || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"].includes(formData.modeOfContract)) && (
                     <Input
                       id="modeOfContractCustom"
                       value={formData.modeOfContract || ""}

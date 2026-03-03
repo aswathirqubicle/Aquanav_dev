@@ -18,6 +18,7 @@ interface AutocompleteProps {
   value?: string
   onValueChange?: (value: string) => void
   placeholder?: string
+  emptyMessage?: string
   className?: string
   disabled?: boolean
 }
@@ -27,6 +28,7 @@ export function Autocomplete({
   value,
   onValueChange,
   placeholder = "Search...",
+  emptyMessage = "No items found",
   className,
   disabled = false,
 }: AutocompleteProps) {
@@ -195,7 +197,7 @@ export function Autocomplete({
       
       {isOpen && filteredOptions.length === 0 && inputValue.trim() && (
         <div className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg p-3">
-          <div className="text-sm text-gray-500 dark:text-gray-400">No items found</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">{emptyMessage}</div>
         </div>
       )}
     </div>

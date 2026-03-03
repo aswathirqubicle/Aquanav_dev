@@ -14,7 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface SupplierBankDetails {
@@ -41,7 +41,7 @@ interface PurchaseInvoice {
   exchangeRate?: string;
   poId?: number;
   poNumber?: string;
-  status: "draft" | "pending_approval" | "approved" | "rejected";
+  status: "draft" | "pending_approval" | "approved" | "rejected" | "cancelled";
   paymentStatus: "unpaid" | "partial" | "paid";
   invoiceDate: string;
   dueDate: string;
@@ -130,6 +130,7 @@ export default function PurchaseInvoicesIndex() {
   const [isCreateCreditNoteOpen, setIsCreateCreditNoteOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -336,8 +337,8 @@ export default function PurchaseInvoicesIndex() {
         notes: formData.notes,
         subtotal: subtotal.toFixed(2),
         taxAmount: calculatedTaxAmount.toFixed(2),
-        discountPercentage: discountPct.toFixed(2),
-        discountAmount: discountAmt.toFixed(2),
+        discountPercentage: discountPct.toString(),
+        discountAmount: discountAmt.toString(),
         totalAmount: totalAmount.toFixed(2),
         items,
       };
@@ -366,6 +367,68 @@ export default function PurchaseInvoicesIndex() {
       });
     },
   });
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ invoiceId, data }: { invoiceId: number; data: any }) => {
+      const response = await apiRequest(`/api/purchase-invoices/${invoiceId}`, { method: "PUT", body: data });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update purchase invoice");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      toast({ title: "Invoice Updated", description: "Purchase invoice has been updated successfully." });
+      setIsDialogOpen(false);
+      resetForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update invoice", variant: "destructive" });
+    },
+  });
+
+  const handleEditInvoice = async (invoice: PurchaseInvoice) => {
+    try {
+      const response = await apiRequest(`/api/purchase-invoices/${invoice.id}`, { method: "GET" });
+      if (!response.ok) throw new Error("Failed to load invoice");
+      const full = await response.json();
+
+      setEditingInvoice(full);
+      setFormData({
+        supplierId: full.supplierId.toString(),
+        currency: full.currency || "AED",
+        exchangeRate: full.exchangeRate || "1",
+        invoiceDate: full.invoiceDate ? full.invoiceDate.split('T')[0] : new Date().toISOString().split('T')[0],
+        dueDate: full.dueDate ? full.dueDate.split('T')[0] : "",
+        paymentTerms: full.paymentTerms || "",
+        bankAccount: full.bankAccount || "",
+        notes: full.notes || "",
+        discountPercentage: full.discountPercentage || "0",
+        discountAmount: full.discountAmount || "0",
+      });
+
+      if (full.items && full.items.length > 0) {
+        setInvoiceItems(full.items.map((item: any) => ({
+          itemType: item.itemType || "product",
+          inventoryItemId: item.inventoryItemId ? item.inventoryItemId.toString() : "",
+          description: item.description || "",
+          quantity: item.quantity.toString(),
+          unitPrice: parseFloat(item.unitPrice).toString(),
+          taxRate: parseFloat(item.taxRate || "0").toString(),
+          projectId: item.projectId ? item.projectId.toString() : "",
+          assetInstanceId: item.assetInstanceId ? item.assetInstanceId.toString() : "",
+        })));
+      } else {
+        setInvoiceItems([]);
+      }
+
+      setIsViewDialogOpen(false);
+      setIsDialogOpen(true);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to load invoice for editing", variant: "destructive" });
+    }
+  };
 
   const submitInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: number) => {
@@ -444,6 +507,31 @@ export default function PurchaseInvoicesIndex() {
     },
   });
 
+  const cancelInvoiceMutation = useMutation({
+    mutationFn: async (invoiceId: number) => {
+      const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/cancel`, {
+        method: "POST",
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      toast({
+        title: "Invoice Cancelled",
+        description: "Purchase invoice has been cancelled and reverse ledger entries created.",
+      });
+      setViewingInvoice(null);
+      setIsViewDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
   const recordPaymentMutation = useMutation({
     mutationFn: async () => {
       if (!viewingInvoice) throw new Error("No invoice selected");
@@ -515,6 +603,7 @@ export default function PurchaseInvoicesIndex() {
       projectId: "",
       assetInstanceId: "",
     });
+    setEditingInvoice(null);
   };
 
   const resetPaymentForm = () => {
@@ -607,7 +696,48 @@ export default function PurchaseInvoicesIndex() {
       return;
     }
 
-    createInvoiceMutation.mutate(formData);
+    if (editingInvoice) {
+      // Build the same payload as create, but send via PUT
+      const items = invoiceItems.map(item => {
+        const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
+        const lineTaxAmount = lineSubtotal * (parseFloat(item.taxRate) / 100);
+        return {
+          itemType: item.itemType,
+          inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
+          description: item.description || null,
+          quantity: parseInt(item.quantity),
+          unitPrice: parseFloat(item.unitPrice),
+          taxRate: parseFloat(item.taxRate),
+          taxAmount: lineTaxAmount,
+          lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
+          projectId: item.projectId ? parseInt(item.projectId) : null,
+          assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
+        };
+      });
+      const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+      const calculatedTax = items.reduce((sum, item) => sum + item.taxAmount, 0);
+      const discountAmt = parseFloat(formData.discountAmount) || 0;
+      updateInvoiceMutation.mutate({
+        invoiceId: editingInvoice.id,
+        data: {
+          supplierId: parseInt(formData.supplierId),
+          currency: formData.currency,
+          exchangeRate: formData.exchangeRate,
+          invoiceDate: formData.invoiceDate,
+          dueDate: formData.dueDate,
+          paymentTerms: formData.paymentTerms,
+          bankAccount: formData.bankAccount,
+          notes: formData.notes,
+          subtotal: subtotal.toFixed(2),
+          taxAmount: calculatedTax.toFixed(2),
+          discountPercentage: formData.discountPercentage,
+          discountAmount: formData.discountAmount,
+          items,
+        },
+      });
+    } else {
+      createInvoiceMutation.mutate(formData);
+    }
   };
 
   const viewInvoice = async (invoice: PurchaseInvoice) => {
@@ -715,6 +845,8 @@ export default function PurchaseInvoicesIndex() {
         return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Approved</Badge>;
       case "rejected":
         return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Rejected</Badge>;
+      case "cancelled":
+        return <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">Cancelled</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -855,6 +987,7 @@ export default function PurchaseInvoicesIndex() {
                         <SelectItem value="pending_approval">Pending Approval</SelectItem>
                         <SelectItem value="approved">Approved</SelectItem>
                         <SelectItem value="rejected">Rejected</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1016,6 +1149,17 @@ export default function PurchaseInvoicesIndex() {
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
+                                {invoice.status === "draft" && canEdit && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditInvoice(invoice)}
+                                    className="h-8 px-2"
+                                    data-testid={`button-edit-invoice-${invoice.id}`}
+                                  >
+                                    Edit
+                                  </Button>
+                                )}
                                 {invoice.status === "draft" && (
                                   <Button
                                     variant="ghost"
@@ -1168,8 +1312,8 @@ export default function PurchaseInvoicesIndex() {
           </div>
         )}
 
-        {/* Create Invoice Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        {/* Create / Edit Invoice Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
           <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
             <DialogHeader className="flex-shrink-0 border-b pb-4">
               <div className="flex items-center gap-3">
@@ -1177,7 +1321,7 @@ export default function PurchaseInvoicesIndex() {
                   <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <DialogTitle className="text-xl font-semibold">Create Purchase Invoice</DialogTitle>
+                  <DialogTitle className="text-xl font-semibold">{editingInvoice ? `Edit Invoice — ${editingInvoice.invoiceNumber}` : "Create Purchase Invoice"}</DialogTitle>
                   <p className="text-sm text-muted-foreground mt-1">Enter invoice details and add line items</p>
                 </div>
               </div>
@@ -1199,7 +1343,12 @@ export default function PurchaseInvoicesIndex() {
                         <Label htmlFor="supplierId" className="text-sm font-medium">
                           Supplier <span className="text-red-500">*</span>
                         </Label>
-                        <Select
+                        <Autocomplete
+                          options={suppliers.map((supplier) => ({
+                            value: supplier.id.toString(),
+                            label: supplier.name,
+                            searchText: `${supplier.name} ${supplier.email || ""}`
+                          }))}
                           value={formData.supplierId}
                           onValueChange={async (value) => {
                             const supplier = suppliers.find(s => s.id.toString() === value);
@@ -1242,23 +1391,10 @@ export default function PurchaseInvoicesIndex() {
                               taxRate: String(taxRate),
                             }));
                           }}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue placeholder="Choose supplier..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {suppliers.map((supplier) => (
-                              <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{supplier.name}</span>
-                                  {supplier.email && (
-                                    <span className="text-xs text-muted-foreground">{supplier.email}</span>
-                                  )}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          placeholder="Search supplier..."
+                          emptyMessage="No suppliers found"
+                          className="h-10"
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -1349,46 +1485,6 @@ export default function PurchaseInvoicesIndex() {
                           placeholder="Additional notes or comments..."
                           className="min-h-[80px] resize-none"
                         />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="discountPercentage">Discount (%)</Label>
-                          <Input
-                            id="discountPercentage"
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={formData.discountPercentage}
-                            onChange={(e) => {
-                              const pct = parseFloat(e.target.value) || 0;
-                              const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                              const calcDiscount = (subtotal * pct / 100).toFixed(2);
-                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
-                            }}
-                            placeholder="0.00"
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="discountAmount">Discount Value ({formData.currency})</Label>
-                          <Input
-                            id="discountAmount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={formData.discountAmount}
-                            onChange={(e) => {
-                              const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                              const val = parseFloat(e.target.value) || 0;
-                              const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
-                              setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
-                            }}
-                            placeholder="0.00"
-                            className="mt-1"
-                          />
-                        </div>
                       </div>
 
                     </div>
@@ -1526,7 +1622,7 @@ export default function PurchaseInvoicesIndex() {
                           <div>
                             <Label className="text-xs font-medium text-muted-foreground">ALLOCATE TO ASSET (OPTIONAL)</Label>
                             <Autocomplete
-                              options={assetInstances.filter((asset: any) => asset.status === 'available').map((asset: any) => ({
+                              options={assetInstances.filter((asset: any) => asset.status !== 'retired').map((asset: any) => ({
                                 value: asset.id.toString(),
                                 label: `${asset.assetTag} - ${asset.assetTypeName || 'Asset'}`,
                                 searchText: `${asset.assetTag} ${asset.assetTypeName || ''} ${asset.serialNumber || ''}`
@@ -1629,8 +1725,51 @@ export default function PurchaseInvoicesIndex() {
                       </div>
                     )}
 
-                    {/* Invoice Summary */}
-                    {invoiceItems.length > 0 && (
+                    {/* Discount and Summary Section */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                      <div className="space-y-4">
+                        <h4 className="font-semibold text-sm">Discounts</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="discountPercentage">Discount (%)</Label>
+                            <Input
+                              id="discountPercentage"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={formData.discountPercentage}
+                              onChange={(e) => {
+                                const pct = parseFloat(e.target.value) || 0;
+                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const calcDiscount = (subtotal * pct / 100).toFixed(2);
+                                setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                              }}
+                              placeholder="0.00"
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="discountAmount">Discount Value ({formData.currency})</Label>
+                            <Input
+                              id="discountAmount"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={formData.discountAmount}
+                              onChange={(e) => {
+                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const val = parseFloat(e.target.value) || 0;
+                                const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
+                                setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                              }}
+                              placeholder="0.00"
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
                         <h4 className="font-semibold mb-3 text-sm">Invoice Summary</h4>
                         <div className="space-y-2">
@@ -1678,7 +1817,7 @@ export default function PurchaseInvoicesIndex() {
                           </div>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </CardContent>
                 </Card>
               </form>
@@ -1697,18 +1836,18 @@ export default function PurchaseInvoicesIndex() {
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={createInvoiceMutation.isPending || !formData.supplierId || !formData.dueDate || invoiceItems.length === 0}
+                  disabled={(editingInvoice ? updateInvoiceMutation.isPending : createInvoiceMutation.isPending) || !formData.supplierId || !formData.dueDate || invoiceItems.length === 0}
                   className="sm:w-auto order-1 sm:order-2"
                 >
-                  {createInvoiceMutation.isPending ? (
+                  {(editingInvoice ? updateInvoiceMutation.isPending : createInvoiceMutation.isPending) ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Creating Invoice...
+                      {editingInvoice ? "Saving..." : "Creating Invoice..."}
                     </>
                   ) : (
                     <>
                       <FileText className="w-4 h-4 mr-2" />
-                      Create Invoice
+                      {editingInvoice ? "Save Changes" : "Create Invoice"}
                     </>
                   )}
                 </Button>
@@ -1952,7 +2091,7 @@ export default function PurchaseInvoicesIndex() {
                     )}
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.currency || viewingInvoice.supplierCurrency)}</span>
+                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.supplierCurrency)}</span>
                     </div>
                     {(viewingInvoice.currency || viewingInvoice.supplierCurrency) !== "AED" && viewingInvoice.exchangeRate && (
                       <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -1974,6 +2113,17 @@ export default function PurchaseInvoicesIndex() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
+                  {viewingInvoice.status === "draft" && canEdit && (
+                    <Button
+                      onClick={() => handleEditInvoice(viewingInvoice)}
+                      variant="outline"
+                      size="lg"
+                      className="w-full sm:w-auto"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Edit Invoice
+                    </Button>
+                  )}
                   {viewingInvoice.status === "draft" && (
                     <Button
                       onClick={() => {
@@ -2045,6 +2195,31 @@ export default function PurchaseInvoicesIndex() {
                       Record Payment
                     </Button>
                   )}
+                  {viewingInvoice.status === "approved" && user?.role === "admin" && parseFloat(viewingInvoice.paidAmount || "0") <= 0 && (
+                    <Button
+                      onClick={() => {
+                        if (window.confirm("Are you sure you want to cancel this invoice? This will create reverse ledger entries.")) {
+                          cancelInvoiceMutation.mutate(viewingInvoice.id);
+                        }
+                      }}
+                      disabled={cancelInvoiceMutation.isPending}
+                      variant="destructive"
+                      size="lg"
+                      className="w-full sm:w-auto"
+                    >
+                      {cancelInvoiceMutation.isPending ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Cancelling...
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="w-4 h-4 mr-2" />
+                          Cancel Invoice
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -2091,7 +2266,7 @@ export default function PurchaseInvoicesIndex() {
                                 {payment.referenceNumber || 'N/A'}
                               </td>
                               <td className="px-3 sm:px-6 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">
-                                ${parseFloat(payment.amount).toFixed(2)}
+                                {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
                               </td>
                               <td className="px-3 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm text-gray-900 dark:text-white print:text-black">
                                 <span className="line-clamp-2">{payment.notes || 'N/A'}</span>
@@ -2112,11 +2287,27 @@ export default function PurchaseInvoicesIndex() {
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
           <DialogContent className="max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Record Payment</DialogTitle>
+              <DialogTitle>Record Payment {viewingInvoice?.currency && viewingInvoice.currency !== "AED" ? `(${viewingInvoice.currency})` : ""}</DialogTitle>
             </DialogHeader>
+            {viewingInvoice && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-blue-700 dark:text-blue-300">Invoice Total:</span>
+                  <span className="font-semibold text-blue-900 dark:text-blue-100">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.currency || "AED")}</span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <span className="text-blue-700 dark:text-blue-300">Paid:</span>
+                  <span className="font-semibold text-green-700 dark:text-green-400">{formatCurrency(viewingInvoice.paidAmount || "0", viewingInvoice.currency || "AED")}</span>
+                </div>
+                <div className="flex justify-between items-center mt-1 border-t border-blue-200 dark:border-blue-700 pt-1">
+                  <span className="text-blue-700 dark:text-blue-300 font-medium">Balance Due:</span>
+                  <span className="font-bold text-blue-900 dark:text-blue-100">{formatCurrency((parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount || "0")).toFixed(2), viewingInvoice.currency || "AED")}</span>
+                </div>
+              </div>
+            )}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="amount">Payment Amount</Label>
+                <Label htmlFor="amount">Payment Amount ({viewingInvoice?.currency || "AED"})</Label>
                 <Input
                   id="amount"
                   type="number"
@@ -2124,7 +2315,7 @@ export default function PurchaseInvoicesIndex() {
                   min="0"
                   value={paymentData.amount}
                   onChange={(e) => setPaymentData(prev => ({ ...prev, amount: e.target.value }))}
-                  placeholder="Enter payment amount"
+                  placeholder={`Enter amount in ${viewingInvoice?.currency || "AED"}`}
                 />
               </div>
               <div>

@@ -70,7 +70,11 @@ import {
   creditNotes,
 } from "../migrations/schema";
 import sanitizeHtml from "sanitize-html";
-import { purchaseInvoices, purchaseInvoicePayments, projectEmployees } from "@shared/schema";
+import {
+  purchaseInvoices,
+  purchaseInvoicePayments,
+  projectEmployees,
+} from "@shared/schema";
 import { db } from "./db";
 import { sql as sqlRaw } from "./db";
 
@@ -1004,6 +1008,16 @@ function generatePurchaseOrderHTML(
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
           </tr>
+           ${
+             parseFloat(order.discountAmount || "0") > 0
+               ? `
+          <tr>
+            <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
+            <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
+          </tr>
+          `
+               : ""
+           }
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
@@ -1132,6 +1146,16 @@ function generatePurchaseInvoiceHTML(
             <td><strong>Subtotal:</strong></td>
             <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
           </tr>
+          ${
+            parseFloat(invoice.discountAmount || "0") > 0
+              ? `
+          <tr>
+            <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
+            <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
+          </tr>
+          `
+              : ""
+          }
           <tr>
             <td><strong>Tax Amount:</strong></td>
             <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
@@ -1242,8 +1266,8 @@ export function generateProjectPrintHTML(data: any): string {
         acc[weekKey] = [];
       }
 
-      // Push each item separately (better for table display)
-      entry.items.forEach((item: any) => {
+      // Only include manual entry items (no inventoryItemId) in reports
+      entry.items.filter((item: any) => !item.inventoryItemId).forEach((item: any) => {
         acc[weekKey].push({
           date: new Date(entry.date).toLocaleDateString(),
           createdBy: entry.createdByName,
@@ -1490,7 +1514,7 @@ body {
 <div class="main-title">
   ${data.title || ""}<br/>
   <span class="highlight">${sanitize(data.description)}</span><br/>
-  <span class="vessel">${data.vesselName || ""}</span>
+  <span class="vessel">${data.reportTitle || "WEEKLY REPORT"}</span>
 </div>
 
 <!-- IMAGE -->
@@ -1822,8 +1846,8 @@ export function generateConsumablePrintHTML(data: any): string {
         acc[weekKey] = [];
       }
 
-      // Push each item separately (better for table display)
-      entry.items.forEach((item: any) => {
+      // Only include manual entry items (no inventoryItemId) in reports
+      entry.items.filter((item: any) => !item.inventoryItemId).forEach((item: any) => {
         acc[weekKey].push({
           date: new Date(entry.date).toLocaleDateString(),
           createdBy: entry.createdByName,
@@ -2731,6 +2755,262 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to get dashboard stats" });
+    }
+  });
+
+  app.get("/api/dashboard/finance-stats", requireAuth, requireRole(["admin", "finance"]), async (req, res) => {
+    try {
+      const currentDate = new Date();
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
+      const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+      const salesInvoices = await storage.getSalesInvoices();
+      const purchaseInvoicesList = await storage.getPurchaseInvoices();
+      const reimbursementsList = await storage.getReimbursements();
+      const customersList = await storage.getCustomers();
+      const customersMap = new Map(customersList.map((c: any) => [c.id, c.name]));
+
+      const currentMonthSales = salesInvoices.filter((inv: any) => {
+        const d = new Date(inv.invoiceDate);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      });
+      const previousMonthSales = salesInvoices.filter((inv: any) => {
+        const d = new Date(inv.invoiceDate);
+        return d.getMonth() === previousMonth && d.getFullYear() === previousYear;
+      });
+
+      const totalReceivable = salesInvoices
+        .filter((inv: any) => inv.status === "approved" || inv.status === "unpaid" || inv.status === "partially_paid" || inv.status === "overdue")
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0") - parseFloat(inv.paidAmount || "0"), 0);
+
+      const totalPayable = purchaseInvoicesList
+        .filter((inv: any) => inv.status === "approved" && (inv.paymentStatus === "unpaid" || inv.paymentStatus === "partial"))
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0") - parseFloat(inv.paidAmount || "0"), 0);
+
+      const currentMonthRevenue = currentMonthSales
+        .filter((inv: any) => inv.status !== "draft" && inv.status !== "rejected" && inv.status !== "cancelled")
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0"), 0);
+      const previousMonthRevenue = previousMonthSales
+        .filter((inv: any) => inv.status !== "draft" && inv.status !== "rejected" && inv.status !== "cancelled")
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0"), 0);
+      const revenueChange = previousMonthRevenue > 0
+        ? Math.round(((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100)
+        : 0;
+
+      const currentMonthExpenses = purchaseInvoicesList
+        .filter((inv: any) => {
+          const d = new Date(inv.invoiceDate);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear && inv.status === "approved";
+        })
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0"), 0);
+      const previousMonthExpenses = purchaseInvoicesList
+        .filter((inv: any) => {
+          const d = new Date(inv.invoiceDate);
+          return d.getMonth() === previousMonth && d.getFullYear() === previousYear && inv.status === "approved";
+        })
+        .reduce((sum: number, inv: any) => sum + parseFloat(inv.totalAmount || "0"), 0);
+      const expensesChange = previousMonthExpenses > 0
+        ? Math.round(((currentMonthExpenses - previousMonthExpenses) / previousMonthExpenses) * 100)
+        : 0;
+
+      const pendingApprovalSales = salesInvoices.filter((inv: any) => inv.status === "pending_approval").length;
+      const pendingApprovalPurchases = purchaseInvoicesList.filter((inv: any) => inv.status === "pending_approval").length;
+      const pendingReimbursements = reimbursementsList.filter((r: any) => r.status === "pending").length;
+
+      const overdueSalesInvoices = salesInvoices.filter((inv: any) => {
+        if (inv.status === "paid" || inv.status === "draft" || inv.status === "cancelled" || inv.status === "rejected") return false;
+        return inv.dueDate && new Date(inv.dueDate) < currentDate;
+      }).length;
+
+      const overduePurchaseInvoices = purchaseInvoicesList.filter((inv: any) => {
+        if (inv.paymentStatus === "paid" || inv.status !== "approved") return false;
+        return inv.dueDate && new Date(inv.dueDate) < currentDate;
+      }).length;
+
+      const recentSalesInvoices = salesInvoices
+        .sort((a: any, b: any) => new Date(b.invoiceDate || b.createdAt).getTime() - new Date(a.invoiceDate || a.createdAt).getTime())
+        .slice(0, 5)
+        .map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          customerName: customersMap.get(inv.customerId) || `Customer #${inv.customerId}`,
+          totalAmount: inv.totalAmount,
+          paidAmount: inv.paidAmount,
+          status: inv.status,
+          dueDate: inv.dueDate,
+          currency: inv.currency || "AED",
+        }));
+
+      const recentPurchaseInvoices = purchaseInvoicesList
+        .sort((a: any, b: any) => new Date(b.invoiceDate || b.createdAt).getTime() - new Date(a.invoiceDate || a.createdAt).getTime())
+        .slice(0, 5)
+        .map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          supplierName: inv.supplierName || `Supplier #${inv.supplierId}`,
+          totalAmount: inv.totalAmount,
+          paidAmount: inv.paidAmount,
+          status: inv.status,
+          paymentStatus: inv.paymentStatus,
+          dueDate: inv.dueDate,
+          currency: inv.currency || "AED",
+        }));
+
+      res.json({
+        totalReceivable,
+        totalPayable,
+        currentMonthRevenue,
+        revenueChange,
+        currentMonthExpenses,
+        expensesChange,
+        pendingApprovalSales,
+        pendingApprovalPurchases,
+        pendingReimbursements,
+        overdueSalesInvoices,
+        overduePurchaseInvoices,
+        recentSalesInvoices,
+        recentPurchaseInvoices,
+      });
+    } catch (error) {
+      console.error("Error getting finance dashboard stats:", error);
+      res.status(500).json({ message: "Failed to get finance dashboard stats" });
+    }
+  });
+
+  app.get("/api/dashboard/pm-stats", requireAuth, requireRole(["admin", "project_manager"]), async (req, res) => {
+    try {
+      const projects = await storage.getProjects();
+      const purchaseRequests = await storage.getPurchaseRequests(req.session.userId, req.session.userRole);
+      const reimbursementsList = await storage.getReimbursements({ userId: req.session.userId });
+      const inventoryItems = await storage.getInventoryItems();
+
+      const currentDate = new Date();
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
+
+      const activeProjects = projects.filter((p: any) => p.status === "in_progress").length;
+      const completedProjects = projects.filter((p: any) => p.status === "completed").length;
+      const onHoldProjects = projects.filter((p: any) => p.status === "on_hold").length;
+      const totalProjects = projects.length;
+
+      const pendingPurchaseRequests = purchaseRequests.filter((pr: any) => pr.status === "pending").length;
+      const myPendingReimbursements = reimbursementsList.filter((r: any) => r.status === "pending").length;
+      const lowStockItems = inventoryItems.filter((item: any) => item.currentStock <= item.minStockLevel).length;
+
+      const totalBudget = projects
+        .filter((p: any) => p.status === "in_progress")
+        .reduce((sum: number, p: any) => sum + parseFloat(p.estimatedBudget || "0"), 0);
+      const totalActualCost = projects
+        .filter((p: any) => p.status === "in_progress")
+        .reduce((sum: number, p: any) => sum + parseFloat(p.actualCost || "0"), 0);
+
+      const upcomingDeadlines = projects
+        .filter((p: any) => {
+          if (p.status !== "in_progress" || !p.plannedEndDate) return false;
+          const endDate = new Date(p.plannedEndDate);
+          const daysUntil = Math.ceil((endDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+          return daysUntil >= 0 && daysUntil <= 30;
+        })
+        .sort((a: any, b: any) => new Date(a.plannedEndDate).getTime() - new Date(b.plannedEndDate).getTime())
+        .slice(0, 5)
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          vesselName: p.vesselName,
+          plannedEndDate: p.plannedEndDate,
+          status: p.status,
+          daysRemaining: Math.ceil((new Date(p.plannedEndDate).getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)),
+        }));
+
+      const recentProjects = projects
+        .filter((p: any) => p.status === "in_progress")
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5)
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          vesselName: p.vesselName,
+          status: p.status,
+          estimatedBudget: p.estimatedBudget,
+          actualCost: p.actualCost,
+          plannedEndDate: p.plannedEndDate,
+          progress: p.progress,
+        }));
+
+      res.json({
+        activeProjects,
+        completedProjects,
+        onHoldProjects,
+        totalProjects,
+        pendingPurchaseRequests,
+        myPendingReimbursements,
+        lowStockItems,
+        totalBudget,
+        totalActualCost,
+        upcomingDeadlines,
+        recentProjects,
+      });
+    } catch (error) {
+      console.error("Error getting PM dashboard stats:", error);
+      res.status(500).json({ message: "Failed to get PM dashboard stats" });
+    }
+  });
+
+  app.get("/api/dashboard/employee-stats", requireAuth, requireRole(["admin", "employee"]), async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const employee = await storage.getEmployeeByUserId(userId!);
+      const projects = employee
+        ? await storage.getProjectsByEmployee(employee.id)
+        : [];
+      const reimbursementsList = await storage.getReimbursements({ userId });
+
+      const activeProjects = projects.filter((p: any) => p.status === "in_progress").length;
+      const totalProjects = projects.length;
+
+      const pendingReimbursements = reimbursementsList.filter((r: any) => r.status === "pending").length;
+      const approvedReimbursements = reimbursementsList.filter((r: any) => r.status === "approved").length;
+      const totalReimbursementAmount = reimbursementsList
+        .filter((r: any) => r.status === "approved")
+        .reduce((sum: number, r: any) => sum + parseFloat(r.amount || "0"), 0);
+
+      const recentProjects = projects
+        .filter((p: any) => p.status === "in_progress")
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5)
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          vesselName: p.vesselName,
+          status: p.status,
+          plannedEndDate: p.plannedEndDate,
+        }));
+
+      const recentReimbursements = reimbursementsList
+        .sort((a: any, b: any) => new Date(b.submissionTimestamp).getTime() - new Date(a.submissionTimestamp).getTime())
+        .slice(0, 5)
+        .map((r: any) => ({
+          id: r.id,
+          amount: r.amount,
+          description: r.description,
+          status: r.status,
+          submissionTimestamp: r.submissionTimestamp,
+        }));
+
+      res.json({
+        activeProjects,
+        totalProjects,
+        pendingReimbursements,
+        approvedReimbursements,
+        totalReimbursementAmount,
+        recentProjects,
+        recentReimbursements,
+      });
+    } catch (error) {
+      console.error("Error getting employee dashboard stats:", error);
+      res.status(500).json({ message: "Failed to get employee dashboard stats" });
     }
   });
 
@@ -3698,11 +3978,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         projects = await storage.getProjectsByCustomer(customer.id);
       }
-      //NON-CUSTOMER ROLE + customer filter
+      // EMPLOYEE ROLE: force team-assigned projects only
+      else if (req.session.userRole === "employee") {
+        const employee = await storage.getEmployeeByUserId(req.session.userId!);
+        if (employee) {
+          projects = await storage.getProjectsByEmployee(employee.id);
+        } else {
+          projects = [];
+        }
+      }
+      //NON-CUSTOMER/EMPLOYEE ROLE + customer filter
       else if (customerParam) {
         projects = await storage.getProjectsByCustomer(Number(customerParam));
       }
-      //NON-CUSTOMER ROLE + no filter
+      //NON-CUSTOMER/EMPLOYEE ROLE + no filter
       else {
         projects = await storage.getProjects();
       }
@@ -3720,6 +4009,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
+      }
+
+      if (req.session.userRole === "employee") {
+        const employee = await storage.getEmployeeByUserId(req.session.userId!);
+        if (employee) {
+          const assignedProjects = await storage.getProjectsByEmployee(employee.id);
+          if (!assignedProjects.some((p) => p.id === id)) {
+            return res.status(403).json({ message: "You are not assigned to this project" });
+          }
+        } else {
+          return res.status(403).json({ message: "No employee record found" });
+        }
       }
 
       res.json(project);
@@ -3759,6 +4060,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (req.file) {
           project.reportImage = `/${req.file.path}`;
         }
+
+        project.reportTitle = "WEEKLY REPORT";
+
+        if (fromDate === toDate) project.reportTitle = "DAILY REPORT";
 
         project.company = await storage.getCompany();
 
@@ -4421,6 +4726,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.get(
+    "/api/projects/:projectId/activities/all",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const projectId = parseInt(req.params.projectId);
+        if (isNaN(projectId)) {
+          return res.status(400).json({ message: "Invalid project ID" });
+        }
+
+        const activities = await storage.getDailyActivities(projectId);
+        res.json(activities);
+      } catch (error) {
+        console.error("Error getting all daily activities:", error);
+        res.status(500).json({ message: "Failed to get daily activities" });
+      }
+    },
+  );
+
   // Planned Activities routes
   app.get(
     "/api/projects/:projectId/planned-activities",
@@ -4507,7 +4831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const projectId = parseInt(req.params.id);
-        const { title, date, description } = req.body;
+        const { title, date, description, dailyActivityId } = req.body;
 
         if (!title || !date) {
           return res
@@ -4520,6 +4844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           title,
           date,
           description,
+          dailyActivityId: dailyActivityId ? parseInt(dailyActivityId) : null,
           createdBy: req.session.userId,
         });
 
@@ -4629,10 +4954,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Validate each item
         for (const item of items) {
-          if (!item.inventoryItemId || !item.quantity || item.quantity <= 0) {
+          if (!item.quantity || item.quantity <= 0) {
             return res.status(400).json({
-              message:
-                "Each item must have a valid inventoryItemId and positive quantity",
+              message: "Each item must have a positive quantity",
+            });
+          }
+          if (!item.inventoryItemId && !item.itemName) {
+            return res.status(400).json({
+              message: "Each item must have either an inventory item or a name for manual entry",
             });
           }
         }
@@ -6077,13 +6406,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const fileId = parseInt(req.params.id);
-        const files = await storage.getPaymentFiles(fileId);
+        const file = await storage.getPaymentFile(fileId);
 
-        if (files.length === 0) {
+        if (!file) {
           return res.status(404).json({ message: "File not found" });
         }
-
-        const file = files[0];
         const filePath = path.resolve(file.filePath);
 
         if (!fs.existsSync(filePath)) {
@@ -6115,10 +6442,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const fileId = parseInt(req.params.id);
-        const files = await storage.getPaymentFiles(fileId);
+        const file = await storage.getPaymentFile(fileId);
 
-        if (files.length > 0) {
-          const file = files[0];
+        if (file) {
           // Delete file from disk
           if (fs.existsSync(file.filePath)) {
             fs.unlinkSync(file.filePath);
@@ -7552,9 +7878,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
+        const overrides =
+          req.body && Object.keys(req.body).length > 0 ? req.body : undefined;
         const result = await storage.convertPurchaseOrderToInvoice(
           id,
           req.session.userId!,
+          overrides,
         );
         res.json(result);
       } catch (error: any) {
@@ -7667,6 +7996,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.put(
+    "/api/purchase-invoices/:id",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const invoice = await storage.updatePurchaseInvoice(id, req.body);
+        res.json(invoice);
+      } catch (error: any) {
+        console.error("Update purchase invoice error:", error);
+        res.status(400).json({
+          message: error.message || "Failed to update purchase invoice",
+        });
+      }
+    },
+  );
+
   app.patch(
     "/api/purchase-invoices/:id/submit",
     requireAuth,
@@ -7774,6 +8121,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   app.post(
+    "/api/purchase-invoices/:id/cancel",
+    requireAuth,
+    requireRole(["admin"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const invoice = await storage.getPurchaseInvoice(id);
+
+        if (!invoice) {
+          return res
+            .status(404)
+            .json({ message: "Purchase invoice not found" });
+        }
+
+        if (invoice.status !== "approved") {
+          return res
+            .status(400)
+            .json({ message: "Only approved invoices can be cancelled" });
+        }
+
+        if (parseFloat(invoice.paidAmount || "0") > 0) {
+          return res.status(400).json({
+            message:
+              "Cannot cancel an invoice that has recorded payments. Please reverse the payments first.",
+          });
+        }
+
+        const result = await storage.cancelPurchaseInvoice(
+          id,
+          req.session.userId!,
+        );
+        res.json({ message: "Purchase invoice cancelled", invoice: result });
+      } catch (error) {
+        console.error("Cancel purchase invoice error:", error);
+        res.status(500).json({ message: "Failed to cancel purchase invoice" });
+      }
+    },
+  );
+
+  app.post(
     "/api/purchase-invoices/:id/payments",
     requireAuth,
     requireRole(["admin", "finance"]),
@@ -7829,31 +8216,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.post(
-    "/api/purchase-orders/:id/convert-to-invoice",
-    requireAuth,
-    requireRole(["admin", "finance"]),
-    async (req, res) => {
-      try {
-        const poId = parseInt(req.params.id);
-        const invoiceData = {
-          ...req.body,
-          createdBy: req.session.userId,
-        };
+  // app.post(
+  //   "/api/purchase-orders/:id/convert-to-invoice",
+  //   requireAuth,
+  //   requireRole(["admin", "finance"]),
+  //   async (req, res) => {
+  //     try {
+  //       const poId = parseInt(req.params.id);
+  //       const invoiceData = {
+  //         ...req.body,
+  //         createdBy: req.session.userId,
+  //       };
 
-        const invoice = await storage.createPurchaseInvoiceFromPO(
-          poId,
-          invoiceData,
-        );
-        res.status(201).json(invoice);
-      } catch (error) {
-        console.error("Convert PO to invoice error:", error);
-        res
-          .status(500)
-          .json({ message: "Failed to convert purchase order to invoice" });
-      }
-    },
-  );
+  //       const invoice = await storage.createPurchaseInvoiceFromPO(
+  //         poId,
+  //         invoiceData,
+  //       );
+  //       res.status(201).json(invoice);
+  //     } catch (error) {
+  //       console.error("Convert PO to invoice error:", error);
+  //       res
+  //         .status(500)
+  //         .json({ message: "Failed to convert purchase order to invoice" });
+  //     }
+  //   },
+  // );
 
   // Get supplier inventory items
   app.get("/api/suppliers/:id/suppliers", async (req, res) => {
@@ -9403,8 +9790,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existing) {
           return res.status(404).json({ message: "Feedback not found" });
         }
-        if (req.session.userRole === "project_manager" && existing.createdById !== req.session.userId) {
-          return res.status(403).json({ message: "You can only edit your own feedback" });
+        if (
+          req.session.userRole === "project_manager" &&
+          existing.createdById !== req.session.userId
+        ) {
+          return res
+            .status(403)
+            .json({ message: "You can only edit your own feedback" });
         }
         const { feedback, projectId } = req.body;
         if (!feedback || !feedback.trim()) {
@@ -9433,8 +9825,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existing) {
           return res.status(404).json({ message: "Feedback not found" });
         }
-        if (req.session.userRole === "project_manager" && existing.createdById !== req.session.userId) {
-          return res.status(403).json({ message: "You can only delete your own feedback" });
+        if (
+          req.session.userRole === "project_manager" &&
+          existing.createdById !== req.session.userId
+        ) {
+          return res
+            .status(403)
+            .json({ message: "You can only delete your own feedback" });
         }
         await storage.deleteEmployeeFeedback(id);
         res.json({ message: "Feedback deleted successfully" });

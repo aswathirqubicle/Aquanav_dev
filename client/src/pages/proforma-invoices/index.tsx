@@ -51,7 +51,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-
+import { Autocomplete } from "@/components/ui/autocomplete";
 // Proforma Invoice Schema
 const createProformaInvoiceSchema = z.object({
   customerId: z.number(),
@@ -622,7 +622,12 @@ export default function ProformaInvoicesIndex() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="customerId">Customer *</Label>
-                      <Select
+                      <Autocomplete
+                        options={(customers || []).filter(customer => customer.id).map((customer) => ({
+                          value: customer.id.toString(),
+                          label: customer.name,
+                          searchText: customer.name
+                        }))}
                         value={formData.customerId?.toString() || ""}
                         onValueChange={(value) => {
                           const selectedCustomer = customers?.find(
@@ -669,21 +674,9 @@ export default function ProformaInvoicesIndex() {
                               .catch(() => { });
                           }
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {customers?.filter(customer => customer.id).map((customer) => (
-                            <SelectItem
-                              key={customer.id}
-                              value={customer.id.toString()}
-                            >
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Search customer..."
+                        emptyMessage="No customers found"
+                      />
                       {formData.currency && formData.currency !== "AED" && (
                         <div className="text-sm text-muted-foreground mt-1">
                           Currency: {formData.currency} | Exchange Rate: {formData.exchangeRate} (to AED)

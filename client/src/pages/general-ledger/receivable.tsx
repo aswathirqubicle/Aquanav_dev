@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, DollarSign, Calendar, TrendingUp, X, Search } from "lucide-react";
+import { Plus, FileText, DollarSign, Calendar, TrendingUp, X, Search, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface GeneralLedgerEntry {
   id: number;
@@ -57,6 +57,15 @@ export default function GeneralLedgerReceivable() {
     search: "",
     financialYear: "",
   });
+
+  const formatCurrency = (amount: string) => {
+    return new Intl.NumberFormat("en-AE", {
+      style: "currency",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(parseFloat(amount || "0"));
+  };
 
   const clearFilters = () => {
     setPendingFilters({
@@ -128,7 +137,7 @@ export default function GeneralLedgerReceivable() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: entriesResponse, isLoading } = useQuery<{
+  const { data: entriesResponse, isLoading, refetch } = useQuery<{
     data: GeneralLedgerEntry[];
     pagination: {
       page: number;
@@ -136,16 +145,20 @@ export default function GeneralLedgerReceivable() {
       total: number;
       totalPages: number;
     };
+    summary?: {
+      totalReceivable: string;
+      pendingReceivable: string;
+      overdueReceivable: string;
+    };
   }>({
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
       const params = new URLSearchParams({ entryType: "receivable" });
-      if (filters.startDate) params.append("startDate", filters.startDate);
-      if (filters.endDate) params.append("endDate", filters.endDate);
-      if (filters.entityId) params.append("entityId", filters.entityId.toString());
-      if (filters.search) params.append("search", filters.search);
-      params.append("page", filters.page.toString());
-      params.append("limit", filters.limit.toString());
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== "" && value !== undefined && value !== "all") {
+          params.append(key, value.toString());
+        }
+      });
 
       const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch receivable entries");
@@ -154,162 +167,23 @@ export default function GeneralLedgerReceivable() {
     enabled: isAuthenticated,
   });
 
+  const handlePageChange = (newPage: number) => {
+    setFilters(prev => ({ ...prev, page: newPage }));
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      refetch();
+    }
+  }, [isAuthenticated, refetch]);
+
   const entries = entriesResponse?.data || [];
   const pagination = entriesResponse?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
+  const summary = entriesResponse?.summary;
 
-  const { data: customersResponse } = useQuery<{ data: any[] }>({
-    queryKey: ["/api/customers"],
-    queryFn: async () => {
-      const response = await fetch("/api/customers?limit=1000");
-      return response.json();
-    },
-    enabled: isAuthenticated,
-  });
-
-  const { data: projectsResponse } = useQuery<{ data: any[] }>({
-    queryKey: ["/api/projects"],
-    enabled: isAuthenticated,
-  });
-
-  const customers = Array.isArray(customersResponse?.data) ? customersResponse.data : [];
-  const projects = Array.isArray(projectsResponse?.data) ? projectsResponse.data : [];
-
-  const createEntryMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Create a balanced journal entry for double-entry accounting
-      const journalEntryData = {
-        referenceType: "manual",
-        description: data.description,
-        transactionDate: data.transactionDate,
-        entryType: "receivable",
-        dueDate: data.dueDate,
-        status: "pending",
-        createdBy: user?.id,
-        entries: [
-          // Debit: Accounts Receivable (Asset increases)
-          {
-            accountName: "Accounts Receivable",
-            debitAmount: data.debitAmount,
-            creditAmount: "0",
-            entityId: data.selectedAccountType === "customer" ? parseInt(data.selectedCustomerId) : undefined,
-            entityName: data.entityName,
-            projectId: data.selectedAccountType === "project" ? data.projectId : undefined,
-            invoiceNumber: data.invoiceNumber,
-            notes: data.notes,
-          },
-          // Credit: Revenue Account (Revenue increases)
-          {
-            accountName: data.selectedAccountType === "account" ? data.entityName : "Revenue",
-            debitAmount: "0",
-            creditAmount: data.debitAmount,
-            entityId: data.selectedAccountType === "customer" ? parseInt(data.selectedCustomerId) : undefined,
-            entityName: data.entityName,
-            projectId: data.selectedAccountType === "project" ? data.projectId : undefined,
-            invoiceNumber: data.invoiceNumber,
-            notes: data.notes,
-          },
-        ],
-      };
-
-      const response = await apiRequest("/api/general-ledger/journal", { method: "POST", body: journalEntryData });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create receivable journal entry");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
-      toast({
-        title: "Entry Created",
-        description: "Receivable entry has been created successfully.",
-      });
-      setIsDialogOpen(false);
-      resetForm();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create receivable entry",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const resetForm = () => {
-    setFormData({
-      accountName: "Accounts Receivable",
-      description: "",
-      debitAmount: "",
-      entityName: "",
-      invoiceNumber: "",
-      transactionDate: new Date().toISOString().split('T')[0],
-      dueDate: "",
-      notes: "",
-      selectedAccountType: "",
-      selectedCustomerId: "",
-      selectedAccount: "",
-      projectId: undefined,
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.description || !formData.debitAmount || !formData.selectedAccountType) {
-      toast({
-        title: "Error",
-        description: "Please fill in description, amount, and select an account type",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const submitData = {
-      ...formData,
-      projectId: formData.selectedAccountType === "project" ? formData.projectId : undefined,
-    };
-
-    createEntryMutation.mutate(submitData);
-  };
-
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat("en-AE", {
-      style: "currency",
-      currency: "AED",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(parseFloat(amount || "0"));
-  };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Total debits (invoices) minus total credits (payments) = net receivable
-  const totalDebits = entries?.reduce((sum, entry) => {
-    return sum + parseFloat(entry.debitAmount || "0");
-  }, 0) || 0;
-
-  const totalCredits = entries?.reduce((sum, entry) => {
-    return sum + parseFloat(entry.creditAmount || "0");
-  }, 0) || 0;
-
-  const totalReceivable = totalDebits - totalCredits;
-
-  // Overdue: invoice entries (debitAmount > 0) that are past due and not fully paid
-  const overdueReceivable = entries?.filter(e => {
-    if (!e.dueDate) return false;
-    if (parseFloat(e.debitAmount || "0") <= 0) return false; // Only invoice entries, not payments
-    const dueDate = new Date(e.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const isPastDue = dueDate < today;
-    const isNotPaid = e.status !== "paid";
-    return isPastDue && isNotPaid;
-  }).reduce((sum, entry) => {
-    return sum + parseFloat(entry.debitAmount || "0");
-  }, 0) || 0;
-
-  const pendingReceivable = totalReceivable - overdueReceivable;
+  const totalReceivable = parseFloat(summary?.totalReceivable || "0");
+  const pendingReceivable = parseFloat(summary?.pendingReceivable || "0");
+  const overdueReceivable = parseFloat(summary?.overdueReceivable || "0");
 
   if (!isAuthenticated) {
     return null;
@@ -456,22 +330,16 @@ export default function GeneralLedgerReceivable() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center items-center py-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading receivable entries...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading receivable entries...</p>
         </div>
-      ) : !entries || entries.length === 0 ? (
+      ) : entries.length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No receivable entries found</h3>
             <p className="text-gray-500 mb-4">Entries will appear here when sales invoices are created or manual entries are added.</p>
-            {/* <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Manual Entry
-            </Button> */}
           </CardContent>
         </Card>
       ) : (
@@ -506,211 +374,56 @@ export default function GeneralLedgerReceivable() {
                 </tbody>
               </table>
             </div>
+
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{" "}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
+                  {pagination.total} entries
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(1)}
+                    disabled={pagination.page === 1}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.page - 1)}
+                    disabled={pagination.page === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm px-2">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.page + 1)}
+                    disabled={pagination.page === pagination.totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.totalPages)}
+                    disabled={pagination.page === pagination.totalPages}
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
-
-      {/* Add Manual Entry Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Manual Receivable Entry</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="accountType">Account Type *</Label>
-              <Select
-                value={formData.selectedAccountType || "no-type"}
-                onValueChange={(value) => {
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    selectedAccountType: value === "no-type" ? "" : value,
-                    selectedAccount: "",
-                    selectedCustomerId: "",
-                    entityName: "",
-                    projectId: undefined
-                  }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="no-type">Select Account Type</SelectItem>
-                  <SelectItem value="account">General Account</SelectItem>
-                  <SelectItem value="customer">Customer</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.selectedAccountType === "customer" && (
-              <div className="space-y-2">
-                <Label htmlFor="customer">Customer *</Label>
-                <Select
-                  value={formData.selectedAccount || "default-customer"}
-                  onValueChange={(value) => {
-                    const customer = customers.find(c => c.id.toString() === value);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      selectedAccount: value === "default-customer" ? "" : value,
-                      selectedCustomerId: value === "default-customer" ? "" : value,
-                      entityName: customer ? customer.name : ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-customer">Select Customer</SelectItem>
-                    {customers
-                      .filter(customer => customer.id && customer.name)
-                      .map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.selectedAccountType === "project" && (
-              <div className="space-y-2">
-                <Label htmlFor="project">Project *</Label>
-                <Select
-                  value={formData.projectId?.toString() || "default-project"}
-                  onValueChange={(value) => {
-                    const project = projects.find(p => p.id.toString() === value);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      projectId: value === "default-project" ? undefined : parseInt(value),
-                      entityName: project ? project.title : ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select project..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-project">Select Project</SelectItem>
-                    {projects
-                      .filter(project => project.id && project.title)
-                      .map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()}>
-                          {project.title}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.selectedAccountType === "account" && (
-              <div className="space-y-2">
-                <Label htmlFor="generalAccount">Account Name *</Label>
-                <Select
-                  value={formData.selectedAccount || "default-account"}
-                  onValueChange={(value) => {
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      selectedAccount: value === "default-account" ? "" : value,
-                      entityName: value === "default-account" ? "" : value
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-account">Select Account</SelectItem>
-                    <SelectItem value="Service Revenue">Service Revenue</SelectItem>
-                    <SelectItem value="Rental Income">Rental Income</SelectItem>
-                    <SelectItem value="Commission Income">Commission Income</SelectItem>
-                    <SelectItem value="Interest Income">Interest Income</SelectItem>
-                    <SelectItem value="Other Income">Other Income</SelectItem>
-                    <SelectItem value="Consulting Fees">Consulting Fees</SelectItem>
-                    <SelectItem value="Training Revenue">Training Revenue</SelectItem>
-                    <SelectItem value="Maintenance Revenue">Maintenance Revenue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description *</Label>
-              <Input
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Enter description"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="debitAmount">Amount *</Label>
-              <Input
-                id="debitAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.debitAmount}
-                onChange={(e) => setFormData(prev => ({ ...prev, debitAmount: e.target.value }))}
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invoiceNumber">Invoice Number</Label>
-              <Input
-                id="invoiceNumber"
-                value={formData.invoiceNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
-                placeholder="Invoice number"
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="transactionDate">Transaction Date *</Label>
-                <Input
-                  id="transactionDate"
-                  type="date"
-                  value={formData.transactionDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, transactionDate: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dueDate">Due Date</Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createEntryMutation.isPending}>
-                {createEntryMutation.isPending ? "Creating..." : "Create Entry"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

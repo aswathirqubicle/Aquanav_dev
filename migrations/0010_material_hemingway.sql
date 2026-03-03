@@ -1,0 +1,2 @@
+ALTER TABLE "project_photo_groups" ADD COLUMN IF NOT EXISTS "daily_activity_id" integer;--> statement-breakpoint
+ALTER TABLE "project_photo_groups" ADD CONSTRAINT "project_photo_groups_daily_activity_id_daily_activities_id_fk" FOREIGN KEY ("daily_activity_id") REFERENCES "public"."daily_activities"("id") ON DELETE no action ON UPDATE no action;

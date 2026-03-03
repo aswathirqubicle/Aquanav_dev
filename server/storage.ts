@@ -236,8 +236,11 @@ export interface ProjectConsumableWithItems extends ProjectConsumable {
 
 // For createProjectConsumables items parameter
 export interface CreateProjectConsumableItemInput {
-  inventoryItemId: number;
+  inventoryItemId?: number | null;
   quantity: number;
+  itemName?: string;
+  itemUnit?: string;
+  unitCost?: string;
 }
 
 // For createProjectConsumables return type
@@ -546,7 +549,13 @@ class Storage {
     try {
       const whereClauses = [];
       if (search) {
-        whereClauses.push(ilike(customers.name, `%${search}%`));
+        whereClauses.push(
+          or(
+            ilike(customers.name, `%${search}%`),
+            ilike(customers.email, `%${search}%`),
+            ilike(customers.phone, `%${search}%`),
+          ),
+        );
       }
       whereClauses.push(eq(customers.isArchived, showArchived));
 
@@ -758,7 +767,10 @@ class Storage {
   // Supplier methods
   async getSuppliers(): Promise<SupplierWithBankDetails[]> {
     try {
-      const allSuppliers = await db.select().from(suppliers);
+      const allSuppliers = await db
+        .select()
+        .from(suppliers)
+        .orderBy(asc(suppliers.id));
       if (allSuppliers.length === 0) {
         return [];
       }
@@ -801,7 +813,13 @@ class Storage {
     try {
       const whereClauses = [];
       if (search) {
-        whereClauses.push(ilike(suppliers.name, `%${search}%`));
+        whereClauses.push(
+          or(
+            ilike(suppliers.name, `%${search}%`),
+            ilike(suppliers.email, `%${search}%`),
+            ilike(suppliers.phone, `%${search}%`),
+          ),
+        );
       }
       whereClauses.push(eq(suppliers.isArchived, showArchived));
 
@@ -2351,6 +2369,55 @@ class Storage {
     }
   }
 
+  async getEmployeeByUserId(userId: number): Promise<Employee | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.userId, userId));
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getEmployeeByUserId (userId: ${userId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getEmployeeByUserId",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getProjectsByEmployee(employeeId: number): Promise<Project[]> {
+    try {
+      const assignments = await db
+        .select({ projectId: projectEmployees.projectId })
+        .from(projectEmployees)
+        .where(eq(projectEmployees.employeeId, employeeId));
+
+      if (assignments.length === 0) return [];
+
+      const projectIds = assignments.map((a) => a.projectId).filter((id): id is number => id !== null);
+      if (projectIds.length === 0) return [];
+
+      return await db
+        .select()
+        .from(projects)
+        .where(inArray(projects.id, projectIds));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getProjectsByEmployee (employeeId: ${employeeId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProjectsByEmployee",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async createProject(projectData: InsertProject): Promise<Project> {
     try {
       const result = await db.insert(projects).values(projectData).returning();
@@ -3720,6 +3787,27 @@ class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPaymentFiles",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPaymentFile(id: number): Promise<PaymentFile | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(paymentFiles)
+        .where(eq(paymentFiles.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getPaymentFile (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPaymentFile",
         severity: "error",
       });
       throw error;
@@ -5653,15 +5741,110 @@ class Storage {
       const countQueryBuilder = db
         .select({ count: sql<number>`count(*)` })
         .from(generalLedgerEntries)
-        .leftJoin(projects, eq(generalLedgerEntries.projectId, projects.id)) // Ensure join for count consistency if filters use joined table
+        .leftJoin(projects, eq(generalLedgerEntries.projectId, projects.id))
         .where(finalConditions);
 
-      return this._getPaginatedResults<any>( // Using 'any' for TData due to the custom select object
+      const result = await this._getPaginatedResults<any>(
         dataQueryBuilder,
         countQueryBuilder,
         page,
         limit,
       );
+
+      // Add summary statistics if requested or for specific ledger types
+      if (
+        filters.entryType === "receivable" ||
+        filters.entryType === "payable"
+      ) {
+        const summaryConditions: SQL[] = [];
+        if (filters.entryType)
+          summaryConditions.push(
+            eq(generalLedgerEntries.entryType, filters.entryType),
+          );
+        if (filters.startDate)
+          summaryConditions.push(
+            gte(generalLedgerEntries.transactionDate, filters.startDate),
+          );
+        if (filters.endDate)
+          summaryConditions.push(
+            lte(generalLedgerEntries.transactionDate, filters.endDate),
+          );
+        if (filters.entityId)
+          summaryConditions.push(
+            eq(generalLedgerEntries.entityId, filters.entityId),
+          );
+        if (filters.projectId)
+          summaryConditions.push(
+            eq(generalLedgerEntries.projectId, filters.projectId),
+          );
+        if (filters.status)
+          summaryConditions.push(
+            eq(generalLedgerEntries.status, filters.status),
+          );
+        if (filters.search) {
+          summaryConditions.push(
+            or(
+              ilike(generalLedgerEntries.description, `%${filters.search}%`),
+              ilike(generalLedgerEntries.entityName, `%${filters.search}%`),
+              ilike(generalLedgerEntries.invoiceNumber, `%${filters.search}%`),
+            ),
+          );
+        }
+
+        const finalSummaryConditions =
+          summaryConditions.length > 0 ? and(...summaryConditions) : undefined;
+
+        const [totals] = await db
+          .select({
+            totalDebit: sql<string>`COALESCE(SUM(debit_amount::numeric), 0)`,
+            totalCredit: sql<string>`COALESCE(SUM(credit_amount::numeric), 0)`,
+          })
+          .from(generalLedgerEntries)
+          .where(finalSummaryConditions);
+
+        const today = new Date().toISOString().split("T")[0];
+        const [overdue] = await db
+          .select({
+            amount: sql<string>`COALESCE(SUM(${filters.entryType === "receivable" ? generalLedgerEntries.debitAmount : generalLedgerEntries.creditAmount}::numeric), 0)`,
+          })
+          .from(generalLedgerEntries)
+          .where(
+            and(
+              finalSummaryConditions,
+              sql`due_date < ${today}`,
+              ne(generalLedgerEntries.status, "paid"),
+              sql`${filters.entryType === "receivable" ? generalLedgerEntries.debitAmount : generalLedgerEntries.creditAmount}::numeric > 0`,
+            ),
+          );
+
+        const totalDebit = parseFloat(totals?.totalDebit || "0");
+        const totalCredit = parseFloat(totals?.totalCredit || "0");
+        const overdueAmount = parseFloat(overdue?.amount || "0");
+
+        if (filters.entryType === "receivable") {
+          const totalReceivable = totalDebit - totalCredit;
+          return {
+            ...result,
+            summary: {
+              totalReceivable: totalReceivable.toFixed(2),
+              overdueReceivable: overdueAmount.toFixed(2),
+              pendingReceivable: (totalReceivable - overdueAmount).toFixed(2),
+            },
+          };
+        } else {
+          const totalPayable = totalCredit - totalDebit;
+          return {
+            ...result,
+            summary: {
+              totalPayable: totalPayable.toFixed(2),
+              overduePayable: overdueAmount.toFixed(2),
+              pendingPayable: (totalPayable - overdueAmount).toFixed(2),
+            },
+          };
+        }
+      }
+
+      return result;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -8103,6 +8286,8 @@ class Storage {
           deliveryTerms: purchaseOrders.deliveryTerms,
           bankAccount: purchaseOrders.bankAccount,
           subtotal: purchaseOrders.subtotal,
+          discountPercentage: purchaseOrders.discountPercentage,
+          discountAmount: purchaseOrders.discountAmount,
           taxAmount: purchaseOrders.taxAmount,
           totalAmount: purchaseOrders.totalAmount,
           notes: purchaseOrders.notes,
@@ -8160,12 +8345,21 @@ class Storage {
           deliveryTerms: purchaseOrders.deliveryTerms,
           bankAccount: purchaseOrders.bankAccount,
           subtotal: purchaseOrders.subtotal,
+          discountPercentage: purchaseOrders.discountPercentage,
+          discountAmount: purchaseOrders.discountAmount,
           taxAmount: purchaseOrders.taxAmount,
           totalAmount: purchaseOrders.totalAmount,
           notes: purchaseOrders.notes,
           createdAt: purchaseOrders.createdAt,
+          currency: purchaseOrders.currency,
+          exchangeRate: purchaseOrders.exchangeRate,
           supplierCurrency: suppliers.currency,
           supplierVatTreatment: suppliers.vatTreatment,
+          submittedById: purchaseOrders.submittedById,
+          submittedAt: purchaseOrders.submittedAt,
+          approvedById: purchaseOrders.approvedById,
+          approvedAt: purchaseOrders.approvedAt,
+          rejectionReason: purchaseOrders.rejectionReason,
         })
         .from(purchaseOrders)
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
@@ -8206,6 +8400,8 @@ class Storage {
           description: purchaseOrderItems.description,
           quantity: purchaseOrderItems.quantity,
           unitPrice: purchaseOrderItems.unitPrice,
+          taxRate: purchaseOrderItems.taxRate,
+          taxAmount: purchaseOrderItems.taxAmount,
           lineTotal: purchaseOrderItems.lineTotal,
         })
         .from(purchaseOrderItems)
@@ -8339,6 +8535,9 @@ class Storage {
       if (data.taxAmount !== undefined) updateData.taxAmount = data.taxAmount;
       if (data.totalAmount !== undefined)
         updateData.totalAmount = data.totalAmount;
+      if (data.currency !== undefined) updateData.currency = data.currency;
+      if (data.exchangeRate !== undefined)
+        updateData.exchangeRate = data.exchangeRate;
 
       await db
         .update(purchaseOrders)
@@ -8521,6 +8720,27 @@ class Storage {
   async convertPurchaseOrderToInvoice(
     id: number,
     userId: number,
+    overrides?: {
+      invoiceDate?: string;
+      dueDate?: string;
+      notes?: string;
+      paymentTerms?: string;
+      currency?: string;
+      exchangeRate?: string;
+      discountPercentage?: string;
+      discountAmount?: string;
+      items?: Array<{
+        itemType: "product" | "service";
+        inventoryItemId?: number | null;
+        description?: string;
+        quantity: number;
+        unitPrice: number;
+        taxRate: number;
+        taxAmount: number;
+        lineTotal: number;
+      }>;
+      submitForApproval?: boolean;
+    },
   ): Promise<any> {
     try {
       // Get the purchase order with items
@@ -8538,6 +8758,27 @@ class Storage {
       // Generate invoice number
       const invoiceNumber = `PI-${Date.now()}`;
 
+      // Use provided items or fall back to PO items for totals
+      const itemsToUse =
+        overrides?.items && overrides.items.length > 0
+          ? overrides.items
+          : po.items || [];
+
+      const computedSubtotal = itemsToUse.reduce(
+        (sum: number, item: any) =>
+          sum + parseFloat(item.quantity) * parseFloat(item.unitPrice),
+        0,
+      );
+      const computedTax = itemsToUse.reduce(
+        (sum: number, item: any) => sum + parseFloat(item.taxAmount || "0"),
+        0,
+      );
+
+      const discountAmount = parseFloat(
+        overrides?.discountAmount ?? po.discountAmount ?? "0",
+      );
+      const computedTotal = computedSubtotal + computedTax - discountAmount;
+
       // Create the invoice
       const [invoice] = await db
         .insert(purchaseInvoices)
@@ -8546,32 +8787,44 @@ class Storage {
           supplierId: po.supplierId,
           poId: id,
           status: "draft",
-          invoiceDate: new Date(),
-          dueDate: po.expectedDeliveryDate || new Date(),
-          paymentTerms: po.paymentTerms,
-          notes: po.notes,
-          subtotal: po.subtotal,
-          discountPercentage: po.discountPercentage || "0",
-          discountAmount: po.discountAmount || "0",
-          taxAmount: po.taxAmount,
-          totalAmount: po.totalAmount,
+          invoiceDate: overrides?.invoiceDate
+            ? new Date(overrides.invoiceDate)
+            : new Date(),
+          dueDate: overrides?.dueDate
+            ? new Date(overrides.dueDate)
+            : po.expectedDeliveryDate
+              ? new Date(po.expectedDeliveryDate)
+              : null,
+          paymentTerms: overrides?.paymentTerms ?? po.paymentTerms ?? null,
+          bankAccount: po.bankAccount ?? null,
+          notes: overrides?.notes ?? po.notes ?? null,
+          subtotal: computedSubtotal.toFixed(2),
+          discountPercentage:
+            overrides?.discountPercentage ?? po.discountPercentage ?? "0",
+          discountAmount: discountAmount.toFixed(2),
+          taxAmount: computedTax.toFixed(2),
+          totalAmount: computedTotal.toFixed(2),
           paidAmount: "0",
+          currency: overrides?.currency ?? po.currency ?? "AED",
+          exchangeRate: overrides?.exchangeRate ?? po.exchangeRate ?? "1",
           createdBy: userId,
         })
         .returning();
 
-      // Copy items from PO to invoice
-      if (po.items && po.items.length > 0) {
-        const invoiceItemsToInsert = po.items.map((item: any) => ({
+      // Insert line items (user-edited or copied from PO)
+      if (itemsToUse.length > 0) {
+        const invoiceItemsToInsert = itemsToUse.map((item: any) => ({
           invoiceId: invoice.id,
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          taxRate: item.taxRate || "0.00",
-          taxAmount: item.taxAmount || "0.00",
-          lineTotal: item.lineTotal,
+          quantity: parseFloat(item.quantity),
+          unitPrice: parseFloat(item.unitPrice).toFixed(2),
+          taxRate: parseFloat(item.taxRate || "0").toFixed(2),
+          taxAmount: parseFloat(item.taxAmount || "0").toFixed(2),
+          lineTotal: (
+            parseFloat(item.quantity) * parseFloat(item.unitPrice)
+          ).toFixed(2),
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
@@ -8586,7 +8839,22 @@ class Storage {
         })
         .where(eq(purchaseOrders.id, id));
 
-      return { invoice, purchaseOrder: await this.getPurchaseOrder(id) };
+      // Submit for approval if requested
+      if (overrides?.submitForApproval) {
+        await db
+          .update(purchaseInvoices)
+          .set({
+            status: "pending_approval",
+            submittedById: userId,
+            submittedAt: new Date(),
+          })
+          .where(eq(purchaseInvoices.id, invoice.id));
+      }
+
+      return {
+        invoice: await this.getPurchaseInvoice(invoice.id),
+        purchaseOrder: await this.getPurchaseOrder(id),
+      };
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -8737,22 +9005,26 @@ class Storage {
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
-          // projectId: purchaseInvoices.projectId,
-          // assetInventoryInstanceId: purchaseInvoices.assetInventoryInstanceId,
           status: purchaseInvoices.status,
+          paymentStatus: purchaseInvoices.paymentStatus,
           invoiceDate: purchaseInvoices.invoiceDate,
           dueDate: purchaseInvoices.dueDate,
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           subtotal: purchaseInvoices.subtotal,
+          discountPercentage: purchaseInvoices.discountPercentage,
+          discountAmount: purchaseInvoices.discountAmount,
           taxAmount: purchaseInvoices.taxAmount,
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
           notes: purchaseInvoices.notes,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
-          approvedBy: purchaseInvoices.approvedById,
+          submittedById: purchaseInvoices.submittedById,
+          submittedAt: purchaseInvoices.submittedAt,
+          approvedById: purchaseInvoices.approvedById,
           approvedAt: purchaseInvoices.approvedAt,
+          rejectionReason: purchaseInvoices.rejectionReason,
           currency: purchaseInvoices.currency,
           exchangeRate: purchaseInvoices.exchangeRate,
           supplierCurrency: suppliers.currency,
@@ -8775,8 +9047,11 @@ class Storage {
           description: purchaseInvoiceItems.description,
           quantity: purchaseInvoiceItems.quantity,
           unitPrice: purchaseInvoiceItems.unitPrice,
+          taxRate: purchaseInvoiceItems.taxRate,
           taxAmount: purchaseInvoiceItems.taxAmount,
           lineTotal: purchaseInvoiceItems.lineTotal,
+          projectId: purchaseInvoiceItems.projectId,
+          assetInstanceId: purchaseInvoiceItems.assetInstanceId,
         })
         .from(purchaseInvoiceItems)
         .leftJoin(
@@ -8861,6 +9136,74 @@ class Storage {
     }
   }
 
+  async updatePurchaseInvoice(id: number, invoiceData: any): Promise<any> {
+    try {
+      const existing = await this.getPurchaseInvoice(id);
+      if (!existing) throw new Error("Purchase invoice not found");
+      if (existing.status !== "draft") {
+        throw new Error("Only draft invoices can be edited");
+      }
+
+      const subtotal = parseFloat(invoiceData.subtotal || "0");
+      const taxAmount = parseFloat(invoiceData.taxAmount || "0");
+      const discountAmt = parseFloat(invoiceData.discountAmount || "0");
+      const totalAmount = subtotal + taxAmount - discountAmt;
+
+      await db
+        .update(purchaseInvoices)
+        .set({
+          supplierId: invoiceData.supplierId,
+          invoiceDate: new Date(invoiceData.invoiceDate),
+          dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
+          paymentTerms: invoiceData.paymentTerms || null,
+          bankAccount: invoiceData.bankAccount || null,
+          notes: invoiceData.notes || null,
+          currency: invoiceData.currency || "AED",
+          exchangeRate: invoiceData.exchangeRate || "1",
+          subtotal: subtotal.toFixed(2),
+          discountPercentage: invoiceData.discountPercentage || "0",
+          discountAmount: invoiceData.discountAmount || "0",
+          taxAmount: taxAmount.toFixed(2),
+          totalAmount: totalAmount.toFixed(2),
+        })
+        .where(eq(purchaseInvoices.id, id));
+
+      // Replace all items
+      await db
+        .delete(purchaseInvoiceItems)
+        .where(eq(purchaseInvoiceItems.invoiceId, id));
+
+      if (invoiceData.items && invoiceData.items.length > 0) {
+        const itemsToInsert = invoiceData.items.map((item: any) => ({
+          invoiceId: id,
+          itemType: item.itemType || "product",
+          inventoryItemId: item.inventoryItemId || null,
+          description: item.description || null,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice.toString(),
+          taxRate: item.taxRate?.toString() || "0",
+          taxAmount: item.taxAmount?.toString() || "0",
+          lineTotal: item.lineTotal.toString(),
+          projectId: item.projectId || null,
+          assetInstanceId: item.assetInstanceId || null,
+        }));
+        await db.insert(purchaseInvoiceItems).values(itemsToInsert);
+      }
+
+      return this.getPurchaseInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updatePurchaseInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updatePurchaseInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async createPurchaseInvoiceFromPO(
     poId: number,
     invoiceData: any,
@@ -8890,8 +9233,8 @@ class Storage {
           taxAmount: po.taxAmount,
           totalAmount: po.totalAmount,
           paidAmount: "0",
-          currency: po.currency || "AED",
-          exchangeRate: po.exchangeRate || "1",
+          currency: invoiceData.currency || po.currency || "AED",
+          exchangeRate: invoiceData.exchangeRate || po.exchangeRate || "1",
           notes: invoiceData.notes || null,
           createdBy: invoiceData.createdBy,
         })
@@ -8997,7 +9340,7 @@ class Storage {
     try {
       // Get the invoice details first
       const invoice = await this.getPurchaseInvoice(id);
-      console.log("invoiceinvoice",invoice);
+      console.log("invoiceinvoice", invoice);
       if (!invoice) {
         throw new Error("Purchase invoice not found");
       }
@@ -9019,10 +9362,14 @@ class Storage {
         .where(eq(purchaseInvoiceItems.invoiceId, id));
 
       // Process each line item for project/asset allocations
+      const exchangeRateForAllocations = parseFloat(
+        invoice.exchangeRate || "1",
+      );
       for (const item of items) {
-        const lineAmountWithTax = parseFloat(item.lineTotal);
+        const lineAmountInCurrency = parseFloat(item.lineTotal);
+        const lineAmountAED = lineAmountInCurrency * exchangeRateForAllocations;
 
-        // If line item is linked to a project, add line item amount to project's actual cost
+        // If line item is linked to a project, add line item amount (in AED) to project's actual cost
         if (item.projectId) {
           const [project] = await db
             .select()
@@ -9031,7 +9378,7 @@ class Storage {
 
           if (project) {
             const currentCost = parseFloat(project.actualCost || "0");
-            const newCost = currentCost + lineAmountWithTax;
+            const newCost = currentCost + lineAmountAED;
 
             await db
               .update(projects)
@@ -9040,11 +9387,11 @@ class Storage {
           }
         }
 
-        // If line item is linked to an asset instance, create a maintenance record
+        // If line item is linked to an asset instance, create a maintenance record (in AED)
         if (item.assetInstanceId) {
           await db.insert(assetInventoryMaintenanceRecords).values({
             instanceId: item.assetInstanceId,
-            maintenanceCost: lineAmountWithTax.toFixed(2),
+            maintenanceCost: lineAmountAED.toFixed(2),
             maintenanceDate: new Date().toISOString(),
             description: `Purchase Invoice: ${invoice.invoiceNumber} - ${
               item.description || "Maintenance cost"
@@ -9056,15 +9403,16 @@ class Storage {
 
       // Create Goods Receipt for inventory items in the purchase invoice
       const inventoryItems_forGR = items.filter(
-        (item) => item.itemType === "product" && item.inventoryItemId
+        (item) => item.itemType === "product" && item.inventoryItemId,
       );
 
       if (inventoryItems_forGR.length > 0) {
         const grReference = `PI-${invoice.invoiceNumber}`;
+        const exchangeRate = parseFloat(invoice.exchangeRate || "1");
         const grItems = inventoryItems_forGR.map((item) => ({
           inventoryItemId: item.inventoryItemId!,
           quantity: item.quantity,
-          unitCost: parseFloat(item.unitPrice),
+          unitCost: parseFloat(item.unitPrice) * exchangeRate,
         }));
 
         await this.createGoodsReceipt(grReference, grItems, userId);
@@ -9094,7 +9442,7 @@ class Storage {
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
-console.log("invoiceExchangeRate111",invoiceExchangeRate);
+      console.log("invoiceExchangeRate111", invoiceExchangeRate);
       // Create payable entry (Credit Accounts Payable) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
@@ -9108,11 +9456,15 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
         entityName: supplierName,
         projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
-        transactionDate: invoice.invoiceDate.toISOString(),
-        dueDate: invoice.dueDate.toISOString(),
+        transactionDate: invoice.invoiceDate
+          ? new Date(invoice.invoiceDate).toISOString()
+          : new Date().toISOString(),
+        dueDate: invoice.dueDate
+          ? new Date(invoice.dueDate).toISOString()
+          : null,
         status: "pending",
       });
-      console.log("invoiceExchangeRate",invoiceExchangeRate);
+      console.log("invoiceExchangeRate", invoiceExchangeRate);
       // Create expense entry (Debit Purchase Expense) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
@@ -9126,8 +9478,12 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
         entityName: supplierName,
         projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
-        transactionDate: invoice.invoiceDate.toISOString(),
-        dueDate: invoice.dueDate.toISOString(),
+        transactionDate: invoice.invoiceDate
+          ? new Date(invoice.invoiceDate).toISOString()
+          : new Date().toISOString(),
+        dueDate: invoice.dueDate
+          ? new Date(invoice.dueDate).toISOString()
+          : null,
         status: "pending",
       });
 
@@ -9141,6 +9497,175 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "approvePurchaseInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async cancelPurchaseInvoice(id: number, userId: number): Promise<any> {
+    try {
+      const invoice = await this.getPurchaseInvoice(id);
+      if (!invoice) throw new Error("Purchase invoice not found");
+      if (invoice.status !== "approved") {
+        throw new Error("Only approved purchase invoices can be cancelled");
+      }
+
+      if (parseFloat(invoice.paidAmount || "0") > 0) {
+        throw new Error(
+          "Cannot cancel an invoice that has recorded payments. Please reverse the payments first.",
+        );
+      }
+
+      await db
+        .update(purchaseInvoices)
+        .set({ status: "cancelled" })
+        .where(eq(purchaseInvoices.id, id));
+
+      // Reverse project cost allocations
+      const items = await db
+        .select()
+        .from(purchaseInvoiceItems)
+        .where(eq(purchaseInvoiceItems.invoiceId, id));
+
+      const cancelExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      for (const item of items) {
+        const lineAmountAED = parseFloat(item.lineTotal) * cancelExchangeRate;
+        if (item.projectId) {
+          const [project] = await db
+            .select()
+            .from(projects)
+            .where(eq(projects.id, item.projectId));
+          if (project) {
+            const newCost = Math.max(
+              0,
+              parseFloat(project.actualCost || "0") - lineAmountAED,
+            );
+            await db
+              .update(projects)
+              .set({ actualCost: newCost.toFixed(2) })
+              .where(eq(projects.id, item.projectId));
+          }
+        }
+
+        // Reverse asset maintenance records created during approval
+        if (item.assetInstanceId) {
+          const matchDesc = `Purchase Invoice: ${invoice.invoiceNumber}`;
+          const maintenanceRecords = await db
+            .select()
+            .from(assetInventoryMaintenanceRecords)
+            .where(
+              and(
+                eq(
+                  assetInventoryMaintenanceRecords.instanceId,
+                  item.assetInstanceId,
+                ),
+                sql`${assetInventoryMaintenanceRecords.description} LIKE ${matchDesc + "%"}`,
+              ),
+            );
+          for (const record of maintenanceRecords) {
+            await db
+              .delete(assetInventoryMaintenanceRecords)
+              .where(eq(assetInventoryMaintenanceRecords.id, record.id));
+          }
+        }
+      }
+
+      // Reverse inventory stock for product items (goods issue)
+      const inventoryItems_toReverse = items.filter(
+        (item) => item.itemType === "product" && item.inventoryItemId,
+      );
+      if (inventoryItems_toReverse.length > 0) {
+        const cancelRef = `CANCEL-PI-${invoice.invoiceNumber}`;
+        const exchangeRate = parseFloat(invoice.exchangeRate || "1");
+        for (const item of inventoryItems_toReverse) {
+          const inventoryItem = await this.getInventoryItem(
+            item.inventoryItemId!,
+          );
+          if (inventoryItem) {
+            const unitCostAED = (
+              parseFloat(item.unitPrice) * exchangeRate
+            ).toFixed(4);
+            await db.insert(inventoryTransactions).values({
+              itemId: item.inventoryItemId!,
+              type: "outflow",
+              quantity: item.quantity,
+              unitCost: unitCostAED,
+              remainingQuantity: 0,
+              reference: cancelRef,
+              createdBy: userId,
+            });
+
+            const newStock = Math.max(
+              0,
+              inventoryItem.currentStock - item.quantity,
+            );
+            await this.updateInventoryItem(item.inventoryItemId!, {
+              currentStock: newStock,
+            });
+          }
+        }
+      }
+
+      // Create reverse GL entries
+      let supplierName = "Unknown Supplier";
+      if (invoice.supplierId) {
+        const [supplier] = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.id, invoice.supplierId));
+        if (supplier) supplierName = supplier.name;
+      }
+
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(invoice.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      // Reverse: Debit Accounts Payable
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_invoice",
+        referenceId: id,
+        accountName: "Accounts Payable",
+        description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
+        debitAmount: aedAmount,
+        creditAmount: "0",
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: new Date().toISOString(),
+        status: "cancelled",
+      });
+
+      // Reverse: Credit Purchase Expense
+      await db.insert(generalLedgerEntries).values({
+        entryType: "payable",
+        referenceType: "purchase_invoice",
+        referenceId: id,
+        accountName: "Purchase Expense",
+        description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
+        debitAmount: "0",
+        creditAmount: aedAmount,
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate: new Date().toISOString(),
+        status: "cancelled",
+      });
+
+      return this.getPurchaseInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in cancelPurchaseInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "cancelPurchaseInvoice",
         severity: "error",
       });
       throw error;
@@ -9245,7 +9770,7 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
       // 1. Debit: Accounts Payable (reduce liability - we owe less) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
-        referenceType: "purchase_payment",
+        referenceType: "payment",
         referenceId: payment.id,
         accountName: "Accounts Payable",
         description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
@@ -9253,7 +9778,6 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
         creditAmount: "0",
         entityId: invoice.supplierId,
         entityName: supplierName,
-        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: paymentData.paymentDate,
         status: "paid",
@@ -9262,7 +9786,7 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
       // 2. Credit: Cash/Bank (reduce asset - cash outflow) in AED
       await db.insert(generalLedgerEntries).values({
         entryType: "payable",
-        referenceType: "purchase_payment",
+        referenceType: "payment",
         referenceId: payment.id,
         accountName: "Cash/Bank",
         description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
@@ -9270,7 +9794,6 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
         creditAmount: aedAmount,
         entityId: invoice.supplierId,
         entityName: supplierName,
-        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: paymentData.paymentDate,
         status: "paid",
@@ -9386,12 +9909,12 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
             const items: ProjectConsumableItemWithDetails[] = await db
               .select({
                 id: projectConsumableItems.id,
-                consumableId: projectConsumableItems.consumableId, // Ensure all fields from ProjectConsumableItem are present
+                consumableId: projectConsumableItems.consumableId,
                 inventoryItemId: projectConsumableItems.inventoryItemId,
                 quantity: projectConsumableItems.quantity,
                 unitCost: projectConsumableItems.unitCost,
-                itemName: inventoryItems.name,
-                itemUnit: inventoryItems.unit,
+                itemName: sql<string>`COALESCE(${inventoryItems.name}, ${projectConsumableItems.itemName})`.as("item_name"),
+                itemUnit: sql<string>`COALESCE(${inventoryItems.unit}, ${projectConsumableItems.itemUnit})`.as("item_unit"),
               })
               .from(projectConsumableItems)
               .leftJoin(
@@ -9450,58 +9973,74 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
       // Process each item
       const consumableItems = [];
       for (const item of items) {
-        // Get inventory item details
-        const inventoryItem = await this.getInventoryItem(item.inventoryItemId);
-        if (!inventoryItem) {
-          throw new Error(
-            `Inventory item with ID ${item.inventoryItemId} not found`,
-          );
-        }
+        if (item.inventoryItemId) {
+          // Inventory item - deduct from stock
+          const inventoryItem = await this.getInventoryItem(item.inventoryItemId);
+          if (!inventoryItem) {
+            throw new Error(
+              `Inventory item with ID ${item.inventoryItemId} not found`,
+            );
+          }
 
-        // Check stock availability
-        if (inventoryItem.currentStock < item.quantity) {
-          throw new Error(
-            `Insufficient stock for item ${inventoryItem.name}. Available: ${inventoryItem.currentStock}, Requested: ${item.quantity}`,
-          );
-        }
+          if (inventoryItem.currentStock < item.quantity) {
+            throw new Error(
+              `Insufficient stock for item ${inventoryItem.name}. Available: ${inventoryItem.currentStock}, Requested: ${item.quantity}`,
+            );
+          }
 
-        // Use avgCost as unit cost
-        const unitCost = inventoryItem.avgCost || "0";
+          const unitCost = inventoryItem.avgCost || "0";
 
-        // Create consumable item
-        const [consumableItem] = await db
-          .insert(projectConsumableItems)
-          .values({
-            consumableId: consumable.id,
-            inventoryItemId: item.inventoryItemId,
+          const [consumableItem] = await db
+            .insert(projectConsumableItems)
+            .values({
+              consumableId: consumable.id,
+              inventoryItemId: item.inventoryItemId,
+              quantity: item.quantity,
+              unitCost: unitCost,
+            })
+            .returning();
+
+          consumableItems.push(consumableItem);
+
+          const newStock = inventoryItem.currentStock - item.quantity;
+          await this.updateInventoryItem(item.inventoryItemId, {
+            currentStock: newStock,
+          });
+
+          await db.insert(inventoryTransactions).values({
+            itemId: item.inventoryItemId,
+            type: "outflow",
             quantity: item.quantity,
             unitCost: unitCost,
-          })
-          .returning();
+            remainingQuantity: 0,
+            projectId: projectId,
+            reference: `Project Consumables - ${date}`,
+            createdBy: userId || null,
+          });
 
-        consumableItems.push(consumableItem);
+          console.log(
+            `Updated inventory item ${item.inventoryItemId} stock from ${inventoryItem.currentStock} to ${newStock}`,
+          );
+        } else {
+          // Manual entry - no inventory deduction
+          const [consumableItem] = await db
+            .insert(projectConsumableItems)
+            .values({
+              consumableId: consumable.id,
+              inventoryItemId: null,
+              quantity: item.quantity,
+              unitCost: item.unitCost || "0",
+              itemName: item.itemName || "Manual Item",
+              itemUnit: item.itemUnit || "pcs",
+            })
+            .returning();
 
-        // Update inventory stock
-        const newStock = inventoryItem.currentStock - item.quantity;
-        await this.updateInventoryItem(item.inventoryItemId, {
-          currentStock: newStock,
-        });
+          consumableItems.push(consumableItem);
 
-        // Create inventory transaction for tracking
-        await db.insert(inventoryTransactions).values({
-          itemId: item.inventoryItemId,
-          type: "outflow",
-          quantity: item.quantity,
-          unitCost: unitCost,
-          remainingQuantity: 0, // For outflow, remaining quantity is 0
-          projectId: projectId,
-          reference: `Project Consumables - ${date}`,
-          createdBy: userId || null,
-        });
-
-        console.log(
-          `Updated inventory item ${item.inventoryItemId} stock from ${inventoryItem.currentStock} to ${newStock}`,
-        );
+          console.log(
+            `Added manual consumable item: ${item.itemName}, qty: ${item.quantity}`,
+          );
+        }
       }
 
       // Recalculate project cost after adding consumables
@@ -9529,8 +10068,19 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
   async getProjectPhotoGroups(projectId: number): Promise<ProjectPhotoGroup[]> {
     try {
       const groups = await db
-        .select()
+        .select({
+          ...getTableColumns(projectPhotoGroups),
+          dailyActivity: {
+            id: dailyActivities.id,
+            date: dailyActivities.date,
+            location: dailyActivities.location,
+          },
+        })
         .from(projectPhotoGroups)
+        .leftJoin(
+          dailyActivities,
+          eq(projectPhotoGroups.dailyActivityId, dailyActivities.id),
+        )
         .where(eq(projectPhotoGroups.projectId, projectId))
         .orderBy(desc(projectPhotoGroups.createdAt));
 
@@ -12120,12 +12670,17 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
     return results;
   }
 
-  async createEmployeeFeedback(data: InsertEmployeeFeedback): Promise<EmployeeFeedback> {
+  async createEmployeeFeedback(
+    data: InsertEmployeeFeedback,
+  ): Promise<EmployeeFeedback> {
     const [result] = await db.insert(employeeFeedback).values(data).returning();
     return result;
   }
 
-  async updateEmployeeFeedback(id: number, data: { feedback: string; projectId: number | null }): Promise<EmployeeFeedback | undefined> {
+  async updateEmployeeFeedback(
+    id: number,
+    data: { feedback: string; projectId: number | null },
+  ): Promise<EmployeeFeedback | undefined> {
     const [result] = await db
       .update(employeeFeedback)
       .set({ ...data, updatedAt: new Date() })
@@ -12142,7 +12697,9 @@ console.log("invoiceExchangeRate111",invoiceExchangeRate);
     return result.length > 0;
   }
 
-  async getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined> {
+  async getEmployeeFeedbackById(
+    id: number,
+  ): Promise<EmployeeFeedback | undefined> {
     const [result] = await db
       .select()
       .from(employeeFeedback)
@@ -12214,6 +12771,7 @@ export interface IStorage {
 
   // Employee methods
   getEmployees(): Promise<Employee[]>;
+  getEmployeeByUserId(userId: number): Promise<Employee | undefined>;
   createEmployee(employeeData: InsertEmployee): Promise<Employee>;
   updateEmployee(
     id: number,
@@ -12224,6 +12782,7 @@ export interface IStorage {
   getProjects(): Promise<Project[]>;
   getProject(id: number): Promise<Project | undefined>;
   getProjectsByCustomer(customerId: number): Promise<Project[]>;
+  getProjectsByEmployee(employeeId: number): Promise<Project[]>;
   createProject(projectData: InsertProject): Promise<Project>;
   updateProject(
     id: number,
@@ -12337,7 +12896,7 @@ export interface IStorage {
   getProductsBySupplier(supplierId: number): Promise<any[]>;
 
   // Project Photo Group methods
-  getProjectPhotoGroups(projectId: number): Promise<ProjectPhotoGroup[]>;
+  getProjectPhotoGroups(projectId: number): Promise<any[]>;
   createProjectPhotoGroup(
     groupData: InsertProjectPhotoGroup,
   ): Promise<ProjectPhotoGroup>;
@@ -12477,6 +13036,12 @@ export interface IStorage {
   ): Promise<SalesInvoice | undefined>;
   deleteSalesInvoice(id: number): Promise<void>;
 
+  // Payment file methods
+  createPaymentFile(fileData: CreatePaymentFileData): Promise<PaymentFile>;
+  getPaymentFiles(paymentId: number): Promise<PaymentFile[]>;
+  getPaymentFile(id: number): Promise<PaymentFile | undefined>;
+  deletePaymentFile(fileId: number): Promise<boolean>;
+
   // Invoice Payments methods
   getInvoicePayments(invoiceId: number): Promise<InvoicePayment[]>;
   createInvoicePayment(
@@ -12589,8 +13154,13 @@ export interface IStorage {
     userId: number,
     reason?: string,
   ): Promise<any>;
-  convertPurchaseOrderToInvoice(id: number, userId: number): Promise<any>;
+  convertPurchaseOrderToInvoice(
+    id: number,
+    userId: number,
+    overrides: any,
+  ): Promise<any>;
   getPurchaseInvoices(): Promise<any[]>;
+  updatePurchaseInvoice(id: number, invoiceData: any): Promise<any>;
   createPurchaseInvoiceFromPO(poId: number, invoiceData: any): Promise<any>;
 
   // Error Logs methods
@@ -12644,8 +13214,13 @@ export interface IStorage {
 
   // Employee Feedback methods
   getEmployeeFeedback(employeeId: number): Promise<any[]>;
-  createEmployeeFeedback(data: InsertEmployeeFeedback): Promise<EmployeeFeedback>;
-  updateEmployeeFeedback(id: number, data: { feedback: string; projectId: number | null }): Promise<EmployeeFeedback | undefined>;
+  createEmployeeFeedback(
+    data: InsertEmployeeFeedback,
+  ): Promise<EmployeeFeedback>;
+  updateEmployeeFeedback(
+    id: number,
+    data: { feedback: string; projectId: number | null },
+  ): Promise<EmployeeFeedback | undefined>;
   deleteEmployeeFeedback(id: number): Promise<boolean>;
   getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined>;
 }

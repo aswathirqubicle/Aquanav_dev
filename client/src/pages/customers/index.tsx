@@ -14,8 +14,9 @@ import { CustomPagination } from "@/components/ui/pagination";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Users, Plus, Mail, Phone, MapPin, FileText, Ship, Archive, ArchiveRestore, Filter, Files } from "lucide-react";
+import { Users, Plus, Mail, Phone, MapPin, FileText, Ship, Archive, ArchiveRestore, Filter, Files, Search } from "lucide-react";
 import { z } from "zod";
+import { useDebounce } from "@/hooks/use-debounce";
 import { DocumentManager } from "@/components/documents/DocumentManager";
 import { CurrencyDisplay } from "@/components/currency/CurrencyDisplay";
 
@@ -88,6 +89,8 @@ export default function CustomersIndex() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<{
     page: number;
@@ -134,10 +137,10 @@ export default function CustomersIndex() {
       totalPages: number;
     };
   }>({
-    queryKey: ["/api/customers", currentPage, showArchived],
+    queryKey: ["/api/customers", currentPage, showArchived, debouncedSearchTerm],
     queryFn: async () => {
       try {
-        const response = await apiRequest(`/api/customers?page=${currentPage}&limit=10&showArchived=${showArchived}`, {
+        const response = await apiRequest(`/api/customers?page=${currentPage}&limit=10&showArchived=${showArchived}&search=${encodeURIComponent(debouncedSearchTerm)}`, {
           method: "GET"
         });
         const result = await response.json();
@@ -163,6 +166,10 @@ export default function CustomersIndex() {
       setPagination(customersResponse.pagination);
     }
   }, [customersResponse]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm]);
 
   const { data: stats } = useQuery<{
     totalCustomers: number;
@@ -428,7 +435,7 @@ export default function CustomersIndex() {
 
   return (
     <div className="p-4 md:p-6">
-      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 mb-6 md:mb-8">
+      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 mb-6">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">Customer Management</h1>
           <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">Manage customer relationships and project assignments</p>
@@ -677,8 +684,9 @@ export default function CustomersIndex() {
             </DialogContent>
           </Dialog>
         </div>
+      </div>
 
-        {/* Edit Customer Dialog */}
+      {/* Edit Customer Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
           setIsEditDialogOpen(open);
           if (!open) {
@@ -932,7 +940,6 @@ export default function CustomersIndex() {
             )}
           </DialogContent>
         </Dialog>
-      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
@@ -1019,6 +1026,18 @@ export default function CustomersIndex() {
             </div>
           </CardContent>
         </Card> */}
+      </div>      
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-6 md:mb-8">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search customers by name, email or phone..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {

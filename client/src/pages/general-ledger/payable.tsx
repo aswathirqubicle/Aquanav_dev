@@ -12,9 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, FileText, DollarSign, Calendar, X, Search } from "lucide-react";
 import { Autocomplete } from "@/components/ui/autocomplete";
-
+import { Plus, FileText, DollarSign, Calendar, TrendingUp, X, Search, ChevronsLeft, ChevronsRight, ChevronLeft, ChevronRight } from "lucide-react";
 interface GeneralLedgerEntry {
   id: number;
   entryType: string;
@@ -71,6 +70,32 @@ export default function GeneralLedgerPayable() {
     });
   };
 
+  const formatCurrency = (amount: string) => {
+    return new Intl.NumberFormat("en-AE", {
+      style: "currency",
+      currency: "AED",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(parseFloat(amount || "0"));
+  };
+
+  
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "paid":
+        return <Badge variant="success">Paid</Badge>;
+      case "pending":
+        return <Badge variant="secondary">Pending</Badge>;
+      case "overdue":
+        return <Badge variant="destructive">Overdue</Badge>;
+      case "cancelled":
+        return <Badge variant="outline">Cancelled</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
   const hasActiveFilters = filters.status || filters.startDate || filters.endDate || filters.search || filters.projectId || filters.financialYear;
 
   const currentYear = new Date().getFullYear();
@@ -115,7 +140,7 @@ export default function GeneralLedgerPayable() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: entriesResponse, isLoading } = useQuery<{
+  const { data: entriesResponse, isLoading, refetch } = useQuery<{
     data: GeneralLedgerEntry[];
     pagination: {
       page: number;
@@ -123,18 +148,20 @@ export default function GeneralLedgerPayable() {
       total: number;
       totalPages: number;
     };
+    summary?: {
+      totalPayable: string;
+      pendingPayable: string;
+      overduePayable: string;
+    };
   }>({
     queryKey: ["/api/general-ledger", "payable", filters],
     queryFn: async () => {
       const params = new URLSearchParams({ entryType: "payable" });
-      if (filters.status) params.append("status", filters.status);
-      if (filters.startDate) params.append("startDate", filters.startDate);
-      if (filters.endDate) params.append("endDate", filters.endDate);
-      if (filters.entityId) params.append("entityId", filters.entityId.toString());
-      if (filters.projectId) params.append("projectId", filters.projectId.toString());
-      if (filters.search) params.append("search", filters.search);
-      params.append("page", filters.page.toString());
-      params.append("limit", filters.limit.toString());
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== "" && value !== undefined && value !== "all") {
+          params.append(key, value.toString());
+        }
+      });
 
       const response = await apiRequest(`/api/general-ledger?${params}`);
       if (!response.ok) throw new Error("Failed to fetch payable entries");
@@ -143,239 +170,22 @@ export default function GeneralLedgerPayable() {
     enabled: isAuthenticated,
   });
 
+  const handlePageChange = (newPage: number) => {
+    setFilters(prev => ({ ...prev, page: newPage }));
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      refetch();
+    }
+  }, [isAuthenticated, refetch]);
+
   const entries = entriesResponse?.data || [];
   const pagination = entriesResponse?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
+  const summary = entriesResponse?.summary;
 
-  const { data: suppliersResponse } = useQuery<{ data: any[] }>({
-    queryKey: ["/api/suppliers"],
-    enabled: isAuthenticated,
-  });
-
-  const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
-
-  const { data: projectsResponse } = useQuery<any[]>({
-    queryKey: ["/api/projects"],
-    queryFn: async () => {
-      const response = await apiRequest("/api/projects");
-      if (!response.ok) throw new Error("Failed to fetch projects");
-      return response.json();
-    },
-    enabled: isAuthenticated,
-  });
-
-  const projects = Array.isArray(projectsResponse) ? projectsResponse : [];
-
-  const createEntryMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Create a balanced journal entry for double-entry accounting
-      const journalEntryData = {
-        referenceType: "manual",
-        description: data.description,
-        transactionDate: data.transactionDate,
-        entryType: "payable",
-        dueDate: data.dueDate,
-        status: "pending",
-        createdBy: user?.id,
-        entries: [
-          // Debit: Expense Account (Expense increases)
-          {
-            accountName: data.selectedAccountType === "account" ? data.entityName : "Operating Expenses",
-            debitAmount: data.creditAmount,
-            creditAmount: "0",
-            entityId: data.selectedAccountType === "supplier" ? parseInt(data.selectedSupplierId) : undefined,
-            entityName: data.entityName,
-            projectId: data.selectedAccountType === "project" ? data.projectId : undefined,
-            invoiceNumber: data.invoiceNumber,
-            notes: data.notes,
-          },
-          // Credit: Accounts Payable (Liability increases)
-          {
-            accountName: "Accounts Payable",
-            debitAmount: "0",
-            creditAmount: data.creditAmount,
-            entityId: data.selectedAccountType === "supplier" ? parseInt(data.selectedSupplierId) : undefined,
-            entityName: data.entityName,
-            projectId: data.selectedAccountType === "project" ? data.projectId : undefined,
-            invoiceNumber: data.invoiceNumber,
-            notes: data.notes,
-          },
-        ],
-      };
-
-      const response = await apiRequest("/api/general-ledger/journal", {
-        method: "POST",
-        body: journalEntryData,
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create payable journal entry");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
-      toast({
-        title: "Entry Created",
-        description: "Payable entry has been created successfully.",
-      });
-      setIsDialogOpen(false);
-      resetForm();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create payable entry",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateEntryMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await apiRequest(`/api/general-ledger/${id}`, {
-        method: "PUT",
-        body: data,
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to update entry");
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
-      toast({
-        title: "Entry Updated",
-        description: "Entry has been updated successfully.",
-      });
-      setEditingEntry(null);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update entry",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const resetForm = () => {
-    setFormData({
-      accountName: "Accounts Payable",
-      description: "",
-      creditAmount: "",
-      entityName: "",
-      selectedSupplierId: "",
-      invoiceNumber: "",
-      transactionDate: new Date().toISOString().split('T')[0],
-      dueDate: "",
-      notes: "",
-      projectId: undefined,
-      selectedAccountType: "account",
-      selectedAccount: "",
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.description || !formData.creditAmount) {
-      toast({
-        title: "Error",
-        description: "Please fill in description and amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Validate account selection based on type
-    if (formData.selectedAccountType === "supplier" && !formData.selectedSupplierId) {
-      toast({
-        title: "Error",
-        description: "Please select a supplier",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.selectedAccountType === "project" && !formData.projectId) {
-      toast({
-        title: "Error",
-        description: "Please select a project",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.selectedAccountType === "account" && !formData.selectedAccount) {
-      toast({
-        title: "Error",
-        description: "Please select an account",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    createEntryMutation.mutate(formData);
-  };
-
-  const handleStatusUpdate = (entry: GeneralLedgerEntry, newStatus: string) => {
-    updateEntryMutation.mutate({
-      id: entry.id,
-      data: { status: newStatus },
-    });
-  };
-
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat("en-AE", {
-      style: "currency",
-      currency: "AED",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(parseFloat(amount || "0"));
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge variant="success">Paid</Badge>;
-      case "pending":
-        return <Badge variant="secondary">Pending</Badge>;
-      case "overdue":
-        return <Badge variant="destructive">Overdue</Badge>;
-      case "cancelled":
-        return <Badge variant="outline">Cancelled</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Total credits (invoices) minus total debits (payments) = net payable
-  const totalCredits = entries?.reduce((sum, entry) => {
-    return sum + parseFloat(entry.creditAmount || "0");
-  }, 0) || 0;
-
-  const totalDebits = entries?.reduce((sum, entry) => {
-    return sum + parseFloat(entry.debitAmount || "0");
-  }, 0) || 0;
-
-  const totalPayable = totalCredits - totalDebits;
-
-  // Overdue: invoice entries (creditAmount > 0) that are past due and not fully paid
-  const totalOverdue = entries?.filter(e => {
-    if (!e.dueDate) return false;
-    if (parseFloat(e.creditAmount || "0") <= 0) return false; // Only invoice entries, not payments
-    const dueDate = new Date(e.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const isPastDue = dueDate < today;
-    const isNotPaid = e.status !== "paid";
-    return isPastDue && isNotPaid;
-  }).reduce((sum, entry) => {
-    return sum + parseFloat(entry.creditAmount || "0");
-  }, 0) || 0;
+  const totalPayable = parseFloat(summary?.totalPayable || "0");
+  const totalOverdue = parseFloat(summary?.overduePayable || "0");
 
   if (!isAuthenticated) {
     return null;
@@ -542,22 +352,16 @@ export default function GeneralLedgerPayable() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center items-center py-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading payable entries...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading payable entries...</p>
         </div>
-      ) : !entries || entries.length === 0 ? (
+      ) : entries.length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No payable entries found</h3>
             <p className="text-gray-500 mb-4">Entries will appear here when purchase invoices are created or manual entries are added.</p>
-            {/* <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Manual Entry
-            </Button> */}
           </CardContent>
         </Card>
       ) : (
@@ -611,213 +415,56 @@ export default function GeneralLedgerPayable() {
                 </tbody>
               </table>
             </div>
+
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{" "}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
+                  {pagination.total} entries
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(1)}
+                    disabled={pagination.page === 1}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.page - 1)}
+                    disabled={pagination.page === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm px-2">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.page + 1)}
+                    disabled={pagination.page === pagination.totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(pagination.totalPages)}
+                    disabled={pagination.page === pagination.totalPages}
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Add Manual Entry Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Manual Payable Entry</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="description">Description *</Label>
-              <Input
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Enter description"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="creditAmount">Amount *</Label>
-              <Input
-                id="creditAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.creditAmount}
-                onChange={(e) => setFormData(prev => ({ ...prev, creditAmount: e.target.value }))}
-                placeholder="0.00"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="accountType">Account Type *</Label>
-              <Select
-                value={formData.selectedAccountType}
-                onValueChange={(value: "supplier" | "project" | "account") => {
-                  setFormData(prev => ({
-                    ...prev,
-                    selectedAccountType: value,
-                    selectedAccount: "",
-                    selectedSupplierId: "",
-                    entityName: "",
-                    projectId: undefined
-                  }));
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select account type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="account">General Account</SelectItem>
-                  <SelectItem value="supplier">Supplier</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.selectedAccountType === "supplier" && (
-              <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier *</Label>
-                <Select
-                  value={formData.selectedAccount || "default-supplier"}
-                  onValueChange={(value) => {
-                    const supplier = suppliers.find(s => s.id.toString() === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      selectedAccount: value === "default-supplier" ? "" : value,
-                      selectedSupplierId: value === "default-supplier" ? "" : value,
-                      entityName: supplier ? supplier.name : ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-supplier">Select Supplier</SelectItem>
-                    {suppliers
-                      .filter(supplier => supplier.id && supplier.name)
-                      .map((supplier) => (
-                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                          {supplier.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.selectedAccountType === "project" && (
-              <div className="space-y-2">
-                <Label htmlFor="project">Project *</Label>
-                <Select
-                  value={formData.selectedAccount || "default-project"}
-                  onValueChange={(value) => {
-                    const project = projects.find(p => p.id.toString() === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      selectedAccount: value === "default-project" ? "" : value,
-                      projectId: value === "default-project" ? undefined : parseInt(value),
-                      entityName: project ? project.title : ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select project..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-project">Select Project</SelectItem>
-                    {projects
-                      .filter(project => project.id && project.title)
-                      .map((project) => (
-                        <SelectItem key={project.id} value={project.id.toString()}>
-                          {project.title}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {formData.selectedAccountType === "account" && (
-              <div className="space-y-2">
-                <Label htmlFor="generalAccount">Account Name *</Label>
-                <Select
-                  value={formData.selectedAccount || "default-account"}
-                  onValueChange={(value) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      selectedAccount: value === "default-account" ? "" : value,
-                      entityName: value === "default-account" ? "" : value
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default-account">Select Account</SelectItem>
-                    <SelectItem value="Office Expenses">Office Expenses</SelectItem>
-                    <SelectItem value="Utilities">Utilities</SelectItem>
-                    <SelectItem value="Equipment Rental">Equipment Rental</SelectItem>
-                    <SelectItem value="Professional Services">Professional Services</SelectItem>
-                    <SelectItem value="Insurance">Insurance</SelectItem>
-                    <SelectItem value="Maintenance & Repairs">Maintenance & Repairs</SelectItem>
-                    <SelectItem value="Travel Expenses">Travel Expenses</SelectItem>
-                    <SelectItem value="Marketing & Advertising">Marketing & Advertising</SelectItem>
-                    <SelectItem value="Legal & Professional Fees">Legal & Professional Fees</SelectItem>
-                    <SelectItem value="Other Expenses">Other Expenses</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="invoiceNumber">Invoice Number</Label>
-              <Input
-                id="invoiceNumber"
-                value={formData.invoiceNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
-                placeholder="Invoice number"
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="transactionDate">Transaction Date *</Label>
-                <Input
-                  id="transactionDate"
-                  type="date"
-                  value={formData.transactionDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, transactionDate: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dueDate">Due Date</Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes"
-                rows={3}
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createEntryMutation.isPending} className="w-full sm:w-auto">
-                {createEntryMutation.isPending ? "Creating..." : "Create Entry"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      )}      
     </div>
   );
 }

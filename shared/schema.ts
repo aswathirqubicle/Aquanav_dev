@@ -361,6 +361,7 @@ export const projectPhotoGroups = pgTable("project_photo_groups", {
   description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: integer("created_by").references(() => users.id),
+  dailyActivityId: integer("daily_activity_id").references(() => dailyActivities.id),
 });
 
 // Project Photos
@@ -516,6 +517,8 @@ export const projectConsumableItems = pgTable("project_consumable_items", {
   ),
   quantity: integer("quantity").notNull(),
   unitCost: decimal("unit_cost", { precision: 10, scale: 4 }),
+  itemName: text("item_name"),
+  itemUnit: text("item_unit"),
 });
 
 // Project Asset Assignments (Legacy)
@@ -911,7 +914,7 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   poId: integer("po_id").references(() => purchaseOrders.id),
   // projectId: integer("project_id").references(() => projects.id),
   // assetInventoryInstanceId: integer("asset_inventory_instance_id").references(() => assetInventoryInstances.id),
-  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected
+  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected, cancelled
   paymentStatus: text("payment_status").notNull().default("unpaid"), // unpaid, partial, paid
   invoiceDate: timestamp("invoice_date").notNull(),
   dueDate: timestamp("due_date"),

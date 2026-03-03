@@ -1993,7 +1993,7 @@ export default function EmployeesIndex() {
                   </Card>
                 </div>
 
-                {(selectedEmployee.bankName || selectedEmployee.accountNumber) && (
+                {/* {(selectedEmployee.bankName || selectedEmployee.accountNumber) && ( */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-lg">Banking Information</CardTitle>
@@ -2027,7 +2027,7 @@ export default function EmployeesIndex() {
                       </div>
                     </CardContent>
                   </Card>
-                )}
+                {/* )} */}
               </TabsContent>
 
               <TabsContent value="nextofkin" className="space-y-4">

@@ -507,6 +507,12 @@ type CreateActivityData = z.infer<typeof insertDailyActivitySchema>;
 
 type PhotoGroupWithPhotos = ProjectPhotoGroup & {
   photos: ProjectPhoto[];
+  dailyActivity?: {
+    id: number;
+    date: string;
+    location: string;
+    completedTasks: string;
+  };
 };
 
 export default function ProjectDetail() {
@@ -527,6 +533,7 @@ export default function ProjectDetail() {
     title: "",
     date: new Date().toISOString().split('T')[0],
     description: "",
+    dailyActivityId: "",
   });
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [selectedImageForPreview, setSelectedImageForPreview] = useState<ProjectPhoto | null>(null);
@@ -536,15 +543,22 @@ export default function ProjectDetail() {
     date: new Date().toISOString().split('T')[0],
   });
   const [consumablesItems, setConsumablesItems] = useState<Array<{
-    inventoryItemId: number;
+    inventoryItemId?: number | null;
     itemName: string;
     quantity: number;
+    unitCost?: string;
+    itemUnit?: string;
+    isManual?: boolean;
   }>>([]);
   const [newConsumableItem, setNewConsumableItem] = useState({
     inventoryItemId: 0,
     itemName: "",
     quantity: 1,
+    unitCost: "",
+    itemUnit: "",
+    isManual: false,
   });
+  const [consumableEntryType, setConsumableEntryType] = useState<"inventory" | "manual">("inventory");
   const [activityDateFilter, setActivityDateFilter] = useState({
     startDate: "",
     endDate: "",
@@ -693,6 +707,18 @@ export default function ProjectDetail() {
   const activities = activitiesData?.data || [];
   const activitiesTotalPages = activitiesData ? Math.ceil(activitiesData.total / itemsPerPage) : 0;
 
+  const { data: allActivities } = useQuery<DailyActivity[]>({
+    queryKey: ["/api/projects", id, "activities", "all"],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${id}/activities/all`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch all activities");
+      return response.json();
+    },
+    enabled: isAuthenticated && !!id,
+  });
+
   const { data: employees } = useQuery<Employee[]>({
     queryKey: ["/api/employees"],
     enabled: isAuthenticated,
@@ -720,7 +746,7 @@ export default function ProjectDetail() {
   // Initialize edit form data when project loads or dialog opens
   useEffect(() => {
     if (project && isEditProjectDialogOpen) {
-      const standardContractModes = ["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum"];
+      const standardContractModes = ["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"];
       const isCustom = project.modeOfContract && !standardContractModes.includes(project.modeOfContract);
 
       setEditProjectData({
@@ -1209,12 +1235,15 @@ export default function ProjectDetail() {
   });
 
   const createPhotoGroupMutation = useMutation({
-    mutationFn: async (data: { title: string; date: string; description?: string; photos?: File[] }) => {
+    mutationFn: async (data: { title: string; date: string; description?: string; dailyActivityId?: string; photos?: File[] }) => {
       const formData = new FormData();
       formData.append('title', data.title);
       formData.append('date', data.date);
       if (data.description) {
         formData.append('description', data.description);
+      }
+      if (data.dailyActivityId) {
+        formData.append('dailyActivityId', data.dailyActivityId);
       }
       if (data.photos) {
         for (const file of data.photos) {
@@ -1396,6 +1425,7 @@ export default function ProjectDetail() {
       title: "",
       date: new Date().toISOString().split('T')[0],
       description: "",
+      dailyActivityId: "",
     });
     setSelectedFiles(null);
   };
@@ -1414,6 +1444,7 @@ export default function ProjectDetail() {
     const files = selectedFiles ? Array.from(selectedFiles) : [];
     createPhotoGroupMutation.mutate({
       ...photoGroupData,
+      dailyActivityId: photoGroupData.dailyActivityId || undefined,
       photos: files,
     });
   };
@@ -1634,45 +1665,76 @@ export default function ProjectDetail() {
 
   const addConsumableItem = () => {
     try {
-      if (!newConsumableItem.inventoryItemId || newConsumableItem.quantity <= 0) {
-        const errorMsg = "Please select an item and enter a valid quantity";
-        toast({
-          title: "Error",
-          description: errorMsg,
-          variant: "destructive",
-        });
-        return;
-      }
+      if (consumableEntryType === "inventory") {
+        if (!newConsumableItem.inventoryItemId || newConsumableItem.quantity <= 0) {
+          toast({
+            title: "Error",
+            description: "Please select an item and enter a valid quantity",
+            variant: "destructive",
+          });
+          return;
+        }
 
-      // Check if item already exists in the list
-      if (consumablesItems.some(item => item.inventoryItemId === newConsumableItem.inventoryItemId)) {
-        const errorMsg = "This item is already in the list";
-        toast({
-          title: "Error",
-          description: errorMsg,
-          variant: "destructive",
-        });
-        return;
-      }
+        if (consumablesItems.some(item => !item.isManual && item.inventoryItemId === newConsumableItem.inventoryItemId)) {
+          toast({
+            title: "Error",
+            description: "This item is already in the list",
+            variant: "destructive",
+          });
+          return;
+        }
 
-      // Check stock availability
-      const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
-      if (selectedItem && newConsumableItem.quantity > selectedItem.currentStock) {
-        const errorMsg = `Insufficient stock. Available: ${selectedItem.currentStock} ${selectedItem.unit}`;
-        toast({
-          title: "Error",
-          description: errorMsg,
-          variant: "destructive",
-        });
-        return;
-      }
+        const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
+        if (selectedItem && newConsumableItem.quantity > selectedItem.currentStock) {
+          toast({
+            title: "Error",
+            description: `Insufficient stock. Available: ${selectedItem.currentStock} ${selectedItem.unit}`,
+            variant: "destructive",
+          });
+          return;
+        }
 
-      setConsumablesItems(prev => [...prev, { ...newConsumableItem }]);
-      setNewConsumableItem({
-        inventoryItemId: 0,
-        itemName: "",
-        quantity: 1,
-      });
+        setConsumablesItems(prev => [...prev, {
+          inventoryItemId: newConsumableItem.inventoryItemId,
+          itemName: newConsumableItem.itemName,
+          quantity: newConsumableItem.quantity,
+          isManual: false,
+        }]);
+        setNewConsumableItem({
+          inventoryItemId: 0,
+          itemName: "",
+          quantity: 1,
+          unitCost: "",
+          itemUnit: "",
+          isManual: false,
+        });
+      } else {
+        if (!newConsumableItem.itemName.trim() || newConsumableItem.quantity <= 0) {
+          toast({
+            title: "Error",
+            description: "Please enter an item name and a valid quantity",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        setConsumablesItems(prev => [...prev, {
+          inventoryItemId: null,
+          itemName: newConsumableItem.itemName.trim(),
+          quantity: newConsumableItem.quantity,
+          unitCost: newConsumableItem.unitCost || "0",
+          itemUnit: newConsumableItem.itemUnit || "pcs",
+          isManual: true,
+        }]);
+        setNewConsumableItem({
+          inventoryItemId: 0,
+          itemName: "",
+          quantity: 1,
+          unitCost: "",
+          itemUnit: "",
+          isManual: false,
+        });
+      }
     } catch (error) {
       console.error("Error adding consumable item:", error);
       toast({
@@ -1710,8 +1772,9 @@ export default function ProjectDetail() {
       }
 
       // Show confirmation dialog
-      const itemsList = consumablesItems.map(item => `• ${item.itemName}: ${item.quantity}`).join('\n');
-      const confirmMessage = `Are you sure you want to record the following consumables usage for ${formatDate(consumablesData.date)}?\n\n${itemsList}\n\nThis will reduce the inventory stock levels and cannot be undone.`;
+      const itemsList = consumablesItems.map(item => `• ${item.itemName}: ${item.quantity}${item.isManual ? ' (Manual)' : ''}`).join('\n');
+      const hasInventoryItems = consumablesItems.some(item => !item.isManual);
+      const confirmMessage = `Are you sure you want to record the following consumables usage for ${formatDate(consumablesData.date)}?\n\n${itemsList}${hasInventoryItems ? '\n\nInventory items will reduce stock levels and cannot be undone.' : ''}`;
 
       if (!confirm(confirmMessage)) {
         return;
@@ -1719,10 +1782,20 @@ export default function ProjectDetail() {
 
       const submitData = {
         date: consumablesData.date,
-        items: consumablesItems.map(item => ({
-          inventoryItemId: Number(item.inventoryItemId),
-          quantity: Number(item.quantity),
-        })),
+        items: consumablesItems.map(item => {
+          if (item.isManual) {
+            return {
+              itemName: item.itemName,
+              quantity: Number(item.quantity),
+              unitCost: item.unitCost || "0",
+              itemUnit: item.itemUnit || "pcs",
+            };
+          }
+          return {
+            inventoryItemId: Number(item.inventoryItemId),
+            quantity: Number(item.quantity),
+          };
+        }),
       };
 
       recordConsumablesMutation.mutate(submitData);
@@ -2182,7 +2255,7 @@ export default function ProjectDetail() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="editRidgingCrewNos">Ridging Crew Numbers</Label>
+                        <Label htmlFor="editRidgingCrewNos">Riding Crew Numbers</Label>
                         <Input
                           id="editRidgingCrewNos"
                           value={editProjectData.ridgingCrewNos}
@@ -2215,9 +2288,10 @@ export default function ProjectDetail() {
                             <SelectItem value="day_rate">Day Rate</SelectItem>
                             <SelectItem value="lump_sum">Lump Sum</SelectItem>
                             <SelectItem value="custom">Custom (Enter below)</SelectItem>
+                            <SelectItem value="monthly_contract">Monthly Contract</SelectItem>
                           </SelectContent>
                         </Select>
-                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum"].includes(editProjectData.modeOfContract)) && (
+                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"].includes(editProjectData.modeOfContract)) && (
                           <Input
                             className="mt-2"
                             value={customContractMode}
@@ -2595,7 +2669,7 @@ export default function ProjectDetail() {
                     )}
                     {project.ridgingCrewNos && (
                       <div>
-                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Ridging Crew Numbers</p>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Riding Crew Numbers</p>
                         <p className="text-sm text-slate-600 dark:text-slate-400">{project.ridgingCrewNos}</p>
                       </div>
                     )}
@@ -3196,9 +3270,20 @@ export default function ProjectDetail() {
 
 
                       {activity.remarks && (
-                        <div>
+                        <div className="mb-3">
                           <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Remarks</p>
                           <p className="text-sm text-slate-600 dark:text-slate-400">{activity.remarks}</p>
+                        </div>
+                      )}
+
+                      {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {(activity as any).photoGroups.map((group: any) => (
+                            <Badge key={group.id} variant="secondary" className="flex items-center gap-1 cursor-default">
+                              <Camera className="h-3 w-3" />
+                              {group.title} ({group.photoCount})
+                            </Badge>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -3667,6 +3752,25 @@ export default function ProjectDetail() {
                         </div>
 
                         <div className="space-y-2">
+                          <Label htmlFor="dailyActivity">Link to Daily Activity</Label>
+                          <Select
+                            value={photoGroupData.dailyActivityId}
+                            onValueChange={(value) => setPhotoGroupData(prev => ({ ...prev, dailyActivityId: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a daily activity (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allActivities?.map((activity) => (
+                                <SelectItem key={activity.id} value={activity.id.toString()}>
+                                  {formatDate(activity.date)} - {activity.location || "No Location"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
                           <Label htmlFor="photos">Select Photos</Label>
                           <Input
                             id="photos"
@@ -3724,9 +3828,22 @@ export default function ProjectDetail() {
                         <div className="flex items-start justify-between mb-4">
                           <div>
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{group.title}</h3>
-                            <div className="flex items-center space-x-4 text-sm text-slate-500 dark:text-slate-400">
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
                               <span>{formatDate(group.date)}</span>
                               <span>{group.photos.length} photo{group.photos.length !== 1 ? 's' : ''}</span>
+                              {group.dailyActivity?.id && (
+                                <div className="flex flex-col gap-1 w-full mt-2">
+                                  <Badge variant="outline" className="text-xs self-start">
+                                    <Activity className="h-3 w-3 mr-1" />
+                                    {formatDate(group.dailyActivity.date)} - {group.dailyActivity.location || "No Location"}
+                                  </Badge>
+                                  {group.dailyActivity.completedTasks && (
+                                    <p className="text-xs text-slate-500 italic line-clamp-1 pl-1">
+                                      {group.dailyActivity.completedTasks}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             {group.description && (
                               <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">{group.description}</p>
@@ -4507,63 +4624,134 @@ export default function ProjectDetail() {
                             </span>
                           </div>
 
+                          {/* Entry type toggle */}
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={consumableEntryType === "inventory" ? "default" : "outline"}
+                              onClick={() => setConsumableEntryType("inventory")}
+                              className="flex-1"
+                            >
+                              From Inventory
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={consumableEntryType === "manual" ? "default" : "outline"}
+                              onClick={() => setConsumableEntryType("manual")}
+                              className="flex-1"
+                            >
+                              Manual Entry
+                            </Button>
+                          </div>
+
                           {/* Add new consumable item */}
                           <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label>Inventory Item</Label>
-                                <Select
-                                  value={newConsumableItem.inventoryItemId?.toString() || ""}
-                                  onValueChange={(value) => {
-                                    const itemId = parseInt(value);
-                                    const item = inventoryItems?.find(item => item.id === itemId);
-                                    setNewConsumableItem(prev => ({
-                                      ...prev,
-                                      inventoryItemId: itemId,
-                                      itemName: item?.name || ""
-                                    }));
-                                  }}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select item" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {inventoryItems?.filter(item => item.category === 'consumables').map((item) => (
-                                      <SelectItem key={item.id} value={item.id.toString()}>
-                                        {item.name} (Stock: {item.currentStock} {item.unit})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                            {consumableEntryType === "inventory" ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Inventory Item</Label>
+                                  <Select
+                                    value={newConsumableItem.inventoryItemId?.toString() || ""}
+                                    onValueChange={(value) => {
+                                      const itemId = parseInt(value);
+                                      const item = inventoryItems?.find(item => item.id === itemId);
+                                      setNewConsumableItem(prev => ({
+                                        ...prev,
+                                        inventoryItemId: itemId,
+                                        itemName: item?.name || ""
+                                      }));
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select item" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {inventoryItems?.filter(item => item.category === 'consumables').map((item) => (
+                                        <SelectItem key={item.id} value={item.id.toString()}>
+                                          {item.name} (Stock: {item.currentStock} {item.unit})
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
 
-                              <div className="space-y-2">
-                                <Label>Quantity Used *</Label>
-                                <Input
-                                  type="number"
-                                  min="0.1"
-                                  step="0.1"
-                                  placeholder="Qty used"
-                                  value={newConsumableItem.quantity}
-                                  max={(() => {
-                                    const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
-                                    return selectedItem ? selectedItem.currentStock : undefined;
-                                  })()}
-                                  onChange={(e) => {
-                                    const value = parseFloat(e.target.value) || 0;
-                                    const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
-                                    if (selectedItem && value > selectedItem.currentStock) {
-                                      toast({
-                                        title: "Warning",
-                                        description: `Quantity exceeds available stock (${selectedItem.currentStock} ${selectedItem.unit})`,
-                                        variant: "destructive",
-                                      });
-                                    }
-                                    setNewConsumableItem(prev => ({ ...prev, quantity: value }));
-                                  }}
-                                />
+                                <div className="space-y-2">
+                                  <Label>Quantity Used *</Label>
+                                  <Input
+                                    type="number"
+                                    min="0.1"
+                                    step="0.1"
+                                    placeholder="Qty used"
+                                    value={newConsumableItem.quantity}
+                                    max={(() => {
+                                      const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
+                                      return selectedItem ? selectedItem.currentStock : undefined;
+                                    })()}
+                                    onChange={(e) => {
+                                      const value = parseFloat(e.target.value) || 0;
+                                      const selectedItem = inventoryItems?.find(item => item.id === newConsumableItem.inventoryItemId);
+                                      if (selectedItem && value > selectedItem.currentStock) {
+                                        toast({
+                                          title: "Warning",
+                                          description: `Quantity exceeds available stock (${selectedItem.currentStock} ${selectedItem.unit})`,
+                                          variant: "destructive",
+                                        });
+                                      }
+                                      setNewConsumableItem(prev => ({ ...prev, quantity: value }));
+                                    }}
+                                  />
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label>Item Name *</Label>
+                                    <Input
+                                      type="text"
+                                      placeholder="Enter item name"
+                                      value={newConsumableItem.itemName}
+                                      onChange={(e) => setNewConsumableItem(prev => ({ ...prev, itemName: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Quantity Used *</Label>
+                                    <Input
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      placeholder="Qty used"
+                                      value={newConsumableItem.quantity}
+                                      onChange={(e) => setNewConsumableItem(prev => ({ ...prev, quantity: parseFloat(e.target.value) || 0 }))}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label>Unit</Label>
+                                    <Input
+                                      type="text"
+                                      placeholder="e.g. pcs, kg, liters"
+                                      value={newConsumableItem.itemUnit}
+                                      onChange={(e) => setNewConsumableItem(prev => ({ ...prev, itemUnit: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Unit Cost (AED)</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      placeholder="Cost per unit"
+                                      value={newConsumableItem.unitCost}
+                                      onChange={(e) => setNewConsumableItem(prev => ({ ...prev, unitCost: e.target.value }))}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             <div className="flex justify-end">
                               <Button type="button" onClick={addConsumableItem} size="sm" className="w-full sm:w-auto">
@@ -4579,11 +4767,15 @@ export default function ProjectDetail() {
                               {consumablesItems.map((item, index) => (
                                 <div key={index} className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800">
                                   <div className="flex-1">
-                                    <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
                                       {item.itemName}
+                                      {item.isManual && (
+                                        <Badge variant="outline" className="text-xs">Manual</Badge>
+                                      )}
                                     </div>
                                     <div className="text-sm text-slate-600 dark:text-slate-400">
-                                      Quantity: {item.quantity}
+                                      Quantity: {item.quantity}{item.itemUnit ? ` ${item.itemUnit}` : ''}
+                                      {item.isManual && item.unitCost && parseFloat(item.unitCost) > 0 ? ` | Cost: AED ${item.unitCost}/unit` : ''}
                                     </div>
                                   </div>
                                   <Button
@@ -4661,13 +4853,16 @@ export default function ProjectDetail() {
                           <div className="space-y-2">
                             {record.items.map((item: any, index: number) => (
                               <div key={index} className="flex items-center justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800 rounded">
-                                <div className="flex-1">
+                                <div className="flex-1 flex items-center gap-2">
                                   <span className="font-medium text-slate-900 dark:text-slate-100">
                                     {item.itemName || `Item #${item.inventoryItemId}`}
                                   </span>
+                                  {!item.inventoryItemId && (
+                                    <Badge variant="outline" className="text-xs">Manual</Badge>
+                                  )}
                                 </div>
                                 <div className="text-sm text-slate-600 dark:text-slate-400">
-                                  Qty: {item.quantity}
+                                  Qty: {item.quantity}{item.itemUnit ? ` ${item.itemUnit}` : ''}
                                 </div>
                               </div>
                             ))}

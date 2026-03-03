@@ -7,7 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -113,7 +126,7 @@ export default function GeneralLedger() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: entriesResponse, isLoading } = useQuery<{
+  const { data: entriesResponse, isLoading, refetch } = useQuery<{
     data: GeneralLedgerEntry[];
     pagination: {
       page: number;
@@ -137,6 +150,12 @@ export default function GeneralLedger() {
     },
     enabled: isAuthenticated,
   });
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      refetch();
+    }
+  }, [isAuthenticated, refetch]);
 
   const entries = entriesResponse?.data || [];
   const pagination = entriesResponse?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
@@ -534,12 +553,6 @@ export default function GeneralLedger() {
           </Button>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            {/* <DialogTrigger asChild>
-              <Button onClick={() => { setEditingEntry(null); resetForm(); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Entry
-              </Button>
-            </DialogTrigger> */}
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
@@ -694,10 +707,9 @@ export default function GeneralLedger() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8">Loading...</div>
-          ) : entries.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No entries found. Try adjusting your filters.
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-muted-foreground">Loading entries...</p>
             </div>
           ) : (
             <>
@@ -717,80 +729,100 @@ export default function GeneralLedger() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {entries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell>
-                          {new Date(entry.transactionDate).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getEntryTypeBadgeVariant(entry.entryType)}>
-                            {entry.entryType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">{entry.accountName}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">
-                          {entry.description}
-                        </TableCell>
-                        <TableCell>{entry.entityName || "-"}</TableCell>
-                        <TableCell>{entry.projectTitle || "-"}</TableCell>
-                        <TableCell>{entry.invoiceNumber || "-"}</TableCell>
-                        <TableCell className="text-right">
-                          {parseFloat(entry.debitAmount) > 0 ? `AED ${parseFloat(entry.debitAmount).toFixed(2)}` : "-"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {parseFloat(entry.creditAmount) > 0 ? `AED ${parseFloat(entry.creditAmount).toFixed(2)}` : "-"}
+                    {entries.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                          No entries found.
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      entries.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>
+                            {new Date(entry.transactionDate).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getEntryTypeBadgeVariant(entry.entryType)}>
+                              {entry.entryType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{entry.accountName}</TableCell>
+                          <TableCell className="max-w-[200px]">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="truncate cursor-help">
+                                    {entry.description}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[400px] break-words">
+                                  <p>{entry.description}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell>{entry.entityName || "-"}</TableCell>
+                          <TableCell>{entry.projectTitle || "-"}</TableCell>
+                          <TableCell>{entry.invoiceNumber || "-"}</TableCell>
+                          <TableCell className="text-right">
+                            {parseFloat(entry.debitAmount) > 0 ? `AED ${parseFloat(entry.debitAmount).toFixed(2)}` : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {parseFloat(entry.creditAmount) > 0 ? `AED ${parseFloat(entry.creditAmount).toFixed(2)}` : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-muted-foreground">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{" "}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
-                  {pagination.total} entries
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{" "}
+                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
+                    {pagination.total} entries
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(1)}
+                      disabled={pagination.page === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm px-2">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page === pagination.totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(pagination.totalPages)}
+                      disabled={pagination.page === pagination.totalPages}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(1)}
-                    disabled={pagination.page === 1}
-                  >
-                    <ChevronsLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={pagination.page === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm">
-                    Page {pagination.page} of {pagination.totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={pagination.page === pagination.totalPages}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePageChange(pagination.totalPages)}
-                    disabled={pagination.page === pagination.totalPages}
-                  >
-                    <ChevronsRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+              )}
             </>
           )}
         </CardContent>

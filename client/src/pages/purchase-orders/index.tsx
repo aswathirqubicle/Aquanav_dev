@@ -37,6 +37,8 @@ interface PurchaseOrder {
   supplierId: number;
   supplierName: string;
   supplierCurrency?: string;
+  currency?: string;
+  exchangeRate?: string;
   status: "draft" | "pending_approval" | "approved" | "rejected" | "converted";
   orderDate: string;
   expectedDeliveryDate?: string;
@@ -69,6 +71,8 @@ interface PurchaseOrderItem {
   description?: string;
   quantity: number;
   unitPrice: string;
+  taxRate?: string;
+  taxAmount?: string;
   lineTotal: string;
 }
 
@@ -101,6 +105,7 @@ export default function PurchaseOrdersIndex() {
   const [formData, setFormData] = useState({
     supplierId: "",
     currency: "AED",
+    exchangeRate: "1",
     orderDate: new Date().toISOString().split('T')[0],
     expectedDeliveryDate: "",
     paymentTerms: "",
@@ -136,7 +141,24 @@ export default function PurchaseOrdersIndex() {
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: "",
     partial: false,
+    discountPercentage: "0",
+    discountAmount: "0",
   });
+
+  const [invoiceFormItems, setInvoiceFormItems] = useState<Array<{
+    itemType: "product" | "service";
+    inventoryItemId?: number | null;
+    inventoryItemName?: string;
+    inventoryItemUnit?: string;
+    description?: string;
+    quantity: string;
+    unitPrice: string;
+    taxRate: string;
+    taxAmount: string;
+    lineTotal: string;
+  }>>([]);
+  const [invoiceNotes, setInvoiceNotes] = useState("");
+  const [invoicePaymentTerms, setInvoicePaymentTerms] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -329,13 +351,16 @@ export default function PurchaseOrdersIndex() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory"] });
+      const submitted = data?.invoice?.status === "pending_approval";
       toast({
-        title: "Invoice Created",
-        description: "Purchase order has been converted to invoice and inventory updated.",
+        title: submitted ? "Invoice Submitted for Approval" : "Invoice Created as Draft",
+        description: submitted
+          ? "The purchase invoice has been created and submitted for approval."
+          : "The purchase invoice has been saved as a draft. You can submit it for approval from the Purchase Invoices page.",
       });
       setIsInvoiceDialogOpen(false);
       setIsViewDialogOpen(false);
@@ -416,7 +441,8 @@ export default function PurchaseOrdersIndex() {
       deliveryTerms: order.deliveryTerms || "",
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
-      currency: order.supplierCurrency || "AED",
+      currency: order.currency || order.supplierCurrency || "AED",
+      exchangeRate: order.exchangeRate || "1",
       discountPercentage: order.discountPercentage || "0",
       discountAmount: order.discountAmount || "0",
     });
@@ -533,6 +559,8 @@ export default function PurchaseOrdersIndex() {
 
     // Append main form data
     formDataInstance.append("supplierId", formData.supplierId);
+    formDataInstance.append("currency", formData.currency);
+    formDataInstance.append("exchangeRate", formData.exchangeRate);
     formDataInstance.append("orderDate", formData.orderDate);
     formDataInstance.append("expectedDeliveryDate", formData.expectedDeliveryDate || "");
     formDataInstance.append("paymentTerms", formData.paymentTerms || "");
@@ -609,12 +637,98 @@ export default function PurchaseOrdersIndex() {
     }
   };
 
-  const handleConvertToInvoice = () => {
+  const openConvertDialog = (order?: PurchaseOrder) => {
+    const target = order || viewingOrder;
+    if (!target) return;
+    if (order) setViewingOrder(order);
+    setInvoiceData({
+      invoiceDate: new Date().toISOString().split('T')[0],
+      dueDate: target.expectedDeliveryDate ? target.expectedDeliveryDate.split('T')[0] : "",
+      partial: false,
+      discountPercentage: target.discountPercentage || "0",
+      discountAmount: target.discountAmount || "0",
+    });
+    setInvoicePaymentTerms(target.paymentTerms || "");
+    setInvoiceNotes(target.notes || "");
+    if (target.items && target.items.length > 0) {
+      setInvoiceFormItems(target.items.map(item => {
+        const qty = parseFloat(item.quantity.toString());
+        const price = parseFloat(item.unitPrice);
+        const taxRate = parseFloat(item.taxRate || "0");
+        const lineSubtotal = qty * price;
+        const taxAmount = lineSubtotal * (taxRate / 100);
+        const lineTotal = lineSubtotal; // In this UI, lineTotal seems to be subtotal
+        return {
+          itemType: item.itemType,
+          inventoryItemId: item.inventoryItemId ?? null,
+          inventoryItemName: item.inventoryItemName,
+          inventoryItemUnit: item.inventoryItemUnit,
+          description: item.description,
+          quantity: qty.toString(),
+          unitPrice: price.toFixed(2),
+          taxRate: taxRate.toString(),
+          taxAmount: taxAmount.toFixed(2),
+          lineTotal: lineSubtotal.toFixed(2),
+        };
+      }));
+    } else {
+      setInvoiceFormItems([]);
+    }
+    setIsInvoiceDialogOpen(true);
+  };
+
+  const recalcInvoiceItem = (
+    idx: number,
+    field: "quantity" | "unitPrice" | "taxRate",
+    value: string,
+  ) => {
+    setInvoiceFormItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const updated = { ...item, [field]: value };
+      const qty = parseFloat(updated.quantity) || 0;
+      const price = parseFloat(updated.unitPrice) || 0;
+      const rate = parseFloat(updated.taxRate) || 0;
+      const subtotal = qty * price;
+      const taxAmt = subtotal * (rate / 100);
+      return {
+        ...updated,
+        taxAmount: taxAmt.toFixed(2),
+        lineTotal: subtotal.toFixed(2),
+      };
+    }));
+  };
+
+  const invoiceSubtotal = invoiceFormItems.reduce((sum, item) => sum + parseFloat(item.lineTotal || "0"), 0);
+  const invoiceTaxTotal = invoiceFormItems.reduce((sum, item) => sum + parseFloat(item.taxAmount || "0"), 0);
+  const invoiceDiscountAmount = parseFloat(invoiceData.discountAmount) || 0;
+  const invoiceTotal = invoiceSubtotal + invoiceTaxTotal - invoiceDiscountAmount;
+
+  const handleConvertToInvoice = (submitForApproval = false) => {
     if (!viewingOrder) return;
 
     convertToInvoiceMutation.mutate({
       orderId: viewingOrder.id,
-      invoiceData,
+      invoiceData: {
+        invoiceDate: invoiceData.invoiceDate,
+        dueDate: invoiceData.dueDate || undefined,
+        notes: invoiceNotes || undefined,
+        paymentTerms: invoicePaymentTerms || undefined,
+        currency: viewingOrder.currency || viewingOrder.supplierCurrency || "AED",
+        exchangeRate: viewingOrder.exchangeRate || "1",
+        discountPercentage: invoiceData.discountPercentage,
+        discountAmount: invoiceData.discountAmount,
+        items: invoiceFormItems.map(item => ({
+          itemType: item.itemType,
+          inventoryItemId: item.inventoryItemId ?? null,
+          description: item.description,
+          quantity: parseFloat(item.quantity) || 1,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          taxRate: parseFloat(item.taxRate) || 0,
+          taxAmount: parseFloat(item.taxAmount) || 0,
+          lineTotal: parseFloat(item.lineTotal) || 0,
+        })),
+        submitForApproval,
+      },
     });
   };
 
@@ -747,19 +861,21 @@ export default function PurchaseOrdersIndex() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Supplier</Label>
-                  <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Suppliers</SelectItem>
-                      {suppliers.map((supplier) => (
-                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                          {supplier.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Autocomplete
+                    options={[
+                      { value: "all", label: "All Suppliers" },
+                      ...suppliers.map((supplier) => ({
+                        value: supplier.id.toString(),
+                        label: supplier.name,
+                        searchText: supplier.name
+                      }))
+                    ]}
+                    value={supplierFilter}
+                    onValueChange={setSupplierFilter}
+                    placeholder="Search supplier..."
+                    emptyMessage="No suppliers found"
+                    className="mt-1"
+                  />
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={applyFilters} className="flex-1">Apply</Button>
@@ -926,7 +1042,7 @@ export default function PurchaseOrdersIndex() {
                         {getStatusBadge(order.status)}
                       </TableCell>
                       <TableCell className="font-semibold text-green-600">
-                        {formatCurrency(order.totalAmount, order.supplierCurrency)}
+                        {formatCurrency(order.totalAmount, order.currency || order.supplierCurrency)}
                       </TableCell>
                       <TableCell>
                         {order.expectedDeliveryDate
@@ -999,10 +1115,7 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "approved" && (user?.role === "admin" || user?.role === "finance") && (
                             <Button
                               size="sm"
-                              onClick={() => {
-                                setViewingOrder(order);
-                                setIsInvoiceDialogOpen(true);
-                              }}
+                              onClick={() => openConvertDialog(order)}
                               data-testid={`button-convert-order-${order.id}`}
                             >
                               <FileText className="w-4 h-4 mr-1" />
@@ -1044,16 +1157,36 @@ export default function PurchaseOrdersIndex() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <Label htmlFor="supplierId">Supplier *</Label>
-                  <Select
+                  <Autocomplete
+                    options={suppliers.map((supplier) => ({
+                      value: supplier.id.toString(),
+                      label: supplier.name,
+                      searchText: supplier.name
+                    }))}
                     value={formData.supplierId}
-                    onValueChange={(value) => {
+                    onValueChange={async (value) => {
                       const supplier = suppliers.find(s => s.id.toString() === value);
                       const taxRate = getTaxRateFromVatTreatment(supplier?.vatTreatment);
+                      const currency = supplier?.currency || "AED";
+                      let exchangeRate = "1";
+
+                      if (currency !== "AED") {
+                        try {
+                          const response = await apiRequest(`/api/exchange-rates/lookup?from=${currency}`);
+                          if (response.ok) {
+                            const data = await response.json();
+                            exchangeRate = data.rate || "1";
+                          }
+                        } catch (error) {
+                          console.error("Failed to lookup exchange rate:", error);
+                        }
+                      }
 
                       setFormData(prev => ({
                         ...prev,
                         supplierId: value,
-                        currency: supplier?.currency || "AED",
+                        currency,
+                        exchangeRate,
                         bankAccount: ""
                       }));
 
@@ -1072,18 +1205,10 @@ export default function PurchaseOrdersIndex() {
                         taxRate: String(taxRate),
                       }));
                     }}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map((supplier) => (
-                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                          {supplier.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Search supplier..."
+                    emptyMessage="No suppliers found"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label htmlFor="orderDate">Order Date *</Label>
@@ -1300,7 +1425,7 @@ export default function PurchaseOrdersIndex() {
                         />
                       </div>
                       <div>
-                        <Label>Unit Price *</Label>
+                        <Label>Unit Price ({formData.currency}) *</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1348,9 +1473,9 @@ export default function PurchaseOrdersIndex() {
                               <TableHead className="min-w-[100px]">Type</TableHead>
                               <TableHead className="min-w-[200px]">Item/Description</TableHead>
                               <TableHead className="min-w-[80px]">Quantity</TableHead>
-                              <TableHead className="min-w-[100px]">Unit Price</TableHead>
+                              <TableHead className="min-w-[100px]">Unit Price ({formData.currency})</TableHead>
                               <TableHead className="min-w-[80px]">Tax Rate</TableHead>
-                              <TableHead className="min-w-[100px]">Line Total</TableHead>
+                              <TableHead className="min-w-[100px]">Line Total ({formData.currency})</TableHead>
                               <TableHead className="w-16"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -1724,8 +1849,9 @@ export default function PurchaseOrdersIndex() {
                           <TableHead className="w-12">#</TableHead>
                           <TableHead>Item Description</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">Unit Price</TableHead>
-                          <TableHead className="text-right">Line Total</TableHead>
+                          <TableHead className="text-right">Unit Price ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
+                          <TableHead className="text-right">Tax Rate</TableHead>
+                          <TableHead className="text-right">Line Total ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1747,8 +1873,9 @@ export default function PurchaseOrdersIndex() {
                             <TableCell className="text-right">
                               {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                             </TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingOrder.supplierCurrency)}</TableCell>
-                            <TableCell className="text-right font-semibold">{formatCurrency(item.lineTotal, viewingOrder.supplierCurrency)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
+                            <TableCell className="text-right">{item.taxRate || "0"}%</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(item.lineTotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1759,24 +1886,24 @@ export default function PurchaseOrdersIndex() {
                   <div className="mt-6 space-y-3">
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.supplierCurrency)}</span>
+                        <span className="text-muted-foreground">Subtotal ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                        <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                       </div>
-                      {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
-                        <div className="flex justify-between items-center text-sm mt-2">
-                          <span className="text-muted-foreground">Discount ({viewingOrder.discountPercentage || "0"}%)</span>
-                          <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.supplierCurrency)}</span>
-                        </div>
-                      )}
                       <div className="flex justify-between items-center text-sm mt-2">
-                        <span className="text-muted-foreground">Tax</span>
-                        <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.supplierCurrency)}</span>
+                        <span className="text-muted-foreground">Tax ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                        <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                       </div>
+                      {/* {parseFloat(viewingOrder.discountAmount || "0") > 0 && ( */}
+                      <div className="flex justify-between items-center text-sm mt-2">
+                        <span className="text-muted-foreground">Discount ({viewingOrder.discountPercentage || "0"}%)</span>
+                        <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
+                      </div>
+                      {/* )} */}
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between items-center">
-                        <span className="text-base font-semibold">Total Amount</span>
-                        <span className="text-xl font-bold text-primary">{formatCurrency(viewingOrder.totalAmount, viewingOrder.supplierCurrency)}</span>
+                        <span className="text-base font-semibold">Total Amount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                        <span className="text-xl font-bold text-primary">{formatCurrency(viewingOrder.totalAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                       </div>
                     </div>
                   </div>
@@ -1787,7 +1914,7 @@ export default function PurchaseOrdersIndex() {
               {canEdit && canCreateInvoice(viewingOrder) && (
                 <div className="flex justify-end gap-2 pt-4 border-t">
                   <Button
-                    onClick={() => setIsInvoiceDialogOpen(true)}
+                    onClick={() => openConvertDialog()}
                     className="gap-2"
                   >
                     <FileText className="w-4 h-4" />
@@ -1802,45 +1929,234 @@ export default function PurchaseOrdersIndex() {
 
       {/* Convert to Invoice Dialog */}
       <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Convert to Purchase Invoice</DialogTitle>
+            <DialogTitle>
+              Review &amp; Edit Invoice — from {viewingOrder?.poNumber}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Review the invoice details below. You may edit any field before creating.
+            </p>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="space-y-5 pt-2">
+            {/* Dates */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="invoiceDate">Invoice Date *</Label>
+                <Input
+                  id="invoiceDate"
+                  type="date"
+                  value={invoiceData.invoiceDate}
+                  onChange={(e) => setInvoiceData(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="dueDate">Due Date</Label>
+                <Input
+                  id="dueDate"
+                  type="date"
+                  value={invoiceData.dueDate}
+                  onChange={(e) => setInvoiceData(prev => ({ ...prev, dueDate: e.target.value }))}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {/* Payment Terms */}
             <div>
-              <Label htmlFor="invoiceDate">Invoice Date</Label>
+              <Label htmlFor="invoicePaymentTerms">Payment Terms</Label>
               <Input
-                id="invoiceDate"
-                type="date"
-                value={invoiceData.invoiceDate}
-                onChange={(e) => setInvoiceData(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                id="invoicePaymentTerms"
+                value={invoicePaymentTerms}
+                onChange={(e) => setInvoicePaymentTerms(e.target.value)}
+                placeholder="e.g. Net 30"
                 className="mt-1"
               />
             </div>
+
+            {/* Notes */}
             <div>
-              <Label htmlFor="dueDate">Due Date</Label>
-              <Input
-                id="dueDate"
-                type="date"
-                value={invoiceData.dueDate}
-                onChange={(e) => setInvoiceData(prev => ({ ...prev, dueDate: e.target.value }))}
+              <Label htmlFor="invoiceNotes">Notes</Label>
+              <Textarea
+                id="invoiceNotes"
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+                placeholder="Any notes for this invoice..."
                 className="mt-1"
+                rows={3}
               />
             </div>
-            <div className="flex flex-col sm:flex-row justify-end gap-2">
+
+            {/* Line Items */}
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Line Items</h3>
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[30%]">Item / Description</TableHead>
+                      <TableHead className="text-right w-[14%]">Qty</TableHead>
+                      <TableHead className="text-right w-[18%]">Unit Price ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
+                      <TableHead className="text-right w-[14%]">Tax %</TableHead>
+                      <TableHead className="text-right w-[18%]">Tax Amt ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
+                      <TableHead className="text-right w-[18%]">Line Total ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invoiceFormItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                          No items
+                        </TableCell>
+                      </TableRow>
+                    ) : invoiceFormItems.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <div className="text-sm font-medium">
+                            {item.itemType === "product"
+                              ? (item.inventoryItemName || `Item #${item.inventoryItemId}`)
+                              : "Service"}
+                          </div>
+                          {item.description && (
+                            <div className="text-xs text-muted-foreground">{item.description}</div>
+                          )}
+                          {item.inventoryItemUnit && (
+                            <div className="text-xs text-muted-foreground">{item.inventoryItemUnit}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min="0.001"
+                            step="any"
+                            value={item.quantity}
+                            onChange={(e) => recalcInvoiceItem(idx, "quantity", e.target.value)}
+                            className="w-20 text-right ml-auto h-8 text-sm"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) => recalcInvoiceItem(idx, "unitPrice", e.target.value)}
+                            className="w-28 text-right ml-auto h-8 text-sm"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={item.taxRate}
+                            onChange={(e) => recalcInvoiceItem(idx, "taxRate", e.target.value)}
+                            className="w-20 text-right ml-auto h-8 text-sm"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {formatCurrency(item.taxAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm font-medium">
+                          {formatCurrency(item.lineTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* Totals */}
+            <div className="bg-muted/40 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>
+                <span>{formatCurrency(invoiceSubtotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 py-4 border-y">
+                <div>
+                  <Label htmlFor="invoiceDiscountPercentage">Discount (%)</Label>
+                  <Input
+                    id="invoiceDiscountPercentage"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={invoiceData.discountPercentage}
+                    onChange={(e) => {
+                      const pct = parseFloat(e.target.value) || 0;
+                      const calcDiscount = (invoiceSubtotal * pct / 100).toFixed(2);
+                      setInvoiceData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                    }}
+                    placeholder="0.00"
+                    className="mt-1 h-8"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="invoiceDiscountAmount">Discount Value ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</Label>
+                  <Input
+                    id="invoiceDiscountAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={invoiceData.discountAmount}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      const calcPct = invoiceSubtotal > 0 ? ((val / invoiceSubtotal) * 100).toFixed(2) : "0";
+                      setInvoiceData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                    }}
+                    placeholder="0.00"
+                    className="mt-1 h-8"
+                  />
+                </div>
+              </div>
+
+
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tax ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>
+                <span>{formatCurrency(invoiceTaxTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+              </div>
+              
+              {/* {parseFloat(invoiceData.discountAmount) > 0 && ( */}
+                <div className="flex justify-between text-sm text-red-600">
+                  <span>Discount ({invoiceData.discountPercentage}%):</span>
+                  <span>- {formatCurrency(invoiceData.discountAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+                </div>
+              {/* )} */}
+              <div className="flex justify-between font-semibold text-base border-t pt-2 mt-2">
+                <span>Total ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>
+                <span>{formatCurrency(invoiceTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t">
               <Button
                 variant="outline"
                 onClick={() => setIsInvoiceDialogOpen(false)}
+                disabled={convertToInvoiceMutation.isPending}
                 className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleConvertToInvoice}
+                variant="outline"
+                onClick={() => handleConvertToInvoice(false)}
                 disabled={convertToInvoiceMutation.isPending}
                 className="w-full sm:w-auto"
               >
-                {convertToInvoiceMutation.isPending ? "Converting..." : "Create Invoice"}
+                {convertToInvoiceMutation.isPending ? "Saving..." : "Save as Draft"}
+              </Button>
+              <Button
+                onClick={() => handleConvertToInvoice(true)}
+                disabled={convertToInvoiceMutation.isPending}
+                className="w-full sm:w-auto"
+              >
+                {convertToInvoiceMutation.isPending ? "Submitting..." : "Save & Submit for Approval"}
               </Button>
             </div>
           </div>

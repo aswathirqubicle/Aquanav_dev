@@ -12,8 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
 import { apiRequest } from "@/lib/queryClient";
-import { Users, Plus, Mail, Phone, MapPin, FileText, Package, Archive, ArchiveRestore, Filter, Files } from "lucide-react";
+import { Users, Plus, Mail, Phone, MapPin, FileText, Package, Archive, ArchiveRestore, Filter, Files, Search } from "lucide-react";
 import { z } from "zod";
 import { CustomPagination } from "@/components/ui/pagination";
 import { DocumentManager } from "@/components/documents/DocumentManager";
@@ -96,6 +97,8 @@ export default function SuppliersIndex() {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 500);
   const [pagination, setPagination] = useState<{
     page: number;
     limit: number;
@@ -143,10 +146,10 @@ export default function SuppliersIndex() {
       totalPages: number;
     };
   }>({
-    queryKey: ["/api/suppliers", currentPage, showArchived],
+    queryKey: ["/api/suppliers", currentPage, showArchived, debouncedSearch],
     queryFn: async () => {
       try {
-        const response = await apiRequest(`/api/suppliers?page=${currentPage}&limit=10&showArchived=${showArchived}`, {
+        const response = await apiRequest(`/api/suppliers?page=${currentPage}&limit=10&showArchived=${showArchived}&search=${encodeURIComponent(debouncedSearch)}`, {
           method: "GET"
         });
         const result = await response.json();
@@ -442,6 +445,10 @@ export default function SuppliersIndex() {
     setShowArchived(!showArchived);
     setCurrentPage(1); // Reset to first page when changing filter
   };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
   if (!isAuthenticated || (user?.role !== "admin" && user?.role !== "project_manager" && user?.role !== "finance")) {
     return null;
@@ -859,6 +866,18 @@ export default function SuppliersIndex() {
             </div>
           </CardContent>
         </Card> */}
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-6 md:mb-8">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search suppliers by name, email or phone..."
+            className="pl-9"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
       </div>
 
       {isLoading ? (

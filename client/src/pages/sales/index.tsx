@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -172,6 +173,7 @@ export default function SalesIndex() {
     discount: "0",
     currency: "AED",
     exchangeRate: "1",
+    remarks: "",
   });
 
   const [invoiceFormData, setInvoiceFormData] =
@@ -191,6 +193,7 @@ export default function SalesIndex() {
       totalAmount: "0",
       currency: "AED",
       exchangeRate: "1",
+      remarks: "",
     });
 
   const getDefaultTaxRate = () =>
@@ -336,9 +339,9 @@ export default function SalesIndex() {
 
   const paymentFilesQueries = useQueries({
     queries: (invoicePayments || []).map((payment) => ({
-      queryKey: [`/api/payment-files/${payment.id}`],
+      queryKey: [`/api/payments/${payment.id}/files`],
       queryFn: async () => {
-        const response = await apiRequest(`/api/payment-files/${payment.id}`, {
+        const response = await apiRequest(`/api/payments/${payment.id}/files`, {
           method: "GET",
         });
         return response.json();
@@ -901,6 +904,7 @@ export default function SalesIndex() {
       subtotal: "0",
       taxAmount: "0",
       totalAmount: "0",
+      remarks: "",
     });
     setNewItem({
       description: "",
@@ -1424,6 +1428,7 @@ export default function SalesIndex() {
         bankAccount: quotation.bankAccount || "",
         billingAddress: quotation.billingAddress || "",
         termsAndConditions: quotation.termsAndConditions || "",
+        remarks: quotation.remarks || "",
       });
       setIsEditingQuotation(true);
       setIsQuotationDetailsOpen(false);
@@ -1448,6 +1453,7 @@ export default function SalesIndex() {
         bankAccount: quotation.bankAccount || "",
         billingAddress: quotation.billingAddress || "",
         termsAndConditions: quotation.termsAndConditions || "",
+        remarks: quotation.remarks || "",
         currency: quotation.currency || "AED",
         exchangeRate: quotation.exchangeRate || "1",
       });
@@ -1542,6 +1548,7 @@ export default function SalesIndex() {
       totalAmount: invoice.totalAmount || "0",
       currency: invoice.currency || "AED",
       exchangeRate: invoice.exchangeRate || "1",
+      remarks: invoice.remarks || "",
     });
     setIsInvoiceDialogOpen(true);
   };
@@ -1567,6 +1574,7 @@ export default function SalesIndex() {
       totalAmount: quotation.totalAmount || "0",
       paymentTerms: quotation.paymentTerms || "",
       termsAndConditions: quotation.termsAndConditions || "",
+      remarks: quotation.remarks || "",
       currency: quotation.currency || "AED",
       exchangeRate: quotation.exchangeRate || "1",
     });
@@ -1723,7 +1731,12 @@ export default function SalesIndex() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="customerId">Customer *</Label>
-                      <Select
+                      <Autocomplete
+                        options={(customers || []).map((customer) => ({
+                          value: customer.id.toString(),
+                          label: customer.name,
+                          searchText: customer.name
+                        }))}
                         value={formData.customerId?.toString() || ""}
                         onValueChange={(value) => {
                           const customerId = parseInt(value);
@@ -1752,21 +1765,9 @@ export default function SalesIndex() {
                               .catch(() => { });
                           }
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {customers?.map((customer) => (
-                            <SelectItem
-                              key={customer.id}
-                              value={customer.id.toString()}
-                            >
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Search customer..."
+                        emptyMessage="No customers found"
+                      />
                       {formData.currency && formData.currency !== "AED" && (
                         <div className="text-sm text-muted-foreground mt-1">
                           Currency: {formData.currency} | Exchange Rate: {formData.exchangeRate} (to AED)
@@ -1865,6 +1866,25 @@ export default function SalesIndex() {
                       }
                       placeholder="Enter terms and conditions for this quotation"
                       rows={4}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="remarks">Notes</Label>
+                    <textarea
+                      id="remarks"
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={formData.remarks || ""}
+                      onChange={(e) =>
+                        startTransition(() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            remarks: e.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Additional notes for this quotation"
+                      rows={3}
                     />
                   </div>
 
@@ -2167,7 +2187,12 @@ export default function SalesIndex() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="invoiceCustomerId">Customer *</Label>
-                      <Select
+                      <Autocomplete
+                        options={(customers || []).map((customer) => ({
+                          value: customer.id.toString(),
+                          label: customer.name,
+                          searchText: customer.name
+                        }))}
                         value={invoiceFormData.customerId?.toString() || ""}
                         onValueChange={(value) => {
                           const selectedCustomer = customers?.find(
@@ -2197,21 +2222,9 @@ export default function SalesIndex() {
                               .catch(() => { });
                           }
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {customers?.map((customer) => (
-                            <SelectItem
-                              key={customer.id}
-                              value={customer.id.toString()}
-                            >
-                              {customer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Search customer..."
+                        emptyMessage="No customers found"
+                      />
                       {invoiceFormData.currency && invoiceFormData.currency !== "AED" && (
                         <div className="text-sm text-muted-foreground mt-1">
                           Currency: {invoiceFormData.currency} | Exchange Rate: {invoiceFormData.exchangeRate} (to AED)
@@ -2367,6 +2380,25 @@ export default function SalesIndex() {
                       }
                       placeholder="Enter terms and conditions for this invoice"
                       rows={4}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="invoiceRemarks">Notes</Label>
+                    <textarea
+                      id="invoiceRemarks"
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={invoiceFormData.remarks || ""}
+                      onChange={(e) =>
+                        startTransition(() =>
+                          setInvoiceFormData((prev) => ({
+                            ...prev,
+                            remarks: e.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Additional notes for this invoice"
+                      rows={3}
                     />
                   </div>
 
@@ -2701,18 +2733,22 @@ export default function SalesIndex() {
         </Card>
 
         <Card>
-          <CardContent className="p-6 text-center py-12">
-            <div className="flex flex-col items-center">
-              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full mb-4">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
                 <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
               </div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                Total Receivables
-              </p>
-              <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">
-                {formatCurrency(totalReceivablesValue, "AED")}
-              </p>
-              <p className="text-xs text-slate-500 italic mt-1">AED Equivalent</p>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  Total Receivables
+                </p>
+                <div className="flex flex-col">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {formatCurrency(totalReceivablesValue, "AED")}
+                  </p>
+                  <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -2801,27 +2837,22 @@ export default function SalesIndex() {
                     >
                       Customer
                     </Label>
-                    <Select
+                    <Autocomplete
+                      options={[
+                        { value: "all", label: "All Customers" },
+                        ...(customers || []).map((customer) => ({
+                          value: customer.id.toString(),
+                          label: customer.name,
+                          searchText: customer.name
+                        }))
+                      ]}
                       value={customerFilter}
                       onValueChange={(value) =>
                         startTransition(() => setCustomerFilter(value))
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Customers" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Customers</SelectItem>
-                        {customers?.map((customer) => (
-                          <SelectItem
-                            key={customer.id}
-                            value={customer.id.toString()}
-                          >
-                            {customer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Search customer..."
+                      emptyMessage="No customers found"
+                    />
                   </div>
                   <div>
                     <Label
@@ -3007,8 +3038,7 @@ export default function SalesIndex() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                handleEditQuotation();
-                                setSelectedQuotation(quotation);
+                                handleEditQuotation(quotation);
                               }}
                               data-testid={`button-edit-quotation-${quotation.id}`}
                             >
@@ -3252,27 +3282,22 @@ export default function SalesIndex() {
                     >
                       Customer
                     </Label>
-                    <Select
+                    <Autocomplete
+                      options={[
+                        { value: "all", label: "All Customers" },
+                        ...(customers || []).map((customer) => ({
+                          value: customer.id.toString(),
+                          label: customer.name,
+                          searchText: customer.name
+                        }))
+                      ]}
                       value={invoiceCustomerFilter}
                       onValueChange={(value) =>
                         startTransition(() => setInvoiceCustomerFilter(value))
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Customers" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Customers</SelectItem>
-                        {customers?.map((customer) => (
-                          <SelectItem
-                            key={customer.id}
-                            value={customer.id.toString()}
-                          >
-                            {customer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Search customer..."
+                      emptyMessage="No customers found"
+                    />
                   </div>
                   <div>
                     <Label
@@ -3745,7 +3770,7 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions) && (
+              {(selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
@@ -3772,6 +3797,14 @@ export default function SalesIndex() {
                         <span className="font-medium">Terms & Conditions:</span>
                         <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
                           {selectedQuotation.termsAndConditions}
+                        </p>
+                      </div>
+                    )}
+                    {selectedQuotation.remarks && (
+                      <div>
+                        <span className="font-medium">Notes:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                          {selectedQuotation.remarks}
                         </p>
                       </div>
                     )}
@@ -4108,7 +4141,7 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions) && (
+              {(selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
@@ -4135,6 +4168,14 @@ export default function SalesIndex() {
                         <span className="font-medium">Terms & Conditions:</span>
                         <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
                           {selectedInvoice.termsAndConditions}
+                        </p>
+                      </div>
+                    )}
+                    {selectedInvoice.remarks && (
+                      <div>
+                        <span className="font-medium">Notes:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                          {selectedInvoice.remarks}
                         </p>
                       </div>
                     )}
@@ -4273,7 +4314,7 @@ export default function SalesIndex() {
                   <CardContent>
                     {invoicePayments && invoicePayments.length > 0 ? (
                       <div className="space-y-2">
-                        {invoicePayments.map((payment) => (
+                        {invoicePayments.map((payment, index) => (
                           <div key={payment.id} className="border rounded-lg">
                             <div
                               className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -4349,6 +4390,58 @@ export default function SalesIndex() {
                                   <p className="text-sm mt-1 p-3 bg-white dark:bg-gray-700 rounded border min-h-[60px]">
                                     {payment.notes || "No notes provided"}
                                   </p>
+                                </div>
+
+                                <div className="mt-4">
+                                  <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                    Attachments:
+                                  </label>
+                                  <div className="mt-1">
+                                    {(() => {
+                                      const filesQuery = paymentFilesQueries[index];
+                                      const files = filesQuery?.data || [];
+
+                                      if (filesQuery?.isLoading) {
+                                        return <p className="text-sm text-gray-500">Loading attachments...</p>;
+                                      }
+
+                                      if (files.length === 0) {
+                                        return <p className="text-sm text-gray-500 italic">No attachments</p>;
+                                      }
+
+                                      return (
+                                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          {files.map((file: any) => (
+                                            <li
+                                              key={file.id}
+                                              className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
+                                            >
+                                              <div className="flex items-center gap-2 overflow-hidden">
+                                                <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                                                <span className="text-sm truncate" title={file.originalName}>
+                                                  {file.originalName}
+                                                </span>
+                                              </div>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                asChild
+                                                className="h-8 ml-2"
+                                              >
+                                                <a
+                                                  href={`/api/payment-files/${file.id}/download`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                >
+                                                  Download
+                                                </a>
+                                              </Button>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      );
+                                    })()}
+                                  </div>
                                 </div>
                               </div>
                             )}
