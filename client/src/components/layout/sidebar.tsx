@@ -162,7 +162,7 @@ const navigation: NavItem[] = [
         title: "My Payslips",
         href: "/my-payslips",
         icon: FileText,
-        roles: ["admin", "finance", "project_manager", "employee"],
+        roles: ["finance", "project_manager", "employee"],
       },
       {
         title: "Reimbursements",
