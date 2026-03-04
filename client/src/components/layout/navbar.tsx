@@ -59,9 +59,11 @@ export function Navbar() {
               <DropdownMenuItem asChild>
                 <Link href="/profile">Profile</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
-              </DropdownMenuItem>
+              {(user?.role === "admin" || user?.role === "finance") && (
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">Settings</Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={logout}>Sign Out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
