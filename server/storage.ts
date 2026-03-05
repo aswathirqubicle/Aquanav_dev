@@ -68,6 +68,7 @@ import {
   supplierDocuments,
   reimbursements,
   exchangeRates,
+  employeeFeedback,
   type Reimbursement,
   type InsertReimbursement,
   type ExchangeRate,
@@ -133,6 +134,8 @@ import {
   type AssetType,
   type InsertAssetType,
   type ChartOfAccount,
+  type EmployeeFeedback,
+  type InsertEmployeeFeedback,
 } from "@shared/schema";
 import bcrypt from "bcrypt";
 import fs from "fs/promises";
