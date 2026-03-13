@@ -14,6 +14,7 @@ import {
   ilike,
   ne,
   inArray,
+  notInArray,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -52,6 +53,7 @@ import {
   purchaseOrderFiles,
   purchaseInvoices,
   purchaseInvoiceItems,
+  purchaseInvoiceFiles,
   purchaseCreditNotes,
   purchaseInvoicePayments,
   purchasePaymentFiles,
@@ -68,6 +70,9 @@ import {
   supplierDocuments,
   reimbursements,
   exchangeRates,
+  invoiceEditHistory,
+  type InvoiceEditHistory,
+  type InsertInvoiceEditHistory,
   employeeFeedback,
   type Reimbursement,
   type InsertReimbursement,
@@ -139,6 +144,11 @@ import {
 } from "@shared/schema";
 import bcrypt from "bcrypt";
 import fs from "fs/promises";
+import {
+  getCommonStyles,
+  generateCommonHeader,
+  generateCommonFooter,
+} from "./document-utils";
 
 // Helper type for count results
 type CountResult = { count: number };
@@ -320,7 +330,34 @@ export interface CreditNoteWithDetails extends CreditNote {
   invoiceNumber: string | null;
 }
 
-class Storage {
+export class Storage {
+  public async generateNextNumber(
+    prefix: string,
+    table: any,
+    column: any,
+  ): Promise<string> {
+    const year = new Date().getFullYear();
+    const pattern = `${prefix}-AQNV-${year}-%`;
+
+    const latest = await db
+      .select({ number: column })
+      .from(table)
+      .where(sql`${column} LIKE ${pattern}`)
+      .orderBy(desc(column))
+      .limit(1);
+
+    let nextSerial = 1;
+    if (latest.length > 0 && latest[0].number) {
+      const parts = latest[0].number.split("-");
+      const lastSerial = parseInt(parts[parts.length - 1]);
+      if (!isNaN(lastSerial)) {
+        nextSerial = lastSerial + 1;
+      }
+    }
+
+    return `${prefix}-AQNV-${year}-${nextSerial.toString().padStart(3, "0")}`;
+  }
+
   private _cleanDateValue(value: any): Date | null | undefined {
     // Test comment
     if (value === null || value === "") {
@@ -1698,178 +1735,275 @@ class Storage {
         throw new Error("Employee not found");
       }
 
-      // UAE Employment Contract Template
+      const company = await this.getCompany();
+      const companyName = company?.name || "Aquanav Maritime Services L.L.C";
+
+      const now = new Date();
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const monthName = monthNames[now.getMonth()];
+      const year = now.getFullYear();
+      const formattedDate = `${now.getDate().toString().padStart(2, '0')} ${monthName} ${year}`;
+
+      const referenceNo = `EMPCON/${employee.employeeCode}/${monthName} ${year}`;
+
       const contractTemplate = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Employment Contract - ${employee.firstName} ${
-      employee.lastName
-    }</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employment Agreement - ${employee.firstName} ${employee.lastName}</title>
+    ${getCommonStyles()}
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .title { font-size: 18px; font-weight: bold; text-decoration: underline; }
-        .section { margin: 20px 0; }
-        .signature-section { margin-top: 50px; display: flex; justify-content: space-between; }
-        .signature-box { width: 200px; text-align: center; }
-        .signature-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 40px; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-        th { background-color: #f0f0f0; }
+        @page {
+            size: A4;
+            margin: 0;
+        }
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .print-layout {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+        }
+        .header-spacer {
+            height: 20mm;
+            display: block;
+        }
+        .footer-spacer {
+            height: 35mm;
+            display: block;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0;
+        }
+        .page-content {
+            padding: 10px 60px;
+            text-align: justify;
+            font-size: 13px;
+        }
+        .contract-header {
+            margin-bottom: 25px;
+        }
+        .ref-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .employee-details {
+            margin-bottom: 20px;
+        }
+        .salutation {
+            margin-bottom: 15px;
+        }
+        ol {
+            padding-left: 20px;
+        }
+        ol li {
+            margin-bottom: 12px;
+            padding-left: 5px;
+        }
+        .sub-list {
+            list-style-type: lower-alpha;
+            margin-top: 8px;
+        }
+        .sub-list li {
+            margin-bottom: 4px;
+        }
+        .signature-block {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+        .signature-box {
+            width: 45%;
+        }
+        .signature-line {
+            border-top: 1px solid #000;
+            margin-top: 50px;
+            padding-top: 5px;
+        }
+        .no-print {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .print-btn {
+            padding: 10px 20px;
+            background-color: #0b4d78;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .print-btn:hover {
+            background-color: #083a5a;
+        }
+        @media print {
+            .no-print {
+                display: none;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .container {
+                max-width: none;
+                margin: 0;
+                padding: 0;
+            }
+            .page-content {
+                padding-top: 0;
+                padding-bottom: 0;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+            }
+            table {
+                page-break-inside: auto;
+            }
+            tr {
+                page-break-inside: auto;
+            }
+            td {
+                page-break-inside: auto;
+            }
+            thead {
+                display: table-header-group;
+            }
+            tfoot {
+                display: table-footer-group;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="title">EMPLOYMENT CONTRACT</div>
-        <p><strong>UNITED ARAB EMIRATES</strong></p>
+    <div class="no-print">
+        <button class="print-btn" onclick="window.print()">Print Agreement</button>
     </div>
 
-    <div class="section">
-        <p>This Employment Contract is entered into between:</p>
-        
-        <table>
+    ${generateCommonHeader({ company })}
+    ${generateCommonFooter({ company })}
+
+    <table class="print-layout">
+        <thead>
             <tr>
-                <th>EMPLOYER</th>
-                <td>
-                    <strong>AQUANAV MARINE ENGINEERING LLC</strong><br>
-                    Address: [Company Address]<br>
-                    P.O. Box: [P.O. Box]<br>
-                    UAE
+                <td style="border: none;">
+                    <div class="header-spacer"></div>
                 </td>
             </tr>
+        </thead>
+        <tbody>
             <tr>
-                <th>EMPLOYEE</th>
-                <td>
-                    <strong>${employee.firstName} ${
-                      employee.lastName
-                    }</strong><br>
-                    Employee ID: ${employee.employeeCode}<br>
-                    ${employee.grade ? `Grade: ${employee.grade}<br>` : ""}
-                    Position: ${employee.position || "Marine Engineer"}<br>
-                    Department: ${employee.department || "Engineering"}
+                <td style="border: none;">
+                    <div class="container">
+                        <div class="page-content">
+                            <div class="contract-header">
+                                <h2 style="text-align: center; text-decoration: underline; color: #0b4d78;">LETTER OF EMPLOYMENT</h2>
+                                <div class="ref-row">
+                                    <span>${formattedDate}</span>
+                                    <span>Ref: ${referenceNo}</span>
+                                </div>
+                            </div>
+
+                            <div class="employee-details">
+                                <strong>Mr. ${employee.firstName} ${employee.lastName}</strong><br>
+                                <span style="white-space: pre-wrap;">${employee.address || "-"}</span>
+                            </div>
+
+                            <div class="salutation">
+                                Dear ${employee.firstName},
+                            </div>
+
+                            <div class="intro-text">
+                                <p>We are pleased to employ you as “${employee.position || "Coating Repair technician"}” in our organization on the following terms and conditions, for a period of 2 years from the date of this letter. Contract will be reviewed and extended every 2 years. Your employee number is ${employee.employeeCode}.</p>
+                            </div>
+
+                            <ol>
+                                <li>Your contract period onboard a vessel shall be for around 5–7 months basis each project scope per vessel, which can be extended further or terminated earlier as the project demands.</li>
+                                
+                                <li>This employment contract will be supplemented by the Seafarers Employment Agreement (SEA) signed between the RPSL Company and yourself, issued for the specific project/vessel, which will be governed as per CBA.</li>
+                                
+                                <li>You will be paid contractual gross salary on monthly basis as remuneration as per Aquanav’s salary matrix basis your employee grade, solely during the period of each project onboard the ship. You will be employed with Aquanav as a ${employee.grade || "Grade 1"} employee, with a Gross monthly salary of ${employee.salary ? parseFloat(employee.salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : "450.00 USD"}, equivalent in INR, before deductions.</li>
+                                
+                                <li>Your present place of work will be onboard the assigned vessel, but during the above assignment you shall be liable to be posted/transferred anywhere to serve any of the Company’s Projects, at the sole discretion of the Management.</li>
+                                
+                                <li>You will not (except in the normal course of the Company's business) disclose, divulge or publish any article or statement, deliver any lecture, or broadcast or make any communication to the press, including magazine publication, technical information relating to the Company’s products or to any matter with which the Company may be concerned, unless you have previously applied to and obtained the written permission from the Company.</li>
+                                
+                                <li>You will be required to maintain utmost secrecy in respect of Project documents, commercial offer, design, documents, Project cost & Estimation, Technology, Software packages license, company’s policies, Company’s patterns & Trademark and company’s Human assets profile.</li>
+                                
+                                <li>You will be required to comply with all such rules and regulations as the Company may frame from time to time.</li>
+                                
+                                <li>During the period of engagement, if you are found non-performing or guilty of fraud, dishonest, disobedience, disorderly behavior, negligence, indiscipline, absence from duty without permission or any other conduct considered as deterrent to Aquanav’s interest or violation of one or more terms of this letter, your services may be terminated without notice, and on account of reason of any of the acts or omission the company shall be entitled to recover the damages from you.</li>
+
+                                <li>Aquanav has invested and will continue to impart professional certification programs to enhance your professional competence and will continue to do so. You are to serve Aquanav for a period of 2 years or 3 projects, whichever is more, from the date of completion of the most recent certification program. Pro-rata deduction will apply and be deducted from your corpus, in case of departure before completion of the above mentioned time period.</li>
+                                
+                                <li>You will not accept any present, commission or any sort of gratification in cash or kind from any person, party or firm or Company having serving as Clients, suppliers or vendors of Aquanav. If you are offered any such gratification, you should immediately report the same to the Aquanav Management.</li>
+                                
+                                <li>You will be responsible for safekeeping and return in good condition and order of all Company property, which may be in your use, custody, or charge.</li>
+                                
+                                <li>Your promotion and growth in the organization will be evaluated on a yearly basis to qualify as per the Employee Grading Matrix of Aquanav, taking the following factors into consideration in order of priority. Grading matrix enclosed for reference.
+                                    <ol class="sub-list">
+                                        <li>Evaluation of work quality as per PSPC / NACE requirements, to provide work guarantee to clients. Evaluation will be done by a shore based coating expert from time to time.</li>
+                                        <li>Timely work completion and delivery of the project, as estimated during project commencement.</li>
+                                        <li>Customer feedback – As received from onboard Master and/or Superintendent.</li>
+                                        <li>Discipline and integrity – Upholding values and executing service requirements of Aquanav, as communicated from time to time.</li>
+                                        <li>Completion of training programs as per training requirements of Aquanav.</li>
+                                    </ol>
+                                </li>
+                                
+                                <li>You will be covered under an insurance program during your period of engagement onboard the ship, for shore medical treatment, disabilities, repatriation and mortality.</li>
+                                
+                                <li>You agree to the deduction of 5% of your monthly salary that will be invested in a fixed deposit scheme, for your future welfare and security. Up to 60% of this corpus may be availed by you after 2 years of service for any of your personal needs. The deduction would continue during your period of stay in the organization. The corpus will be refunded as per contract terms upon your exit from Aquanav.</li>
+                                
+                                <li>Please sign the declaration as having read, understood and accepted the terms and conditions.</li>
+                            </ol>
+
+                            <p>We welcome you to Aquanav family and look forward to a fruitful association.</p>
+                            
+                            <p>With best wishes,</p>
+
+                            <div class="signature-block">
+                                <div class="signature-box">
+                                    <p>For and on behalf of<br><strong>Aquanav Maritime Services L.L.C</strong></p>
+                                    <div class="signature-line">
+                                        Deepak Sasikumar<br>
+                                        Managing Director
+                                    </div>
+                                </div>
+                                <div class="signature-box">
+                                    <p>Accepted and Agreed by<br><strong>Employee</strong></p>
+                                    <div class="signature-line">
+                                        <strong>${employee.firstName} ${employee.lastName}</strong><br>
+                                        Employee No: ${employee.employeeCode}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </td>
             </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 1: EMPLOYMENT TERMS</h3>
-        <p>The Employer hereby employs the Employee and the Employee accepts employment under the terms and conditions set forth in this contract.</p>
-        
-        <table>
+        </tbody>
+        <tfoot>
             <tr>
-                <th>Position/Job Title</th>
-                <td>${employee.position || "Marine Engineer"}</td>
+                <td style="border: none;">
+                    <div class="footer-spacer"></div>
+                </td>
             </tr>
-            <tr>
-                <th>Department</th>
-                <td>${employee.department || "Engineering"}</td>
-            </tr>
-            ${
-              employee.grade
-                ? `
-            <tr>
-                <th>Employee Grade</th>
-                <td>${employee.grade}</td>
-            </tr>
-            `
-                : ""
-            }
-            <tr>
-                <th>Start Date</th>
-                <td>${
-                  employee.hireDate
-                    ? new Date(employee.hireDate).toLocaleDateString()
-                    : "[To be filled]"
-                }</td>
-            </tr>
-            <tr>
-                <th>Contract Duration</th>
-                <td>2 Years (Renewable)</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 2: SALARY AND BENEFITS</h3>
-        <table>
-            <tr>
-                <th>Basic Salary</th>
-                <td>AED ${
-                  employee.salary
-                    ? parseFloat(employee.salary).toLocaleString()
-                    : "[To be filled]"
-                } per month</td>
-            </tr>
-            <tr>
-                <th>Housing Allowance</th>
-                <td>As per UAE Labor Law</td>
-            </tr>
-            <tr>
-                <th>Transportation</th>
-                <td>As per company policy</td>
-            </tr>
-            <tr>
-                <th>Annual Leave</th>
-                <td>30 days per year</td>
-            </tr>
-            <tr>
-                <th>Sick Leave</th>
-                <td>As per UAE Labor Law</td>
-            </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 3: WORKING HOURS</h3>
-        <p>The Employee shall work 8 hours per day, 6 days per week, with Friday as the weekly rest day, unless otherwise required by business needs.</p>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 4: DUTIES AND RESPONSIBILITIES</h3>
-        <p>The Employee shall:</p>
-        <ul>
-            <li>Perform all duties assigned by the Employer with diligence and professionalism</li>
-            <li>Comply with all company policies, procedures, and safety regulations</li>
-            <li>Maintain confidentiality of company information</li>
-            <li>Report to work punctually and regularly</li>
-        </ul>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 5: TERMINATION</h3>
-        <p>This contract may be terminated by either party with 30 days written notice or as per UAE Labor Law provisions.</p>
-    </div>
-
-    <div class="section">
-        <h3>ARTICLE 6: GOVERNING LAW</h3>
-        <p>This contract shall be governed by and construed in accordance with the laws of the United Arab Emirates.</p>
-    </div>
-
-    <div class="signature-section">
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <p><strong>EMPLOYER</strong><br>
-            Aquanav Marine Engineering LLC<br>
-            Date: _____________</p>
-        </div>
-        
-        <div class="signature-box">
-            <div class="signature-line"></div>
-            <p><strong>EMPLOYEE</strong><br>
-            ${employee.firstName} ${employee.lastName}<br>
-            Date: _____________</p>
-        </div>
-    </div>
-
-    <div class="section" style="margin-top: 50px;">
-        <p><small>
-            This contract is prepared in accordance with UAE Federal Law No. 8 of 1980 (UAE Labor Law) 
-            and its amendments. Both parties acknowledge they have read, understood, and agree to be bound by the terms herein.
-        </small></p>
-    </div>
+        </tfoot>
+    </table>
 </body>
 </html>
       `;
@@ -3845,7 +3979,13 @@ class Storage {
       return await db
         .select()
         .from(dailyActivities)
-        .where(eq(dailyActivities.projectId, projectId));
+        .where(
+          and(
+            eq(dailyActivities.projectId, projectId),
+            isNotNull(dailyActivities.completedTasks),
+            ne(dailyActivities.completedTasks, ""),
+          ),
+        );
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -5112,6 +5252,7 @@ class Storage {
           items: creditNotes.items,
           subtotal: creditNotes.subtotal,
           taxAmount: creditNotes.taxAmount,
+          discountPercentage: creditNotes.discountPercentage,
           discount: creditNotes.discount,
           totalAmount: creditNotes.totalAmount,
           createdAt: creditNotes.createdAt,
@@ -5393,8 +5534,8 @@ class Storage {
       if (filters?.search && filters.search.trim()) {
         queryConditions.push(
           or(
-            like(salesQuotations.quotationNumber, `%${filters.search}%`),
-            like(customers.name, `%${filters.search}%`),
+            ilike(salesQuotations.quotationNumber, `%${filters.search}%`),
+            ilike(customers.name, `%${filters.search}%`),
           ),
         );
       }
@@ -5443,6 +5584,7 @@ class Storage {
           items: salesQuotations.items,
           subtotal: salesQuotations.subtotal,
           taxAmount: salesQuotations.taxAmount,
+          discountPercentage: salesQuotations.discountPercentage,
           discount: salesQuotations.discount,
           totalAmount: salesQuotations.totalAmount,
           currency: salesQuotations.currency,
@@ -5480,11 +5622,66 @@ class Storage {
     }
   }
 
+  async getSalesStats(): Promise<{
+    totalQuotations: number;
+    totalInvoices: number;
+    totalQuotationValue: string;
+    totalInvoiceValue: string;
+    totalReceivablesValue: string;
+  }> {
+    try {
+      const [quotationStats] = await db
+        .select({
+          count: sql<number>`count(*)`,
+          totalValue: sql<string>`COALESCE(SUM(${salesQuotations.totalAmount} * ${salesQuotations.exchangeRate}), 0)`,
+        })
+        .from(salesQuotations)
+        .where(eq(salesQuotations.status, "approved"));
+
+      const [invoiceStats] = await db
+        .select({
+          count: sql<number>`count(*)`,
+          totalValue: sql<string>`COALESCE(SUM(${salesInvoices.totalAmount} * ${salesInvoices.exchangeRate}), 0)`,
+          totalReceivables: sql<string>`COALESCE(SUM((${salesInvoices.totalAmount} - ${salesInvoices.paidAmount}) * ${salesInvoices.exchangeRate}), 0)`,
+        })
+        .from(salesInvoices)
+        .where(
+          and(
+            ne(salesInvoices.status, "draft"),
+            ne(salesInvoices.status, "pending_approval"),
+            ne(salesInvoices.status, "rejected"),
+            ne(salesInvoices.status, "cancelled"),
+          ),
+        );
+
+      const [quotationCount] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(salesQuotations);
+
+      return {
+        totalQuotations: Number(quotationCount.count),
+        totalInvoices: Number(invoiceStats.count),
+        totalQuotationValue: String(quotationStats.totalValue),
+        totalInvoiceValue: String(invoiceStats.totalValue),
+        totalReceivablesValue: String(invoiceStats.totalReceivables),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getSalesStats: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesStats",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   // Sales Invoices pagination method
   async getSalesInvoicesPaginated(
     page: number,
     limit: number,
     filters?: {
+      search?: string;
       status?: string;
       startDate?: string;
       endDate?: string;
@@ -5502,6 +5699,16 @@ class Storage {
   }> {
     try {
       const queryConditions = [];
+
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(salesInvoices.invoiceNumber, `%${filters.search}%`),
+            ilike(customers.name, `%${filters.search}%`),
+          ),
+        );
+      }
+
       if (filters?.status && filters.status !== "all") {
         if (filters.status === "unpaid") {
           queryConditions.push(
@@ -5542,6 +5749,7 @@ class Storage {
           customerId: salesInvoices.customerId,
           customerName: customers.name,
           projectId: salesInvoices.projectId,
+          workOrderNumber: salesInvoices.workOrderNumber,
           projectTitle: projects.title,
           quotationId: salesInvoices.quotationId,
           status: salesInvoices.status,
@@ -5549,10 +5757,13 @@ class Storage {
           dueDate: salesInvoices.dueDate,
           paymentTerms: salesInvoices.paymentTerms,
           bankAccount: salesInvoices.bankAccount,
+          billingAddress: salesInvoices.billingAddress,
+          termsAndConditions: salesInvoices.termsAndConditions,
           remarks: salesInvoices.remarks,
           items: salesInvoices.items,
           subtotal: salesInvoices.subtotal,
           taxAmount: salesInvoices.taxAmount,
+          discountPercentage: salesInvoices.discountPercentage,
           discount: salesInvoices.discount,
           totalAmount: salesInvoices.totalAmount,
           paidAmount: salesInvoices.paidAmount,
@@ -5563,7 +5774,7 @@ class Storage {
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
         .leftJoin(projects, eq(salesInvoices.projectId, projects.id))
         .where(finalConditions)
-        .orderBy(desc(salesInvoices.invoiceDate));
+        .orderBy(desc(salesInvoices.id));
 
       const countQueryBuilder = db
         .select({ count: sql<number>`count(*)` })
@@ -7698,6 +7909,7 @@ class Storage {
           customerId: proformaInvoices.customerId,
           customerName: customers.name,
           projectId: proformaInvoices.projectId,
+          workOrderNumber: proformaInvoices.workOrderNumber,
           status: proformaInvoices.status,
           createdDate: proformaInvoices.createdDate,
           invoiceDate: proformaInvoices.invoiceDate,
@@ -7711,6 +7923,7 @@ class Storage {
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
           taxAmount: proformaInvoices.taxAmount,
+          discountPercentage: proformaInvoices.discountPercentage,
           discount: proformaInvoices.discount,
           totalAmount: proformaInvoices.totalAmount,
           currency: proformaInvoices.currency,
@@ -7744,6 +7957,7 @@ class Storage {
           customerId: proformaInvoices.customerId,
           customerName: customers.name,
           projectId: proformaInvoices.projectId,
+          workOrderNumber: proformaInvoices.workOrderNumber,
           status: proformaInvoices.status,
           createdDate: proformaInvoices.createdDate,
           validUntil: proformaInvoices.validUntil,
@@ -7756,6 +7970,7 @@ class Storage {
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
           taxAmount: proformaInvoices.taxAmount,
+          discountPercentage: proformaInvoices.discountPercentage,
           discount: proformaInvoices.discount,
           totalAmount: proformaInvoices.totalAmount,
           currency: proformaInvoices.currency,
@@ -7789,7 +8004,7 @@ class Storage {
       );
 
       // Generate proforma number
-      const proformaNumber = `PI-${Date.now()}`;
+      const proformaNumber =  `PI-${Date.now()}`;
 
       // Prepare the data
       const insertData = {
@@ -7797,6 +8012,7 @@ class Storage {
         customerId: proformaData.customerId,
         projectId: proformaData.projectId || null,
         quotationId: proformaData.quotationId || null,
+        workOrderNumber: proformaData.workOrderNumber || null,
         currency: proformaData.currency || "AED",
         exchangeRate: proformaData.exchangeRate || "1",
         status: proformaData.status || "draft",
@@ -7867,6 +8083,8 @@ class Storage {
         updateData.projectId = proformaData.projectId || null;
       if (proformaData.quotationId !== undefined)
         updateData.quotationId = proformaData.quotationId || null;
+      if (proformaData.workOrderNumber !== undefined) 
+        updateData.workOrderNumber = proformaData.workOrderNumber || null;
       if (proformaData.status !== undefined)
         updateData.status = proformaData.status;
       if (proformaData.invoiceDate !== undefined)
@@ -7905,15 +8123,11 @@ class Storage {
       if (proformaData.isArchived !== undefined)
         updateData.isArchived = proformaData.isArchived || false;
 
-      console.log("Storage: Update data after filtering:", updateData);
-
       const result = await db
         .update(proformaInvoices)
         .set(updateData)
         .where(eq(proformaInvoices.id, id))
         .returning();
-
-      console.log("Storage: Updated proforma invoice:", result[0]);
       return result[0];
     } catch (error: any) {
       console.error("Original error in updateProformaInvoice:", error); // Keep original console.error
@@ -8050,6 +8264,176 @@ class Storage {
   }
 
   // Purchase Request methods
+  async getPurchaseRequestStats(): Promise<{
+    totalRequests: number;
+    pendingApproval: number;
+    approved: number;
+    urgentPriority: number;
+  }> {
+    try {
+      const [stats] = await db
+        .select({
+          total: sql<number>`count(*)`,
+          pending: sql<number>`count(*) filter (where status = 'pending')`,
+          approved: sql<number>`count(*) filter (where status = 'approved')`,
+          urgent: sql<number>`count(*) filter (where urgency in ('urgent', 'high'))`,
+        })
+        .from(purchaseRequests);
+
+      return {
+        totalRequests: Number(stats.total || 0),
+        pendingApproval: Number(stats.pending || 0),
+        approved: Number(stats.approved || 0),
+        urgentPriority: Number(stats.urgent || 0),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getPurchaseRequestStats: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseRequestStats",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPurchaseRequestsPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      userId?: number;
+      userRole?: string;
+      status?: string;
+      urgency?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      const requester = alias(users, "requester");
+      const approver = alias(users, "approver");
+      const requesterEmp = alias(employees, "requesterEmp");
+      const approverEmp = alias(employees, "approverEmp");
+
+      const queryConditions = [];
+      if (
+        filters?.userRole &&
+        filters.userRole !== "admin" &&
+        filters.userRole !== "finance" &&
+        filters.userId
+      ) {
+        queryConditions.push(eq(purchaseRequests.requestedBy, filters.userId));
+      }
+
+      if (filters?.status && filters.status !== "all") {
+        queryConditions.push(eq(purchaseRequests.status, filters.status));
+      }
+
+      if (filters?.urgency && filters.urgency !== "all") {
+        queryConditions.push(eq(purchaseRequests.urgency, filters.urgency));
+      }
+
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(purchaseRequests.requestNumber, `%${filters.search}%`),
+            ilike(purchaseRequests.reason, `%${filters.search}%`),
+            ilike(requester.username, `%${filters.search}%`),
+            ilike(requesterEmp.firstName, `%${filters.search}%`),
+            ilike(requesterEmp.lastName, `%${filters.search}%`),
+          ),
+        );
+      }
+
+      if (filters?.startDate) {
+        queryConditions.push(gte(purchaseRequests.requestDate, new Date(filters.startDate)));
+      }
+
+      if (filters?.endDate) {
+        queryConditions.push(lte(purchaseRequests.requestDate, new Date(filters.endDate)));
+      }
+
+      const finalConditions =
+        queryConditions.length > 0 ? and(...queryConditions) : undefined;
+
+      const dataQueryBuilder = db
+        .select({
+          id: purchaseRequests.id,
+          requestNumber: purchaseRequests.requestNumber,
+          requestedBy: purchaseRequests.requestedBy,
+          requestedByName: sql<string>`COALESCE(NULLIF(CONCAT(${requesterEmp.firstName}, ' ', ${requesterEmp.lastName}), ' '), ${requester.username}, 'Unknown')`,
+          status: purchaseRequests.status,
+          urgency: purchaseRequests.urgency,
+          reason: purchaseRequests.reason,
+          requestDate: purchaseRequests.requestDate,
+          approvedBy: purchaseRequests.approvedBy,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
+          approvalDate: purchaseRequests.approvalDate,
+        })
+        .from(purchaseRequests)
+        .leftJoin(requester, eq(purchaseRequests.requestedBy, requester.id))
+        .leftJoin(requesterEmp, eq(requester.id, requesterEmp.userId))
+        .leftJoin(approver, eq(purchaseRequests.approvedBy, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .where(finalConditions)
+        .orderBy(desc(purchaseRequests.requestDate));
+
+      const countQueryBuilder = db
+        .select({ count: sql<number>`count(*)` })
+        .from(purchaseRequests)
+        .leftJoin(requester, eq(purchaseRequests.requestedBy, requester.id))
+        .leftJoin(requesterEmp, eq(requester.id, requesterEmp.userId))
+        .where(finalConditions);
+
+      const paginatedResult = await this._getPaginatedResults<any>(
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit,
+      );
+
+      // Get items for each request
+      paginatedResult.data = await Promise.all(
+        paginatedResult.data.map(async (request) => {
+          const items = await db
+            .select({
+              id: purchaseRequestItems.id,
+              requestId: purchaseRequestItems.requestId,
+              inventoryItemId: purchaseRequestItems.inventoryItemId,
+              inventoryItemName: inventoryItems.name,
+              inventoryItemUnit: inventoryItems.unit,
+              quantity: purchaseRequestItems.quantity,
+              notes: purchaseRequestItems.notes,
+            })
+            .from(purchaseRequestItems)
+            .leftJoin(
+              inventoryItems,
+              eq(purchaseRequestItems.inventoryItemId, inventoryItems.id),
+            )
+            .where(eq(purchaseRequestItems.requestId, request.id));
+
+          return {
+            ...request,
+            items,
+          };
+        }),
+      );
+
+      return paginatedResult;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getPurchaseRequestsPaginated: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseRequestsPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getPurchaseRequests(
     userId?: number,
     userRole?: string,
@@ -8296,6 +8680,152 @@ class Storage {
   }
 
   // Purchase Order methods
+  async getPurchaseOrderStats(): Promise<{
+    totalOrders: number;
+    approved: number;
+    pendingApproval: number;
+    totalValue: string;
+  }> {
+    try {
+      const [stats] = await db
+        .select({
+          total: sql<number>`count(*)`,
+          approved: sql<number>`count(*) filter (where status = 'approved')`,
+          pending: sql<number>`count(*) filter (where status = 'pending_approval')`,
+          totalValue: sql<number>`sum(total_amount)`,
+        })
+        .from(purchaseOrders);
+
+      return {
+        totalOrders: Number(stats.total || 0),
+        approved: Number(stats.approved || 0),
+        pendingApproval: Number(stats.pending || 0),
+        totalValue: Number(stats.totalValue || 0).toFixed(2),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getPurchaseOrderStats: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseOrderStats",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPurchaseOrdersPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      search?: string;
+      status?: string;
+      supplierId?: number;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      const queryConditions = [];
+
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(purchaseOrders.poNumber, `%${filters.search}%`),
+            ilike(suppliers.name, `%${filters.search}%`),
+          ),
+        );
+      }
+
+      if (filters?.status && filters.status !== "all") {
+        queryConditions.push(eq(purchaseOrders.status, filters.status));
+      }
+
+      if (filters?.supplierId) {
+        queryConditions.push(eq(purchaseOrders.supplierId, filters.supplierId));
+      }
+
+      if (filters?.startDate) {
+        queryConditions.push(gte(purchaseOrders.orderDate, new Date(filters.startDate)));
+      }
+
+      if (filters?.endDate) {
+        queryConditions.push(lte(purchaseOrders.orderDate, new Date(filters.endDate)));
+      }
+
+      const finalConditions =
+        queryConditions.length > 0 ? and(...queryConditions) : undefined;
+
+      const dataQueryBuilder = db
+        .select({
+          id: purchaseOrders.id,
+          poNumber: purchaseOrders.poNumber,
+          supplierId: purchaseOrders.supplierId,
+          supplierName: suppliers.name,
+          status: purchaseOrders.status,
+          orderDate: purchaseOrders.orderDate,
+          expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
+          paymentTerms: purchaseOrders.paymentTerms,
+          deliveryTerms: purchaseOrders.deliveryTerms,
+          bankAccount: purchaseOrders.bankAccount,
+          subtotal: purchaseOrders.subtotal,
+          discountPercentage: purchaseOrders.discountPercentage,
+          discountAmount: purchaseOrders.discountAmount,
+          taxAmount: purchaseOrders.taxAmount,
+          totalAmount: purchaseOrders.totalAmount,
+          notes: purchaseOrders.notes,
+          createdAt: purchaseOrders.createdAt,
+          currency: purchaseOrders.currency,
+          exchangeRate: purchaseOrders.exchangeRate,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
+        })
+        .from(purchaseOrders)
+        .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+        .where(finalConditions)
+        .orderBy(desc(purchaseOrders.createdAt));
+
+      const countQueryBuilder = db
+        .select({ count: sql<number>`count(*)` })
+        .from(purchaseOrders)
+        .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+        .where(finalConditions);
+
+      const paginatedResult = await this._getPaginatedResults<any>(
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit,
+      );
+
+      // Get items and files for each purchase order
+      paginatedResult.data = await Promise.all(
+        paginatedResult.data.map(async (order) => {
+          const items = await this.getPurchaseOrderItems(order.id);
+          const files = await db
+            .select()
+            .from(purchaseOrderFiles)
+            .where(eq(purchaseOrderFiles.poId, order.id));
+          return {
+            ...order,
+            items,
+            files,
+          };
+        }),
+      );
+
+      return paginatedResult;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getPurchaseOrdersPaginated: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseOrdersPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getPurchaseOrders(): Promise<any[]> {
     try {
       const result = await db
@@ -8452,7 +8982,7 @@ class Storage {
 
   async createPurchaseOrder(orderData: any): Promise<any> {
     try {
-      const poNumber = `PO-${Date.now()}`;
+      const poNumber = await this.generateNextNumber("PO", purchaseOrders, purchaseOrders.poNumber);
 
       // Create the purchase order
       const [order] = await db
@@ -8893,6 +9423,175 @@ class Storage {
     }
   }
 
+  async getPurchaseInvoicesPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+      supplierId?: number;
+      status?: string;
+      search?: string;
+      projectId?: number;
+    },
+  ): Promise<PaginatedResponse<any>> {
+    try {
+      const queryConditions = [];
+
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(purchaseInvoices.invoiceNumber, `%${filters.search}%`),
+            ilike(suppliers.name, `%${filters.search}%`),
+          ),
+        );
+      }
+
+      if (filters?.startDate) {
+        queryConditions.push(
+          gte(purchaseInvoices.invoiceDate, new Date(filters.startDate)),
+        );
+      }
+
+      if (filters?.endDate) {
+        queryConditions.push(
+          lte(purchaseInvoices.invoiceDate, new Date(filters.endDate)),
+        );
+      }
+
+      if (filters?.supplierId) {
+        queryConditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
+      }
+
+      if (filters?.status && filters.status !== "all") {
+        queryConditions.push(eq(purchaseInvoices.status, filters.status));
+      }
+
+      if (filters?.projectId) {
+        const subquery = db
+          .select({ invoiceId: purchaseInvoiceItems.invoiceId })
+          .from(purchaseInvoiceItems)
+          .where(eq(purchaseInvoiceItems.projectId, filters.projectId));
+        queryConditions.push(inArray(purchaseInvoices.id, subquery));
+      }
+
+      const finalConditions =
+        queryConditions.length > 0 ? and(...queryConditions) : undefined;
+
+      const dataQueryBuilder = db
+        .select({
+          id: purchaseInvoices.id,
+          invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierId: purchaseInvoices.supplierId,
+          supplierName: suppliers.name,
+          poId: purchaseInvoices.poId,
+          status: purchaseInvoices.status,
+          paymentStatus: purchaseInvoices.paymentStatus,
+          invoiceDate: purchaseInvoices.invoiceDate,
+          dueDate: purchaseInvoices.dueDate,
+          subtotal: purchaseInvoices.subtotal,
+          taxAmount: purchaseInvoices.taxAmount,
+          totalAmount: purchaseInvoices.totalAmount,
+          paidAmount: purchaseInvoices.paidAmount,
+          paymentTerms: purchaseInvoices.paymentTerms,
+          bankAccount: purchaseInvoices.bankAccount,
+          notes: purchaseInvoices.notes,
+          submittedById: purchaseInvoices.submittedById,
+          submittedAt: purchaseInvoices.submittedAt,
+          approvedById: purchaseInvoices.approvedById,
+          approvedAt: purchaseInvoices.approvedAt,
+          rejectionReason: purchaseInvoices.rejectionReason,
+          createdBy: purchaseInvoices.createdBy,
+          createdAt: purchaseInvoices.createdAt,
+          supplierCurrency: suppliers.currency,
+          supplierVatTreatment: suppliers.vatTreatment,
+        })
+        .from(purchaseInvoices)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .where(finalConditions)
+        .orderBy(desc(purchaseInvoices.createdAt));
+
+      const countQueryBuilder = db
+        .select({ count: sql<number>`count(*)` })
+        .from(purchaseInvoices)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .where(finalConditions);
+
+      return this._getPaginatedResults<any>(
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit,
+      );
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getPurchaseInvoicesPaginated: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseInvoicesPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPurchaseStats(): Promise<{
+    totalInvoices: number;
+    totalAmount: string;
+    paidAmount: string;
+    pendingAmount: string;
+    overdueCount: number;
+    overdueAmount: string;
+    pendingApprovalCount: number;
+  }> {
+    try {
+      const [invoiceStats] = await db
+        .select({
+          count: sql<number>`count(*) filter (where status = 'approved')`,
+          totalValue: sql<number>`sum(total_amount) filter (where status = 'approved')`,
+          totalPaid: sql<number>`sum(paid_amount) filter (where status = 'approved')`,
+          pendingApproval: sql<number>`count(*) filter (where status = 'pending_approval')`,
+        })
+        .from(purchaseInvoices);
+
+      const [overdueStats] = await db
+        .select({
+          count: sql<number>`count(*)`,
+          amount: sql<number>`sum(total_amount - paid_amount)`,
+        })
+        .from(purchaseInvoices)
+        .where(
+          and(
+            eq(purchaseInvoices.status, "approved"),
+            ne(purchaseInvoices.paymentStatus, "paid"),
+            lte(purchaseInvoices.dueDate, new Date()),
+          ),
+        );
+
+      const totalValue = Number(invoiceStats.totalValue || 0);
+      const totalPaid = Number(invoiceStats.totalPaid || 0);
+
+      return {
+        totalInvoices: Number(invoiceStats.count || 0),
+        totalAmount: totalValue.toFixed(2),
+        paidAmount: totalPaid.toFixed(2),
+        pendingAmount: (totalValue - totalPaid).toFixed(2),
+        overdueCount: Number(overdueStats.count || 0),
+        overdueAmount: Number(overdueStats.amount || 0).toFixed(2),
+        pendingApprovalCount: Number(invoiceStats.pendingApproval || 0),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getPurchaseStats: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPurchaseStats",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getPurchaseInvoicesFiltered(filters: {
     startDate?: string;
     endDate?: string;
@@ -9085,7 +9784,12 @@ class Storage {
         )
         .where(eq(purchaseInvoiceItems.invoiceId, id));
 
-      return { ...invoice, items };
+      const files = await db
+        .select()
+        .from(purchaseInvoiceFiles)
+        .where(eq(purchaseInvoiceFiles.invoiceId, id));
+
+      return { ...invoice, items, files };
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -9101,7 +9805,7 @@ class Storage {
 
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
     try {
-      const invoiceNumber = `PI-${Date.now()}`;
+      const invoiceNumber = await this.generateNextNumber("PI", purchaseInvoices, purchaseInvoices.invoiceNumber);
 
       const [invoice] = await db
         .insert(purchaseInvoices)
@@ -9147,6 +9851,20 @@ class Storage {
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
       }
 
+      // Handle file uploads if any
+      if (invoiceData.files && Array.isArray(invoiceData.files) && invoiceData.files.length > 0) {
+        const filesToInsert = invoiceData.files.map((file: any) => ({
+          invoiceId: invoice.id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        }));
+
+        await db.insert(purchaseInvoiceFiles).values(filesToInsert);
+      }
+
       return this.getPurchaseInvoice(invoice.id);
     } catch (error: any) {
       await this.createErrorLog({
@@ -9161,11 +9879,11 @@ class Storage {
     }
   }
 
-  async updatePurchaseInvoice(id: number, invoiceData: any): Promise<any> {
+  async updatePurchaseInvoice(id: number, invoiceData: any, isApprovedEdit: boolean = false): Promise<any> {
     try {
       const existing = await this.getPurchaseInvoice(id);
       if (!existing) throw new Error("Purchase invoice not found");
-      if (existing.status !== "draft") {
+      if (!isApprovedEdit && existing.status !== "draft") {
         throw new Error("Only draft invoices can be edited");
       }
 
@@ -9215,6 +9933,42 @@ class Storage {
         await db.insert(purchaseInvoiceItems).values(itemsToInsert);
       }
 
+      // Handle file updates
+      if (invoiceData.existingFiles) {
+        const keptFileIds = Array.isArray(invoiceData.existingFiles)
+          ? invoiceData.existingFiles.map((fid: any) => parseInt(fid))
+          : [parseInt(invoiceData.existingFiles)];
+
+        // Delete files that are no longer kept
+        await db
+          .delete(purchaseInvoiceFiles)
+          .where(
+            and(
+              eq(purchaseInvoiceFiles.invoiceId, id),
+              keptFileIds.length > 0
+                ? notInArray(purchaseInvoiceFiles.id, keptFileIds)
+                : undefined,
+            ),
+          );
+      } else if (invoiceData.files) {
+        // If files are provided but no existingFiles, we assume replacing or it's a new upload situation
+        // But usually we handle it via existingFiles from frontend.
+      }
+
+      // Handle new file uploads
+      if (invoiceData.files && Array.isArray(invoiceData.files) && invoiceData.files.length > 0) {
+        const filesToInsert = invoiceData.files.map((file: any) => ({
+          invoiceId: id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        }));
+
+        await db.insert(purchaseInvoiceFiles).values(filesToInsert);
+      }
+
       return this.getPurchaseInvoice(id);
     } catch (error: any) {
       await this.createErrorLog({
@@ -9240,7 +9994,7 @@ class Storage {
         throw new Error("Purchase order not found");
       }
 
-      const invoiceNumber = `PI-${Date.now()}`;
+      const invoiceNumber = await this.generateNextNumber("PI", purchaseInvoices, purchaseInvoices.invoiceNumber);
 
       // Create the invoice
       const [invoice] = await db
@@ -10175,6 +10929,7 @@ class Storage {
             id: dailyActivities.id,
             date: dailyActivities.date,
             location: dailyActivities.location,
+            completedTasks: dailyActivities.completedTasks,
           },
         })
         .from(projectPhotoGroups)
@@ -10747,7 +11502,7 @@ class Storage {
         if (tdsAmount > 0) {
           await db.insert(payrollDeductions).values({
             payrollEntryId: payrollEntry.id,
-            description: "Tax Deducted at Source",
+            description: "Provident Fund Contribution",
             amount: tdsAmount.toFixed(2),
             note: "5% of total earnings",
           });
@@ -11682,6 +12437,7 @@ class Storage {
       description?: string;
       originalExpenseDate?: string;
       projectId?: number | null;
+      attachments?: string[];
     },
   ): Promise<Reimbursement | undefined> {
     try {
@@ -12242,77 +12998,12 @@ class Storage {
     }
   }
 
-  async approveSalesInvoice(id: number, userId: number): Promise<void> {
-    try {
-      const invoice = await this.getSalesInvoice(id);
-      if (!invoice) throw new Error("Invoice not found");
-
-      // Generate permanent invoice number if it was a draft, ensuring it fits in 20 chars
-      // INV- + 13 digits (full timestamp) = 17 chars
-      const invoiceNumber = invoice.invoiceNumber?.startsWith("INV-DRFT-")
-        ? `INV-${Date.now()}`
-        : invoice.invoiceNumber || `INV-${Date.now()}`;
-
-      await db
-        .update(salesInvoices)
-        .set({
-          status: "approved",
-          invoiceNumber,
-          approvedById: userId,
-          approvedAt: new Date(),
-        })
-        .where(eq(salesInvoices.id, id));
-
-      // Create GL entries
-      await this.createInvoiceGLEntries(id);
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          `Error in approveSalesInvoice (id: ${id}): ` +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "approveSalesInvoice",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
-
-  async rejectSalesInvoice(
-    id: number,
-    userId: number,
-    reason?: string,
-  ): Promise<any> {
-    try {
-      await db
-        .update(salesInvoices)
-        .set({
-          status: "rejected",
-          rejectionReason: reason || null,
-          approvedById: userId,
-          approvedAt: new Date(),
-        })
-        .where(eq(salesInvoices.id, id));
-
-      return this.getSalesInvoice(id);
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          `Error in rejectSalesInvoice (id: ${id}): ` +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "rejectSalesInvoice",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
-
   async updateSalesInvoice(
     id: number,
     invoiceData: Partial<InsertSalesInvoice>,
   ): Promise<SalesInvoice | undefined> {
     try {
+      console.log("invoiceData",invoiceData);
       const result = await db
         .update(salesInvoices)
         .set(invoiceData)
@@ -12365,11 +13056,10 @@ class Storage {
       const invoice = await this.getSalesInvoice(id);
       if (!invoice) throw new Error("Invoice not found");
 
-      // Generate permanent invoice number if it was a draft, ensuring it fits in 20 chars
-      // INV- + 13 digits (full timestamp) = 17 chars
-      const invoiceNumber = invoice.invoiceNumber?.startsWith("INV-DRFT-")
-        ? `INV-${Date.now()}`
-        : invoice.invoiceNumber || `INV-${Date.now()}`;
+      // Generate permanent invoice number if it was a draft
+      const invoiceNumber = invoice.invoiceNumber?.startsWith("INV-AQNV-")
+        ? invoice.invoiceNumber
+        : await this.generateNextNumber("INV", salesInvoices, salesInvoices.invoiceNumber);
 
       await db
         .update(salesInvoices)
@@ -12633,6 +13323,210 @@ class Storage {
     }
   }
 
+  async createInvoiceEditHistory(data: InsertInvoiceEditHistory): Promise<InvoiceEditHistory> {
+    try {
+      const [entry] = await db.insert(invoiceEditHistory).values(data).returning();
+      return entry;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in createInvoiceEditHistory: ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "createInvoiceEditHistory",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getInvoiceEditHistory(invoiceType: string, invoiceId: number): Promise<InvoiceEditHistory[]> {
+    try {
+      return await db
+        .select()
+        .from(invoiceEditHistory)
+        .where(
+          and(
+            eq(invoiceEditHistory.invoiceType, invoiceType),
+            eq(invoiceEditHistory.invoiceId, invoiceId),
+          ),
+        )
+        .orderBy(desc(invoiceEditHistory.editedAt));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getInvoiceEditHistory: ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "getInvoiceEditHistory",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateSalesInvoiceGLEntries(invoiceId: number): Promise<void> {
+    try {
+      const invoice = await db
+        .select()
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .where(eq(salesInvoices.id, invoiceId))
+        .limit(1);
+
+      if (!invoice[0]) {
+        throw new Error(`Invoice with ID ${invoiceId} not found`);
+      }
+
+      const invoiceData = invoice[0].sales_invoices;
+      const customerData = invoice[0].customers;
+
+      const invoiceCurrency = invoiceData.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
+      const originalAmount = parseFloat(invoiceData.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      const description = `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`;
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: aedAmount,
+          creditAmount: "0",
+          description,
+          entityId: invoiceData.customerId,
+          entityName: customerData?.name || null,
+          projectId: invoiceData.projectId,
+          transactionDate: invoiceData.invoiceDate,
+          dueDate: invoiceData.dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "sales_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Accounts Receivable"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: "0",
+          creditAmount: aedAmount,
+          description,
+          entityId: invoiceData.customerId,
+          entityName: customerData?.name || null,
+          projectId: invoiceData.projectId,
+          transactionDate: invoiceData.invoiceDate,
+          dueDate: invoiceData.dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "sales_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Sales Revenue"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      console.log(`GL entries updated for sales invoice ${invoiceData.invoiceNumber}`);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in updateSalesInvoiceGLEntries (invoiceId: ${invoiceId}): ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "updateSalesInvoiceGLEntries",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updatePurchaseInvoiceGLEntries(invoiceId: number): Promise<void> {
+    try {
+      const invoice = await this.getPurchaseInvoice(invoiceId);
+      if (!invoice) throw new Error(`Purchase invoice with ID ${invoiceId} not found`);
+
+      let supplierName = "Unknown Supplier";
+      if (invoice.supplierId) {
+        const [supplier] = await db
+          .select()
+          .from(suppliers)
+          .where(eq(suppliers.id, invoice.supplierId));
+        if (supplier) supplierName = supplier.name;
+      }
+
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(invoice.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      const description = `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`;
+      const transactionDate = invoice.invoiceDate
+        ? new Date(invoice.invoiceDate).toISOString()
+        : new Date().toISOString();
+      const dueDate = invoice.dueDate
+        ? new Date(invoice.dueDate).toISOString()
+        : null;
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: "0",
+          creditAmount: aedAmount,
+          description,
+          entityId: invoice.supplierId,
+          entityName: supplierName,
+          projectId: invoice.projectId || null,
+          transactionDate,
+          dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "purchase_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Accounts Payable"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: aedAmount,
+          creditAmount: "0",
+          description,
+          entityId: invoice.supplierId,
+          entityName: supplierName,
+          projectId: invoice.projectId || null,
+          transactionDate,
+          dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "purchase_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Purchase Expense"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      console.log(`GL entries updated for purchase invoice ${invoice.invoiceNumber}`);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in updatePurchaseInvoiceGLEntries (invoiceId: ${invoiceId}): ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "updatePurchaseInvoiceGLEntries",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   //Profile
   async changePassword(
     id: number,
@@ -12810,6 +13704,7 @@ class Storage {
 }
 
 export interface IStorage {
+  generateNextNumber(prefix: string, table: any, column: any): Promise<string>;
   // User methods
   getUserByUsername(username: string): Promise<User | undefined>;
   getUser(id: number): Promise<User | undefined>;
@@ -13127,6 +14022,14 @@ export interface IStorage {
     },
   ): Promise<PaginatedResponse<SalesQuotationWithCustomerName>>;
 
+  getSalesStats(): Promise<{
+    totalQuotations: number;
+    totalInvoices: number;
+    totalQuotationValue: string;
+    totalInvoiceValue: string;
+    totalReceivablesValue: string;
+  }>;
+
   // Sales Invoice methods
   getSalesInvoices(): Promise<SalesInvoice[]>;
   getSalesInvoice(id: number): Promise<SalesInvoice | undefined>;
@@ -13235,6 +14138,8 @@ export interface IStorage {
   updateAllAssetStatuses(): Promise<void>;
 
   // Purchase Request methods
+  getPurchaseRequestStats(): Promise<{ totalRequests: number; pendingApproval: number; approved: number; urgentPriority: number; }>;
+  getPurchaseRequestsPaginated(page: number, limit: number, filters?: { userId?: number; userRole?: string; status?: string; urgency?: string; search?: string; startDate?: string; endDate?: string; }): Promise<PaginatedResponse<any>>;
   getPurchaseRequests(): Promise<any[]>;
   getPurchaseRequest(id: number): Promise<any>;
   createPurchaseRequest(requestData: any): Promise<any>;
@@ -13242,6 +14147,8 @@ export interface IStorage {
   deletePurchaseRequest(id: number): Promise<boolean>;
 
   // Purchase Order methods
+  getPurchaseOrderStats(): Promise<{ totalOrders: number; approved: number; pendingApproval: number; totalValue: string; }>;
+  getPurchaseOrdersPaginated(page: number, limit: number, filters?: { search?: string; status?: string; supplierId?: number; startDate?: string; endDate?: string; }): Promise<PaginatedResponse<any>>;
   getPurchaseOrders(): Promise<any[]>;
   getPurchaseOrder(id: number): Promise<any>;
   getPurchaseOrderItems(poId: number): Promise<any[]>;
@@ -13260,6 +14167,8 @@ export interface IStorage {
     userId: number,
     overrides: any,
   ): Promise<any>;
+  getPurchaseInvoicesPaginated(page: number, limit: number, filters?: { startDate?: string; endDate?: string; supplierId?: number; status?: string; search?: string; projectId?: number; }): Promise<PaginatedResponse<any>>;
+  getPurchaseStats(): Promise<{ totalInvoices: number; totalAmount: string; paidAmount: string; pendingAmount: string; overdueCount: number; overdueAmount: string; pendingApprovalCount: number; }>;
   getPurchaseInvoices(): Promise<any[]>;
   getPurchaseInvoicePayments(invoiceId: number): Promise<any[]>;
   getPurchasePaymentFile(id: number): Promise<any | undefined>;

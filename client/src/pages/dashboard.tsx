@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  Ship, CheckCircle, AlertTriangle, DollarSign, Plus, Filter,
+  Ship, CheckCircle, AlertTriangle, DollarSign, Plus,
   TrendingUp, TrendingDown, CreditCard, FileText, Clock, ArrowUpRight, ArrowDownRight,
   Receipt, Wallet, BadgeAlert, Briefcase, Users, PackageCheck, CalendarClock,
   FolderOpen, ClipboardList, BarChart3, Anchor
@@ -448,10 +448,6 @@ function ProjectManagerDashboard() {
     queryKey: ["/api/dashboard/pm-stats"],
   });
 
-  const budgetUtilization = stats?.totalBudget
-    ? Math.round((stats.totalActualCost / stats.totalBudget) * 100)
-    : 0;
-
   return (
     <div className="p-6">
       <div className="mb-8">
@@ -461,7 +457,7 @@ function ProjectManagerDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center">
@@ -496,25 +492,6 @@ function ProjectManagerDashboard() {
             </div>
             <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
               {isLoading ? "..." : `${stats?.onHoldProjects || 0} on hold`}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
-                <DollarSign className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Budget Used</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {isLoading ? "..." : `${budgetUtilization}%`}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              {isLoading ? "..." : `${formatCurrency(stats?.totalActualCost || 0)} of ${formatCurrency(stats?.totalBudget || 0)}`}
             </div>
           </CardContent>
         </Card>
@@ -957,14 +934,17 @@ function AdminDashboard() {
                   {statsLoading ? "..." : ((stats?.completedProjectsChange || 0) >= 0 ? `+${stats?.completedProjectsChange || 0}` : (stats?.completedProjectsChange || 0))}
                 </span>
                 <span className="text-slate-500 dark:text-slate-400 ml-1">
-                  {statsLoading ? "..." : "vs target"}
+                  {statsLoading ? "..." : "vs last month"}
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setLocation("/inventory")}
+        >
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
@@ -1027,10 +1007,6 @@ function AdminDashboard() {
           <div className="flex items-center justify-between">
             <CardTitle>Active Projects</CardTitle>
             <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-              </Button>
               <Button size="sm" onClick={() => setLocation("/projects/create")}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Project
@@ -1062,12 +1038,15 @@ function AdminDashboard() {
                     <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Status</th>
                     <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">End Date</th>
                     <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Budget</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activeProjects.map((project) => (
-                    <tr key={project.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <tr 
+                      key={project.id} 
+                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                      onClick={() => setLocation(`/projects/${project.id}`)}
+                    >
                       <td className="py-4 px-4">
                         <div className="flex items-center">
                           {project.vesselImage && (
@@ -1093,15 +1072,6 @@ function AdminDashboard() {
                       </td>
                       <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
                         {project.estimatedBudget ? formatCurrency(project.estimatedBudget) : "N/A"}
-                      </td>
-                      <td className="py-4 px-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setLocation(`/projects/${project.id}`)}
-                        >
-                          View
-                        </Button>
                       </td>
                     </tr>
                   ))}

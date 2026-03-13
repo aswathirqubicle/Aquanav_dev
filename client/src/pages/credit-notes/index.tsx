@@ -31,6 +31,7 @@ const createCreditNoteSchema = insertCreditNoteSchema.extend({
     .default([]),
   subtotal: z.string().optional(),
   taxAmount: z.string().optional(),
+  discountPercentage: z.string().optional(),
   discount: z.string().optional(),
   totalAmount: z.string().optional(),
   currency: z.string().default("AED"),
@@ -204,6 +205,7 @@ export default function CreditNotesIndex() {
       items: creditNote?.items || [{ description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0 }],
       subtotal: creditNote?.subtotal || "0.00",
       taxAmount: creditNote?.taxAmount || "0.00",
+      discountPercentage: creditNote?.discountPercentage || "0",
       discount: creditNote?.discount || "0.00",
       totalAmount: creditNote?.totalAmount || "0.00",
       currency: creditNote?.currency || "AED",
@@ -248,21 +250,32 @@ export default function CreditNotesIndex() {
         totalTaxAmount += taxAmount;
       });
 
-      const discount = parseFloat(formData.discount || "0");
-      const finalSubtotal = subtotal - discount;
-      const total = finalSubtotal + totalTaxAmount;
+      const discountAmount = parseFloat(formData.discount || "0");
+      const totalAmount = subtotal - discountAmount + totalTaxAmount;
 
       setFormData(prev => ({
         ...prev,
         subtotal: subtotal.toFixed(2),
         taxAmount: totalTaxAmount.toFixed(2),
-        totalAmount: total.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
       }));
     };
 
     useEffect(() => {
       calculateTotals();
     }, [formData.items, formData.discount]);
+
+    const creditNoteSubtotalValue = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+    // Recalculate credit note discount when items or percentage changes
+    useEffect(() => {
+      const pct = parseFloat(formData.discountPercentage || "0") || 0;
+      const calcDiscount = (creditNoteSubtotalValue * pct / 100).toFixed(2);
+
+      if (formData.discount !== calcDiscount) {
+        setFormData(prev => ({ ...prev, discount: calcDiscount }));
+      }
+    }, [creditNoteSubtotalValue, formData.discountPercentage]);
 
     const addItem = () => {
       setFormData(prev => ({
@@ -524,31 +537,77 @@ export default function CreditNotesIndex() {
           </div>
         </div>
 
-        {/* Totals Section */}
-        <div className="flex justify-end">
-          <div className="w-80 space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>{formatCurrency(formData.subtotal || "0", formData.currency)}</span>
+        {/* Financial Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+          <div className="space-y-4">
+            <h4 className="font-semibold text-sm">Discounts</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="discountPercentage">Discount (%)</Label>
+                <Input
+                  id="discountPercentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={formData.discountPercentage}
+                  onChange={(e) => {
+                    const pct = parseFloat(e.target.value) || 0;
+                    const calcDiscount = (creditNoteSubtotalValue * pct / 100).toFixed(2);
+                    setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                  }}
+                  placeholder="0.00"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="discountAmount">Discount Amount ({formData.currency})</Label>
+                <Input
+                  id="discountAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.discount}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    const calcPct = creditNoteSubtotalValue > 0 ? ((val / creditNoteSubtotalValue) * 100).toFixed(2) : "0";
+                    setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                  }}
+                  placeholder="0.00"
+                  className="mt-1"
+                />
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Discount:</span>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.discount || "0"}
-                onChange={(e) => setFormData(prev => ({ ...prev, discount: e.target.value }))}
-                className="w-24 text-right"
-              />
-            </div>
-            <div className="flex justify-between">
-              <span>Tax Amount:</span>
-              <span>{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
-            </div>
-            <div className="flex justify-between font-bold text-lg border-t pt-2">
-              <span>Total:</span>
-              <span>{formatCurrency(formData.totalAmount || "0", formData.currency)}</span>
+          </div>
+
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
+            <h4 className="font-semibold mb-3 text-sm">Credit Note Summary</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal:</span>
+                <span className="font-medium">{formatCurrency(formData.subtotal || "0", formData.currency)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Tax Amount:</span>
+                <span className="font-medium">{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
+              </div>
+              {parseFloat(formData.discount || "0") > 0 && (
+                <div className="flex justify-between text-sm text-red-600">
+                  <span>Discount ({formData.discountPercentage}%):</span>
+                  <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                </div>
+              )}
+              <div className="border-t pt-2">
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total Amount:</span>
+                  <span className="text-blue-600">{formatCurrency(formData.totalAmount || "0", formData.currency)}</span>
+                </div>
+                {formData.currency !== "AED" && (
+                  <div className="text-xs text-muted-foreground mt-2 text-right">
+                    Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -794,29 +853,37 @@ export default function CreditNotesIndex() {
                   </div>
                 </div>
 
-                {/* Totals Section */}
-                <div className="flex justify-end">
-                  <div className="w-80 space-y-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="flex justify-between">
+                {/* Financial Summary */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                    Financial Summary
+                  </h3>
+                  <div className="space-y-2 sm:space-y-3">
+                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Subtotal:</span>
-                      <span>{formatCurrency(viewingCreditNote.subtotal || 0, viewingCreditNote.currency)}</span>
+                      <span className="text-lg font-semibold">{formatCurrency(viewingCreditNote.subtotal || 0, viewingCreditNote.currency)}</span>
                     </div>
                     {viewingCreditNote.discount && parseFloat(viewingCreditNote.discount) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">Discount:</span>
-                        <span>-{formatCurrency(viewingCreditNote.discount, viewingCreditNote.currency)}</span>
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">
+                          Discount ({viewingCreditNote.discountPercentage}%):
+                        </span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(viewingCreditNote.discount, viewingCreditNote.currency)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Tax Amount:</span>
-                      <span>{formatCurrency(viewingCreditNote.taxAmount || 0, viewingCreditNote.currency)}</span>
+                      <span className="text-lg font-semibold">{formatCurrency(viewingCreditNote.taxAmount || 0, viewingCreditNote.currency)}</span>
                     </div>
-                    <div className="flex justify-between font-bold text-lg border-t pt-3">
-                      <span>Total Amount:</span>
-                      <span>{formatCurrency(viewingCreditNote.totalAmount || 0, viewingCreditNote.currency)}</span>
+                    <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
+                      <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
+                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingCreditNote.totalAmount || 0, viewingCreditNote.currency)}</span>
                     </div>
                     {viewingCreditNote.currency && viewingCreditNote.currency !== "AED" && (
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-xs text-muted-foreground mt-2 text-right">
+                        Exchange Rate: 1 {viewingCreditNote.currency} = {viewingCreditNote.exchangeRate} AED
+                        <br />
                         AED Equivalent: AED {(parseFloat(viewingCreditNote.totalAmount || "0") * parseFloat(viewingCreditNote.exchangeRate || "1")).toFixed(2)}
                       </div>
                     )}

@@ -1,4 +1,4 @@
-// Multi-currency support for the Aquanav ERP system
+// Multi-currency support for the Aquasoft ERP system
 // Default currency: AED (UAE Dirham)
 
 export interface Currency {

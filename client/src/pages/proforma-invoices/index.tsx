@@ -60,6 +60,7 @@ const createProformaInvoiceSchema = z.object({
   invoiceDate: z.string().optional(),
   validUntil: z.string().optional(),
   paymentTerms: z.string().optional(),
+  workOrderNumber: z.string().optional(),
   deliveryTerms: z.string().optional(),
   bankAccount: z.string().optional(),
   billingAddress: z.string().optional(),
@@ -77,6 +78,7 @@ const createProformaInvoiceSchema = z.object({
     .default([]),
   subtotal: z.string().optional(),
   taxAmount: z.string().optional(),
+  discountPercentage: z.string().optional(),
   discount: z.string().optional(),
   totalAmount: z.string().optional(),
 });
@@ -95,6 +97,7 @@ interface ProformaInvoice {
   invoiceDate?: string;
   validUntil?: string;
   paymentTerms?: string;
+  workOrderNumber?: string;
   deliveryTerms?: string;
   bankAccount?: string;
   billingAddress?: string;
@@ -109,6 +112,7 @@ interface ProformaInvoice {
   subtotal?: string;
   taxAmount?: string;
   discount?: string;
+  discountPercentage?: string;
   totalAmount?: string;
   isArchived?: boolean;
   currency?: string;
@@ -140,8 +144,10 @@ export default function ProformaInvoicesIndex() {
     customerId: 0,
     invoiceDate: new Date().toISOString().split('T')[0],
     items: [],
+    discountPercentage: "0",
     discount: "0",
     currency: "AED",
+    workOrderNumber: "",
     exchangeRate: "1",
   });
 
@@ -197,6 +203,19 @@ export default function ProformaInvoicesIndex() {
     }));
   }, [isDialogOpen, company]);
 
+  // Recalculate proforma discount when items or percentage changes
+  const proformaSubtotal = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+  // Recalculate proforma discount when items or percentage changes
+  useEffect(() => {
+    const pct = parseFloat(formData.discountPercentage || "0") || 0;
+    const calcDiscount = (proformaSubtotal * pct / 100).toFixed(2);
+
+    if (formData.discount !== calcDiscount) {
+      setFormData(prev => ({ ...prev, discount: calcDiscount }));
+    }
+  }, [proformaSubtotal, formData.discountPercentage]);
+
   const { data: customersResponse } = useQuery<{
     data: Customer[];
     pagination: {
@@ -236,13 +255,15 @@ export default function ProformaInvoicesIndex() {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0,
       );
-      const discount = parseFloat(data.discount || "0");
+
+      const discountAmount = parseFloat(data.discount || "0");
+
       const taxAmount = data.items.reduce((sum, item) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
         return sum + itemTax;
       }, 0);
-      const totalAmount = subtotal - discount + taxAmount;
+      const totalAmount = subtotal - discountAmount + taxAmount;
       // 🚨 VALIDATION
       if (totalAmount <= 0) {
         throw new Error("Total amount must be greater than zero");
@@ -253,6 +274,7 @@ export default function ProformaInvoicesIndex() {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         totalAmount: totalAmount.toString(),
+        discountPercentage: data.discountPercentage || "0",
         currency: (data as any).currency || "AED",
         exchangeRate: (data as any).exchangeRate || "1",
       };
@@ -355,9 +377,17 @@ export default function ProformaInvoicesIndex() {
       customerId: 0,
       invoiceDate: new Date().toISOString().split('T')[0],
       items: [],
+      discountPercentage: "0",
       discount: "0",
       currency: "AED",
       exchangeRate: "1",
+      workOrderNumber: "",
+      paymentTerms: "",
+      deliveryTerms: "",
+      bankAccount: "",
+      billingAddress: "",
+      termsAndConditions: "",
+      remarks: "",
     });
     setNewItem({
       description: "",
@@ -566,7 +596,9 @@ export default function ProformaInvoicesIndex() {
       termsAndConditions: proforma.termsAndConditions || '',
       remarks: proforma.remarks || '',
       items: proforma.items || [],
+      discountPercentage: proforma.discountPercentage || '0',
       discount: proforma.discount || '0',
+      workOrderNumber: proforma.workOrderNumber || '',
     });
     // 🔹 ensure new item uses correct tax
     setNewItem({
@@ -714,7 +746,7 @@ export default function ProformaInvoicesIndex() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="invoiceDate">Invoice Date *</Label>
                       <Input
@@ -748,18 +780,42 @@ export default function ProformaInvoicesIndex() {
                         }
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="paymentTerms">Payment Terms</Label>
-                      <Input
-                        id="paymentTerms"
+                      <Select
                         value={formData.paymentTerms || ""}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            paymentTerms: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select payment terms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Due on receipt">Due on receipt</SelectItem>
+                          <SelectItem value="Net 10">Net 10</SelectItem>
+                          <SelectItem value="Net 15">Net 15</SelectItem>
+                          <SelectItem value="Net 30">Net 30</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workOrderNumber">Work Order Number</Label>
+                      <Input
+                        id="workOrderNumber"
+                        value={formData.workOrderNumber || ""}
                         onChange={(e) =>
                           setFormData((prev) => ({
                             ...prev,
-                            paymentTerms: e.target.value,
+                            workOrderNumber: e.target.value,
                           }))
                         }
-                        placeholder="e.g., Net 30 days"
+                        placeholder="Enter work order number"
                       />
                     </div>
                   </div>
@@ -945,13 +1001,13 @@ export default function ProformaInvoicesIndex() {
                                       <td className="px-4 py-3 text-sm">{item.description}</td>
                                       <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        ${item.unitPrice.toFixed(2)}
+                                        {formatCurrency(item.unitPrice, formData.currency)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
-                                        ${lineTotal.toFixed(2)}
+                                        {formatCurrency(lineTotal, formData.currency)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
                                         <Button
@@ -992,57 +1048,86 @@ export default function ProformaInvoicesIndex() {
                   </div>
 
                   {/* Financial Summary */}
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm">Discounts</h4>
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label className="text-sm font-medium">Discount ($)</Label>
+                          <Label htmlFor="discountPercentage">Discount (%)</Label>
                           <Input
+                            id="discountPercentage"
                             type="number"
+                            min="0"
+                            max="100"
                             step="0.01"
-                            value={formData.discount}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                discount: e.target.value,
-                              }))
-                            }
+                            value={formData.discountPercentage}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value) || 0;
+                              const calcDiscount = (proformaSubtotal * pct / 100).toFixed(2);
+                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                            }}
                             placeholder="0.00"
+                            className="mt-1"
                           />
                         </div>
                         <div>
-                          <Label className="text-sm font-medium">Tax Amount</Label>
-                          <div className="text-lg font-medium py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded">
-                            {(() => {
-                              const taxTotal = formData.items.reduce((sum, item) => {
-                                const itemTotal = item.quantity * item.unitPrice;
-                                return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                              }, 0);
-                              return formatCurrency(taxTotal, formData.currency);
-                            })()}
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium">Total Amount</Label>
-                          <div className="text-xl font-bold py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded border">
-                            {(() => {
-                              const subtotal = formData.items.reduce(
-                                (sum, item) => sum + item.quantity * item.unitPrice,
-                                0,
-                              );
-                              const discount = parseFloat(formData.discount || "0");
-                              const taxTotal = formData.items.reduce((sum, item) => {
-                                const itemTotal = item.quantity * item.unitPrice;
-                                return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                              }, 0);
-                              const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total, formData.currency);
-                            })()}
-                          </div>
+                          <Label htmlFor="discountAmount">Discount Amount ({formData.currency})</Label>
+                          <Input
+                            id="discountAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.discount}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const calcPct = proformaSubtotal > 0 ? ((val / proformaSubtotal) * 100).toFixed(2) : "0";
+                              setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                            }}
+                            placeholder="0.00"
+                            className="mt-1"
+                          />
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
+                      <h4 className="font-semibold mb-3 text-sm">Proforma Summary</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal:</span>
+                          <span className="font-medium">{formatCurrency(proformaSubtotal, formData.currency)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(formData.items.reduce((sum, item) => {
+                            const itemTotal = item.quantity * item.unitPrice;
+                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
+                          }, 0), formData.currency)}</span>
+                        </div>
+                        {parseFloat(formData.discount || "0") > 0 && (
+                          <div className="flex justify-between text-sm text-red-600">
+                            <span>Discount ({formData.discountPercentage}%):</span>
+                            <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                          </div>
+                        )}
+                        <div className="border-t pt-2">
+                          <div className="flex justify-between text-lg font-bold">
+                            <span>Total Amount:</span>
+                            <span className="text-blue-600">{formatCurrency((formData.items.reduce((sum, item) => {
+                              const itemTotal = item.quantity * item.unitPrice;
+                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
+                              return sum + itemTotal + itemTax;
+                            }, 0) - (parseFloat(formData.discount || "0"))), formData.currency)}</span>
+                          </div>
+                          {formData.currency !== "AED" && (
+                            <div className="text-xs text-muted-foreground mt-2 text-right">
+                              Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Form Actions */}
                   <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
@@ -1405,6 +1490,10 @@ export default function ProformaInvoicesIndex() {
                       <span>{selectedProforma.proformaNumber}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="font-medium">Work Order Number:</span>
+                      <span>{selectedProforma.workOrderNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="font-medium">Status:</span>
                       <span>{getStatusBadge(selectedProforma.status)}</span>
                     </div>
@@ -1432,6 +1521,12 @@ export default function ProformaInvoicesIndex() {
                       <div className="flex justify-between">
                         <span className="font-medium">Delivery Terms:</span>
                         <span>{selectedProforma.deliveryTerms}</span>
+                      </div>
+                    )}
+                    {selectedProforma.workOrderNumber && (
+                      <div className="flex justify-between">
+                        <span className="font-medium">Work Order Number:</span>
+                        <span>{selectedProforma.workOrderNumber}</span>
                       </div>
                     )}
                     {selectedProforma.bankAccount && (
@@ -1549,42 +1644,41 @@ export default function ProformaInvoicesIndex() {
               </Card>
 
               {/* Financial Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Financial Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Subtotal:</span>
-                      <span>{formatCurrency(selectedProforma.subtotal || "0", selectedProforma.currency)}</span>
-                    </div>
-                    {selectedProforma.discount && parseFloat(selectedProforma.discount) > 0 && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">Discount:</span>
-                        <span className="text-red-600">-{formatCurrency(selectedProforma.discount, selectedProforma.currency)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="font-medium">Tax Amount:</span>
-                      <span>{formatCurrency(selectedProforma.taxAmount || "0", selectedProforma.currency)}</span>
-                    </div>
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total Amount:</span>
-                        <span className="text-blue-600">
-                          {formatCurrency(selectedProforma.totalAmount || "0", selectedProforma.currency)}
-                        </span>
-                      </div>
-                      {selectedProforma.currency && selectedProforma.currency !== "AED" && (
-                        <div className="text-sm text-muted-foreground">
-                          AED Equivalent: AED {(parseFloat(selectedProforma.totalAmount || "0") * parseFloat(selectedProforma.exchangeRate || "1")).toFixed(2)}
-                        </div>
-                      )}
-                    </div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  Financial Summary
+                </h3>
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedProforma.subtotal || "0", selectedProforma.currency)}</span>
                   </div>
-                </CardContent>
-              </Card>
+                  {selectedProforma.discount && parseFloat(selectedProforma.discount) > 0 && (
+                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                      <span className="font-medium">
+                        Discount ({selectedProforma.discountPercentage}%):
+                      </span>
+                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedProforma.discount, selectedProforma.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Tax Amount:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedProforma.taxAmount || "0", selectedProforma.currency)}</span>
+                  </div>
+                  <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(selectedProforma.totalAmount || "0", selectedProforma.currency)}</span>
+                  </div>
+                  {selectedProforma.currency && selectedProforma.currency !== "AED" && (
+                    <div className="text-xs text-muted-foreground mt-2 text-right">
+                      Exchange Rate: 1 {selectedProforma.currency} = {selectedProforma.exchangeRate} AED
+                      <br />
+                      AED Equivalent: AED {(parseFloat(selectedProforma.totalAmount || "0") * parseFloat(selectedProforma.exchangeRate || "1")).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Remarks */}
               {selectedProforma.remarks && (
@@ -1633,9 +1727,11 @@ export default function ProformaInvoicesIndex() {
                         termsAndConditions: selectedProforma.termsAndConditions || '',
                         remarks: selectedProforma.remarks || '',
                         items: selectedProforma.items || [],
+                        discountPercentage: selectedProforma.discountPercentage || '0',
                         discount: selectedProforma.discount || '0',
                         currency: selectedProforma.currency || 'AED',
                         exchangeRate: selectedProforma.exchangeRate || '1',
+                        workOrderNumber: selectedProforma.workOrderNumber || '',
                       });
                       // 🔹 ensure new item uses correct tax
                       setNewItem({

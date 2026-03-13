@@ -31,6 +31,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import {
@@ -45,6 +46,10 @@ import {
   Download,
   Copy,
   Pencil,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Filter,
 } from "lucide-react";
 import {
   SalesQuotation,
@@ -81,6 +86,7 @@ const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
     .default([]),
   subtotal: z.string().optional(),
   taxAmount: z.string().optional(),
+  discountPercentage: z.string().optional(),
   discount: z.string().optional(),
   totalAmount: z.string().optional(),
 });
@@ -101,6 +107,7 @@ const createSalesInvoiceSchema = insertSalesInvoiceSchema.extend({
     .default([]),
   subtotal: z.string().optional(),
   taxAmount: z.string().optional(),
+  discountPercentage: z.string().optional(),
   discount: z.string().optional(),
   totalAmount: z.string().optional(),
 });
@@ -129,6 +136,7 @@ export default function SalesIndex() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
+  const [editNote, setEditNote] = useState("");
   const [selectedQuotation, setSelectedQuotation] =
     useState<SalesQuotation | null>(null);
   const [isQuotationDetailsOpen, setIsQuotationDetailsOpen] = useState(false);
@@ -143,8 +151,13 @@ export default function SalesIndex() {
   const [quotationRejectionReason, setQuotationRejectionReason] = useState("");
   const [isInvoiceRejectDialogOpen, setIsInvoiceRejectDialogOpen] = useState(false);
   const [invoiceRejectionReason, setInvoiceRejectionReason] = useState("");
+  // Filter panel open/close
+  const [quotationFilterOpen, setQuotationFilterOpen] = useState(false);
+  const [invoiceFilterOpen, setInvoiceFilterOpen] = useState(false);
+
   // Quotation filters
   const [searchFilter, setSearchFilter] = useState<string>("");
+  const debouncedSearchFilter = useDebounce(searchFilter, 500);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [archivedFilter, setArchivedFilter] = useState<string>("active");
@@ -153,6 +166,7 @@ export default function SalesIndex() {
 
   // Invoice filters
   const [invoiceSearchFilter, setInvoiceSearchFilter] = useState<string>("");
+  const debouncedInvoiceSearchFilter = useDebounce(invoiceSearchFilter, 500);
   const [invoiceStatusFilter, setInvoiceStatusFilter] =
     useState<string>("all");
   const [invoiceCustomerFilter, setInvoiceCustomerFilter] =
@@ -170,6 +184,7 @@ export default function SalesIndex() {
     customerId: undefined,
     status: "draft",
     items: [],
+    discountPercentage: "0",
     discount: "0",
     currency: "AED",
     exchangeRate: "1",
@@ -187,6 +202,7 @@ export default function SalesIndex() {
         .toISOString()
         .split("T")[0],
       items: [],
+      discountPercentage: "0",
       discount: "0",
       subtotal: "0",
       taxAmount: "0",
@@ -194,6 +210,7 @@ export default function SalesIndex() {
       currency: "AED",
       exchangeRate: "1",
       remarks: "",
+      workOrderNumber: "",
     });
 
   const getDefaultTaxRate = () =>
@@ -272,6 +289,20 @@ export default function SalesIndex() {
     }));
   }, [isDialogOpen, company]);
 
+  // Recalculate quotation discount when items or percentage changes
+  const quotationSubtotal = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+  const invoiceSubtotalValue = invoiceFormData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+  // Recalculate quotation discount when items or percentage changes
+  useEffect(() => {
+    const pct = parseFloat(formData.discountPercentage || "0") || 0;
+    const calcDiscount = (quotationSubtotal * pct / 100).toFixed(2);
+    
+    if (formData.discount !== calcDiscount) {
+      setFormData(prev => ({ ...prev, discount: calcDiscount }));
+    }
+  }, [quotationSubtotal, formData.discountPercentage]);
+
   useEffect(() => {
     if (!isInvoiceDialogOpen || !company?.bankAccount) return;
 
@@ -281,11 +312,60 @@ export default function SalesIndex() {
     }));
   }, [isInvoiceDialogOpen, company]);
 
+  // Recalculate invoice discount when items or percentage changes
+  useEffect(() => {
+    const pct = parseFloat(invoiceFormData.discountPercentage || "0") || 0;
+    const calcDiscount = (invoiceSubtotalValue * pct / 100).toFixed(2);
+
+    if (invoiceFormData.discount !== calcDiscount) {
+      setInvoiceFormData(prev => ({ ...prev, discount: calcDiscount }));
+    }
+  }, [invoiceSubtotalValue, invoiceFormData.discountPercentage]);
+
+  const { data: salesStats } = useQuery<{
+    totalQuotations: number;
+    totalInvoices: number;
+    totalQuotationValue: string;
+    totalInvoiceValue: string;
+    totalReceivablesValue: string;
+  }>({
+    queryKey: ["/api/sales/stats"],
+    enabled: isAuthenticated,
+  });
+
   const { data: quotationsResponse, isLoading: quotationsLoading } = useQuery<{
     data: SalesQuotation[];
-    pagination?: any;
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
   }>({
-    queryKey: ["/api/sales-quotations"],
+    queryKey: [
+      "/api/sales-quotations",
+      {
+        page: quotationsCurrentPage,
+        limit: itemsPerPage,
+        search: debouncedSearchFilter,
+        status: statusFilter,
+        customerId: customerFilter !== "all" ? customerFilter : undefined,
+        archived: archivedFilter === "archived" ? "true" : archivedFilter === "active" ? "false" : undefined,
+        startDate: startDateFilter,
+        endDate: endDateFilter,
+      },
+    ],
+    queryFn: async ({ queryKey }) => {
+      const [_base, params] = queryKey as [string, any];
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") {
+          searchParams.append(key, value.toString());
+        }
+      });
+      const response = await apiRequest(`${_base}?${searchParams.toString()}`);
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -293,9 +373,37 @@ export default function SalesIndex() {
 
   const { data: invoicesResponse, isLoading: invoicesLoading } = useQuery<{
     data: SalesInvoice[];
-    pagination?: any;
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
   }>({
-    queryKey: ["/api/sales-invoices"],
+    queryKey: [
+      "/api/sales-invoices",
+      {
+        page: invoicesCurrentPage,
+        limit: itemsPerPage,
+        search: debouncedInvoiceSearchFilter,
+        status: invoiceStatusFilter,
+        customerId: invoiceCustomerFilter !== "all" ? invoiceCustomerFilter : undefined,
+        projectId: invoiceProjectFilter !== "all" ? (invoiceProjectFilter === "no-project" ? -1 : invoiceProjectFilter) : undefined,
+        startDate: invoiceStartDateFilter,
+        endDate: invoiceEndDateFilter,
+      },
+    ],
+    queryFn: async ({ queryKey }) => {
+      const [_base, params] = queryKey as [string, any];
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") {
+          searchParams.append(key, value.toString());
+        }
+      });
+      const response = await apiRequest(`${_base}?${searchParams.toString()}`);
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -337,6 +445,16 @@ export default function SalesIndex() {
     enabled: isAuthenticated && !!selectedInvoice,
   });
 
+  const { data: invoiceEditHistory } = useQuery<any[]>({
+    queryKey: ["/api/sales-invoices", selectedInvoice?.id, "edit-history"],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/sales-invoices/${selectedInvoice?.id}/edit-history`, { method: "GET" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: isAuthenticated && !!selectedInvoice && (user?.role === "admin" || user?.role === "finance"),
+  });
+
   const paymentFilesQueries = useQueries({
     queries: (invoicePayments || []).map((payment) => ({
       queryKey: [`/api/payments/${payment.id}/files`],
@@ -357,13 +475,14 @@ export default function SalesIndex() {
         0,
       );
 
-      const discount = parseFloat(data.discount || "0");
+      const discountAmount = parseFloat(data.discount || "0");
+
       const taxAmount = data.items.reduce((sum, item) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
         return sum + itemTax;
       }, 0);
-      const totalAmount = subtotal - discount + taxAmount;
+      const totalAmount = subtotal - discountAmount + taxAmount;
       // 🚨 VALIDATION
       if (totalAmount <= 0) {
         throw new Error("Total amount must be greater than zero");
@@ -377,7 +496,8 @@ export default function SalesIndex() {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         totalAmount: totalAmount.toString(),
-        discount: discount,
+        discountPercentage: data.discountPercentage || "0",
+        discount: discountAmount.toString(),
       };
 
       const url =
@@ -567,13 +687,15 @@ export default function SalesIndex() {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0,
       );
-      const discount = parseFloat(data.discount || "0");
+
+      const discountAmount = parseFloat(data.discount || "0");
+
       const taxAmount = data.items.reduce((sum, item) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
         return sum + itemTax;
       }, 0);
-      const totalAmount = subtotal - discount + taxAmount;
+      const totalAmount = subtotal - discountAmount + taxAmount;
       // 🚨 VALIDATION
       if (totalAmount <= 0) {
         throw new Error("Total amount must be greater than zero");
@@ -592,7 +714,8 @@ export default function SalesIndex() {
         subtotal: subtotal.toFixed(2),
         taxAmount: taxAmount.toFixed(2),
         totalAmount: totalAmount.toFixed(2),
-        discount: discount.toFixed(2),
+        discountPercentage: data.discountPercentage || "0",
+        discount: discountAmount.toFixed(2),
       };
 
       console.log("Processed invoice data:", processedData);
@@ -633,18 +756,20 @@ export default function SalesIndex() {
 
 
   const updateInvoiceMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+    mutationFn: async ({ id, data, editNote }: { id: number; data: any; editNote: string }) => {
       const subtotal = data.items.reduce(
         (sum: number, item: any) => sum + item.quantity * item.unitPrice,
         0,
       );
-      const discount = parseFloat(data.discount || "0");
+
+      const discountAmount = parseFloat(data.discount || "0");
+
       const taxAmount = data.items.reduce((sum: number, item: any) => {
         const itemTotal = item.quantity * item.unitPrice;
         const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
         return sum + itemTax;
       }, 0);
-      const totalAmount = subtotal - discount + taxAmount;
+      const totalAmount = subtotal - discountAmount + taxAmount;
 
       const processedData = {
         ...data,
@@ -656,7 +781,9 @@ export default function SalesIndex() {
         subtotal: subtotal.toFixed(2),
         taxAmount: taxAmount.toFixed(2),
         totalAmount: totalAmount.toFixed(2),
-        discount: discount.toFixed(2),
+        discountPercentage: data.discountPercentage || "0",
+        discount: discountAmount.toFixed(2),
+        editNote,
       };
 
       const response = await apiRequest(`/api/sales-invoices/${id}`, {
@@ -666,15 +793,17 @@ export default function SalesIndex() {
       });
       return response;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", variables.id, "edit-history"] });
       toast({
         title: "Invoice Updated",
         description: "The sales invoice has been updated successfully.",
       });
       setIsInvoiceDialogOpen(false);
       setEditingInvoiceId(null);
+      setEditNote("");
       resetInvoiceForm();
     },
     onError: (error: Error) => {
@@ -872,6 +1001,7 @@ export default function SalesIndex() {
       customerId: undefined,
       status: "draft",
       items: [],
+      discountPercentage: "0",
       discount: "0",
       currency: "AED",
       exchangeRate: "1",
@@ -900,11 +1030,17 @@ export default function SalesIndex() {
         .toISOString()
         .split("T")[0],
       items: [],
+      discountPercentage: "0",
       discount: "0",
       subtotal: "0",
       taxAmount: "0",
       totalAmount: "0",
       remarks: "",
+      workOrderNumber: "",
+      paymentTerms: "",
+      bankAccount: "",
+      billingAddress: "",
+      termsAndConditions: "",
     });
     setNewItem({
       description: "",
@@ -1029,7 +1165,15 @@ export default function SalesIndex() {
 
     console.log("Submitting invoice data:", invoiceFormData);
     if (editingInvoiceId) {
-      updateInvoiceMutation.mutate({ id: editingInvoiceId, data: invoiceFormData });
+      if (!editNote.trim()) {
+        toast({
+          title: "Error",
+          description: "Please provide an edit note explaining the changes",
+          variant: "destructive",
+        });
+        return;
+      }
+      updateInvoiceMutation.mutate({ id: editingInvoiceId, data: invoiceFormData, editNote: editNote.trim() });
     } else {
       createInvoiceMutation.mutate(invoiceFormData);
     }
@@ -1261,32 +1405,9 @@ export default function SalesIndex() {
     return new Date(date).toLocaleDateString();
   };
 
-  const totalQuotationValue = quotations?.length
-    ? quotations
-      .filter(q => q.status === "approved")
-      .reduce(
-        (sum, quotation) => sum + (parseFloat(quotation.totalAmount || "0") * parseFloat(quotation.exchangeRate || "1")),
-        0,
-      )
-    : 0;
-
-  const totalInvoiceValue = invoices?.length
-    ? invoices
-      .filter(inv => inv.status !== "draft" && inv.status !== "pending_approval" && inv.status !== "rejected" && inv.status !== "cancelled")
-      .reduce(
-        (sum, invoice) => sum + (parseFloat(invoice.totalAmount || "0") * parseFloat(invoice.exchangeRate || "1")),
-        0,
-      )
-    : 0;
-
-  const totalReceivablesValue = invoices?.length
-    ? invoices
-      .filter(inv => inv.status !== "draft" && inv.status !== "pending_approval" && inv.status !== "rejected" && inv.status !== "cancelled")
-      .reduce((sum, invoice) => {
-        const outstanding = parseFloat(invoice.totalAmount || "0") - parseFloat(invoice.paidAmount || "0");
-        return sum + (Math.max(0, outstanding) * parseFloat(invoice.exchangeRate || "1"));
-      }, 0)
-    : 0;
+  const totalQuotationValue = parseFloat(salesStats?.totalQuotationValue || "0");
+  const totalInvoiceValue = parseFloat(salesStats?.totalInvoiceValue || "0");
+  const totalReceivablesValue = parseFloat(salesStats?.totalReceivablesValue || "0");
 
   const getCustomerName = (customerId: number, customerName?: string) => {
     // If customerName is provided (from invoice data), use it
@@ -1298,108 +1419,6 @@ export default function SalesIndex() {
     return customer?.name || "Unknown Customer";
   };
 
-  const filteredQuotations =
-    quotations?.filter((quotation) => {
-      // Search filter
-      const searchMatch =
-        !searchFilter ||
-        quotation.quotationNumber
-          ?.toLowerCase()
-          .includes(searchFilter.toLowerCase()) ||
-        getCustomerName(quotation.customerId)
-          .toLowerCase()
-          .includes(searchFilter.toLowerCase());
-
-      // Status filter
-      const statusMatch =
-        statusFilter === "all" || quotation.status === statusFilter;
-
-      // Customer filter
-      const customerMatch =
-        customerFilter === "all" ||
-        quotation.customerId?.toString() === customerFilter;
-
-      // Archive filter
-      const archivedMatch =
-        archivedFilter === "all" ||
-        (archivedFilter === "archived" && quotation.isArchived) ||
-        (archivedFilter === "active" && !quotation.isArchived);
-
-      // Date range filter
-      const createdDate = new Date(quotation.createdDate);
-      const startDateMatch =
-        !startDateFilter || createdDate >= new Date(startDateFilter);
-      const endDateMatch =
-        !endDateFilter || createdDate <= new Date(endDateFilter + "T23:59:59");
-
-      return (
-        searchMatch &&
-        statusMatch &&
-        customerMatch &&
-        archivedMatch &&
-        startDateMatch &&
-        endDateMatch
-      );
-    }) || [];
-
-  const filteredInvoices =
-    invoices?.filter((invoice) => {
-      // Search filter
-      const searchMatch =
-        !invoiceSearchFilter ||
-        invoice.invoiceNumber
-          ?.toLowerCase()
-          .includes(invoiceSearchFilter.toLowerCase()) ||
-        getCustomerName(invoice.customerId, invoice.customerName)
-          .toLowerCase()
-          .includes(invoiceSearchFilter.toLowerCase());
-
-      // Status filter
-      let statusMatch = true;
-      if (invoiceStatusFilter !== "all") {
-        if (invoiceStatusFilter === "paid")
-          statusMatch = invoice.status === "paid";
-        else if (invoiceStatusFilter === "unpaid")
-          statusMatch =
-            invoice.status === "unpaid" ||
-            invoice.status === "partially_paid" ||
-            invoice.status === "overdue";
-        else if (invoiceStatusFilter === "partially_paid")
-          statusMatch = invoice.status === "partially_paid";
-        else if (invoiceStatusFilter === "overdue")
-          statusMatch = invoice.status === "overdue";
-        else statusMatch = invoice.status === invoiceStatusFilter;
-      }
-
-      // Customer filter
-      const customerMatch =
-        invoiceCustomerFilter === "all" ||
-        invoice.customerId?.toString() === invoiceCustomerFilter;
-
-      // Project filter
-      const projectMatch =
-        invoiceProjectFilter === "all" ||
-        (invoiceProjectFilter === "no-project" && !invoice.projectId) ||
-        invoice.projectId?.toString() === invoiceProjectFilter;
-
-      // Date range filter
-      const invoiceDate = new Date(invoice.invoiceDate);
-      const startDateMatch =
-        !invoiceStartDateFilter ||
-        invoiceDate >= new Date(invoiceStartDateFilter);
-      const endDateMatch =
-        !invoiceEndDateFilter ||
-        invoiceDate <= new Date(invoiceEndDateFilter + "T23:59:59");
-
-      return (
-        searchMatch &&
-        statusMatch &&
-        customerMatch &&
-        projectMatch &&
-        startDateMatch &&
-        endDateMatch
-      );
-    }) || [];
 
   const openQuotationDetails = (quotation: SalesQuotation) => {
     setSelectedQuotation(quotation);
@@ -1420,6 +1439,7 @@ export default function SalesIndex() {
           ? new Date(quotation.validUntil).toISOString().split("T")[0]
           : "",
         items: quotation.items || [],
+        discountPercentage: quotation.discountPercentage || "0",
         discount: quotation.discount || "0",
         subtotal: quotation.subtotal || "0",
         taxAmount: quotation.taxAmount || "0",
@@ -1532,6 +1552,48 @@ export default function SalesIndex() {
   };
 
 
+  const handleDuplicateInvoice = async (invoice: any) => {
+    let source = invoice;
+    if (!invoice.items || invoice.items.length === 0) {
+      try {
+        const response = await apiRequest(`/api/sales-invoices/${invoice.id}`, { method: "GET" });
+        if (response.ok) {
+          source = await response.json();
+        }
+      } catch { }
+    }
+    setEditingInvoiceId(null);
+    setInvoiceFormData({
+      customerId: source.customerId,
+      projectId: source.projectId || undefined,
+      quotationId: undefined,
+      status: "draft",
+      invoiceDate: new Date().toISOString().split("T")[0],
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      items: (source.items || []).map((item: any) => ({ ...item })),
+      discountPercentage: source.discountPercentage || "0",
+      discount: source.discount || "0",
+      subtotal: source.subtotal || "0",
+      taxAmount: source.taxAmount || "0",
+      totalAmount: source.totalAmount || "0",
+      currency: source.currency || "AED",
+      exchangeRate: source.exchangeRate || "1",
+      remarks: source.remarks || "",
+      workOrderNumber: source.workOrderNumber || "",
+      paymentTerms: source.paymentTerms || "",
+      bankAccount: source.bankAccount || "",
+      billingAddress: source.billingAddress || "",
+      termsAndConditions: source.termsAndConditions || "",
+    });
+    setEditNote("");
+    setIsInvoiceDetailsOpen(false);
+    setIsInvoiceDialogOpen(true);
+    toast({
+      title: "Invoice Duplicated",
+      description: "A new draft invoice has been pre-filled. Review and save to create it.",
+    });
+  };
+
   const handleEditInvoice = (invoice: any) => {
     setEditingInvoiceId(invoice.id);
     setInvoiceFormData({
@@ -1542,6 +1604,7 @@ export default function SalesIndex() {
       invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
       dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split("T")[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
       items: invoice.items || [],
+      discountPercentage: invoice.discountPercentage || "0",
       discount: invoice.discount || "0",
       subtotal: invoice.subtotal || "0",
       taxAmount: invoice.taxAmount || "0",
@@ -1549,7 +1612,13 @@ export default function SalesIndex() {
       currency: invoice.currency || "AED",
       exchangeRate: invoice.exchangeRate || "1",
       remarks: invoice.remarks || "",
+      workOrderNumber: invoice.workOrderNumber || "",
+      paymentTerms: invoice.paymentTerms || "",
+      bankAccount: invoice.bankAccount || "",
+      billingAddress: invoice.billingAddress || "",
+      termsAndConditions: invoice.termsAndConditions || "",
     });
+    setEditNote("");
     setIsInvoiceDialogOpen(true);
   };
 
@@ -1568,6 +1637,7 @@ export default function SalesIndex() {
       billingAddress: quotation.billingAddress || "",
 
       items: quotation.items || [],
+      discountPercentage: quotation.discountPercentage || "0",
       discount: quotation.discount || "0",
       subtotal: quotation.subtotal || "0",
       taxAmount: quotation.taxAmount || "0",
@@ -1577,24 +1647,17 @@ export default function SalesIndex() {
       remarks: quotation.remarks || "",
       currency: quotation.currency || "AED",
       exchangeRate: quotation.exchangeRate || "1",
+      workOrderNumber: "",
     });
 
     setIsInvoiceDialogOpen(true);
   };
 
-  const totalQuotationsPages = Math.ceil(
-    filteredQuotations.length / itemsPerPage,
-  );
-  const paginatedQuotations = filteredQuotations.slice(
-    (quotationsCurrentPage - 1) * itemsPerPage,
-    quotationsCurrentPage * itemsPerPage,
-  );
+  const totalQuotationsPages = quotationsResponse?.pagination?.totalPages || 1;
+  const paginatedQuotations = quotations;
 
-  const totalInvoicesPages = Math.ceil(filteredInvoices.length / itemsPerPage);
-  const paginatedInvoices = filteredInvoices.slice(
-    (invoicesCurrentPage - 1) * itemsPerPage,
-    invoicesCurrentPage * itemsPerPage,
-  );
+  const totalInvoicesPages = invoicesResponse?.pagination?.totalPages || 1;
+  const paginatedInvoices = invoices;
 
   // Initialize new fields in quotation form state
   const [quotationForm, setQuotationForm] = useState({
@@ -1631,6 +1694,14 @@ export default function SalesIndex() {
       unitPrice: number;
     }>,
   });
+
+  useEffect(() => {
+    setQuotationsCurrentPage(1);
+  }, [debouncedSearchFilter, statusFilter, customerFilter, archivedFilter, startDateFilter, endDateFilter]);
+
+  useEffect(() => {
+    setInvoicesCurrentPage(1);
+  }, [debouncedInvoiceSearchFilter, invoiceStatusFilter, invoiceCustomerFilter, invoiceProjectFilter, invoiceStartDateFilter, invoiceEndDateFilter]);
 
   useEffect(() => {
     if (!invoiceFormData.customerId || !customers) return;
@@ -1796,20 +1867,27 @@ export default function SalesIndex() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="paymentTerms">Payment Terms</Label>
-                      <Input
-                        id="paymentTerms"
-                        type="text"
+                      <Select
                         value={formData.paymentTerms || ""}
-                        onChange={(e) =>
+                        onValueChange={(value) =>
                           startTransition(() =>
                             setFormData((prev) => ({
                               ...prev,
-                              paymentTerms: e.target.value,
+                              paymentTerms: value,
                             })),
                           )
                         }
-                        placeholder="e.g., Net 30, Due on Receipt"
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select payment terms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Due on receipt">Due on receipt</SelectItem>
+                          <SelectItem value="Net 10">Net 10</SelectItem>
+                          <SelectItem value="Net 15">Net 15</SelectItem>
+                          <SelectItem value="Net 30">Net 30</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="bankAccount">Bank Account</Label>
@@ -2055,80 +2133,86 @@ export default function SalesIndex() {
                   </div>
 
                   {/* Financial Summary */}
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm">Discounts</h4>
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label className="text-sm font-medium">
-                            Discount ($)
-                          </Label>
+                          <Label htmlFor="discountPercentage">Discount (%)</Label>
                           <Input
+                            id="discountPercentage"
                             type="number"
+                            min="0"
+                            max="100"
                             step="0.01"
-                            value={formData.discount}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                discount: e.target.value,
-                              }))
-                            }
+                            value={formData.discountPercentage}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value) || 0;
+                              const calcDiscount = (quotationSubtotal * pct / 100).toFixed(2);
+                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                            }}
                             placeholder="0.00"
+                            className="mt-1"
                           />
                         </div>
                         <div>
-                          <Label className="text-sm font-medium">
-                            Tax Amount
-                          </Label>
-                          <div className="text-lg font-medium py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded">
-                            {(() => {
-                              const taxTotal = formData.items.reduce(
-                                (sum, item) => {
-                                  const itemTotal =
-                                    item.quantity * item.unitPrice;
-                                  return (
-                                    sum +
-                                    (itemTotal * (item.taxRate || 0)) / 100
-                                  );
-                                },
-                                0,
-                              );
-                              return formatCurrency(taxTotal, formData.currency);
-                            })()}
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium">
-                            Total Amount
-                          </Label>
-                          <div className="text-xl font-bold py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded border">
-                            {(() => {
-                              const subtotal = formData.items.reduce(
-                                (sum, item) =>
-                                  sum + item.quantity * item.unitPrice,
-                                0,
-                              );
-                              const discount = parseFloat(
-                                formData.discount || "0",
-                              );
-                              const taxTotal = formData.items.reduce(
-                                (sum, item) => {
-                                  const itemTotal =
-                                    item.quantity * item.unitPrice;
-                                  return (
-                                    sum +
-                                    (itemTotal * (item.taxRate || 0)) / 100
-                                  );
-                                },
-                                0,
-                              );
-                              const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total, formData.currency);
-                            })()}
-                          </div>
+                          <Label htmlFor="discountAmount">Discount Amount ({formData.currency})</Label>
+                          <Input
+                            id="discountAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.discount}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const calcPct = quotationSubtotal > 0 ? ((val / quotationSubtotal) * 100).toFixed(2) : "0";
+                              setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                            }}
+                            placeholder="0.00"
+                            className="mt-1"
+                          />
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
+                      <h4 className="font-semibold mb-3 text-sm">Quotation Summary</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal:</span>
+                          <span className="font-medium">{formatCurrency(quotationSubtotal, formData.currency)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(formData.items.reduce((sum, item) => {
+                            const itemTotal = item.quantity * item.unitPrice;
+                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
+                          }, 0), formData.currency)}</span>
+                        </div>
+                        {parseFloat(formData.discount || "0") > 0 && (
+                          <div className="flex justify-between text-sm text-red-600">
+                            <span>Discount ({formData.discountPercentage}%):</span>
+                            <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                          </div>
+                        )}
+                        <div className="border-t pt-2">
+                          <div className="flex justify-between text-lg font-bold">
+                            <span>Total Amount:</span>
+                            <span className="text-blue-600">{formatCurrency((formData.items.reduce((sum, item) => {
+                              const itemTotal = item.quantity * item.unitPrice;
+                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
+                              return sum + itemTotal + itemTax;
+                            }, 0) - (parseFloat(formData.discount || "0"))), formData.currency)}</span>
+                          </div>
+                          {formData.currency !== "AED" && (
+                            <div className="text-xs text-muted-foreground mt-2 text-right">
+                              Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Form Actions */}
                   <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
@@ -2180,7 +2264,7 @@ export default function SalesIndex() {
                 <DialogHeader>
                   <DialogTitle>{editingInvoiceId ? "Edit Sales Invoice" : "Create Sales Invoice"}</DialogTitle>
                   <DialogDescription>
-                    {editingInvoiceId ? "Update the details of this draft invoice." : "Fill in the details to create a new sales invoice."}
+                    {editingInvoiceId ? "Update the details of this invoice." : "Fill in the details to create a new sales invoice."}
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleInvoiceSubmit} className="space-y-6">
@@ -2310,19 +2394,42 @@ export default function SalesIndex() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="invoicePaymentTerms">Payment Terms</Label>
-                      <Input
-                        id="invoicePaymentTerms"
-                        type="text"
+                      <Select
                         value={invoiceFormData.paymentTerms || ""}
+                        onValueChange={(value) =>
+                          startTransition(() =>
+                            setInvoiceFormData((prev) => ({
+                              ...prev,
+                              paymentTerms: value,
+                            })),
+                          )
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select payment terms" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Due on receipt">Due on receipt</SelectItem>
+                          <SelectItem value="Net 10">Net 10</SelectItem>
+                          <SelectItem value="Net 15">Net 15</SelectItem>
+                          <SelectItem value="Net 30">Net 30</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="workOrderNumber">Work Order Number</Label>
+                      <Input
+                        id="workOrderNumber"
+                        value={invoiceFormData.workOrderNumber || ""}
                         onChange={(e) =>
                           startTransition(() =>
                             setInvoiceFormData((prev) => ({
                               ...prev,
-                              paymentTerms: e.target.value,
+                              workOrderNumber: e.target.value,
                             })),
                           )
                         }
-                        placeholder="e.g., Net 30, Due on Receipt"
+                        placeholder="Enter work order number"
                       />
                     </div>
                     <div className="space-y-2">
@@ -2571,82 +2678,99 @@ export default function SalesIndex() {
                   </div>
 
                   {/* Financial Summary for Invoice */}
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-sm">Discounts</h4>
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label className="text-sm font-medium">
-                            Discount ($)
-                          </Label>
+                          <Label htmlFor="invoiceDiscountPercentage">Discount (%)</Label>
                           <Input
+                            id="invoiceDiscountPercentage"
                             type="number"
+                            min="0"
+                            max="100"
                             step="0.01"
-                            value={invoiceFormData.discount}
-                            onChange={(e) =>
-                              setInvoiceFormData((prev) => ({
-                                ...prev,
-                                discount: e.target.value,
-                              }))
-                            }
+                            value={invoiceFormData.discountPercentage}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value) || 0;
+                              const calcDiscount = (invoiceSubtotalValue * pct / 100).toFixed(2);
+                              setInvoiceFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                            }}
                             placeholder="0.00"
+                            className="mt-1"
                           />
                         </div>
                         <div>
-                          <Label className="text-sm font-medium">
-                            Tax Amount
-                          </Label>
-                          <div className="text-lg font-medium py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded">
-                            {(() => {
-                              const taxTotal = invoiceFormData.items.reduce(
-                                (sum, item) => {
-                                  const itemTotal =
-                                    item.quantity * item.unitPrice;
-                                  return (
-                                    sum +
-                                    (itemTotal * (item.taxRate || 0)) / 100
-                                  );
-                                },
-                                0,
-                              );
-                              return formatCurrency(taxTotal, invoiceFormData.currency);
-                            })()}
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium">
-                            Total Amount
-                          </Label>
-                          <div className="text-xl font-bold py-2 px-3 bg-blue-50 dark:bg-blue-900/20 rounded border">
-                            {(() => {
-                              const subtotal = invoiceFormData.items.reduce(
-                                (sum, item) =>
-                                  sum + item.quantity * item.unitPrice,
-                                0,
-                              );
-                              const discount = parseFloat(
-                                invoiceFormData.discount || "0",
-                              );
-                              const taxTotal = invoiceFormData.items.reduce(
-                                (sum, item) => {
-                                  const itemTotal =
-                                    item.quantity * item.unitPrice;
-                                  return (
-                                    sum +
-                                    (itemTotal * (item.taxRate || 0)) / 100
-                                  );
-                                },
-                                0,
-                              );
-                              const total = subtotal - discount + taxTotal;
-                              return formatCurrency(total, invoiceFormData.currency);
-                            })()}
-                          </div>
+                          <Label htmlFor="invoiceDiscountAmount">Discount Amount ({invoiceFormData.currency})</Label>
+                          <Input
+                            id="invoiceDiscountAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={invoiceFormData.discount}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const calcPct = invoiceSubtotalValue > 0 ? ((val / invoiceSubtotalValue) * 100).toFixed(2) : "0";
+                              setInvoiceFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                            }}
+                            placeholder="0.00"
+                            className="mt-1"
+                          />
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
+                      <h4 className="font-semibold mb-3 text-sm">Invoice Summary</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Subtotal:</span>
+                          <span className="font-medium">{formatCurrency(invoiceSubtotalValue, invoiceFormData.currency)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(invoiceFormData.items.reduce((sum, item) => {
+                            const itemTotal = item.quantity * item.unitPrice;
+                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
+                          }, 0), invoiceFormData.currency)}</span>
+                        </div>
+                        {parseFloat(invoiceFormData.discount || "0") > 0 && (
+                          <div className="flex justify-between text-sm text-red-600">
+                            <span>Discount ({invoiceFormData.discountPercentage}%):</span>
+                            <span className="font-medium">- {formatCurrency(invoiceFormData.discount || "0", invoiceFormData.currency)}</span>
+                          </div>
+                        )}
+                        <div className="border-t pt-2">
+                          <div className="flex justify-between text-lg font-bold">
+                            <span>Total Amount:</span>
+                            <span className="text-blue-600">{formatCurrency((invoiceFormData.items.reduce((sum, item) => {
+                              const itemTotal = item.quantity * item.unitPrice;
+                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
+                              return sum + itemTotal + itemTax;
+                            }, 0) - (parseFloat(invoiceFormData.discount || "0"))), invoiceFormData.currency)}</span>
+                          </div>
+                          {invoiceFormData.currency !== "AED" && (
+                            <div className="text-xs text-muted-foreground mt-2 text-right">
+                              Exchange Rate: 1 {invoiceFormData.currency} = {invoiceFormData.exchangeRate} AED
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Form Actions */}
+                  {editingInvoiceId && (
+                    <div className="space-y-2 border-t pt-4 mt-4">
+                      <Label className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
+                      <Textarea
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        placeholder="Explain the reason for this edit..."
+                        className="min-h-[80px]"
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                     <Button
                       type="button"
@@ -2686,7 +2810,7 @@ export default function SalesIndex() {
                   Quotations
                 </p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {quotations?.length || 0}
+                  {salesStats?.totalQuotations || 0}
                 </p>
               </div>
             </div>
@@ -2704,7 +2828,7 @@ export default function SalesIndex() {
                   Invoices
                 </p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {invoices?.length || 0}
+                  {salesStats?.totalInvoices || 0}
                 </p>
               </div>
             </div>
@@ -2783,152 +2907,154 @@ export default function SalesIndex() {
         </TabsList>
 
         <TabsContent value="quotations" className="space-y-6">
-          {/* Advanced Filters */}
+          {/* Collapsible Filters */}
           <Card>
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <Label
-                      htmlFor="searchFilter"
-                      className="text-sm font-medium"
-                    >
-                      Search
-                    </Label>
-                    <Input
-                      id="searchFilter"
-                      placeholder="Search quotations..."
-                      value={searchFilter}
-                      onChange={(e) =>
-                        startTransition(() => setSearchFilter(e.target.value))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="statusFilter"
-                      className="text-sm font-medium"
-                    >
-                      Status
-                    </Label>
-                    <Select
-                      value={statusFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setStatusFilter(value))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="sent">Sent</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                        <SelectItem value="converted">Converted</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="customerFilter"
-                      className="text-sm font-medium"
-                    >
-                      Customer
-                    </Label>
-                    <Autocomplete
-                      options={[
-                        { value: "all", label: "All Customers" },
-                        ...(customers || []).map((customer) => ({
-                          value: customer.id.toString(),
-                          label: customer.name,
-                          searchText: customer.name
-                        }))
-                      ]}
-                      value={customerFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setCustomerFilter(value))
-                      }
-                      placeholder="Search customer..."
-                      emptyMessage="No customers found"
-                    />
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="archivedFilter"
-                      className="text-sm font-medium"
-                    >
-                      Archive Status
-                    </Label>
-                    <Select
-                      value={archivedFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setArchivedFilter(value))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Quotations" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Quotations</SelectItem>
-                        <SelectItem value="active">Active Only</SelectItem>
-                        <SelectItem value="archived">Archived Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="startDate" className="text-sm font-medium">
-                      Created From
-                    </Label>
-                    <Input
-                      id="startDate"
-                      type="date"
-                      value={startDateFilter}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setStartDateFilter(e.target.value),
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="endDate" className="text-sm font-medium">
-                      Created To
-                    </Label>
-                    <Input
-                      id="endDate"
-                      type="date"
-                      value={endDateFilter}
-                      onChange={(e) =>
-                        startTransition(() => setEndDateFilter(e.target.value))
-                      }
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        startTransition(() => {
-                          setSearchFilter("");
-                          setStatusFilter("all");
-                          setCustomerFilter("all");
-                          setArchivedFilter("all");
-                          setStartDateFilter("");
-                          setEndDateFilter("");
-                        });
-                      }}
-                      className="w-full"
-                    >
-                      Clear All Filters
-                    </Button>
-                  </div>
-                </div>
+            <div
+              className="flex items-center justify-between p-4 cursor-pointer select-none"
+              onClick={() => setQuotationFilterOpen((o) => !o)}
+            >
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <span className="font-medium text-sm">Filters</span>
+                {(() => {
+                  const active = [
+                    searchFilter,
+                    statusFilter !== "all" ? statusFilter : "",
+                    customerFilter !== "all" ? customerFilter : "",
+                    archivedFilter !== "active" ? archivedFilter : "",
+                    startDateFilter,
+                    endDateFilter,
+                  ].filter(Boolean).length;
+                  return active > 0 ? (
+                    <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+                  ) : null;
+                })()}
               </div>
-            </CardContent>
+              {quotationFilterOpen
+                ? <ChevronUp className="h-4 w-4 text-slate-400" />
+                : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </div>
+
+            {quotationFilterOpen && (
+              <CardContent className="pt-0 pb-4 px-4 border-t">
+                <div className="space-y-4 pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="searchFilter" className="text-sm font-medium">Search</Label>
+                      <Input
+                        id="searchFilter"
+                        placeholder="Search quotations..."
+                        value={searchFilter}
+                        onChange={(e) =>
+                          startTransition(() => setSearchFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="statusFilter" className="text-sm font-medium">Status</Label>
+                      <Select
+                        value={statusFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setStatusFilter(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="sent">Sent</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                          <SelectItem value="converted">Converted</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="customerFilter" className="text-sm font-medium">Customer</Label>
+                      <Autocomplete
+                        options={[
+                          { value: "all", label: "All Customers" },
+                          ...(customers || []).map((customer) => ({
+                            value: customer.id.toString(),
+                            label: customer.name,
+                            searchText: customer.name,
+                          }))
+                        ]}
+                        value={customerFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setCustomerFilter(value))
+                        }
+                        placeholder="Search customer..."
+                        emptyMessage="No customers found"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="archivedFilter" className="text-sm font-medium">Archive Status</Label>
+                      <Select
+                        value={archivedFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setArchivedFilter(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Quotations" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Quotations</SelectItem>
+                          <SelectItem value="active">Active Only</SelectItem>
+                          <SelectItem value="archived">Archived Only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="startDate" className="text-sm font-medium">Created From</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        value={startDateFilter}
+                        onChange={(e) =>
+                          startTransition(() => setStartDateFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="endDate" className="text-sm font-medium">Created To</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        value={endDateFilter}
+                        onChange={(e) =>
+                          startTransition(() => setEndDateFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          startTransition(() => {
+                            setSearchFilter("");
+                            setStatusFilter("all");
+                            setCustomerFilter("all");
+                            setArchivedFilter("all");
+                            setStartDateFilter("");
+                            setEndDateFilter("");
+                          });
+                        }}
+                        className="w-full"
+                      >
+                        Clear All Filters
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            )}
           </Card>
 
           {/* Quotations List */}
@@ -2954,7 +3080,7 @@ export default function SalesIndex() {
                 </Button>
               </CardContent>
             </Card>
-          ) : filteredQuotations.length === 0 ? (
+          ) : quotations.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
                 <FileText className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
@@ -3155,7 +3281,7 @@ export default function SalesIndex() {
           )}
 
           {/* Quotations Pagination */}
-          {filteredQuotations.length > itemsPerPage && (
+          {totalQuotationsPages > 1 && (
             <div className="flex justify-center mt-6">
               <Pagination>
                 <PaginationContent>
@@ -3221,183 +3347,168 @@ export default function SalesIndex() {
         </TabsContent>
 
         <TabsContent value="invoices" className="space-y-6">
-          {/* Advanced Invoice Filters */}
+          {/* Collapsible Invoice Filters */}
           <Card>
-            <CardContent className="p-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <Label
-                      htmlFor="invoiceSearchFilter"
-                      className="text-sm font-medium"
-                    >
-                      Search
-                    </Label>
-                    <Input
-                      id="invoiceSearchFilter"
-                      placeholder="Search invoices..."
-                      value={invoiceSearchFilter}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setInvoiceSearchFilter(e.target.value),
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="invoiceStatusFilter"
-                      className="text-sm font-medium"
-                    >
-                      Status
-                    </Label>
-                    <Select
-                      value={invoiceStatusFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setInvoiceStatusFilter(value))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="unpaid">
-                          Unpaid (Including Partial & Overdue)
-                        </SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="partially_paid">
-                          Partially Paid
-                        </SelectItem>
-                        <SelectItem value="overdue">Overdue</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="invoiceCustomerFilter"
-                      className="text-sm font-medium"
-                    >
-                      Customer
-                    </Label>
-                    <Autocomplete
-                      options={[
-                        { value: "all", label: "All Customers" },
-                        ...(customers || []).map((customer) => ({
-                          value: customer.id.toString(),
-                          label: customer.name,
-                          searchText: customer.name
-                        }))
-                      ]}
-                      value={invoiceCustomerFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setInvoiceCustomerFilter(value))
-                      }
-                      placeholder="Search customer..."
-                      emptyMessage="No customers found"
-                    />
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="invoiceProjectFilter"
-                      className="text-sm font-medium"
-                    >
-                      Project
-                    </Label>
-                    <Select
-                      value={invoiceProjectFilter}
-                      onValueChange={(value) =>
-                        startTransition(() => setInvoiceProjectFilter(value))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Projects" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Projects</SelectItem>
-                        <SelectItem value="no-project">No Project</SelectItem>
-                        {projects?.map((project) => (
-                          <SelectItem
-                            key={project.id}
-                            value={project.id.toString()}
-                          >
-                            {project.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <Label
-                      htmlFor="invoiceStartDate"
-                      className="text-sm font-medium"
-                    >
-                      Invoice Date From
-                    </Label>
-                    <Input
-                      id="invoiceStartDate"
-                      type="date"
-                      value={invoiceStartDateFilter}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setInvoiceStartDateFilter(e.target.value),
-                        )
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="invoiceEndDate"
-                      className="text-sm font-medium"
-                    >
-                      Invoice Date To
-                    </Label>
-                    <Input
-                      id="invoiceEndDate"
-                      type="date"
-                      value={invoiceEndDateFilter}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setInvoiceEndDateFilter(e.target.value),
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsReceivablesOpen(true)}
-                      className="w-full"
-                    >
-                      View Receivables
-                    </Button>
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        startTransition(() => {
-                          setInvoiceSearchFilter("");
-                          setInvoiceStatusFilter("unpaid");
-                          setInvoiceCustomerFilter("all");
-                          setInvoiceProjectFilter("all");
-                          setInvoiceStartDateFilter("");
-                          setInvoiceEndDateFilter("");
-                        });
-                      }}
-                      className="w-full"
-                    >
-                      Clear All Filters
-                    </Button>
-                  </div>
-                </div>
+            <div
+              className="flex items-center justify-between p-4 cursor-pointer select-none"
+              onClick={() => setInvoiceFilterOpen((o) => !o)}
+            >
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <span className="font-medium text-sm">Filters</span>
+                {(() => {
+                  const active = [
+                    invoiceSearchFilter,
+                    invoiceStatusFilter !== "all" ? invoiceStatusFilter : "",
+                    invoiceCustomerFilter !== "all" ? invoiceCustomerFilter : "",
+                    invoiceProjectFilter !== "all" ? invoiceProjectFilter : "",
+                    invoiceStartDateFilter,
+                    invoiceEndDateFilter,
+                  ].filter(Boolean).length;
+                  return active > 0 ? (
+                    <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+                  ) : null;
+                })()}
               </div>
-            </CardContent>
+              {invoiceFilterOpen
+                ? <ChevronUp className="h-4 w-4 text-slate-400" />
+                : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </div>
+
+            {invoiceFilterOpen && (
+              <CardContent className="pt-0 pb-4 px-4 border-t">
+                <div className="space-y-4 pt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="invoiceSearchFilter" className="text-sm font-medium">Search</Label>
+                      <Input
+                        id="invoiceSearchFilter"
+                        placeholder="Search invoices..."
+                        value={invoiceSearchFilter}
+                        onChange={(e) =>
+                          startTransition(() => setInvoiceSearchFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invoiceStatusFilter" className="text-sm font-medium">Status</Label>
+                      <Select
+                        value={invoiceStatusFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setInvoiceStatusFilter(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="unpaid">Unpaid (Including Partial & Overdue)</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="partially_paid">Partially Paid</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="invoiceCustomerFilter" className="text-sm font-medium">Customer</Label>
+                      <Autocomplete
+                        options={[
+                          { value: "all", label: "All Customers" },
+                          ...(customers || []).map((customer) => ({
+                            value: customer.id.toString(),
+                            label: customer.name,
+                            searchText: customer.name,
+                          }))
+                        ]}
+                        value={invoiceCustomerFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setInvoiceCustomerFilter(value))
+                        }
+                        placeholder="Search customer..."
+                        emptyMessage="No customers found"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invoiceProjectFilter" className="text-sm font-medium">Project</Label>
+                      <Select
+                        value={invoiceProjectFilter}
+                        onValueChange={(value) =>
+                          startTransition(() => setInvoiceProjectFilter(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Projects" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Projects</SelectItem>
+                          <SelectItem value="no-project">No Project</SelectItem>
+                          {projects?.map((project) => (
+                            <SelectItem key={project.id} value={project.id.toString()}>
+                              {project.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="invoiceStartDate" className="text-sm font-medium">Invoice Date From</Label>
+                      <Input
+                        id="invoiceStartDate"
+                        type="date"
+                        value={invoiceStartDateFilter}
+                        onChange={(e) =>
+                          startTransition(() => setInvoiceStartDateFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invoiceEndDate" className="text-sm font-medium">Invoice Date To</Label>
+                      <Input
+                        id="invoiceEndDate"
+                        type="date"
+                        value={invoiceEndDateFilter}
+                        onChange={(e) =>
+                          startTransition(() => setInvoiceEndDateFilter(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        onClick={(e) => { e.stopPropagation(); setIsReceivablesOpen(true); }}
+                        className="w-full"
+                      >
+                        View Receivables
+                      </Button>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          startTransition(() => {
+                            setInvoiceSearchFilter("");
+                            setInvoiceStatusFilter("unpaid");
+                            setInvoiceCustomerFilter("all");
+                            setInvoiceProjectFilter("all");
+                            setInvoiceStartDateFilter("");
+                            setInvoiceEndDateFilter("");
+                          });
+                        }}
+                        className="w-full"
+                      >
+                        Clear All Filters
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            )}
           </Card>
 
           {invoicesLoading ? (
@@ -3419,7 +3530,7 @@ export default function SalesIndex() {
                 </p>
               </CardContent>
             </Card>
-          ) : filteredInvoices.length === 0 ? (
+          ) : invoices.length === 0 ? (
             <Card>
               <CardContent className="text-center py-12">
                 <FileText className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
@@ -3497,19 +3608,6 @@ export default function SalesIndex() {
                           >
                             View Details
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePrintInvoice(invoice)}
-                            className="w-full sm:w-auto"
-                            data-testid={`button-print-invoice-${invoice.id}`}
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            <span className="hidden sm:inline">
-                              Print Invoice
-                            </span>
-                            <span className="sm:hidden">Print</span>
-                          </Button>
                           {invoice.status === "draft" && (
                             <>
                               <Button
@@ -3537,6 +3635,17 @@ export default function SalesIndex() {
                                   : "Submit"}
                               </Button>
                             </>
+                          )}
+                          {["approved", "partial", "paid"].includes(invoice.status) && user?.role === "admin" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditInvoice(invoice)}
+                              className="w-full sm:w-auto"
+                            >
+                              <Pencil className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
                           )}
                           {user?.role === "admin" &&
                             invoice.status === "pending_approval" && (
@@ -3611,7 +3720,7 @@ export default function SalesIndex() {
           )}
 
           {/* Invoices Pagination */}
-          {filteredInvoices.length > itemsPerPage && (
+          {totalInvoicesPages > 1 && (
             <div className="flex justify-center mt-6">
               <Pagination>
                 <PaginationContent>
@@ -3885,49 +3994,41 @@ export default function SalesIndex() {
               </Card>
 
               {/* Financial Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Financial Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Subtotal:</span>
-                      <span>
-                        {formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}
-                      </span>
-                    </div>
-                    {selectedQuotation.discount &&
-                      parseFloat(selectedQuotation.discount) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="font-medium">Discount:</span>
-                          <span className="text-red-600">
-                            -{formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}
-                          </span>
-                        </div>
-                      )}
-                    <div className="flex justify-between">
-                      <span className="font-medium">Tax Amount:</span>
-                      <span>
-                        {formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}
-                      </span>
-                    </div>
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total Amount:</span>
-                        <span className="text-blue-600">
-                          {formatCurrency(selectedQuotation.totalAmount || "0", selectedQuotation?.currency)}
-                        </span>
-                      </div>
-                      {selectedQuotation.currency && selectedQuotation.currency !== "AED" && (
-                        <div className="text-sm text-muted-foreground mt-1">
-                          AED Equivalent: AED {(parseFloat(selectedQuotation.totalAmount || "0") * parseFloat(selectedQuotation.exchangeRate || "1")).toFixed(2)}
-                        </div>
-                      )}
-                    </div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  Financial Summary
+                </h3>
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}</span>
                   </div>
-                </CardContent>
-              </Card>
+                  {selectedQuotation.discount && parseFloat(selectedQuotation.discount) > 0 && (
+                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                      <span className="font-medium">
+                            Discount ({selectedQuotation.discountPercentage || "0"}%):
+                      </span>
+                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Tax Amount:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}</span>
+                  </div>
+                  <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(selectedQuotation.totalAmount || "0", selectedQuotation?.currency)}</span>
+                  </div>
+                  {selectedQuotation.currency && selectedQuotation.currency !== "AED" && (
+                    <div className="text-xs text-muted-foreground mt-2 text-right">
+                      Exchange Rate: 1 {selectedQuotation.currency} = {selectedQuotation.exchangeRate} AED
+                      <br />
+                      AED Equivalent: AED {(parseFloat(selectedQuotation.totalAmount || "0") * parseFloat(selectedQuotation.exchangeRate || "1")).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
@@ -4055,6 +4156,10 @@ export default function SalesIndex() {
                       <span>{selectedInvoice.invoiceNumber || "N/A"}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="font-medium">Work Order Number:</span>
+                      <span>{selectedInvoice.workOrderNumber || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="font-medium">Status:</span>
                       <span>
                         {getInvoiceStatusBadge(selectedInvoice.status)}
@@ -4076,6 +4181,12 @@ export default function SalesIndex() {
                             (q) => q.id === selectedInvoice.quotationId,
                           )?.quotationNumber || "N/A"}
                         </span>
+                      </div>
+                    )}
+                    {selectedInvoice.workOrderNumber && (
+                      <div className="flex justify-between">
+                        <span className="font-medium">Work Order Number:</span>
+                        <span>{selectedInvoice.workOrderNumber}</span>
                       </div>
                     )}
                   </CardContent>
@@ -4237,70 +4348,59 @@ export default function SalesIndex() {
               </Card>
 
               {/* Financial Summary */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Financial Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Subtotal:</span>
-                      <span>
-                        {formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  Financial Summary
+                </h3>
+                <div className="space-y-2 sm:space-y-3">
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Subtotal:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}</span>
+                  </div>
+                  {selectedInvoice.discount && parseFloat(selectedInvoice.discount) > 0 && (
+                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                      <span className="font-medium">
+                        Discount ({selectedInvoice.discountPercentage || "0"}%):
                       </span>
+                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedInvoice.discount, selectedInvoice?.currency)}</span>
                     </div>
-                    {selectedInvoice.discount &&
-                      parseFloat(selectedInvoice.discount) > 0 && (
-                        <div className="flex justify-between">
-                          <span className="font-medium">Discount:</span>
-                          <span className="text-red-600">
-                            -{formatCurrency(selectedInvoice.discount, selectedInvoice?.currency)}
-                          </span>
-                        </div>
-                      )}
-                    <div className="flex justify-between">
-                      <span className="font-medium">Tax Amount:</span>
-                      <span>
-                        {formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}
-                      </span>
+                  )}
+                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                    <span className="font-medium">Tax Amount:</span>
+                    <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}</span>
+                  </div>
+                  <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(selectedInvoice.totalAmount || "0", selectedInvoice?.currency)}</span>
+                  </div>
+                  {selectedInvoice.currency && selectedInvoice.currency !== "AED" && (
+                    <div className="text-xs text-muted-foreground mt-2 text-right">
+                      Exchange Rate: 1 {selectedInvoice.currency} = {selectedInvoice.exchangeRate} AED
+                      <br />
+                      AED Equivalent: AED {(parseFloat(selectedInvoice.totalAmount || "0") * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2)}
                     </div>
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total Amount:</span>
-                        <span className="text-blue-600">
-                          {formatCurrency(selectedInvoice.totalAmount || "0", selectedInvoice?.currency)}
+                  )}
+                  {selectedInvoice.paidAmount && parseFloat(selectedInvoice.paidAmount) > 0 && (
+                    <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3">
+                      <div className="flex justify-between items-center text-green-700 dark:text-green-400 print:text-green-700">
+                        <span className="font-medium">Paid Amount:</span>
+                        <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.paidAmount, selectedInvoice?.currency)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-red-700 dark:text-red-400 print:text-red-700 mt-1">
+                        <span className="font-bold">Outstanding Balance:</span>
+                        <span className="text-xl font-bold">
+                          {formatCurrency(
+                            parseFloat(selectedInvoice.totalAmount || "0") -
+                            parseFloat(selectedInvoice.paidAmount),
+                            selectedInvoice?.currency,
+                          )}
                         </span>
                       </div>
-                      {selectedInvoice.currency && selectedInvoice.currency !== "AED" && (
-                        <div className="text-sm text-muted-foreground mt-1">
-                          AED Equivalent: AED {(parseFloat(selectedInvoice.totalAmount || "0") * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2)}
-                        </div>
-                      )}
                     </div>
-                    {selectedInvoice.paidAmount &&
-                      parseFloat(selectedInvoice.paidAmount) > 0 && (
-                        <div className="border-t pt-3">
-                          <div className="flex justify-between text-lg font-bold">
-                            <span>Paid Amount:</span>
-                            <span className="text-green-600">
-                              {formatCurrency(selectedInvoice.paidAmount, selectedInvoice?.currency)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm text-gray-600 mt-1">
-                            <span>Outstanding Balance:</span>
-                            <span>
-                              {formatCurrency(
-                                parseFloat(selectedInvoice.totalAmount || "0") -
-                                parseFloat(selectedInvoice.paidAmount),
-                                selectedInvoice?.currency,
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                  </div>
-                </CardContent>
-              </Card>
+                  )}
+                </div>
+              </div>
 
               {/* Payment History */}
               <div
@@ -4477,10 +4577,58 @@ export default function SalesIndex() {
                 </Card>
               </div>
 
+              {/* Edit History */}
+              {invoiceEditHistory && invoiceEditHistory.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Edit History ({invoiceEditHistory.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {invoiceEditHistory.map((entry: any) => (
+                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
+                          {entry.changes && Object.keys(entry.changes).length > 0 && (
+                            <div className="text-xs space-y-1">
+                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                field !== "items" ? (
+                                  <div key={field} className="flex gap-2">
+                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
+                                    <span className="text-green-600">{String(change.new || "—")}</span>
+                                  </div>
+                                ) : (
+                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col gap-3 pt-4 border-t">
                 {/* Primary Actions Row */}
                 <div className="flex flex-col sm:flex-row justify-end gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
+                    className="w-full sm:w-auto"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
                   {selectedInvoice.status === "draft" && (
                     <>
                       <Button
@@ -4509,6 +4657,19 @@ export default function SalesIndex() {
                           : "Submit"}
                       </Button>
                     </>
+                  )}
+                  {["approved", "partial", "paid"].includes(selectedInvoice.status) && user?.role === "admin" && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsInvoiceDetailsOpen(false);
+                        handleEditInvoice(selectedInvoice);
+                      }}
+                      className="w-full sm:w-auto"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
                   )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "pending_approval" && (

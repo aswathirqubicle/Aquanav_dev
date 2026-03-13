@@ -401,12 +401,18 @@ export default function PayrollIndex() {
         htmlContent += `
           <div class="payslip-container">
             ${generateCommonHeader({ company })}
+            <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+              <thead>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="report-content-cell">
+                    <div class="payslip-title-section">
+                      <div class="payslip-title">Payroll Slip</div>
+                    </div>
 
-            <div class="payslip-title-section">
-              <div class="payslip-title">Payroll Slip</div>
-            </div>
-
-            <div class="payslip-content">
+                    <div class="payslip-content">
               <div class="info-grid">
                 <div class="info-section">
                   <h3>Employee Information</h3>
@@ -493,12 +499,18 @@ export default function PayrollIndex() {
           }
               </div>
 
-              <div class="net-pay">
-                <div class="net-pay-label">Net Pay</div>
-                <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
-              </div>
-            </div>
-
+                      <div class="net-pay">
+                        <div class="net-pay-label">Net Pay</div>
+                        <div class="net-pay-amount">${formatCurrency(entry.totalAmount)}</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+              </tfoot>
+            </table>
             ${generateCommonFooter({ company })}
           </div>
         `;
@@ -678,16 +690,10 @@ export default function PayrollIndex() {
           ${getReportStyles()}
         </head>
         <body>
-          <div class="report-header-container">
-            ${generateCommonHeader({ company })}
-          </div>
-          <div class="report-footer-container">
-            ${generateCommonFooter({ company })}
-          </div>
-
-          <table class="report-wrapper">
+          ${generateCommonHeader({ company })}
+          <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
             <thead>
-              <tr><td><div class="report-header-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
               <tr>
@@ -780,9 +786,10 @@ export default function PayrollIndex() {
               </tr>
             </tbody>
             <tfoot>
-              <tr><td><div class="report-footer-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
             </tfoot>
           </table>
+          ${generateCommonFooter({ company })}
         </body>
         </html>
       `;
@@ -1682,12 +1689,18 @@ function GeneratePayslipButton({
         <body>
           <div class="payslip-container">
             ${generateCommonHeader({ company })}
+            <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+              <thead>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="report-content-cell">
+                    <div class="payslip-title-section">
+                      <div class="payslip-title">Payroll Slip</div>
+                    </div>
 
-            <div class="payslip-title-section">
-              <div class="payslip-title">Payroll Slip</div>
-            </div>
-
-            <div class="payslip-content">
+                    <div class="payslip-content">
               <div class="info-grid">
                 <div class="info-section">
                   <h3>Employee Information</h3>
@@ -1774,12 +1787,18 @@ function GeneratePayslipButton({
         }
               </div>
 
-              <div class="net-pay">
-                <div class="net-pay-label">Net Pay</div>
-                <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
-              </div>
-            </div>
-
+                      <div class="net-pay">
+                        <div class="net-pay-label">Net Pay</div>
+                        <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+              </tfoot>
+            </table>
             ${generateCommonFooter({ company })}
           </div>
         </body>
@@ -1926,12 +1945,18 @@ function PrintPayslipButton({
         <body>
           <div class="payslip-container">
             ${generateCommonHeader({ company })}
+            <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+              <thead>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="report-content-cell">
+                    <div class="payslip-title-section">
+                      <div class="payslip-title">Payroll Slip</div>
+                    </div>
 
-            <div class="payslip-title-section">
-              <div class="payslip-title">Payroll Slip</div>
-            </div>
-
-            <div class="payslip-content">
+                    <div class="payslip-content">
               <div class="info-grid">
                 <div class="info-section">
                   <h3>Employee Information</h3>
@@ -2018,12 +2043,18 @@ function PrintPayslipButton({
         }
               </div>
 
-              <div class="net-pay">
-                <div class="net-pay-label">Net Pay</div>
-                <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
-              </div>
-            </div>
-
+                      <div class="net-pay">
+                        <div class="net-pay-label">Net Pay</div>
+                        <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+              </tfoot>
+            </table>
             ${generateCommonFooter({ company })}
           </div>
         </body>
@@ -2119,12 +2150,18 @@ function PayslipDialog({
       <body>
         <div class="payslip-container">
           ${generateCommonHeader({ company })}
+          <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+            <thead>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="report-content-cell">
+                  <div class="payslip-title-section">
+                    <div class="payslip-title">Payroll Slip</div>
+                  </div>
 
-          <div class="payslip-title-section">
-            <div class="payslip-title">Payroll Slip</div>
-          </div>
-
-          <div class="payslip-content">
+                  <div class="payslip-content">
             <div class="info-grid">
               <div class="info-section">
                 <h3>Employee Information</h3>
@@ -2215,11 +2252,16 @@ function PayslipDialog({
               <div class="net-pay-label">Net Pay</div>
               <div class="net-pay-amount">${formatCurrency(payrollEntry.totalAmount)}</div>
             </div>
-          </div>
-
-          ${generateCommonFooter({ company })}
-        </div>
-      </body>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+      </tfoot>
+    </table>
+    ${generateCommonFooter({ company })}
+  </div>
+</body>
       </html>
     `;
 
@@ -3121,16 +3163,10 @@ function AnnualPayrollReportDialog({
           ${getReportStyles()}
         </head>
         <body>
-          <div class="report-header-container">
-            ${generateCommonHeader({ company })}
-          </div>
-          <div class="report-footer-container">
-            ${generateCommonFooter({ company })}
-          </div>
-
-          <table class="report-wrapper">
+          ${generateCommonHeader({ company })}
+          <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
             <thead>
-              <tr><td><div class="report-header-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
               <tr>
@@ -3312,9 +3348,10 @@ function AnnualPayrollReportDialog({
               </tr>
             </tbody>
             <tfoot>
-              <tr><td><div class="report-footer-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
             </tfoot>
           </table>
+          ${generateCommonFooter({ company })}
         </body>
         </html>
       `;
@@ -3613,16 +3650,10 @@ function EmployeeCostAnalysisDialog({
           ${getReportStyles()}
         </head>
         <body>
-          <div class="report-header-container">
-            ${generateCommonHeader({ company })}
-          </div>
-          <div class="report-footer-container">
-            ${generateCommonFooter({ company })}
-          </div>
-
-          <table class="report-wrapper">
+          ${generateCommonHeader({ company })}
+          <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
             <thead>
-              <tr><td><div class="report-header-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
             </thead>
             <tbody>
               <tr>
@@ -3830,9 +3861,10 @@ function EmployeeCostAnalysisDialog({
               </tr>
             </tbody>
             <tfoot>
-              <tr><td><div class="report-footer-space"></div></td></tr>
+              <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
             </tfoot>
           </table>
+          ${generateCommonFooter({ company })}
         </body>
         </html>
       `;
@@ -4056,12 +4088,18 @@ function EmployeeSalarySlipsDialog({
               htmlContent += `
                 <div class="payslip-container">
                   ${generateCommonHeader({ company })}
+                  <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+                    <thead>
+                      <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="report-content-cell">
+                          <div class="payslip-title-section">
+                            <div class="payslip-title">Payroll Slip</div>
+                          </div>
 
-                  <div class="payslip-title-section">
-                    <div class="payslip-title">Payroll Slip</div>
-                  </div>
-
-                  <div class="payslip-content">
+                          <div class="payslip-content">
                     <div class="info-grid">
                       <div class="info-section">
                         <h3>Employee Information</h3>
@@ -4082,13 +4120,18 @@ function EmployeeSalarySlipsDialog({
                         </div>
                       </div>
                     </div>
-                    <div style="text-align: center; color: #666; font-style: italic; padding: 40px; border: 1px dashed #ccc; border-radius: 8px;">
-                      <h3>No Payroll Data Available</h3>
-                      <p>No payroll entry found for ${employee.firstName} ${employee.lastName} in ${getMonthName(monthYear.month)} ${monthYear.year}</p>
-                    </div>
-                  </div>
-
-                  ${generateCommonFooter({ company })}
+                            <div style="text-align: center; color: #666; font-style: italic; padding: 40px; border: 1px dashed #ccc; border-radius: 8px;">
+                              <h3>No Payroll Data Available</h3>
+                              <p>No payroll entry found for ${employee.firstName} ${employee.lastName} in ${getMonthName(monthYear.month)} ${monthYear.year}</p>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+                    </tfoot>
+                  </table>
                 </div>
               `;
               continue;
@@ -4125,12 +4168,18 @@ function EmployeeSalarySlipsDialog({
             htmlContent += `
               <div class="payslip-container">
                 ${generateCommonHeader({ company })}
+                <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+                  <thead>
+                    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="report-content-cell">
+                        <div class="payslip-title-section">
+                          <div class="payslip-title">Payroll Slip</div>
+                        </div>
 
-                <div class="payslip-title-section">
-                  <div class="payslip-title">Payroll Slip</div>
-                </div>
-
-                <div class="payslip-content">
+                        <div class="payslip-content">
                   <div class="info-grid">
                     <div class="info-section">
                       <h3>Employee Information</h3>
@@ -4208,12 +4257,18 @@ function EmployeeSalarySlipsDialog({
               }
                   </div>
 
-                  <div class="net-pay">
-                    <div class="net-pay-label">Net Pay</div>
-                    <div class="net-pay-amount">${formatCurrency(employeePayroll.totalAmount)}</div>
-                  </div>
-                </div>
-
+                          <div class="net-pay">
+                            <div class="net-pay-label">Net Pay</div>
+                            <div class="net-pay-amount">${formatCurrency(employeePayroll.totalAmount)}</div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+                  </tfoot>
+                </table>
                 ${generateCommonFooter({ company })}
               </div>
             `;

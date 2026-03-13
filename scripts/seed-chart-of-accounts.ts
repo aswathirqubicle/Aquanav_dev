@@ -1,5 +1,6 @@
 import { db } from "../server/db";
 import { chartOfAccounts } from "../shared/schema";
+import { sql } from "drizzle-orm";
 
 const accounts = [
   // Assets (1xxx)
@@ -36,7 +37,7 @@ const accounts = [
   { accountCode: "2020", accountName: "Accrued Expenses", accountType: "liability", accountCategory: "current_liabilities", description: "Expenses incurred but not yet paid" },
   { accountCode: "2100", accountName: "Payroll Liabilities", accountType: "liability", accountCategory: "current_liabilities", description: "Employee-related payables" },
   { accountCode: "2110", accountName: "Salary Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Salaries owed to employees" },
-  { accountCode: "2120", accountName: "Tax Deducted at Source (TDS)", accountType: "liability", accountCategory: "current_liabilities", description: "Withholding taxes to be remitted" },
+  { accountCode: "2120", accountName: "Provident Fund Contribution", accountType: "liability", accountCategory: "current_liabilities", description: "Withholding taxes to be remitted" },
   { accountCode: "2130", accountName: "Employee Benefits Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Benefits owed to employees" },
   { accountCode: "2200", accountName: "Tax Liabilities", accountType: "liability", accountCategory: "current_liabilities", description: "Taxes owed to government" },
   { accountCode: "2210", accountName: "Income Tax Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Corporate income tax owed" },
@@ -115,6 +116,9 @@ const accounts = [
 ];
 
 async function seedChartOfAccounts() {
+
+  await db.execute(sql`TRUNCATE TABLE ${chartOfAccounts} RESTART IDENTITY CASCADE`);
+
   console.log("Seeding Chart of Accounts...");
   
   for (const account of accounts) {

@@ -1,6 +1,12 @@
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import {
+  getCommonStyles,
+  generateCommonHeader,
+  generateCommonFooter,
+  imageToBase64,
+} from "./document-utils";
 import { assetRoutes } from "./asset-routes";
 import bcrypt from "bcrypt";
 import session from "express-session";
@@ -74,261 +80,10 @@ import {
   purchaseInvoices,
   purchaseInvoicePayments,
   projectEmployees,
+  salesInvoices,
 } from "@shared/schema";
 import { db } from "./db";
 import { sql as sqlRaw } from "./db";
-
-function getCommonStyles(): string {
-  return `
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-    />
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 40px;
-        color: #333;
-      }
-
-      @media print {
-        @page {
-          size: A4;
-          margin: 30mm 15mm 30mm 15mm;
-        }
-
-        .print-header {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 25mm;
-          background: #fff;
-        }
-
-        .print-footer {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          height: 25mm;
-          background: #fff;
-          border-top: 1px solid #ddd;
-        }
-
-        .page-content {
-          margin-top: 30mm;
-          margin-bottom: 30mm;
-        }
-      }
-
-      /* ===== COMMON HEADER ===== */
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 2px solid #0b4d78;
-        padding-bottom: 15px;
-        margin-bottom: 30px;
-      }
-
-      .top-info {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 12px;
-      }
-
-      .top-info img {
-        height: 50px;
-      }
-
-      .address {
-        line-height: 1.4;
-      }
-
-      .title {
-        text-align: center;
-        font-size: 16px;
-        font-weight: bold;
-        color: #0b4d78;
-        line-height: 1.4;
-      }
-
-      .highlight {
-        color: #d9534f;
-      }
-
-      .ship img {
-        height: 45px;
-      }
-
-      /* ===== TABLE STYLES ===== */
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 20px;
-      }
-
-      th, td {
-        border: 1px solid #ddd;
-        padding: 8px;
-        font-size: 13px;
-      }
-
-      th {
-        background-color: #f8f9fa;
-        color: #333;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 11px;
-        letter-spacing: 0.5px;
-      }
-
-      .text-right {
-        text-align: right;
-      }
-
-      .total-row {
-        font-weight: bold;
-        background-color: #f8f9fa;
-      }
-      .terms {
-        page-break-inside: avoid;
-      }
-
-      /* Footer */
-      .print-footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        border-top: 1px solid #ddd;
-        font-size: 12px;
-        background: #fff;
-      }
-
-      .footer-content {
-        display: flex;
-        justify-content: space-between;
-        padding: 10px 40px;
-      }
-
-      .footer-item i {
-        margin-right: 5px;
-      }
-
-      .footer-item a {
-        text-decoration: none;
-        color: #000;
-      }
-
-      .info-grid {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 30px;
-        gap: 40px;
-      }
-
-      .info-box {
-        flex: 1;
-      }
-
-      .info-box h3 {
-        color: #0b4d78;
-        padding-bottom: 5px;
-        margin-top: 0;
-        margin-bottom: 12px;
-        font-size: 13px;
-        text-transform: uppercase;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-      }
-
-      .info-box p {
-        margin: 3px 0;
-        font-size: 12px;
-        line-height: 1.5;
-        color: #444;
-      }
-
-      .info-box p strong {
-        color: #222;
-      }
-
-      .document-info {
-        margin-bottom: 30px;
-      }
-
-      .document-info h1 {
-        color: #0b4d78;
-        margin-bottom: 15px;
-        font-size: 24px;
-        margin-top: 0;
-        display: inline-block;
-        padding-right: 20px;
-        font-weight: 800;
-        letter-spacing: 1px;
-      }
-
-      .document-info p {
-        margin: 4px 0;
-        font-size: 13px;
-      }
-
-      .document-info p strong {
-        color: #555;
-        width: 140px;
-        display: inline-block;
-      }
-    </style>
-  `;
-}
-
-function generateCommonFooter(options?: { company?: any }) {
-  const company = options?.company;
-
-  return `
-    <div class="print-footer">
-      <div class="footer-content">
-        <div class="footer-item">
-          <i class="fas fa-globe"></i>
-          <a href=${company.website}>${company.website}</a>
-        </div>
-        <div class="footer-item">
-          <i class="fas fa-envelope"></i>
-          <a href="mailto:${company.email}">${company.email}</a>
-        </div>
-        <div class="footer-item">
-          <i class="fas fa-phone"></i>
-          <a href="tel:${company.phone}">${company.phone}</a>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function generateCommonHeader(options?: { company?: any }) {
-  const company = options?.company;
-  if (company && company.logo) {
-    company.logo = imageToBase64(company.logo);
-  }
-
-  return `
-  <div class="print-header">
-    <div class="header">
-      <div class="top-info">
-        ${company?.logo ? `<img src="${company.logo}" alt="${company.name}" class="company-logo" />` : ""}
-      </div>
-      <div class="title">
-        <div class="address">
-          ${company?.address || ""}
-        </div>
-      </div>
-    </div>
-  </div>
-  `;
-}
 
 function generateQuotationHTML(
   quotation: any,
@@ -360,117 +115,129 @@ function generateQuotationHTML(
       ${getCommonStyles()}
     </head>
     <body>
-      ${generateCommonHeader({
-        company,
-      })}
-    <div class="page-content">
-      <div class="document-info">
-        <h1>SALES QUOTATION</h1>
-        <p><strong>Quotation Number:</strong> ${quotation.quotationNumber}</p>
-        <p><strong>Date:</strong> ${formatDate(quotation.createdDate)}</p>
-        ${quotation.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
-        ${quotation.projectId ? `<p><strong>Project:</strong> ${quotation.projectName || quotation.projectId}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>From:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Bill To:</h3>
-          <p><strong>${customer.name}</strong></p>
-          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-          <p style="white-space: pre-wrap;">${quotation.billingAddress || customer.address || ""}</p>
-          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      ${generateCommonHeader({ company })}
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Tax Rate</th>
-            <th class="text-right">Tax Amount</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(quotation.items || [])
-            .map((item: any) => {
-              const lineSubtotal = item.quantity * item.unitPrice;
-              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-              const lineTotal = lineSubtotal + taxAmount;
-              return `
-            <tr>
-              <td>${item.description}</td>
-              <td class="text-right">${item.quantity}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${item.taxRate || 0}%</td>
-              <td class="text-right">${formatCurrency(taxAmount)}</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>SALES QUOTATION</h1>
+                <p><strong>Quotation Number:</strong> ${quotation.quotationNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(quotation.createdDate)}</p>
+                ${quotation.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
+                ${quotation.projectId ? `<p><strong>Project:</strong> ${quotation.projectName || quotation.projectId}</p>` : ""}
+              </div>
+
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>From:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Bill To:</h3>
+                  <p><strong>${customer.name}</strong></p>
+                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${quotation.billingAddress || customer.address || ""}</p>
+                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Tax Rate</th>
+                    <th class="text-right">Tax Amount</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(quotation.items || [])
+                    .map((item: any) => {
+                      const lineSubtotal = item.quantity * item.unitPrice;
+                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const lineTotal = lineSubtotal + taxAmount;
+                      return `
+                    <tr>
+                      <td>${item.description}</td>
+                      <td class="text-right">${item.quantity}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${item.taxRate || 0}%</td>
+                      <td class="text-right">${formatCurrency(taxAmount)}</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      quotation.subtotal || 0,
+                    )}</td>
+                  </tr>
+                  ${
+                    quotation.discount && parseFloat(quotation.discount) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Discount:</strong></td>
+                    <td class="text-right">-${formatCurrency(quotation.discount)}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      quotation.taxAmount || 0,
+                    )}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Total Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      quotation.totalAmount || 0,
+                    )}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="terms">
+                <h3>Terms and Conditions:</h3>
+                <p>This quotation is valid until ${
+                  quotation.validUntil
+                    ? formatDate(quotation.validUntil)
+                    : "further notice"
+                }.</p>
+                <p>Payment terms: Net 30 days</p>
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(
-              quotation.subtotal || 0,
-            )}</td>
-          </tr>
-          ${
-            quotation.discount && parseFloat(quotation.discount) > 0
-              ? `
-          <tr>
-            <td><strong>Discount:</strong></td>
-            <td class="text-right">-${formatCurrency(quotation.discount)}</td>
-          </tr>
-          `
-              : ""
-          }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              quotation.taxAmount || 0,
-            )}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Total Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              quotation.totalAmount || 0,
-            )}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="terms">
-        <h3>Terms and Conditions:</h3>
-        <p>This quotation is valid until ${
-          quotation.validUntil
-            ? formatDate(quotation.validUntil)
-            : "further notice"
-        }.</p>
-        <p>Payment terms: Net 30 days</p>
-      </div>
-      </div>
-      ${generateCommonFooter({
-        company,
-      })}
+      ${generateCommonFooter({ company })}
     </body>
     </html>
   `;
@@ -506,121 +273,134 @@ function generateCreditNoteHTML(
       ${getCommonStyles()}
     </head>
     <body>
-      ${generateCommonHeader({
-        company,
-      })}
-    <div class="page-content">
-      <div class="document-info">
-        <h1>CREDIT NOTE</h1>
-        <p><strong>Credit Note Number:</strong> ${creditNote.creditNoteNumber}</p>
-        <p><strong>Date:</strong> ${formatDate(creditNote.creditNoteDate)}</p>
-        ${creditNote.invoiceNumber ? `<p><strong>Related Invoice:</strong> ${creditNote.invoiceNumber}</p>` : ""}
-        ${creditNote.reason ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>` : ""}
-        ${creditNote.projectId ? `<p><strong>Project:</strong> ${creditNote.projectName || creditNote.projectId}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>From:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Bill To:</h3>
-          <p><strong>${customer.name}</strong></p>
-          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-          <p style="white-space: pre-wrap;">${creditNote.billingAddress || customer.address || ""}</p>
-          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      ${generateCommonHeader({ company })}
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Tax Rate</th>
-            <th class="text-right">Tax Amount</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(creditNote.items || [])
-            .map((item: any) => {
-              const lineSubtotal = item.quantity * item.unitPrice;
-              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-              const lineTotal = lineSubtotal + taxAmount;
-              return `
-            <tr>
-              <td>${item.description}</td>
-              <td class="text-right">${item.quantity}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${item.taxRate || 0}%</td>
-              <td class="text-right">${formatCurrency(taxAmount)}</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>CREDIT NOTE</h1>
+                <p><strong>Credit Note Number:</strong> ${creditNote.creditNoteNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(creditNote.creditNoteDate)}</p>
+                ${creditNote.invoiceNumber ? `<p><strong>Related Invoice:</strong> ${creditNote.invoiceNumber}</p>` : ""}
+                ${creditNote.reason ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>` : ""}
+                ${creditNote.projectId ? `<p><strong>Project:</strong> ${creditNote.projectName || creditNote.projectId}</p>` : ""}
+              </div>
+
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>From:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Bill To:</h3>
+                  <p><strong>${customer.name}</strong></p>
+                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${creditNote.billingAddress || customer.address || ""}</p>
+                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Tax Rate</th>
+                    <th class="text-right">Tax Amount</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(creditNote.items || [])
+                    .map((item: any) => {
+                      const lineSubtotal = item.quantity * item.unitPrice;
+                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const lineTotal = lineSubtotal + taxAmount;
+                      return `
+                    <tr>
+                      <td>${item.description}</td>
+                      <td class="text-right">${item.quantity}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${item.taxRate || 0}%</td>
+                      <td class="text-right">${formatCurrency(taxAmount)}</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      creditNote.subtotal || 0,
+                    )}</td>
+                  </tr>
+                  ${
+                    creditNote.discount && parseFloat(creditNote.discount) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Discount:</strong></td>
+                    <td class="text-right">-${formatCurrency(creditNote.discount)}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      creditNote.taxAmount || 0,
+                    )}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Credit Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      creditNote.totalAmount || 0,
+                    )}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div style="margin-top: 50px;">
+                <p><strong>Payment Terms:</strong></p>
+                <p>${
+                  creditNote.paymentTerms ||
+                  "This credit note will be applied to your account balance."
+                }</p>
+                ${
+                  creditNote.remarks
+                    ? `<p><strong>Remarks:</strong> ${creditNote.remarks}</p>`
+                    : ""
+                }
+                <p>Thank you for your business!</p>
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(
-              creditNote.subtotal || 0,
-            )}</td>
-          </tr>
-          ${
-            creditNote.discount && parseFloat(creditNote.discount) > 0
-              ? `
-          <tr>
-            <td><strong>Discount:</strong></td>
-            <td class="text-right">-${formatCurrency(creditNote.discount)}</td>
-          </tr>
-          `
-              : ""
-          }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              creditNote.taxAmount || 0,
-            )}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Credit Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              creditNote.totalAmount || 0,
-            )}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div style="margin-top: 50px;">
-        <p><strong>Payment Terms:</strong></p>
-        <p>${
-          creditNote.paymentTerms ||
-          "This credit note will be applied to your account balance."
-        }</p>
-        ${
-          creditNote.remarks
-            ? `<p><strong>Remarks:</strong> ${creditNote.remarks}</p>`
-            : ""
-        }
-        <p>Thank you for your business!</p>
-      </div>
-       ${generateCommonFooter({
-         company,
-       })}
+      ${generateCommonFooter({ company })}
     </body>
     </html>
   `;
@@ -656,125 +436,143 @@ function generateInvoiceHTML(
       ${getCommonStyles()}
     </head>
     <body>
-    ${generateCommonHeader({
-      company,
-    })}
-      <div class="page-content">
-
-      <div class="document-info">
-        <h1>TAX INVOICE</h1>
-        <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
-        <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
-        <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
-        ${invoice.projectId ? `<p><strong>Project:</strong> ${invoice.projectName || invoice.projectId}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>From:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Bill To:</h3>
-          <p><strong>${customer.name}</strong></p>
-          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-          <p style="white-space: pre-wrap;">${invoice.billingAddress || customer.address || ""}</p>
-          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      ${generateCommonHeader({ company })}
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(invoice.items || [])
-            .map((item: any) => {
-              const lineTotal = item.quantity * item.unitPrice;
-              return `
-            <tr>
-              <td>${item.description}</td>
-              <td class="text-right">${item.quantity}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>TAX INVOICE</h1>
+                <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+                <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
+                <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
+                ${invoice.projectId ? `<p><strong>Project:</strong> ${invoice.projectName || invoice.projectId}</p>` : ""}
+              </div>
+
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>From:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Bill To:</h3>
+                  <p><strong>${customer.name}</strong></p>
+                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${invoice.billingAddress || customer.address || ""}</p>
+                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(invoice.items || [])
+                    .map((item: any) => {
+                      const lineTotal = item.quantity * item.unitPrice;
+                      return `
+                    <tr>
+                      <td>${item.description}</td>
+                      <td class="text-right">${item.quantity}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                  </tr>
+                  ${
+                    invoice.discount && parseFloat(invoice.discount) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Discount:</strong></td>
+                    <td class="text-right">-${formatCurrency(invoice.discount)}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      invoice.taxAmount || 0,
+                    )}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Total Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      invoice.totalAmount || 0,
+                    )}</td>
+                  </tr>
+                  ${
+                    invoice.paidAmount && parseFloat(invoice.paidAmount) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Paid Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Balance Due:</strong></td>
+                    <td class="text-right">${formatCurrency(
+                      (
+                        parseFloat(invoice.totalAmount || "0") -
+                        parseFloat(invoice.paidAmount)
+                      ).toFixed(2),
+                    )}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                </table>
+              </div>
+
+              <div class="terms">
+                <p><strong>Payment Terms:</strong></p>
+                <p>${invoice.paymentTerms}</p>
+              </div>
+              <div class="terms">
+                <p><strong>Terms & Conditions:</strong></p>
+                <p>${invoice.termsAndConditions}</p>
+              </div>
+              <div class="terms">
+                <p><strong>Our Bank Details:</strong></p>
+                <p>${invoice.bankAccount}</p>
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
-          </tr>
-          ${
-            invoice.discount && parseFloat(invoice.discount) > 0
-              ? `
-          <tr>
-            <td><strong>Discount:</strong></td>
-            <td class="text-right">-${formatCurrency(invoice.discount)}</td>
-          </tr>
-          `
-              : ""
-          }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              invoice.taxAmount || 0,
-            )}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Total Amount:</strong></td>
-            <td class="text-right">${formatCurrency(
-              invoice.totalAmount || 0,
-            )}</td>
-          </tr>
-          ${
-            invoice.paidAmount && parseFloat(invoice.paidAmount) > 0
-              ? `
-          <tr>
-            <td><strong>Paid Amount:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Balance Due:</strong></td>
-            <td class="text-right">${formatCurrency(
-              (
-                parseFloat(invoice.totalAmount || "0") -
-                parseFloat(invoice.paidAmount)
-              ).toFixed(2),
-            )}</td>
-          </tr>
-          `
-              : ""
-          }
-        </table>
-      </div>
-
-      <div class="terms">
-        <p><strong>Payment Terms:</strong></p>
-        <p>Payment is due within 30 days of invoice date.</p>
-        <p>Thank you for your business!</p>
-      </div>
-      </div>
-      ${generateCommonFooter({
-        company,
-      })}
+      ${generateCommonFooter({ company })}
     </body>
     </html>
   `;
@@ -784,6 +582,7 @@ function generateProformaHTML(
   proforma: any,
   customer: any,
   company: any,
+  project: any,
 ): string {
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -811,101 +610,118 @@ function generateProformaHTML(
     </head>
     <body>
       ${generateCommonHeader({ company })}
-    <div class="page-content">
-      <div class="document-info">
-        <h1>PROFORMA INVOICE</h1>
-        <p><strong>Proforma Number:</strong> ${proforma.proformaNumber}</p>
-        <p><strong>Date:</strong> ${formatDate(proforma.invoiceDate || proforma.createdDate)}</p>
-        ${proforma.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(proforma.validUntil)}</p>` : ""}
-        ${proforma.projectId ? `<p><strong>Project:</strong> ${proforma.projectName || proforma.projectId}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>From:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Bill To:</h3>
-          <p><strong>${customer.name}</strong></p>
-          ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-          <p style="white-space: pre-wrap;">${proforma.billingAddress || customer.address || ""}</p>
-          ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-          ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-          ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Tax Rate</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(proforma.items || [])
-            .map((item: any) => {
-              const lineSubtotal = item.quantity * item.unitPrice;
-              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-              const lineTotal = lineSubtotal + taxAmount;
-              return `
-            <tr>
-              <td>${item.description}</td>
-              <td class="text-right">${item.quantity}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${item.taxRate || 0}%</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>PROFORMA INVOICE</h1>
+                <p><strong>Proforma Number:</strong> ${proforma.proformaNumber}</p>
+                <p><strong>Work Order Number:</strong> ${proforma.workOrderNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(proforma.invoiceDate || proforma.createdDate)}</p>
+                ${proforma.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(proforma.validUntil)}</p>` : ""}
+                ${proforma.projectId ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
+              </div>
+
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>From:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Bill To:</h3>
+                  <p><strong>${customer.name}</strong></p>
+                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${proforma.billingAddress || customer.address || ""}</p>
+                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
+                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
+                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Tax Rate</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(proforma.items || [])
+                    .map((item: any) => {
+                      const lineSubtotal = item.quantity * item.unitPrice;
+                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const lineTotal = lineSubtotal + taxAmount;
+                      return `
+                    <tr>
+                      <td>${item.description}</td>
+                      <td class="text-right">${item.quantity}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${item.taxRate || 0}%</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
+                  </tr>
+                  ${
+                    proforma.discount && parseFloat(proforma.discount) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Discount:</strong></td>
+                    <td class="text-right">-${formatCurrency(proforma.discount)}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Total Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(proforma.totalAmount || 0)}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="terms">
+                ${proforma.paymentTerms ? `<p><strong>Payment Terms:</strong> ${proforma.paymentTerms}</p>` : ""}
+                ${proforma.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${proforma.deliveryTerms}</p>` : ""}
+                ${proforma.bankAccount ? `<p><strong>Bank Account:</strong> ${proforma.bankAccount}</p>` : ""}
+                ${proforma.remarks ? `<h3>Remarks:</h3><p>${proforma.remarks}</p>` : ""}
+                ${proforma.termsAndConditions ? `<h3>Terms and Conditions:</h3><p>${proforma.termsAndConditions}</p>` : ""}
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
-          </tr>
-          ${
-            proforma.discount && parseFloat(proforma.discount) > 0
-              ? `
-          <tr>
-            <td><strong>Discount:</strong></td>
-            <td class="text-right">-${formatCurrency(proforma.discount)}</td>
-          </tr>
-          `
-              : ""
-          }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Total Amount:</strong></td>
-            <td class="text-right">${formatCurrency(proforma.totalAmount || 0)}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="terms">
-        ${proforma.paymentTerms ? `<p><strong>Payment Terms:</strong> ${proforma.paymentTerms}</p>` : ""}
-        ${proforma.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${proforma.deliveryTerms}</p>` : ""}
-        ${proforma.bankAccount ? `<p><strong>Bank Account:</strong> ${proforma.bankAccount}</p>` : ""}
-        ${proforma.remarks ? `<h3>Remarks:</h3><p>${proforma.remarks}</p>` : ""}
-        ${proforma.termsAndConditions ? `<h3>Terms and Conditions:</h3><p>${proforma.termsAndConditions}</p>` : ""}
-      </div>
-      </div>
       ${generateCommonFooter({ company })}
     </body>
     </html>
@@ -943,99 +759,115 @@ function generatePurchaseOrderHTML(
     </head>
     <body>
       ${generateCommonHeader({ company })}
-    <div class="page-content">
-      <div class="document-info">
-        <h1>PURCHASE ORDER</h1>
-        <p><strong>PO Number:</strong> ${order.poNumber}</p>
-        <p><strong>Date:</strong> ${formatDate(order.orderDate)}</p>
-        ${order.expectedDeliveryDate ? `<p><strong>Expected Delivery:</strong> ${formatDate(order.expectedDeliveryDate)}</p>` : ""}
-        ${order.projectId ? `<p><strong>Project:</strong> ${order.projectName || order.projectId}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>Supplier:</h3>
-          <p><strong>${supplier.name}</strong></p>
-          ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
-          ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
-          ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
-          ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Ship To / Bill To:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address || ""}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Tax Rate</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(order.items || [])
-            .map((item: any) => {
-              const lineSubtotal = item.quantity * item.unitPrice;
-              const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-              const lineTotal = lineSubtotal + taxAmount;
-              return `
-            <tr>
-              <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
-              <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${item.taxRate || 0}%</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>PURCHASE ORDER</h1>
+                <p><strong>PO Number:</strong> ${order.poNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(order.orderDate)}</p>
+                ${order.expectedDeliveryDate ? `<p><strong>Expected Delivery:</strong> ${formatDate(order.expectedDeliveryDate)}</p>` : ""}
+                ${order.projectId ? `<p><strong>Project:</strong> ${order.projectName || order.projectId}</p>` : ""}
+              </div>
+
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>Supplier:</h3>
+                  <p><strong>${supplier.name}</strong></p>
+                  ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
+                  ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
+                  ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
+                  ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Ship To / Bill To:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address || ""}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Tax Rate</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(order.items || [])
+                    .map((item: any) => {
+                      const lineSubtotal = item.quantity * item.unitPrice;
+                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const lineTotal = lineSubtotal + taxAmount;
+                      return `
+                    <tr>
+                      <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
+                      <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${item.taxRate || 0}%</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
+                  </tr>
+                   ${
+                     parseFloat(order.discountAmount || "0") > 0
+                       ? `
+                  <tr>
+                    <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
+                    <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
+                  </tr>
+                  `
+                       : ""
+                   }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Total Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(order.totalAmount || 0)}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="terms">
+                ${order.paymentTerms ? `<p><strong>Payment Terms:</strong> ${order.paymentTerms}</p>` : ""}
+                ${order.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${order.deliveryTerms}</p>` : ""}
+                ${order.bankAccount ? `<h3>Bank Account Details:</h3><p>${order.bankAccount}</p>` : ""}
+                ${order.notes ? `<h3>Notes:</h3><p>${order.notes}</p>` : ""}
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
-          </tr>
-           ${
-             parseFloat(order.discountAmount || "0") > 0
-               ? `
-          <tr>
-            <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
-            <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
-          </tr>
-          `
-               : ""
-           }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Total Amount:</strong></td>
-            <td class="text-right">${formatCurrency(order.totalAmount || 0)}</td>
-          </tr>
-        </table>
-      </div>
-
-      <div class="terms">
-        ${order.paymentTerms ? `<p><strong>Payment Terms:</strong> ${order.paymentTerms}</p>` : ""}
-        ${order.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${order.deliveryTerms}</p>` : ""}
-        ${order.bankAccount ? `<h3>Bank Account Details:</h3><p>${order.bankAccount}</p>` : ""}
-        ${order.notes ? `<h3>Notes:</h3><p>${order.notes}</p>` : ""}
-      </div>
-      </div>
       ${generateCommonFooter({ company })}
     </body>
     </html>
@@ -1074,119 +906,135 @@ function generatePurchaseInvoiceHTML(
     </head>
     <body>
       ${generateCommonHeader({ company })}
-    <div class="page-content">
-      <div class="document-info">
-        <h1>PURCHASE INVOICE</h1>
-        <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
-        <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
-        ${invoice.dueDate ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
-        ${invoice.poId ? `<p><strong>Linked PO:</strong> PO-${invoice.poId}</p>` : ""}
-        ${project ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
-      </div>
-
-      <div class="info-grid">
-        <div class="info-box">
-          <h3>Supplier:</h3>
-          <p><strong>${supplier.name}</strong></p>
-          ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
-          ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
-          ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
-          ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
-        </div>
-        <div class="info-box">
-          <h3>Bill To:</h3>
-          <p><strong>${company.name}</strong></p>
-          <p style="white-space: pre-wrap;">${company.address || ""}</p>
-          ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-          ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-          ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-          ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
-        </div>
-      </div>
-
-      <table>
+      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
         <thead>
-          <tr>
-            <th>Description</th>
-            <th class="text-right">Qty</th>
-            <th class="text-right">Unit Price</th>
-            <th class="text-right">Tax Rate</th>
-            <th class="text-right">Total</th>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
+            </td>
           </tr>
         </thead>
         <tbody>
-          ${(invoice.items || [])
-            .map((item: any) => {
-              const lineSubtotal = item.quantity * item.unitPrice;
-              const taxAmount = parseFloat(item.taxAmount || 0);
-              const lineTotal = parseFloat(
-                item.lineTotal || lineSubtotal + taxAmount,
-              );
-              const taxRate =
-                item.taxRate ||
-                (lineSubtotal > 0 ? (taxAmount / lineSubtotal) * 100 : 0);
+          <tr>
+            <td class="report-content-cell">
+              <div class="document-info">
+                <h1>PURCHASE INVOICE</h1>
+                <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+                <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
+                ${invoice.dueDate ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
+                ${invoice.poNumber ? `<p><strong>Linked PO:</strong> ${invoice.poNumber}</p>` : invoice.poId ? `<p><strong>Linked PO:</strong> PO-${invoice.poId}</p>` : ""}
+                ${project ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
+              </div>
 
-              return `
-            <tr>
-              <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
-              <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
-              <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-              <td class="text-right">${parseFloat(taxRate).toFixed(0)}%</td>
-              <td class="text-right">${formatCurrency(lineTotal)}</td>
-            </tr>
-            `;
-            })
-            .join("")}
+              <div class="info-grid">
+                <div class="info-box">
+                  <h3>Supplier:</h3>
+                  <p><strong>${supplier.name}</strong></p>
+                  ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
+                  ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
+                  ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
+                  ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+                </div>
+                <div class="info-box">
+                  <h3>Bill To:</h3>
+                  <p><strong>${company.name}</strong></p>
+                  <p style="white-space: pre-wrap;">${company.address || ""}</p>
+                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
+                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
+                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
+                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Tax Rate</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(invoice.items || [])
+                    .map((item: any) => {
+                      const lineSubtotal = item.quantity * item.unitPrice;
+                      const taxAmount = parseFloat(item.taxAmount || 0);
+                      const lineTotal = parseFloat(
+                        item.lineTotal || lineSubtotal + taxAmount,
+                      );
+                      const taxRate =
+                        item.taxRate ||
+                        (lineSubtotal > 0 ? (taxAmount / lineSubtotal) * 100 : 0);
+
+                      return `
+                    <tr>
+                      <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
+                      <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                      <td class="text-right">${parseFloat(taxRate).toFixed(0)}%</td>
+                      <td class="text-right">${formatCurrency(lineTotal)}</td>
+                    </tr>
+                    `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+
+              <div style="margin-top: 30px;">
+                <table style="width: 300px; margin-left: auto;">
+                  <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                  </tr>
+                  ${
+                    parseFloat(invoice.discountAmount || "0") > 0
+                      ? `
+                  <tr>
+                    <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
+                    <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  <tr>
+                    <td><strong>Tax Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
+                  </tr>
+                  <tr class="total-row">
+                    <td><strong>Total Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
+                  </tr>
+                  ${
+                    parseFloat(invoice.paidAmount || 0) > 0
+                      ? `
+                  <tr>
+                    <td><strong>Paid Amount:</strong></td>
+                    <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
+                  </tr>
+                  <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
+                    <td><strong>Balance Due:</strong></td>
+                    <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                </table>
+              </div>
+
+              <div class="terms">
+                ${invoice.paymentTerms ? `<p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>` : ""}
+                ${invoice.bankAccount ? `<h3>Bank Account Details:</h3><p style="white-space: pre-wrap;">${invoice.bankAccount}</p>` : ""}
+                ${invoice.notes ? `<h3>Notes:</h3><p style="white-space: pre-wrap;">${invoice.notes}</p>` : ""}
+              </div>
+            </td>
+          </tr>
         </tbody>
+        <tfoot>
+          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-
-      <div style="margin-top: 30px;">
-        <table style="width: 300px; margin-left: auto;">
-          <tr>
-            <td><strong>Subtotal:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
-          </tr>
-          ${
-            parseFloat(invoice.discountAmount || "0") > 0
-              ? `
-          <tr>
-            <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
-            <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
-          </tr>
-          `
-              : ""
-          }
-          <tr>
-            <td><strong>Tax Amount:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
-          </tr>
-          <tr class="total-row">
-            <td><strong>Total Amount:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
-          </tr>
-          ${
-            parseFloat(invoice.paidAmount || 0) > 0
-              ? `
-          <tr>
-            <td><strong>Paid Amount:</strong></td>
-            <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
-          </tr>
-          <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
-            <td><strong>Balance Due:</strong></td>
-            <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
-          </tr>
-          `
-              : ""
-          }
-        </table>
-      </div>
-
-      <div class="terms">
-        ${invoice.paymentTerms ? `<p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>` : ""}
-        ${invoice.bankAccount ? `<h3>Bank Account Details:</h3><p style="white-space: pre-wrap;">${invoice.bankAccount}</p>` : ""}
-        ${invoice.notes ? `<h3>Notes:</h3><p style="white-space: pre-wrap;">${invoice.notes}</p>` : ""}
-      </div>
-      </div>
       ${generateCommonFooter({ company })}
     </body>
     </html>
@@ -1314,11 +1162,10 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 100px;               /* MUST MATCH CONTAINER PADDING */
+  height: 160px;               /* MUST MATCH CONTAINER PADDING */
   background: #ffffff;
   z-index: 1000;
   padding: 10px 20px;
-  border-bottom: 1px solid #0019A5;
 }
 
 .top-header {
@@ -1328,7 +1175,7 @@ body {
 }
 
 .top-header img {
-  height: 60px;
+  height: 120px;
 }
 
 /* ===== FIXED FOOTER ===== */
@@ -1337,10 +1184,8 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 80px;                /* MUST MATCH CONTAINER PADDING */
+  height: 60px;                /* MUST MATCH CONTAINER PADDING */
   background: #ffffff;
-  border-top: 1px solid #0019A5;
-  border-bottom: 1px solid #0019A5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1359,8 +1204,6 @@ body {
   max-width: 900px;
   margin: auto;
 
-  padding-top: 130px;   /* header height + spacing */
-  padding-bottom: 100px; /* footer height + spacing */
   padding-left: 10px;
   padding-right: 10px;
 }
@@ -1379,7 +1222,7 @@ body {
 /* ===== SHIP IMAGE ===== */
 .ship-image img {
   width: 100%;
-  max-height: 200px;
+  max-height: 160px;
   object-fit: cover;
   border-radius: 15px;
 }
@@ -1503,316 +1346,219 @@ body {
 </head>
 
 <body onload="window.print()">
-<div class="print-header">
-  <div class="top-header">
-    <img src="${data.company?.logo || ""}" />
-    <div>${data.company?.address || ""}</div>
-  </div>
-</div>
+<table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+  <thead>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space" style="height: 160px;"><div class="print-header">
+            <div class="top-header">
+              <img src="${data.company?.logo || ""}" />
+              <div>${data.company?.address || ""}</div>
+            </div>
+          </div></div></td></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="report-content-cell">
+        <div class="container">
+          <!-- TITLE -->
+          <div class="main-title">
+            ${data.title || ""}<br/>
+            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span class="vessel">${data.reportTitle || "WEEKLY REPORT"}</span>
+          </div>
 
-<div class="container">
+          <!-- IMAGE -->
+          <div class="ship-image">
+            <img src="${data.vesselImage || ""}" />
+          </div>
 
-<!-- TITLE -->
-<div class="main-title">
-  ${data.title || ""}<br/>
-  <span class="highlight">${sanitize(data.description)}</span><br/>
-  <span class="vessel">${data.reportTitle || "WEEKLY REPORT"}</span>
-</div>
+          <!-- PROJECT HIGHLIGHTS HEADER -->
+          <div class="highlights-header">
+            <div class="left-title">PROJECT HIGHLIGHTS</div>
+            <div class="right-date">
+              Report Date: ${data.reportDate}
+            </div>
+          </div>
 
-<!-- IMAGE -->
-<div class="ship-image">
-  <img src="${data.vesselImage || ""}" />
-</div>
+          <!-- PROJECT TABLE -->
+          <table class="project-table">
+            <tbody>
+              <tr>
+                <th>Project Start Date</th>
+                <td>${data.startDate || ""}</td>
+                <th>Vessel Name</th>
+                <td>${data.vesselName || ""}</td>
+              </tr>
+              <tr>
+                <th>Project Details</th>
+                <td>${sanitize(data.description)}</td>
+                <th>Client</th>
+                <td>${data.customerName || ""}</td>
+              </tr>
+              <tr>
+                <th>Mode of Contract</th>
+                <td>${data.modeOfContract || ""}</td>
+                <th>Riding crew Nos.</th>
+                <td>${data.ridgingCrewNos || ""}</td>
+              </tr>
+              <tr>
+                <th>PPE</th>
+                <td>${data.ppe || ""}</td>
+                <th>Working Hours</th>
+                <td>${data.workingHours || ""}</td>
+              </tr>
+            </tbody>
+          </table>
 
-<!-- PROJECT HIGHLIGHTS HEADER -->
-<div class="highlights-header">
-  <div class="left-title">PROJECT HIGHLIGHTS</div>
-  <div class="right-date">
-    Report Date: ${data.reportDate}
-  </div>
-</div>
+          <h3 class="section-title">
+            COATING REPAIR PROCEDURE FOR MAIN DECK
+          </h3>
 
-<!-- PROJECT TABLE -->
-<table class="project-table">
-<tbody>
-<tr>
-<th>Project Start Date</th>
-<td>${data.startDate || ""}</td>
-<th>Vessel Name</th>
-<td>${data.vesselName || ""}</td>
-</tr>
+          <table class="steps-table">
+            <tbody>
+              ${[1, 3, 5]
+                .map((start) => {
+                  const firstTitle = data[`additionalField${start}Title`];
+                  const firstDesc = data[`additionalField${start}Description`];
+                  const secondTitle = data[`additionalField${start + 1}Title`];
+                  const secondDesc = data[`additionalField${start + 1}Description`];
+                  if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
+                  return `
+                    <tr>
+                      <th style="width:10%;">Step-${start}</th>
+                      <td style="width:40%;">
+                        ${firstTitle?.trim() ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}` : ""}
+                      </td>
+                      <th style="width:10%;">Step-${start + 1}</th>
+                      <td style="width:40%;">
+                        ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
+                      </td>
+                    </tr>`;
+                }).join("")}
+            </tbody>
+          </table>
 
-<tr>
-<th>Project Details</th>
-<td>${sanitize(data.description)}</td>
-<th>Client</th>
-<td>${data.customerName || ""}</td>
-</tr>
+          ${data.reportImage ? `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">WORK PLAN</h2>
+              <div class="ship-image">
+                <img src="${data.reportImage}" />
+              </div>
+            </div>` : ""}
 
-<tr>
-<th>Mode of Contract</th>
-<td>${data.modeOfContract || ""}</td>
-<th>Riding crew Nos.</th>
-<td>${data.ridgingCrewNos || ""}</td>
-</tr>
+          ${Object.entries(weeklyReports).map(([week, reports]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work done for the Week - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Activities</th>
+                    ${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reports.map((r: any) => `
+                    <tr>
+                      <td>Day ${r.day_num}</td>
+                      <td>${r.date}</td>
+                      <td>${r.location || ""}</td>
+                      <td>${r.activities || ""}</td>
+                      ${data?.includeHBMHours ? `<td>${r.hbmHours || ""}</td>` : ``}
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
 
-<tr>
-<th>PPE</th>
-<td>${data.ppe || ""}</td>
-<th>Working Hours</th>
-<td>${data.workingHours || ""}</td>
-</tr>
-</tbody>
+          ${gallery.map((g: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;text-transform: capitalize;">${g.title}</h2>
+              <h2 style="text-align:center;">${g.description}</h2>
+              <table class="image-table">
+                <tbody>
+                  ${g.photos.reduce((rows: any[], img: any, idx: number) => {
+                    if (idx % 2 === 0) rows.push([img]);
+                    else rows[rows.length - 1].push(img);
+                    return rows;
+                  }, []).map((row: any[]) => `
+                    <tr>
+                      ${row.map(img => `<td><img src="${img.filePath}" style="width:100%;height:auto;" /></td>`).join("")}
+                      ${row.length === 1 ? "<td></td>" : ""}
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Consumables Used - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr><th>Date</th><th>Item</th><th>Qty</th></tr>
+                </thead>
+                <tbody>
+                  ${items.map((i: any) => `<tr><td>${i.date}</td><td>${i.itemName}</td><td>${i.quantity}</td></tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${Object.entries(plannedReports).map(([week, reports]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work Planned for the Week - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr><th>Day</th><th>Date</th><th>Location</th><th>Activities</th></tr>
+                </thead>
+                <tbody>
+                  ${reports.map((r: any) => `
+                    <tr>
+                      <td>Day ${r.day_num}</td>
+                      <td>${r.date}</td>
+                      <td>${r.location || ""}</td>
+                      <td>${r.activities || ""}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work Remaining Days</h2>
+              <table style="width:100%; border-collapse:collapse;" border="1">
+                <thead>
+                  <tr>
+                    <th style="padding:8px; text-align:left;">Location</th>
+                    <th style="padding:8px; text-align:left;">Remaining Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.workRemainingDays.map((item: any) => `
+                    <tr>
+                      <td style="padding:8px;">${item.location || "-"}</td>
+                      <td style="padding:8px;">${item.days || "-"}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>` : ""}
+        </div>
+      </td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space">
+          <div class="footer">
+            <div class="footer-content">
+              <span>🌐 ${data.company?.website || ""}</span>
+              <span>✉ ${data.company?.email || ""}</span>
+              <span>☎ ${data.company?.phone || ""}</span>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </tfoot>
 </table>
-
-<h3 class="section-title">
-COATING REPAIR PROCEDURE FOR MAIN DECK
-</h3>
-
-<table class="steps-table">
-<tbody>
-${[1, 3, 5]
-  .map((start) => {
-    const firstTitle = data[`additionalField${start}Title`];
-    const firstDesc = data[`additionalField${start}Description`];
-
-    const secondTitle = data[`additionalField${start + 1}Title`];
-    const secondDesc = data[`additionalField${start + 1}Description`];
-
-    if (!firstTitle?.trim() && !secondTitle?.trim()) {
-      return "";
-    }
-
-    return `
-<tr>
-  <th style="width:10%;">Step-${start}</th>
-  <td style="width:40%;">
-    ${
-      firstTitle?.trim()
-        ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}`
-        : ""
-    }
-  </td>
-
-  <th style="width:10%;">Step-${start + 1}</th>
-  <td style="width:40%;">
-    ${
-      secondTitle?.trim()
-        ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}`
-        : ""
-    }
-  </td>
-</tr>
-`;
-  })
-  .join("")}
-</tbody>
-
-</table>
-
-${
-  data.reportImage
-    ? `
-  <div class="page-break">
-<h2 style="text-align:center;color:red;">WORK PLAN</h2>
-<div class="ship-image">
-<img src="${data.reportImage}" />
-</div>
-`
-    : ""
-}
-
-${Object.entries(weeklyReports)
-  .map(
-    ([week, reports]: any) => `
-<div class="page-break">
-<h2 style="text-align:center;color:red;">
-Work done for the Week - ${week}
-</h2>
-
-<table class="project-table">
-<thead>
-<tr>
-<th>Day</th>
-<th>Date</th>
-<th>Location</th>
-<th>Activities</th>
-${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
-</tr>
-</thead>
-<tbody>
-${reports
-  .map(
-    (r: any) => `
-<tr>
-<td>Day ${r.day_num}</td>
-<td>${r.date}</td>
-<td>${r.location || ""}</td>
-<td>${r.activities || ""}</td>
-${data?.includeHBMHours ? `<td>${r.hbmHours || ""}</td>` : ``}
-</tr>
-`,
-  )
-  .join("")}
-</tbody>
-</table>
-</div>
-`,
-  )
-  .join("")}
-
-${gallery
-  .map(
-    (g: any) => `
-<div class="page-break">
-<h2 style="text-align:center;color:red;text-transform: capitalize;">${g.title}</h2>
-<h2 style="text-align:center;">${g.description}</h2>
-<table class="image-table">
-<tbody>
-${g.photos
-  .reduce((rows: any[], img: any, idx: number) => {
-    if (idx % 2 === 0) rows.push([img]);
-    else rows[rows.length - 1].push(img);
-    return rows;
-  }, [])
-  .map(
-    (row: any[]) => `
-<tr>
-${row
-  .map(
-    (img) => `
-<td>
-  <img src="${img.filePath}" style="width:100%;height:auto;" />
-</td>
-`,
-  )
-  .join("")}
-${row.length === 1 ? "<td></td>" : ""}
-</tr>
-`,
-  )
-  .join("")}
-</tbody>
-</table>
-</div>
-`,
-  )
-  .join("")}
-
-${Object.entries(weeklyConsumables)
-  .map(
-    ([week, items]: any) => `
-<div class="page-break">
-<h2 style="text-align:center;color:red;">
-Consumables Used - ${week}
-</h2>
-
-<table class="project-table">
-<thead>
-<tr>
-<th>Date</th>
-<th>Item</th>
-<th>Qty</th>
-</tr>
-</thead>
-<tbody>
-${items
-  .map(
-    (i: any) => `
-<tr>
-<td>${i.date}</td>
-<td>${i.itemName}</td>
-<td>${i.quantity}</td>
-</tr>
-`,
-  )
-  .join("")}
-</tbody>
-</table>
-</div>
-`,
-  )
-  .join("")}
-
-${Object.entries(plannedReports)
-  .map(
-    ([week, reports]: any) => `
-<div class="page-break">
-<h2 style="text-align:center;color:red;">
-Work Planned for the Week - ${week}
-</h2>
-
-<table class="project-table">
-<thead>
-<tr>
-<th>Day</th>
-<th>Date</th>
-<th>Location</th>
-<th>Activities</th>
-</tr>
-</thead>
-<tbody>
-${reports
-  .map(
-    (r: any) => `
-<tr>
-<td>Day ${r.day_num}</td>
-<td>${r.date}</td>
-<td>${r.location || ""}</td>
-<td>${r.activities || ""}</td>
-</tr>
-`,
-  )
-  .join("")}
-</tbody>
-</table>
-</div>
-`,
-  )
-  .join("")}
-
-  ${
-    data.workRemainingDays && data.workRemainingDays.length > 0
-      ? `
-  <div class="page-break">
-<h2 style="text-align:center;color:red;">
-Work Remaining Days
-</h2>
-
-    <table style="width:100%; border-collapse:collapse;" border="1">
-      <thead>
-        <tr>
-          <th style="padding:8px; text-align:left;">Location</th>
-          <th style="padding:8px; text-align:left;">Remaining Days</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${data.workRemainingDays
-          .map(
-            (item: any) => `
-          <tr>
-            <td style="padding:8px;">${item.location || "-"}</td>
-            <td style="padding:8px;">${item.days || "-"}</td>
-          </tr>
-        `,
-          )
-          .join("")}
-      </tbody>
-    </table>
-  </div>
-`
-      : ""
-  }
-
-<div class="footer">
-<div class="footer-content">
-<span>🌐 ${data.company?.website || ""}</span>
-<span>✉ ${data.company?.email || ""}</span>
-<span>☎ ${data.company?.phone || ""}</span>
-</div>
-</div>
-
-</div>
 </body>
 </html>
 `;
@@ -1896,11 +1642,10 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 100px;               /* MUST MATCH CONTAINER PADDING */
+  height: 160px;               /* MUST MATCH CONTAINER PADDING */
   background: #ffffff;
   z-index: 1000;
   padding: 10px 20px;
-  border-bottom: 1px solid #0019A5;
 }
 
 .top-header {
@@ -1910,7 +1655,7 @@ body {
 }
 
 .top-header img {
-  height: 60px;
+  height: 120px;
 }
 
 /* ===== FIXED FOOTER ===== */
@@ -1919,10 +1664,8 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 80px;                /* MUST MATCH CONTAINER PADDING */
+  height: 60px;                /* MUST MATCH CONTAINER PADDING */
   background: #ffffff;
-  border-top: 1px solid #0019A5;
-  border-bottom: 1px solid #0019A5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1941,8 +1684,6 @@ body {
   max-width: 900px;
   margin: auto;
 
-  padding-top: 130px;   /* header height + spacing */
-  padding-bottom: 100px; /* footer height + spacing */
   padding-left: 10px;
   padding-right: 10px;
 }
@@ -1961,7 +1702,7 @@ body {
 /* ===== SHIP IMAGE ===== */
 .ship-image img {
   width: 100%;
-  max-height: 200px;
+  max-height: 160px;
   object-fit: cover;
   border-radius: 15px;
 }
@@ -2085,168 +1826,130 @@ body {
 </head>
 
 <body onload="window.print()">
-<div class="print-header">
-  <div class="top-header">
-    <img src="${data.company?.logo || ""}" />
-    <div>${data.company?.address || ""}</div>
-  </div>
-</div>
+<table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+  <thead>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space" style="height: 160px;"><div class="print-header">
+            <div class="top-header">
+              <img src="${data.company?.logo || ""}" />
+              <div>${data.company?.address || ""}</div>
+            </div>
+          </div></div></td></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="report-content-cell">
+        <div class="container">
+          <!-- TITLE -->
+          <div class="main-title">
+            ${data.title || ""}<br/>
+            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span class="vessel">${data.vesselName || ""}</span>
+          </div>
 
-<div class="container">
+          <!-- IMAGE -->
+          <div class="ship-image">
+            <img src="${data.vesselImage || ""}" />
+          </div>
 
-<!-- TITLE -->
-<div class="main-title">
-  ${data.title || ""}<br/>
-  <span class="highlight">${sanitize(data.description)}</span><br/>
-  <span class="vessel">${data.vesselName || ""}</span>
-</div>
+          <!-- PROJECT HIGHLIGHTS HEADER -->
+          <div class="highlights-header">
+            <div class="left-title">PROJECT HIGHLIGHTS</div>
+            <div class="right-date">
+              Report Date: ${data.reportDate}
+            </div>
+          </div>
 
-<!-- IMAGE -->
-<div class="ship-image">
-  <img src="${data.vesselImage || ""}" />
-</div>
+          <!-- PROJECT TABLE -->
+          <table class="project-table">
+            <tbody>
+              <tr>
+                <th>Project Start Date</th>
+                <td>${data.startDate || ""}</td>
+                <th>Vessel Name</th>
+                <td>${data.vesselName || ""}</td>
+              </tr>
+              <tr>
+                <th>Project Details</th>
+                <td>${sanitize(data.description)}</td>
+                <th>Client</th>
+                <td>${data.customerName || ""}</td>
+              </tr>
+              <tr>
+                <th>Mode of Contract</th>
+                <td>${data.modeOfContract || ""}</td>
+                <th>Riding crew Nos.</th>
+                <td>${data.ridgingCrewNos || ""}</td>
+              </tr>
+              <tr>
+                <th>PPE</th>
+                <td>${data.ppe || ""}</td>
+                <th>Working Hours</th>
+                <td>${data.workingHours || ""}</td>
+              </tr>
+            </tbody>
+          </table>
 
-<!-- PROJECT HIGHLIGHTS HEADER -->
-<div class="highlights-header">
-  <div class="left-title">PROJECT HIGHLIGHTS</div>
-  <div class="right-date">
-    Report Date: ${data.reportDate}
-  </div>
-</div>
+          <h3 class="section-title">
+            COATING REPAIR PROCEDURE FOR MAIN DECK
+          </h3>
 
-<!-- PROJECT TABLE -->
-<table class="project-table">
-<tbody>
-<tr>
-<th>Project Start Date</th>
-<td>${data.startDate || ""}</td>
-<th>Vessel Name</th>
-<td>${data.vesselName || ""}</td>
-</tr>
+          <table class="steps-table">
+            <tbody>
+              ${[1, 3, 5]
+                .map((start) => {
+                  const firstTitle = data[`additionalField${start}Title`];
+                  const firstDesc = data[`additionalField${start}Description`];
+                  const secondTitle = data[`additionalField${start + 1}Title`];
+                  const secondDesc = data[`additionalField${start + 1}Description`];
+                  if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
+                  return `
+                    <tr>
+                      <th style="width:10%;">Step-${start}</th>
+                      <td style="width:40%;">
+                        ${firstTitle?.trim() ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}` : ""}
+                      </td>
+                      <th style="width:10%;">Step-${start + 1}</th>
+                      <td style="width:40%;">
+                        ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
+                      </td>
+                    </tr>`;
+                }).join("")}
+            </tbody>
+          </table>
 
-<tr>
-<th>Project Details</th>
-<td>${sanitize(data.description)}</td>
-<th>Client</th>
-<td>${data.customerName || ""}</td>
-</tr>
-
-<tr>
-<th>Mode of Contract</th>
-<td>${data.modeOfContract || ""}</td>
-<th>Riding crew Nos.</th>
-<td>${data.ridgingCrewNos || ""}</td>
-</tr>
-
-<tr>
-<th>PPE</th>
-<td>${data.ppe || ""}</td>
-<th>Working Hours</th>
-<td>${data.workingHours || ""}</td>
-</tr>
-</tbody>
+          ${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Consumables Used - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr><th>Date</th><th>Item</th><th>Qty</th></tr>
+                </thead>
+                <tbody>
+                  ${items.map((i: any) => `<tr><td>${i.date}</td><td>${i.itemName}</td><td>${i.quantity}</td></tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+        </div>
+      </td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space">
+          <div class="footer">
+            <div class="footer-content">
+              <span>🌐 ${data.company?.website || ""}</span>
+              <span>✉ ${data.company?.email || ""}</span>
+              <span>☎ ${data.company?.phone || ""}</span>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </tfoot>
 </table>
-
-<h3 class="section-title">
-COATING REPAIR PROCEDURE FOR MAIN DECK
-</h3>
-
-<table class="steps-table">
-<tbody>
-${[1, 3, 5]
-  .map((start) => {
-    const firstTitle = data[`additionalField${start}Title`];
-    const firstDesc = data[`additionalField${start}Description`];
-
-    const secondTitle = data[`additionalField${start + 1}Title`];
-    const secondDesc = data[`additionalField${start + 1}Description`];
-
-    if (!firstTitle?.trim() && !secondTitle?.trim()) {
-      return "";
-    }
-
-    return `
-<tr>
-  <th style="width:10%;">Step-${start}</th>
-  <td style="width:40%;">
-    ${
-      firstTitle?.trim()
-        ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}`
-        : ""
-    }
-  </td>
-
-  <th style="width:10%;">Step-${start + 1}</th>
-  <td style="width:40%;">
-    ${
-      secondTitle?.trim()
-        ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}`
-        : ""
-    }
-  </td>
-</tr>
-`;
-  })
-  .join("")}
-</tbody>
-
-</table>
-
-
-${Object.entries(weeklyConsumables)
-  .map(
-    ([week, items]: any) => `
-<div class="page-break">
-<h2 style="text-align:center;color:red;">
-Consumables Used - ${week}
-</h2>
-
-<table class="project-table">
-<thead>
-<tr>
-<th>Date</th>
-<th>Item</th>
-<th>Qty</th>
-</tr>
-</thead>
-<tbody>
-${items
-  .map(
-    (i: any) => `
-<tr>
-<td>${i.date}</td>
-<td>${i.itemName}</td>
-<td>${i.quantity}</td>
-</tr>
-`,
-  )
-  .join("")}
-</tbody>
-</table>
-</div>
-`,
-  )
-  .join("")}
-
-<div class="footer">
-<div class="footer-content">
-<span>🌐 ${data.company?.website || ""}</span>
-<span>✉ ${data.company?.email || ""}</span>
-<span>☎ ${data.company?.phone || ""}</span>
-</div>
-</div>
-
-</div>
 </body>
 </html>
 `;
-}
-
-function imageToBase64(relativePath: string) {
-  const absPath = path.join(process.cwd(), relativePath);
-  const ext = path.extname(absPath).replace(".", "");
-  const buffer = fs.readFileSync(absPath);
-  return `data:image/${ext};base64,${buffer.toString("base64")}`;
 }
 
 declare module "express-session" {
@@ -2275,6 +1978,8 @@ const storage_multer = multer.diskStorage({
       uploadDir = "uploads/company";
     } else if (req.originalUrl?.includes("/api/purchase-orders")) {
       uploadDir = "uploads/purchase-order";
+    } else if (req.originalUrl?.includes("/api/purchase-invoices")) {
+      uploadDir = "uploads/purchase-invoice";
     } else if (req.originalUrl?.includes("reimbursements")) {
       uploadDir = "uploads/reimbursements";
     } else if (req.originalUrl?.includes("/api/print")) {
@@ -2641,79 +2346,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard routes
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     try {
-      const projects = await storage.getProjects();
+      const allProjects = await storage.getProjects();
       const inventoryItems = await storage.getInventoryItems();
 
-      // Current month calculations
       const currentDate = new Date();
       const currentMonth = currentDate.getMonth();
       const currentYear = currentDate.getFullYear();
-
-      // Previous month calculations
       const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
       const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 
-      // Filter projects by current month
-      const currentMonthProjects = projects.filter((p) => {
-        const projectDate = new Date(p.createdAt);
-        return (
-          projectDate.getMonth() === currentMonth &&
-          projectDate.getFullYear() === currentYear
-        );
-      });
-
-      // Filter projects by previous month
-      const previousMonthProjects = projects.filter((p) => {
-        const projectDate = new Date(p.createdAt);
-        return (
-          projectDate.getMonth() === previousMonth &&
-          projectDate.getFullYear() === previousYear
-        );
-      });
-
-      // Current stats
-      const activeProjects = projects.filter(
+      const activeProjects = allProjects.filter(
         (p) => p.status === "in_progress",
       ).length;
-      const completedProjects = projects.filter(
-        (p) => p.status === "completed",
-      ).length;
+
+      const completedThisMonth = allProjects.filter((p) => {
+        if (p.status !== "completed") return false;
+        if (!p.actualEndDate) return false;
+        const endDate = new Date(p.actualEndDate);
+        return endDate.getMonth() === currentMonth && endDate.getFullYear() === currentYear;
+      }).length;
+
+      const completedLastMonth = allProjects.filter((p) => {
+        if (p.status !== "completed") return false;
+        if (!p.actualEndDate) return false;
+        const endDate = new Date(p.actualEndDate);
+        return endDate.getMonth() === previousMonth && endDate.getFullYear() === previousYear;
+      }).length;
+
       const lowStockItems = inventoryItems.filter(
         (item) => item.currentStock <= item.minStockLevel,
       ).length;
 
-      // Previous stats for comparison
-      const previousActiveProjects = previousMonthProjects.filter(
-        (p) => p.status === "in_progress",
-      ).length;
-      const previousCompletedProjects = previousMonthProjects.filter(
-        (p) => p.status === "completed",
-      ).length;
-      const previousLowStockItems = Math.max(0, lowStockItems - 1); // Simulate previous month data
+      const lowStockItemsList = inventoryItems
+        .filter((item) => item.currentStock <= item.minStockLevel)
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          currentStock: item.currentStock,
+          minStockLevel: item.minStockLevel,
+        }));
 
-      // Revenue calculations
-      const currentMonthRevenue = currentMonthProjects.reduce(
-        (sum, project) => {
-          return sum + parseFloat(project.actualCost || "0");
-        },
-        0,
+      const allSalesInvoices = await db.select({
+        id: salesInvoices.id,
+        invoiceDate: salesInvoices.invoiceDate,
+        totalAmount: salesInvoices.totalAmount,
+        status: salesInvoices.status,
+      }).from(salesInvoices);
+
+      const currentMonthInvoices = allSalesInvoices.filter((inv) => {
+        if (!inv.invoiceDate) return false;
+        const invDate = new Date(inv.invoiceDate);
+        return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear
+          && inv.status !== "cancelled" && inv.status !== "rejected" && inv.status !== "draft";
+      });
+
+      const previousMonthInvoices = allSalesInvoices.filter((inv) => {
+        if (!inv.invoiceDate) return false;
+        const invDate = new Date(inv.invoiceDate);
+        return invDate.getMonth() === previousMonth && invDate.getFullYear() === previousYear
+          && inv.status !== "cancelled" && inv.status !== "rejected" && inv.status !== "draft";
+      });
+
+      const currentMonthRevenue = currentMonthInvoices.reduce(
+        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0,
       );
 
-      const previousMonthRevenue = previousMonthProjects.reduce(
-        (sum, project) => {
-          return sum + parseFloat(project.actualCost || "0");
-        },
-        0,
+      const previousMonthRevenue = previousMonthInvoices.reduce(
+        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0,
       );
 
-      // Calculate changes
+      const previousActiveProjects = allProjects.filter((p) => {
+        if (p.status !== "in_progress") return false;
+        if (!p.startDate) return true;
+        const startDate = new Date(p.startDate);
+        return startDate <= new Date(previousYear, previousMonth + 1, 0);
+      }).length;
+
       const activeProjectsChange = activeProjects - previousActiveProjects;
-      const completedProjectsChange =
-        completedProjects - previousCompletedProjects;
-      const lowStockItemsChange = lowStockItems - previousLowStockItems;
-      const monthlyRevenueChange = currentMonthRevenue - previousMonthRevenue;
+      const completedProjectsChange = completedThisMonth - completedLastMonth;
 
-      // Calculate percentage change for revenue
       const monthlyRevenuePercentageChange =
         previousMonthRevenue > 0
           ? Math.round(
@@ -2721,43 +2432,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 previousMonthRevenue) *
                 100,
             )
-          : 0;
-
-      // Generate labels
-      const activeProjectsChangeLabel =
-        activeProjectsChange >= 0
-          ? `+${activeProjectsChange} from last month`
-          : `${activeProjectsChange} from last month`;
-
-      const completedProjectsChangeLabel =
-        completedProjectsChange >= 0
-          ? `+${completedProjectsChange} vs target`
-          : `${completedProjectsChange} vs target`;
+          : currentMonthRevenue > 0 ? 100 : 0;
 
       const lowStockItemsChangeLabel =
         lowStockItems > 0 ? "Action needed" : "All items stocked";
 
-      const monthlyRevenueChangeLabel =
-        monthlyRevenuePercentageChange >= 0
-          ? `+${monthlyRevenuePercentageChange}% from last month`
-          : `${monthlyRevenuePercentageChange}% from last month`;
-
       res.json({
         activeProjects,
         activeProjectsChange,
-        activeProjectsChangeLabel,
-        completedProjects,
+        activeProjectsChangeLabel: activeProjectsChange >= 0
+          ? `+${activeProjectsChange} from last month`
+          : `${activeProjectsChange} from last month`,
+        completedProjects: completedThisMonth,
         completedProjectsChange,
-        completedProjectsChangeLabel,
+        completedProjectsChangeLabel: completedProjectsChange >= 0
+          ? `+${completedProjectsChange} vs last month`
+          : `${completedProjectsChange} vs last month`,
         lowStockItems,
-        lowStockItemsChange,
+        lowStockItemsChange: lowStockItems,
         lowStockItemsChangeLabel,
+        lowStockItemsList,
         monthlyRevenue: currentMonthRevenue,
-        monthlyRevenueChange,
-        monthlyRevenueChangeLabel,
+        monthlyRevenueChange: currentMonthRevenue - previousMonthRevenue,
+        monthlyRevenueChangeLabel: monthlyRevenuePercentageChange >= 0
+          ? `+${monthlyRevenuePercentageChange}% from last month`
+          : `${monthlyRevenuePercentageChange}% from last month`,
         monthlyRevenuePercentageChange,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Dashboard stats error:", error?.message || error);
       res.status(500).json({ message: "Failed to get dashboard stats" });
     }
   });
@@ -2855,7 +2558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   previousMonthRevenue) *
                   100,
               )
-            : 0;
+            : currentMonthRevenue > 0 ? 100 : 0;
 
         const currentMonthExpenses = purchaseInvoicesList
           .filter((inv: any) => {
@@ -2890,7 +2593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   previousMonthExpenses) *
                   100,
               )
-            : 0;
+            : currentMonthExpenses > 0 ? 100 : 0;
 
         const pendingApprovalSales = salesInvoices.filter(
           (inv: any) => inv.status === "pending_approval",
@@ -4917,6 +4620,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.get(
+    "/api/reports/project-location/:projectId",
+    requireAuth,
+    requireRole(["admin", "project_manager", "finance"]),
+    async (req, res) => {
+      try {
+        const projectId = parseInt(req.params.projectId);
+        if (isNaN(projectId)) {
+          return res.status(400).json({ message: "Invalid project ID" });
+        }
+
+        const project = await storage.getProject(projectId);
+        if (!project) {
+          return res.status(404).json({ message: "Project not found" });
+        }
+
+        const activities = await db
+          .select()
+          .from(dailyActivities)
+          .where(eq(dailyActivities.projectId, projectId))
+          .orderBy(desc(dailyActivities.date));
+
+        const locationMap: Record<
+          string,
+          {
+            totalDays: number;
+            dates: string[];
+            activities: {
+              date: string;
+              completedTasks: string | null;
+              remarks: string | null;
+              hbmDailyRunningHours: string | null;
+            }[];
+          }
+        > = {};
+
+        function extractLocationsFromTasks(text: string): string[] {
+          const matches = text.match(/\[([^\]]+)\]/g);
+          if (!matches) return [];
+          return matches.map((m) => m.slice(1, -1).trim()).filter(Boolean);
+        }
+
+        function addToLocationMap(
+          loc: string,
+          activity: any,
+          dateStr: string | null,
+        ) {
+          if (!locationMap[loc]) {
+            locationMap[loc] = { totalDays: 0, dates: [], activities: [] };
+          }
+          if (dateStr && !locationMap[loc].dates.includes(dateStr)) {
+            locationMap[loc].dates.push(dateStr);
+            locationMap[loc].totalDays++;
+          }
+          locationMap[loc].activities.push({
+            date: dateStr || "",
+            completedTasks: activity.completedTasks,
+            remarks: activity.remarks,
+            hbmDailyRunningHours: activity.hbmDailyRunningHours,
+          });
+        }
+
+        for (const activity of activities) {
+          const dateStr = activity.date
+            ? new Date(activity.date).toISOString().split("T")[0]
+            : null;
+
+          const loc = activity.location?.trim();
+          if (loc) {
+            addToLocationMap(loc, activity, dateStr);
+          } else if (activity.completedTasks) {
+            const extracted = extractLocationsFromTasks(
+              activity.completedTasks,
+            );
+            if (extracted.length > 0) {
+              for (const extractedLoc of extracted) {
+                addToLocationMap(extractedLoc, activity, dateStr);
+              }
+            } else {
+              addToLocationMap("Unspecified Location", activity, dateStr);
+            }
+          } else {
+            addToLocationMap("Unspecified Location", activity, dateStr);
+          }
+        }
+
+        const locations = Object.entries(locationMap)
+          .map(([location, data]) => ({
+            location,
+            totalDays: data.totalDays,
+            activities: data.activities,
+          }))
+          .sort((a, b) => b.totalDays - a.totalDays);
+
+        res.json({
+          project: {
+            id: project.id,
+            title: project.title,
+            locations: project.locations || [],
+          },
+          locationReport: locations,
+          totalActivities: activities.length,
+        });
+      } catch (error) {
+        console.error("Project location report error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to generate project location report" });
+      }
+    },
+  );
+
   // Planned Activities routes
   app.get(
     "/api/projects/:projectId/planned-activities",
@@ -5562,8 +5377,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
-      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const month = req.query.month
+        ? parseInt(req.query.month as string)
+        : undefined;
+      const year = req.query.year
+        ? parseInt(req.query.year as string)
+        : undefined;
 
       const entries = await storage.getPayrollEntries(month, year, employee.id);
       const paidEntries = entries.filter((e: any) => e.status === "paid");
@@ -5799,6 +5618,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Create payroll deduction error:", error);
         res.status(500).json({ message: "Failed to create payroll deduction" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/sales/stats",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (_req, res) => {
+      try {
+        const stats = await storage.getSalesStats();
+        res.json(stats);
+      } catch (error) {
+        console.error("Get sales stats error:", error);
+        res.status(500).json({ message: "Failed to get sales stats" });
       }
     },
   );
@@ -6051,7 +5885,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Generate invoice number if not already assigned
         let invoiceNumber = invoice.invoiceNumber;
         if (!invoiceNumber) {
-          invoiceNumber = `INV-${Date.now()}`;
+          invoiceNumber = await storage.generateNextNumber(
+            "INV",
+            salesInvoices,
+            salesInvoices.invoiceNumber,
+          );
         }
 
         // Update invoice to assign invoice number and set initial status to unpaid
@@ -6360,12 +6198,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existingInvoice) {
           return res.status(404).json({ message: "Invoice not found" });
         }
-        if (existingInvoice.status !== "draft") {
-          return res
-            .status(400)
-            .json({ message: "Only draft invoices can be edited" });
+        const isAdmin = req.session.userRole === "admin";
+        const editableStatuses = ["draft", "approved", "partial", "paid"];
+        if (!editableStatuses.includes(existingInvoice.status)) {
+          return res.status(400).json({
+            message: "This invoice cannot be edited in its current status",
+          });
         }
-        const invoiceData = req.body;
+        if (existingInvoice.status !== "draft" && !isAdmin) {
+          return res
+            .status(403)
+            .json({ message: "Only admin can edit non-draft invoices" });
+        }
+        const {
+          editNote,
+          status: _status,
+          paidAmount: _paidAmount,
+          ...invoiceData
+        } = req.body;
+        if (!editNote || !editNote.trim()) {
+          return res.status(400).json({
+            message: "Edit note is required when updating an invoice",
+          });
+        }
+
+        const changes: Record<string, { old: any; new: any }> = {};
+        const fieldsToTrack = [
+          "customerId",
+          "totalAmount",
+          "subtotal",
+          "taxAmount",
+          "discountPercentage",
+          "discount",
+          "invoiceDate",
+          "dueDate",
+          "currency",
+          "exchangeRate",
+          "remarks",
+          "workOrderNumber",
+          "paymentTerms",
+          "bankAccount",
+          "billingAddress",
+          "termsAndConditions",
+        ];
+        for (const field of fieldsToTrack) {
+          const oldVal = (existingInvoice as any)[field];
+          const newVal = invoiceData[field];
+          if (
+            newVal !== undefined &&
+            String(oldVal || "") !== String(newVal || "")
+          ) {
+            changes[field] = { old: oldVal, new: newVal };
+          }
+        }
+        if (
+          JSON.stringify(existingInvoice.items) !==
+          JSON.stringify(invoiceData.items)
+        ) {
+          changes["items"] = {
+            old: existingInvoice.items,
+            new: invoiceData.items,
+          };
+        }
+
         const invoice = await storage.updateSalesInvoice(
           invoiceId,
           invoiceData,
@@ -6375,10 +6270,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Invoice not found" });
         }
 
+        if (existingInvoice.status !== "draft") {
+          await storage.updateSalesInvoiceGLEntries(invoiceId);
+
+          const paidAmount = parseFloat(invoice.paidAmount || "0");
+          const newTotal = parseFloat(invoice.totalAmount || "0");
+          let newStatus = existingInvoice.status;
+          if (paidAmount > 0 && newTotal > 0) {
+            if (paidAmount >= newTotal) {
+              newStatus = "paid";
+            } else {
+              newStatus = "partial";
+            }
+          } else if (
+            paidAmount === 0 &&
+            (existingInvoice.status === "paid" ||
+              existingInvoice.status === "partial")
+          ) {
+            newStatus = "approved";
+          }
+
+          if (newStatus !== existingInvoice.status) {
+            await storage.updateSalesInvoice(invoiceId, {
+              status: newStatus,
+            } as any);
+            invoice.status = newStatus;
+            changes["status"] = { old: existingInvoice.status, new: newStatus };
+          }
+        }
+
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "sales",
+          invoiceId,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
+
         res.json(invoice);
       } catch (error) {
         console.error("Sales invoice update error:", error);
         res.status(500).json({ message: "Failed to update sales invoice" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/sales-invoices/:id/edit-history",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const history = await storage.getInvoiceEditHistory("sales", id);
+        res.json(history);
+      } catch (error) {
+        console.error("Get sales invoice edit history error:", error);
+        res.status(500).json({ message: "Failed to get edit history" });
       }
     },
   );
@@ -6512,6 +6462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
+        const search = req.query.search as string;
         const status = req.query.status as string;
         const startDate = req.query.startDate as string;
         const endDate = req.query.endDate as string;
@@ -6523,6 +6474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : undefined;
 
         const result = await storage.getSalesInvoicesPaginated(page, limit, {
+          search,
           status,
           startDate,
           endDate,
@@ -7530,79 +7482,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.put("/api/reimbursements/:id", requireAuth, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const userId = req.session.userId!;
-      const userRole = req.session.userRole!;
-      const { amount, description, originalExpenseDate, projectId } = req.body;
+  app.put(
+    "/api/reimbursements/:id",
+    requireAuth,
+    upload.array("attachments", 5),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const userId = req.session.userId!;
+        const userRole = req.session.userRole!;
+        const {
+          amount,
+          description,
+          originalExpenseDate,
+          projectId,
+          existingAttachments,
+        } = req.body;
 
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid reimbursement ID" });
-      }
+        if (isNaN(id)) {
+          return res.status(400).json({ message: "Invalid reimbursement ID" });
+        }
 
-      const reimbursement = await storage.getReimbursement(id);
-      if (!reimbursement) {
-        return res.status(404).json({ message: "Reimbursement not found" });
-      }
+        const reimbursement = await storage.getReimbursement(id);
+        if (!reimbursement) {
+          return res.status(404).json({ message: "Reimbursement not found" });
+        }
 
-      // Only pending reimbursements can be edited
-      if (reimbursement.status !== "pending") {
-        return res
-          .status(400)
-          .json({ message: "Only pending reimbursements can be edited" });
-      }
-
-      // Only the creator or admin can edit
-      if (userRole !== "admin" && reimbursement.userId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      // Validation
-      if (amount && (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)) {
-        return res
-          .status(400)
-          .json({ message: "Amount must be greater than 0" });
-      }
-      if (
-        description &&
-        (typeof description !== "string" || description.trim().length === 0)
-      ) {
-        return res.status(400).json({ message: "Description cannot be empty" });
-      }
-      if (originalExpenseDate) {
-        const expenseDate = new Date(originalExpenseDate);
-        if (isNaN(expenseDate.getTime())) {
+        // Only pending reimbursements can be edited
+        if (reimbursement.status !== "pending") {
           return res
             .status(400)
-            .json({ message: "Invalid expense date format" });
+            .json({ message: "Only pending reimbursements can be edited" });
         }
+
+        // Only the creator or admin can edit
+        if (userRole !== "admin" && reimbursement.userId !== userId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+
+        // Validation
+        if (amount && (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)) {
+          return res
+            .status(400)
+            .json({ message: "Amount must be greater than 0" });
+        }
+        if (
+          description &&
+          (typeof description !== "string" || description.trim().length === 0)
+        ) {
+          return res
+            .status(400)
+            .json({ message: "Description cannot be empty" });
+        }
+        if (originalExpenseDate) {
+          const expenseDate = new Date(originalExpenseDate);
+          if (isNaN(expenseDate.getTime())) {
+            return res
+              .status(400)
+              .json({ message: "Invalid expense date format" });
+          }
+        }
+
+        const updateData: any = {};
+        if (amount) updateData.amount = parseFloat(amount).toFixed(2);
+        if (description) updateData.description = description.trim();
+        if (originalExpenseDate)
+          updateData.originalExpenseDate = originalExpenseDate;
+        if (projectId !== undefined)
+          updateData.projectId = projectId ? parseInt(projectId) : null;
+
+        // Handle attachments
+        let attachments: string[] = [];
+        const isMultipart = req.is("multipart/form-data");
+
+        if (existingAttachments) {
+          const provided = Array.isArray(existingAttachments)
+            ? existingAttachments
+            : [existingAttachments];
+
+          // Security: only allow paths that already belonged to this reimbursement
+          const current = reimbursement.attachments || [];
+          attachments = provided.filter((path) => current.includes(path));
+        } else if (isMultipart) {
+          // In multipart (from our Edit Dialog), if existingAttachments is missing,
+          // it means all existing attachments were removed.
+          attachments = [];
+        } else {
+          // For JSON requests, if attachments field is missing, keep existing ones
+          attachments = reimbursement.attachments || [];
+        }
+
+        // Add new uploads
+        const files = req.files as Express.Multer.File[];
+        if (files && files.length > 0) {
+          const newAttachments = files.map((f) => f.path);
+          attachments = [...attachments, ...newAttachments];
+        }
+
+        updateData.attachments = attachments.length > 0 ? attachments : null;
+
+        const updated = await storage.updateReimbursement(id, updateData);
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update reimbursement error:", error);
+        await storage.createErrorLog({
+          message:
+            "Error in PUT /api/reimbursements/:id: " +
+            (error?.message || "Unknown error"),
+          stack: error?.stack,
+          component: "reimbursements",
+          severity: "error",
+          userId: req.session.userId,
+        });
+        res.status(500).json({ message: "Failed to update reimbursement" });
       }
-
-      const updateData: any = {};
-      if (amount) updateData.amount = parseFloat(amount).toFixed(2);
-      if (description) updateData.description = description.trim();
-      if (originalExpenseDate)
-        updateData.originalExpenseDate = originalExpenseDate;
-      if (projectId !== undefined)
-        updateData.projectId = projectId ? parseInt(projectId) : null;
-
-      const updated = await storage.updateReimbursement(id, updateData);
-      res.json(updated);
-    } catch (error: any) {
-      console.error("Update reimbursement error:", error);
-      await storage.createErrorLog({
-        message:
-          "Error in PUT /api/reimbursements/:id: " +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "reimbursements",
-        severity: "error",
-        userId: req.session.userId,
-      });
-      res.status(500).json({ message: "Failed to update reimbursement" });
-    }
-  });
+    },
+  );
 
   app.delete("/api/reimbursements/:id", requireAuth, async (req, res) => {
     try {
@@ -7709,11 +7704,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Purchase Requests routes
+  app.get("/api/purchase-requests/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getPurchaseRequestStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get purchase request stats error:", error);
+      res.status(500).json({ message: "Failed to get purchase request stats" });
+    }
+  });
+
   app.get("/api/purchase-requests", requireAuth, async (req, res) => {
     try {
       const { userId, userRole } = req.session;
-      const requests = await storage.getPurchaseRequests(userId, userRole);
-      res.json(requests);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const search = (req.query.search as string) || "";
+      const status = (req.query.status as string) || "all";
+      const urgency = (req.query.urgency as string) || "all";
+
+      const result = await storage.getPurchaseRequestsPaginated(page, limit, {
+        userId,
+        userRole,
+        search,
+        status,
+        urgency,
+      });
+      res.json(result);
     } catch (error) {
       console.error("Get purchase requests error:", error);
       res.status(500).json({ message: "Failed to get purchase requests" });
@@ -7754,7 +7771,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use employee ID if found, otherwise use user ID directly
       // const requestedBy = employee ? employee.id : user.id;
 
-       if (!requestedBy) {
+      if (!requestedBy) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
@@ -7813,7 +7830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // const employees = await storage.getEmployees();
         // const employee = employees.find((emp) => emp.userId === user.id);
 
-         // Get userId from session
+        // Get userId from session
         const approvedBy = req.session.userId;
 
         // if (!employee) {
@@ -7865,7 +7882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // const employees = await storage.getEmployees();
         // const employee = employees.find((emp) => emp.userId === user.id);
 
-         // Get userId from session
+        // Get userId from session
         const rejectedBy = req.session.userId;
 
         // if (!employee) {
@@ -7917,17 +7934,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Purchase Orders routes
+  app.get("/api/purchase-orders/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getPurchaseOrderStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get purchase order stats error:", error);
+      res.status(500).json({ message: "Failed to get purchase order stats" });
+    }
+  });
+
   app.get(
     "/api/purchase-orders",
     requireAuth,
     requireRole(["admin", "finance", "project_manager"]),
     async (req, res) => {
       try {
-        const orders = await storage.getPurchaseOrders();
-        res.json(orders);
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || "";
+        const status = (req.query.status as string) || "all";
+        const supplierId = req.query.supplierId ? parseInt(req.query.supplierId as string) : undefined;
+
+        const result = await storage.getPurchaseOrdersPaginated(page, limit, {
+          search,
+          status,
+          supplierId,
+        });
+        res.json(result);
       } catch (error) {
         console.error("Get purchase orders error:", error);
-        res.json([]); // Return empty array instead of error to prevent reports from failing
+        res.json({ data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } });
       }
     },
   );
@@ -7987,6 +8024,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const orderData = {
           ...req.body,
           items: JSON.parse(req.body.items || "[]"),
+          existingFiles: req.body.existingFiles
+            ? JSON.parse(req.body.existingFiles)
+            : undefined,
           files: req.files,
         };
 
@@ -8094,6 +8134,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const id = parseInt(req.params.id);
         const invoice = await storage.getPurchaseInvoice(id);
+        if (invoice?.poId) {
+          const po = await storage.getPurchaseOrder(invoice.poId);
+          invoice.poNumber = po?.poNumber;
+        }
         const supplier = await storage.getSupplier(invoice?.supplierId);
         const company = await storage.getCompany();
         let project = null;
@@ -8177,12 +8221,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Purchase Invoices routes
+  app.get("/api/purchase-invoices/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await storage.getPurchaseStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get purchase stats error:", error);
+      res.status(500).json({ message: "Failed to get purchase stats" });
+    }
+  });
+
   app.get(
     "/api/purchase-invoices",
     requireAuth,
     requireRole(["admin", "finance", "project_manager"]),
     async (req, res) => {
       try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const search = (req.query.search as string) || "";
         const startDate = req.query.startDate as string;
         const endDate = req.query.endDate as string;
         const supplierId = req.query.supplierId
@@ -8190,19 +8247,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : undefined;
         const status = req.query.status as string;
 
-        const invoices = await storage.getPurchaseInvoicesFiltered({
+        const result = await storage.getPurchaseInvoicesPaginated(page, limit, {
           startDate,
           endDate,
           supplierId,
           status,
+          search,
         });
-        res.json(invoices);
+        res.json(result);
       } catch (error) {
         console.error("Get purchase invoices error:", error);
         res.status(500).json({ message: "Failed to get purchase invoices" });
       }
     },
   );
+
 
   app.get(
     "/api/purchase-invoices/:id",
@@ -8231,10 +8290,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/purchase-invoices",
     requireAuth,
     requireRole(["admin", "finance"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const invoiceData = {
           ...req.body,
+          items: JSON.parse(req.body.items || "[]"),
+          files: req.files,
           createdBy: req.session.userId,
         };
 
@@ -8252,16 +8314,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/purchase-invoices/:id",
     requireAuth,
     requireRole(["admin", "finance"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const invoice = await storage.updatePurchaseInvoice(id, req.body);
+        const existingInvoice = await storage.getPurchaseInvoice(id);
+        if (!existingInvoice) {
+          return res
+            .status(404)
+            .json({ message: "Purchase invoice not found" });
+        }
+        const isAdmin = req.session.userRole === "admin";
+        const editableStatuses = ["draft", "approved", "partial", "paid"];
+        if (!editableStatuses.includes(existingInvoice.status)) {
+          return res.status(400).json({
+            message: "This invoice cannot be edited in its current status",
+          });
+        }
+        if (existingInvoice.status !== "draft" && !isAdmin) {
+          return res
+            .status(403)
+            .json({ message: "Only admin can edit non-draft invoices" });
+        }
+        const {
+          editNote,
+          status: _status,
+          paymentStatus: _paymentStatus,
+          paidAmount: _paidAmount,
+          ...invoiceData
+        } = req.body;
+        if (!editNote || !editNote.trim()) {
+          return res.status(400).json({
+            message: "Edit note is required when updating an invoice",
+          });
+        }
+
+        const changes: Record<string, { old: any; new: any }> = {};
+        const fieldsToTrack = [
+          "supplierId",
+          "totalAmount",
+          "subtotal",
+          "taxAmount",
+          "discountPercentage",
+          "discountAmount",
+          "invoiceDate",
+          "dueDate",
+          "currency",
+          "exchangeRate",
+          "notes",
+          "paymentTerms",
+          "bankAccount",
+        ];
+        for (const field of fieldsToTrack) {
+          const oldVal = (existingInvoice as any)[field];
+          const newVal = invoiceData[field];
+          if (
+            newVal !== undefined &&
+            String(oldVal || "") !== String(newVal || "")
+          ) {
+            changes[field] = { old: oldVal, new: newVal };
+          }
+        }
+        if (
+          JSON.stringify(existingInvoice.items) !==
+          JSON.stringify(invoiceData.items)
+        ) {
+          changes["items"] = {
+            old: existingInvoice.items,
+            new: invoiceData.items,
+          };
+        }
+
+        const isApprovedEdit = existingInvoice.status !== "draft";
+
+        const updatedInvoiceData = {
+          ...invoiceData,
+          items: JSON.parse(invoiceData.items || "[]"),
+          existingFiles: req.body.existingFiles
+            ? JSON.parse(req.body.existingFiles)
+            : undefined,
+          files: req.files,
+        };
+
+        const invoice = await storage.updatePurchaseInvoice(
+          id,
+          updatedInvoiceData,
+          isApprovedEdit,
+        );
+
+        if (existingInvoice.status !== "draft") {
+          await storage.updatePurchaseInvoiceGLEntries(id);
+
+          const paidAmount = parseFloat(invoice.paidAmount || "0");
+          const newTotal = parseFloat(invoice.totalAmount || "0");
+          let newPaymentStatus = invoice.paymentStatus;
+          if (paidAmount > 0 && newTotal > 0) {
+            if (paidAmount >= newTotal) {
+              newPaymentStatus = "paid";
+            } else {
+              newPaymentStatus = "partial";
+            }
+          } else if (
+            paidAmount === 0 &&
+            (invoice.paymentStatus === "paid" ||
+              invoice.paymentStatus === "partial")
+          ) {
+            newPaymentStatus = "unpaid";
+          }
+
+          if (newPaymentStatus !== invoice.paymentStatus) {
+            await storage.updatePurchaseInvoice(
+              id,
+              { paymentStatus: newPaymentStatus } as any,
+              false,
+            );
+            invoice.paymentStatus = newPaymentStatus;
+            changes["paymentStatus"] = {
+              old: existingInvoice.paymentStatus,
+              new: newPaymentStatus,
+            };
+          }
+        }
+
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "purchase",
+          invoiceId: id,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
+
         res.json(invoice);
       } catch (error: any) {
         console.error("Update purchase invoice error:", error);
         res.status(400).json({
           message: error.message || "Failed to update purchase invoice",
         });
+      }
+    },
+  );
+
+  app.get(
+    "/api/purchase-invoices/:id/edit-history",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const history = await storage.getInvoiceEditHistory("purchase", id);
+        res.json(history);
+      } catch (error) {
+        console.error("Get purchase invoice edit history error:", error);
+        res.status(500).json({ message: "Failed to get edit history" });
       }
     },
   );
@@ -8894,6 +9100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const proforma = await storage.getProformaInvoice(id);
         const customer = await storage.getCustomer(proforma?.customerId);
         const company = await storage.getCompany();
+        const project = await storage.getProject(proforma?.projectId);
 
         if (!proforma || !customer || !company) {
           return res
@@ -8901,7 +9108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ message: "Proforma invoice or related data not found" });
         }
 
-        const html = generateProformaHTML(proforma, customer, company);
+        const html = generateProformaHTML(proforma, customer, company, project);
 
         res.setHeader("Content-Type", "text/html");
         res.send(html);

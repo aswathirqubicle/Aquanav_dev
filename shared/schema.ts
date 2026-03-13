@@ -405,6 +405,10 @@ export const salesQuotations = pgTable("sales_quotations", {
     .default([]),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   submittedById: integer("submitted_by_id").references(() => users.id),
@@ -454,6 +458,10 @@ export const salesInvoices = pgTable("sales_invoices", {
     .default([]),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   paidAmount: decimal("paid_amount", { precision: 12, scale: 2 }).default("0"),
@@ -462,6 +470,7 @@ export const salesInvoices = pgTable("sales_invoices", {
   approvedById: integer("approved_by_id").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  workOrderNumber: text("work_order_number"),
 });
 
 // Sales Invoice Items
@@ -748,6 +757,10 @@ export const proformaInvoices = pgTable("proforma_invoices", {
     .default([]),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   submittedById: integer("submitted_by_id").references(() => users.id),
@@ -756,6 +769,7 @@ export const proformaInvoices = pgTable("proforma_invoices", {
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
   isArchived: boolean("is_archived").notNull().default(false),
+  workOrderNumber: text("work_order_number"),
 });
 
 // Credit Notes table
@@ -785,6 +799,10 @@ export const creditNotes = pgTable("credit_notes", {
     .default([]),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
+  discountPercentage: decimal("discount_percentage", {
+    precision: 5,
+    scale: 2,
+  }).default("0"),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
   submittedById: integer("submitted_by_id").references(() => users.id),
@@ -898,6 +916,20 @@ export const purchaseOrderFiles = pgTable("purchase_order_files", {
   poId: integer("po_id")
     .notNull()
     .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  originalName: text("original_name").notNull(),
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+});
+
+// Purchase Invoice Files table
+export const purchaseInvoiceFiles = pgTable("purchase_invoice_files", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id")
+    .notNull()
+    .references(() => purchaseInvoices.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
   originalName: text("original_name").notNull(),
   filePath: text("file_path").notNull(),
@@ -1151,7 +1183,25 @@ export const exchangeRates = pgTable("exchange_rates", {
   updatedById: integer("updated_by_id").references(() => users.id),
 });
 
+export const invoiceEditHistory = pgTable("invoice_edit_history", {
+  id: serial("id").primaryKey(),
+  invoiceType: text("invoice_type").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  editNote: text("edit_note").notNull(),
+  changes: json("changes").$type<Record<string, { old: any; new: any }>>(),
+  editedBy: integer("edited_by").references(() => users.id),
+  editedByName: text("edited_by_name"),
+  editedAt: timestamp("edited_at").notNull().defaultNow(),
+});
+
 // Insert Schemas
+export const insertInvoiceEditHistorySchema = createInsertSchema(invoiceEditHistory).omit({
+  id: true,
+  editedAt: true,
+});
+export type InsertInvoiceEditHistory = z.infer<typeof insertInvoiceEditHistorySchema>;
+export type InvoiceEditHistory = typeof invoiceEditHistory.$inferSelect;
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,

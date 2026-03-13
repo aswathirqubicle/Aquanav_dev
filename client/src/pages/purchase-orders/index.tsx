@@ -13,11 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CustomPagination } from "@/components/ui/pagination";
 import { useAuth } from "@/hooks/use-auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 
 interface Supplier {
@@ -61,6 +63,16 @@ interface PurchaseOrder {
   convertedInvoiceId?: number;
 }
 
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 interface PurchaseOrderItem {
   id: number;
   poId: number;
@@ -101,6 +113,11 @@ export default function PurchaseOrdersIndex() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [supplierFilter, setSupplierFilter] = useState("all");
+  const [startDateFilter, setStartDateFilter] = useState("");
+  const [endDateFilter, setEndDateFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const debouncedSearch = useDebounce(searchQuery, 500);
 
   const [formData, setFormData] = useState({
     supplierId: "",
@@ -172,10 +189,35 @@ export default function PurchaseOrdersIndex() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: orders, isLoading } = useQuery<PurchaseOrder[]>({
-    queryKey: ["/api/purchase-orders"],
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, supplierFilter, startDateFilter, endDateFilter]);
+
+  const { data: poStats } = useQuery<{ totalOrders: number; approved: number; pendingApproval: number; totalValue: string; }>({
+    queryKey: ["/api/purchase-orders/stats"],
     enabled: isAuthenticated,
   });
+
+  const { data: paginatedData, isLoading } = useQuery<PaginatedResponse<PurchaseOrder>>({
+    queryKey: ["/api/purchase-orders", page, limit, debouncedSearch, statusFilter, supplierFilter, startDateFilter, endDateFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        search: debouncedSearch,
+        status: statusFilter,
+      });
+      if (supplierFilter !== "all") params.append("supplierId", supplierFilter);
+      if (startDateFilter) params.append("startDate", startDateFilter);
+      if (endDateFilter) params.append("endDate", endDateFilter);
+      const response = await apiRequest(`/api/purchase-orders?${params.toString()}`);
+      return response.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const orders = paginatedData?.data || [];
+  const pagination = paginatedData?.pagination;
 
   const { data: suppliersResponse } = useQuery<{ data: Supplier[] }>({
     queryKey: ["/api/suppliers/all"],
@@ -765,17 +807,7 @@ export default function PurchaseOrdersIndex() {
 
   const canEdit = user?.role === "admin" || user?.role === "finance";
 
-  // Filter orders based on search and filters
-  const filteredOrders = orders?.filter(order => {
-    const matchesSearch = !searchQuery ||
-      order.poNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.supplierName.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    const matchesSupplier = supplierFilter === "all" || order.supplierId.toString() === supplierFilter;
-
-    return matchesSearch && matchesStatus && matchesSupplier;
-  }) || [];
+  const filteredOrders = orders;
 
   const applyFilters = () => {
     // Filters are applied automatically through filteredOrders
@@ -785,6 +817,8 @@ export default function PurchaseOrdersIndex() {
     setSearchQuery("");
     setStatusFilter("all");
     setSupplierFilter("all");
+    setStartDateFilter("");
+    setEndDateFilter("");
   };
 
   // Calculate statistics
@@ -825,65 +859,6 @@ export default function PurchaseOrdersIndex() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-          <div className="relative flex-1 lg:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search orders..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Filter className="w-4 h-4" />
-                Filters
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 p-4">
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium">Status</Label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="pending_approval">Pending Approval</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                      <SelectItem value="converted">Converted</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Supplier</Label>
-                  <Autocomplete
-                    options={[
-                      { value: "all", label: "All Suppliers" },
-                      ...suppliers.map((supplier) => ({
-                        value: supplier.id.toString(),
-                        label: supplier.name,
-                        searchText: supplier.name
-                      }))
-                    ]}
-                    value={supplierFilter}
-                    onValueChange={setSupplierFilter}
-                    placeholder="Search supplier..."
-                    emptyMessage="No suppliers found"
-                    className="mt-1"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={applyFilters} className="flex-1">Apply</Button>
-                  <Button onClick={clearFilters} variant="outline" className="flex-1">Clear</Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
           {canEdit && (
             <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" />
@@ -906,7 +881,7 @@ export default function PurchaseOrdersIndex() {
                   Purchase Orders
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {orders?.length || 0}
+                  {poStats?.totalOrders || 0}
                 </p>
               </div>
             </div>
@@ -924,7 +899,7 @@ export default function PurchaseOrdersIndex() {
                   Approved
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {statusCounts.approved || 0}
+                  {poStats?.approved || 0}
                 </p>
               </div>
             </div>
@@ -942,7 +917,7 @@ export default function PurchaseOrdersIndex() {
                   Pending Approval
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {statusCounts.pending_approval || 0}
+                  {poStats?.pendingApproval || 0}
                 </p>
               </div>
             </div>
@@ -960,13 +935,104 @@ export default function PurchaseOrdersIndex() {
                   Total Value
                 </p>
                 <p className="text-xl md:text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatCurrency(totalOrderValue)}
+                  {formatCurrency(poStats?.totalValue || 0)}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Advanced Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="searchFilter" className="text-sm font-medium">
+                  Search
+                </Label>
+                <div className="relative mt-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    id="searchFilter"
+                    placeholder="Search orders..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="pending_approval">Pending Approval</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="converted">Converted</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Supplier</Label>
+                <Autocomplete
+                  options={[
+                    { value: "all", label: "All Suppliers" },
+                    ...suppliers.map((supplier) => ({
+                      value: supplier.id.toString(),
+                      label: supplier.name,
+                      searchText: supplier.name
+                    }))
+                  ]}
+                  value={supplierFilter}
+                  onValueChange={setSupplierFilter}
+                  placeholder="Search supplier..."
+                  emptyMessage="No suppliers found"
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button onClick={clearFilters} variant="outline" className="w-full">
+                  Clear All Filters
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="startDate" className="text-sm font-medium">
+                  Order Date From
+                </Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDateFilter}
+                  onChange={(e) => setStartDateFilter(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="endDate" className="text-sm font-medium">
+                  Order Date To
+                </Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDateFilter}
+                  onChange={(e) => setEndDateFilter(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Order List */}
       <Card>
@@ -1131,6 +1197,15 @@ export default function PurchaseOrdersIndex() {
             </div>
           )}
         </CardContent>
+        {pagination && pagination.totalPages > 1 && (
+          <div className="p-4 border-t">
+            <CustomPagination
+              currentPage={page}
+              totalPages={pagination.totalPages}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
       </Card>
 
       {/* Create Order Dialog */}
@@ -1394,8 +1469,8 @@ export default function PurchaseOrdersIndex() {
                           <Autocomplete
                             options={(inventoryItems || []).map((item) => ({
                               value: item.id.toString(),
-                              label: `${item.name} (${item.unit})`,
-                              searchText: `${item.name} ${item.unit}`
+                              label: `${item.name}(${item.description || ""})`,
+                              searchText: `${item.name} ${item.description || ""} ${item.unit}`
                             }))}
                             value={newItem.inventoryItemId || ""}
                             onValueChange={(value) => setNewItem(prev => ({ ...prev, inventoryItemId: value }))}
@@ -1805,24 +1880,36 @@ export default function PurchaseOrdersIndex() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ul className="space-y-2">
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {viewingOrder.files.map((file) => (
                         <li
                           key={file.id}
-                          className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded-md"
+                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
                         >
-                          <a
-                            href={`/${file.filePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 text-sm text-blue-600 hover:underline truncate"
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                            <span className="text-sm truncate" title={file.originalName}>
+                              {file.originalName}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            className="h-8 ml-2"
                           >
-                            <FileText className="w-4 h-4" />
-                            <span className="truncate">{file.originalName}</span>
-                          </a>
-                          <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                            ({(file.fileSize / 1024).toFixed(2)} KB)
-                          </span>
+                            <a
+                              href={`/${file.filePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Download
+                              <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                ({(file.fileSize / 1024).toFixed(2)} KB)
+                              </span>
+                            </a>
+                          </Button>
+
                         </li>
                       ))}
                     </ul>
@@ -2120,12 +2207,12 @@ export default function PurchaseOrdersIndex() {
                 <span className="text-muted-foreground">Tax ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>
                 <span>{formatCurrency(invoiceTaxTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
               </div>
-              
+
               {/* {parseFloat(invoiceData.discountAmount) > 0 && ( */}
-                <div className="flex justify-between text-sm text-red-600">
-                  <span>Discount ({invoiceData.discountPercentage}%):</span>
-                  <span>- {formatCurrency(invoiceData.discountAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
-                </div>
+              <div className="flex justify-between text-sm text-red-600">
+                <span>Discount ({invoiceData.discountPercentage}%):</span>
+                <span>- {formatCurrency(invoiceData.discountAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+              </div>
               {/* )} */}
               <div className="flex justify-between font-semibold text-base border-t pt-2 mt-2">
                 <span>Total ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>

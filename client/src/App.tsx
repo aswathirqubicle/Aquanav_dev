@@ -37,6 +37,7 @@ import GeneralLedgerReceivable from "./pages/general-ledger/receivable";
 import GeneralLedgerPayable from "./pages/general-ledger/payable";
 import GeneralLedgerIndex from "./pages/general-ledger/index";
 import PayablesReceivablesReport from "./pages/reports/payables-receivables";
+import ProjectLocationReport from "./pages/reports/project-location";
 import ProfileIndex from "@/pages/profile/index";
 import { lazy, Suspense } from "react";
 
@@ -85,6 +86,7 @@ function Router() {
               <Route path="/reports/customer-statement" component={() => <CustomerStatementPage />} />
               <Route path="/reports/supplier-statement" component={() => <SupplierStatementPage />} />
               <Route path="/reports/payables-receivables" component={PayablesReceivablesReport} />
+              <Route path="/reports/project-location" component={ProjectLocationReport} />
               <Route path="/general-ledger" component={GeneralLedgerIndex} />
               <Route path="/general-ledger/receivable" component={GeneralLedgerReceivable} />
               <Route path="/general-ledger/payable" component={GeneralLedgerPayable} />

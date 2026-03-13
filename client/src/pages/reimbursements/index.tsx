@@ -55,6 +55,7 @@ import {
   FolderOpen,
   X,
   Pencil,
+  Download,
 } from "lucide-react";
 
 export default function ReimbursementsIndex() {
@@ -74,6 +75,8 @@ export default function ReimbursementsIndex() {
     originalExpenseDate: "",
     projectId: "",
   });
+  const [editExistingAttachments, setEditExistingAttachments] = useState<string[]>([]);
+  const [editNewFiles, setEditNewFiles] = useState<File[]>([]);
 
   const [formData, setFormData] = useState({
     amount: "",
@@ -184,17 +187,23 @@ export default function ReimbursementsIndex() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) => {
-      const response = await apiRequest(`/api/reimbursements/${id}`, { 
-        method: "PUT", 
-        body: data 
+    mutationFn: async ({ id, formData }: { id: number; formData: FormData }) => {
+      const response = await fetch(`/api/reimbursements/${id}`, {
+        method: "PUT",
+        body: formData,
+        credentials: "include",
       });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update reimbursement");
+      }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reimbursements"] });
       setIsEditDialogOpen(false);
       setIsViewDialogOpen(false);
+      setEditNewFiles([]);
       toast({ title: "Success", description: "Reimbursement updated" });
     },
     onError: (error: any) => {
@@ -209,6 +218,8 @@ export default function ReimbursementsIndex() {
       originalExpenseDate: reimbursement.originalExpenseDate?.split('T')[0] || "",
       projectId: reimbursement.projectId?.toString() || "",
     });
+    setEditExistingAttachments(reimbursement.attachments || []);
+    setEditNewFiles([]);
     setIsEditDialogOpen(true);
   };
 
@@ -219,14 +230,24 @@ export default function ReimbursementsIndex() {
       toast({ title: "Error", description: "Please fill all required fields", variant: "destructive" });
       return;
     }
+
+    const formDataToSend = new FormData();
+    formDataToSend.append("amount", editFormData.amount);
+    formDataToSend.append("description", editFormData.description);
+    formDataToSend.append("originalExpenseDate", editFormData.originalExpenseDate);
+    formDataToSend.append("projectId", editFormData.projectId || "");
+
+    editExistingAttachments.forEach(att => {
+      formDataToSend.append("existingAttachments", att);
+    });
+
+    editNewFiles.forEach(file => {
+      formDataToSend.append("attachments", file);
+    });
+
     updateMutation.mutate({
       id: selectedReimbursement.id,
-      data: {
-        amount: editFormData.amount,
-        description: editFormData.description,
-        originalExpenseDate: editFormData.originalExpenseDate,
-        projectId: editFormData.projectId || null,
-      },
+      formData: formDataToSend,
     });
   };
 
@@ -432,7 +453,14 @@ export default function ReimbursementsIndex() {
                     {filteredReimbursements.map((reimbursement: any) => (
                       <TableRow key={reimbursement.id}>
                         <TableCell className="font-medium">{reimbursement.employeeName}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{reimbursement.description}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          <div className="flex items-center gap-2">
+                            {reimbursement.attachments && reimbursement.attachments.length > 0 && (
+                              <Paperclip className="w-3 h-3 text-muted-foreground shrink-0" title={`${reimbursement.attachments.length} attachment(s)`} />
+                            )}
+                            <span className="truncate">{reimbursement.description}</span>
+                          </div>
+                        </TableCell>
                         <TableCell>AED {parseFloat(reimbursement.amount).toLocaleString()}</TableCell>
                         <TableCell>{new Date(reimbursement.originalExpenseDate).toLocaleDateString()}</TableCell>
                         <TableCell>{new Date(reimbursement.submissionTimestamp).toLocaleDateString()}</TableCell>
@@ -740,22 +768,40 @@ export default function ReimbursementsIndex() {
                 </div>
               )}
               {selectedReimbursement.attachments && selectedReimbursement.attachments.length > 0 && (
-                <div>
+                <div className="space-y-2">
                   <Label className="text-muted-foreground">Attachments</Label>
-                  <div className="space-y-1 mt-1">
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {selectedReimbursement.attachments.map((attachment: string, index: number) => (
-                      <a 
+                      <li
                         key={index}
-                        href={`/${attachment}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="flex items-center gap-2 text-blue-600 hover:underline"
+                        className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow transition-shadow"
                       >
-                        <Paperclip className="w-4 h-4" />
-                        {attachment.split('/').pop()}
-                      </a>
+                        <div className="flex items-center gap-2 overflow-hidden mr-2">
+                          <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                          <span
+                            className="text-sm truncate font-medium text-slate-700 dark:text-slate-300"
+                            title={attachment.split('/').pop()}
+                          >
+                            {attachment.split('/').pop()}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                          className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        >
+                          <a
+                            href={`/${attachment}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Download
+                          </a>
+                        </Button>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
 
@@ -905,6 +951,82 @@ export default function ReimbursementsIndex() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Attachments (Optional)</Label>
+
+              {/* Existing Attachments */}
+              {editExistingAttachments.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  <p className="text-xs font-medium text-muted-foreground">Current files:</p>
+                  {editExistingAttachments.map((att, index) => (
+                    <div key={index} className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <span className="text-sm truncate">{att.split('/').pop()}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-red-600"
+                        onClick={() => setEditExistingAttachments(editExistingAttachments.filter((_, i) => i !== index))}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload New Files */}
+              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  id="editFileUpload"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xlsx,.xls,.txt,.csv"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setEditNewFiles([...editNewFiles, ...files]);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
+                <label htmlFor="editFileUpload" className="cursor-pointer">
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Click to upload new receipts
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              {editNewFiles.length > 0 && (
+                <div className="space-y-2 mt-2">
+                  <p className="text-xs font-medium text-muted-foreground">New files to upload:</p>
+                  {editNewFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 rounded px-3 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        <span className="text-sm truncate">{file.name}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setEditNewFiles(editNewFiles.filter((_, i) => i !== index))}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)} className="w-full sm:w-auto">
                 Cancel

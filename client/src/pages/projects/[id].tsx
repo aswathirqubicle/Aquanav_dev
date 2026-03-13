@@ -746,7 +746,7 @@ export default function ProjectDetail() {
   // Initialize edit form data when project loads or dialog opens
   useEffect(() => {
     if (project && isEditProjectDialogOpen) {
-      const standardContractModes = ["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"];
+      const standardContractModes = ["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum", "monthly_contract"];
       const isCustom = project.modeOfContract && !standardContractModes.includes(project.modeOfContract);
 
       setEditProjectData({
@@ -2291,7 +2291,7 @@ export default function ProjectDetail() {
                             <SelectItem value="monthly_contract">Monthly Contract</SelectItem>
                           </SelectContent>
                         </Select>
-                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"].includes(editProjectData.modeOfContract)) && (
+                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum", "monthly_contract"].includes(editProjectData.modeOfContract)) && (
                           <Input
                             className="mt-2"
                             value={customContractMode}
@@ -3753,21 +3753,17 @@ export default function ProjectDetail() {
 
                         <div className="space-y-2">
                           <Label htmlFor="dailyActivity">Link to Daily Activity</Label>
-                          <Select
+                          <Autocomplete
+                            options={(allActivities || []).map(activity => ({
+                              value: activity.id.toString(),
+                              label: `${formatDate(activity.date)} - ${activity.location || "No Location"}`,
+                              description: activity.completedTasks || "",
+                              searchText: `${formatDate(activity.date)} ${activity.location || ""} ${activity.completedTasks || ""}`
+                            }))}
                             value={photoGroupData.dailyActivityId}
                             onValueChange={(value) => setPhotoGroupData(prev => ({ ...prev, dailyActivityId: value }))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a daily activity (optional)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {allActivities?.map((activity) => (
-                                <SelectItem key={activity.id} value={activity.id.toString()}>
-                                  {formatDate(activity.date)} - {activity.location || "No Location"}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            placeholder="Search daily activity by date, location or tasks..."
+                          />
                         </div>
 
                         <div className="space-y-2">
@@ -3838,7 +3834,7 @@ export default function ProjectDetail() {
                                     {formatDate(group.dailyActivity.date)} - {group.dailyActivity.location || "No Location"}
                                   </Badge>
                                   {group.dailyActivity.completedTasks && (
-                                    <p className="text-xs text-slate-500 italic line-clamp-1 pl-1">
+                                    <p className="text-xs text-slate-500 italic pl-1 whitespace-pre-wrap">
                                       {group.dailyActivity.completedTasks}
                                     </p>
                                   )}

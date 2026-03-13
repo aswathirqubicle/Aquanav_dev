@@ -1638,6 +1638,11 @@ export default function ReportsIndex() {
           name: "Project Status Distribution", 
           description: "Overview of project status breakdown" 
         },
+        { 
+          id: "project-location",
+          name: "Project Location Report", 
+          description: "Daily activity summary by project location" 
+        },
       ]
     },
     {
@@ -1897,6 +1902,10 @@ export default function ReportsIndex() {
                         }
                         if (report.id === "payables-receivables") {
                           setLocation("/reports/payables-receivables");
+                          return;
+                        }
+                        if (report.id === "project-location") {
+                          setLocation("/reports/project-location");
                           return;
                         }
                         setDialogYear(new Date().getFullYear());

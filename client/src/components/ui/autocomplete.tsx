@@ -11,6 +11,7 @@ interface AutocompleteOption {
   value: string
   label: string
   searchText?: string
+  description?: string
 }
 
 interface AutocompleteProps {
@@ -46,7 +47,7 @@ export function Autocomplete({
     if (!inputValue.trim()) return options
 
     const searchTerm = inputValue.toLowerCase()
-    return options.filter(option => 
+    return options.filter(option =>
       option.label.toLowerCase().includes(searchTerm) ||
       option.searchText?.toLowerCase().includes(searchTerm)
     )
@@ -106,7 +107,7 @@ export function Autocomplete({
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault()
-        setHighlightedIndex(prev => 
+        setHighlightedIndex(prev =>
           prev < filteredOptions.length - 1 ? prev + 1 : prev
         )
         break
@@ -133,7 +134,7 @@ export function Autocomplete({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (inputRef.current && !inputRef.current.contains(event.target as Node) &&
-          listRef.current && !listRef.current.contains(event.target as Node)) {
+        listRef.current && !listRef.current.contains(event.target as Node)) {
         setIsOpen(false)
         setHighlightedIndex(-1)
         resetInputToSelection()
@@ -161,13 +162,13 @@ export function Autocomplete({
         value={inputValue}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        onFocus={() => setIsOpen(true)}
+        onClick={() => setIsOpen(true)}
         placeholder={placeholder}
         disabled={disabled}
         className={cn("w-full", className)}
         autoComplete="off"
       />
-      
+
       {isOpen && filteredOptions.length > 0 && (
         <ul
           ref={listRef}
@@ -184,17 +185,24 @@ export function Autocomplete({
               )}
               onClick={() => handleOptionSelect(option)}
             >
-              <div className="flex items-center justify-between">
-                <span>{option.label}</span>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium truncate">{option.label}</span>
+                  {option.description && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 truncate line-clamp-1">
+                      {option.description}
+                    </span>
+                  )}
+                </div>
                 {value === option.value && (
-                  <Check className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <Check className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                 )}
               </div>
             </li>
           ))}
         </ul>
       )}
-      
+
       {isOpen && filteredOptions.length === 0 && inputValue.trim() && (
         <div className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg p-3">
           <div className="text-sm text-gray-500 dark:text-gray-400">{emptyMessage}</div>

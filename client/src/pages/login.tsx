@@ -45,7 +45,7 @@ export default function Login() {
     try {
       await login(formData.username, formData.password);
       toast({
-        title: "Welcome to Aquanav ERP",
+        title: "Welcome to Aquasoft ERP",
         description: "You have successfully logged in.",
       });
       setLocation("/dashboard");
@@ -71,8 +71,8 @@ export default function Login() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gray-900">
         <div className="text-center">
-          <div className="h-8 w-8 bg-ocean-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-lg">⚓</span>
+          <div className="flex items-center justify-center mx-auto mb-4">
+            <img src="/logo.webp" alt="Aquanav Logo" className="h-12 w-auto object-contain" />
           </div>
           <p className="text-slate-600 dark:text-slate-400">Loading...</p>
         </div>
@@ -84,10 +84,10 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gray-900 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="h-12 w-12 bg-ocean-600 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <span className="text-white font-bold text-2xl">⚓</span>
+          <div className="flex items-center justify-center mx-auto mb-4">
+            <img src="/logo.webp" alt="Aquanav Logo" className="h-12 w-auto object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Aquanav ERP</h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Aquasoft</h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2">Marine Project Management System</p>
         </div>
 

@@ -11,11 +11,13 @@ import { Autocomplete } from "@/components/ui/autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CustomPagination } from "@/components/ui/pagination";
 
 interface SupplierBankDetails {
   id: number;
@@ -55,6 +57,7 @@ interface PurchaseInvoice {
   discountAmount?: string;
   notes?: string;
   items?: PurchaseInvoiceItem[];
+  files?: any[];
   payments?: Payment[];
   submittedById?: number;
   submittedAt?: string;
@@ -63,6 +66,16 @@ interface PurchaseInvoice {
   rejectionReason?: string;
   createdBy?: number;
   createdAt?: string;
+}
+
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 interface PurchaseInvoiceItem {
@@ -131,14 +144,22 @@ export default function PurchaseInvoicesIndex() {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
-  const [expandedPayment, setExpandedPayment] = useState<number | null>(null);
+  const [editNote, setEditNote] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
 
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
     supplierId: undefined as number | undefined,
     status: undefined as string | undefined,
+    search: "",
+    projectId: undefined as number | undefined,
   });
+  
+  const debouncedSearch = useDebounce(filters.search, 500);
+  const [search, setSearch] = useState("");
+  const [expandedPayment, setExpandedPayment] = useState<number | null>(null);
 
   const [formData, setFormData] = useState({
     supplierId: "",
@@ -184,6 +205,8 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const [paymentFiles, setPaymentFiles] = useState<FileList | null>(null);
+  const [selectedInvoiceFiles, setSelectedInvoiceFiles] = useState<FileList | null>(null);
+  const [existingInvoiceFiles, setExistingInvoiceFiles] = useState<any[]>([]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -197,15 +220,28 @@ export default function PurchaseInvoicesIndex() {
     }
   }, [isAuthenticated, user, setLocation]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
   // Fetch purchase invoices
-  const { data: invoices, isLoading } = useQuery<PurchaseInvoice[]>({
-    queryKey: ["/api/purchase-invoices", filters],
+  const { data: purchaseStats } = useQuery<PurchaseInvoiceStats>({
+    queryKey: ["/api/purchase-invoices/stats"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: paginatedData, isLoading } = useQuery<PaginatedResponse<PurchaseInvoice>>({
+    queryKey: ["/api/purchase-invoices", filters.startDate, filters.endDate, filters.supplierId, filters.status, filters.projectId, debouncedSearch, page, limit],
     queryFn: async () => {
       const params = new URLSearchParams();
+      params.append("page", page.toString());
+      params.append("limit", limit.toString());
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.supplierId) params.append("supplierId", filters.supplierId.toString());
       if (filters.status) params.append("status", filters.status);
+      if (filters.projectId) params.append("projectId", filters.projectId.toString());
+      if (debouncedSearch) params.append("search", debouncedSearch);
 
       const response = await apiRequest(`/api/purchase-invoices?${params}`, { method: "GET" });
       if (!response.ok) throw new Error("Failed to fetch purchase invoices");
@@ -213,6 +249,9 @@ export default function PurchaseInvoicesIndex() {
     },
     enabled: isAuthenticated,
   });
+
+  const invoices = paginatedData?.data || [];
+  const pagination = paginatedData?.pagination;
 
   // Fetch suppliers
   const { data: suppliersResponse } = useQuery<{ data: Supplier[] }>({
@@ -255,96 +294,22 @@ export default function PurchaseInvoicesIndex() {
   const inventoryItems = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : [];
 
   // Calculate statistics
-  const stats: PurchaseInvoiceStats = React.useMemo(() => {
-    if (!invoices || invoices.length === 0) {
-      return {
-        totalInvoices: 0,
-        totalAmount: "0",
-        paidAmount: "0",
-        pendingAmount: "0",
-        overdueCount: 0,
-        overdueAmount: "0",
-        pendingApprovalCount: 0,
-      };
-    }
-
-    // Only count approved invoices for financial metrics
-    const approvedInvoices = invoices.filter(inv => inv.status === "approved");
-    const pendingApprovalInvoices = invoices.filter(inv => inv.status === "pending_approval");
-
-    const totalInvoices = approvedInvoices.length;
-    const totalAmount = approvedInvoices.reduce((sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0);
-    const paidAmount = approvedInvoices.reduce((sum, inv) => sum + parseFloat(inv.paidAmount || "0"), 0);
-    const pendingAmount = totalAmount - paidAmount;
-
-    const overdueInvoices = approvedInvoices.filter(inv => {
-      const dueDate = new Date(inv.dueDate);
-      const today = new Date();
-      return inv.paymentStatus !== "paid" && dueDate < today;
-    });
-
-    const overdueCount = overdueInvoices.length;
-    const overdueAmount = overdueInvoices.reduce((sum, inv) =>
-      sum + (parseFloat(inv.totalAmount || "0") - parseFloat(inv.paidAmount || "0")), 0
-    );
-
-    return {
-      totalInvoices,
-      totalAmount: totalAmount.toFixed(2),
-      paidAmount: paidAmount.toFixed(2),
-      pendingAmount: pendingAmount.toFixed(2),
-      overdueCount,
-      overdueAmount: overdueAmount.toFixed(2),
-      pendingApprovalCount: pendingApprovalInvoices.length,
-    };
-  }, [invoices]);
+  const stats: PurchaseInvoiceStats = purchaseStats || {
+    totalInvoices: 0,
+    totalAmount: "0",
+    paidAmount: "0",
+    pendingAmount: "0",
+    overdueCount: 0,
+    overdueAmount: "0",
+    pendingApprovalCount: 0,
+  };
 
   const createInvoiceMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const items = invoiceItems.map(item => {
-        const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
-        const lineTaxAmount = lineSubtotal * (parseFloat(item.taxRate) / 100);
-        return {
-          itemType: item.itemType,
-          inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
-          description: item.description || null,
-          quantity: parseInt(item.quantity),
-          unitPrice: parseFloat(item.unitPrice),
-          taxRate: parseFloat(item.taxRate),
-          taxAmount: lineTaxAmount,
-          lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
-          projectId: item.projectId ? parseInt(item.projectId) : null,
-          assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
-        };
+    mutationFn: async (formDataInstance: FormData) => {
+      const response = await fetch("/api/purchase-invoices", {
+        method: "POST",
+        body: formDataInstance,
       });
-
-      const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-      const calculatedTaxAmount = items.reduce((sum, item) => sum + item.taxAmount, 0);
-      const discountPct = parseFloat(formData.discountPercentage) || 0;
-      const discountAmt = parseFloat(formData.discountAmount) || 0;
-      const totalAmount = subtotal + calculatedTaxAmount - discountAmt;
-
-
-      const invoiceData = {
-        supplierId: parseInt(formData.supplierId),
-        currency: formData.currency,
-        exchangeRate: formData.exchangeRate,
-        // projectId: formData.projectId ? parseInt(formData.projectId) : null,
-        // assetInventoryInstanceId: formData.assetInventoryInstanceId ? parseInt(formData.assetInventoryInstanceId) : null,
-        invoiceDate: formData.invoiceDate,
-        dueDate: formData.dueDate,
-        paymentTerms: formData.paymentTerms,
-        bankAccount: formData.bankAccount,
-        notes: formData.notes,
-        subtotal: subtotal.toFixed(2),
-        taxAmount: calculatedTaxAmount.toFixed(2),
-        discountPercentage: discountPct.toString(),
-        discountAmount: discountAmt.toString(),
-        totalAmount: totalAmount.toFixed(2),
-        items,
-      };
-
-      const response = await apiRequest("/api/purchase-invoices", { method: "POST", body: invoiceData });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to create purchase invoice");
@@ -370,18 +335,22 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const updateInvoiceMutation = useMutation({
-    mutationFn: async ({ invoiceId, data }: { invoiceId: number; data: any }) => {
-      const response = await apiRequest(`/api/purchase-invoices/${invoiceId}`, { method: "PUT", body: data });
+    mutationFn: async ({ invoiceId, formDataInstance }: { invoiceId: number; formDataInstance: FormData }) => {
+      const response = await fetch(`/api/purchase-invoices/${invoiceId}`, {
+        method: "PUT",
+        body: formDataInstance,
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to update purchase invoice");
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       toast({ title: "Invoice Updated", description: "Purchase invoice has been updated successfully." });
       setIsDialogOpen(false);
+      setEditNote("");
       resetForm();
     },
     onError: (error: Error) => {
@@ -424,11 +393,59 @@ export default function PurchaseInvoicesIndex() {
         setInvoiceItems([]);
       }
 
+      setExistingInvoiceFiles(full.files || []);
+      setEditNote("");
       setIsViewDialogOpen(false);
       setIsDialogOpen(true);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to load invoice for editing", variant: "destructive" });
     }
+  };
+
+  const handleDuplicateInvoice = async (invoice: any) => {
+    let source = invoice;
+    if (!invoice.items || invoice.items.length === 0) {
+      try {
+        const response = await apiRequest(`/api/purchase-invoices/${invoice.id}`, { method: "GET" });
+        if (response.ok) {
+          source = await response.json();
+        }
+      } catch {}
+    }
+    setEditingInvoice(null);
+    setFormData({
+      supplierId: source.supplierId?.toString() || "",
+      currency: source.currency || "AED",
+      exchangeRate: source.exchangeRate || "1",
+      invoiceDate: new Date().toISOString().split("T")[0],
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      paymentTerms: source.paymentTerms || "Net 30 days",
+      bankAccount: source.bankAccount || "",
+      notes: source.notes || "",
+      discountPercentage: source.discountPercentage || "0",
+      discountAmount: source.discountAmount || "0",
+    });
+    if (source.items && source.items.length > 0) {
+      setInvoiceItems(source.items.map((item: any) => ({
+        itemType: item.itemType || "product",
+        inventoryItemId: item.inventoryItemId ? item.inventoryItemId.toString() : "",
+        description: item.description || "",
+        quantity: item.quantity.toString(),
+        unitPrice: parseFloat(item.unitPrice).toString(),
+        taxRate: parseFloat(item.taxRate || "0").toString(),
+        projectId: item.projectId ? item.projectId.toString() : "",
+        assetInstanceId: item.assetInstanceId ? item.assetInstanceId.toString() : "",
+      })));
+    } else {
+      setInvoiceItems([]);
+    }
+    setEditNote("");
+    setIsViewDialogOpen(false);
+    setIsDialogOpen(true);
+    toast({
+      title: "Invoice Duplicated",
+      description: "A new draft purchase invoice has been pre-filled. Review and save to create it.",
+    });
   };
 
   const submitInvoiceMutation = useMutation({
@@ -605,6 +622,8 @@ export default function PurchaseInvoicesIndex() {
       assetInstanceId: "",
     });
     setEditingInvoice(null);
+    setSelectedInvoiceFiles(null);
+    setExistingInvoiceFiles([]);
   };
 
   const resetPaymentForm = () => {
@@ -697,47 +716,70 @@ export default function PurchaseInvoicesIndex() {
       return;
     }
 
+    const items = invoiceItems.map(item => {
+      const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
+      const lineTaxAmount = lineSubtotal * (parseFloat(item.taxRate) / 100);
+      return {
+        itemType: item.itemType,
+        inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
+        description: item.description || null,
+        quantity: parseInt(item.quantity),
+        unitPrice: parseFloat(item.unitPrice),
+        taxRate: parseFloat(item.taxRate),
+        taxAmount: lineTaxAmount,
+        lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
+        projectId: item.projectId ? parseInt(item.projectId) : null,
+        assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
+      };
+    });
+
+    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const calculatedTaxAmount = items.reduce((sum, item) => sum + item.taxAmount, 0);
+    const discountPct = parseFloat(formData.discountPercentage) || 0;
+    const discountAmt = parseFloat(formData.discountAmount) || 0;
+    const totalAmount = subtotal + calculatedTaxAmount - discountAmt;
+
+    const formDataInstance = new FormData();
+    formDataInstance.append("supplierId", formData.supplierId);
+    formDataInstance.append("currency", formData.currency);
+    formDataInstance.append("exchangeRate", formData.exchangeRate);
+    formDataInstance.append("invoiceDate", formData.invoiceDate);
+    formDataInstance.append("dueDate", formData.dueDate);
+    formDataInstance.append("paymentTerms", formData.paymentTerms);
+    formDataInstance.append("bankAccount", formData.bankAccount);
+    formDataInstance.append("notes", formData.notes);
+    formDataInstance.append("subtotal", subtotal.toFixed(2));
+    formDataInstance.append("taxAmount", calculatedTaxAmount.toFixed(2));
+    formDataInstance.append("discountPercentage", discountPct.toString());
+    formDataInstance.append("discountAmount", discountAmt.toString());
+    formDataInstance.append("totalAmount", totalAmount.toFixed(2));
+    formDataInstance.append("items", JSON.stringify(items));
+
+    if (selectedInvoiceFiles) {
+      for (let i = 0; i < selectedInvoiceFiles.length; i++) {
+        formDataInstance.append("files", selectedInvoiceFiles[i]);
+      }
+    }
+
     if (editingInvoice) {
-      // Build the same payload as create, but send via PUT
-      const items = invoiceItems.map(item => {
-        const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
-        const lineTaxAmount = lineSubtotal * (parseFloat(item.taxRate) / 100);
-        return {
-          itemType: item.itemType,
-          inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
-          description: item.description || null,
-          quantity: parseInt(item.quantity),
-          unitPrice: parseFloat(item.unitPrice),
-          taxRate: parseFloat(item.taxRate),
-          taxAmount: lineTaxAmount,
-          lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
-          projectId: item.projectId ? parseInt(item.projectId) : null,
-          assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
-        };
-      });
-      const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-      const calculatedTax = items.reduce((sum, item) => sum + item.taxAmount, 0);
-      const discountAmt = parseFloat(formData.discountAmount) || 0;
+      if (!editNote.trim()) {
+        toast({
+          title: "Error",
+          description: "Please provide an edit note explaining the changes",
+          variant: "destructive",
+        });
+        return;
+      }
+      formDataInstance.append("editNote", editNote.trim());
+      const keptFileIds = existingInvoiceFiles.map((file) => file.id);
+      formDataInstance.append("existingFiles", JSON.stringify(keptFileIds));
+
       updateInvoiceMutation.mutate({
         invoiceId: editingInvoice.id,
-        data: {
-          supplierId: parseInt(formData.supplierId),
-          currency: formData.currency,
-          exchangeRate: formData.exchangeRate,
-          invoiceDate: formData.invoiceDate,
-          dueDate: formData.dueDate,
-          paymentTerms: formData.paymentTerms,
-          bankAccount: formData.bankAccount,
-          notes: formData.notes,
-          subtotal: subtotal.toFixed(2),
-          taxAmount: calculatedTax.toFixed(2),
-          discountPercentage: formData.discountPercentage,
-          discountAmount: formData.discountAmount,
-          items,
-        },
+        formDataInstance,
       });
     } else {
-      createInvoiceMutation.mutate(formData);
+      createInvoiceMutation.mutate(formDataInstance);
     }
   };
 
@@ -776,6 +818,13 @@ export default function PurchaseInvoicesIndex() {
         }
       }
 
+      if (user?.role === "admin" || user?.role === "finance") {
+        const editHistoryResponse = await apiRequest(`/api/purchase-invoices/${invoice.id}/edit-history`, { method: "GET" });
+        if (editHistoryResponse.ok) {
+          fullInvoice.editHistory = await editHistoryResponse.json();
+        }
+      }
+
       setViewingInvoice(fullInvoice);
       setIsViewDialogOpen(true);
     } catch (error: any) {
@@ -811,6 +860,8 @@ export default function PurchaseInvoicesIndex() {
       endDate: "",
       supplierId: undefined,
       status: undefined,
+      search: "",
+      projectId: undefined,
     });
     queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
     setIsFilterOpen(false);
@@ -920,85 +971,6 @@ export default function PurchaseInvoicesIndex() {
             <p className="text-muted-foreground">Manage your supplier invoices and payments</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto">
-                  <Filter className="w-4 h-4 mr-2" />
-                  Filter
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 sm:w-96" align="end">
-                <div className="space-y-4">
-                  <h4 className="font-medium">Filter Purchase Invoices</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <Label htmlFor="startDate">Start Date</Label>
-                      <Input
-                        id="startDate"
-                        type="date"
-                        value={filters.startDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="endDate">End Date</Label>
-                      <Input
-                        id="endDate"
-                        type="date"
-                        value={filters.endDate}
-                        onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="supplierFilter">Supplier</Label>
-                    <Autocomplete
-                      options={suppliers.map((supplier) => ({
-                        value: supplier.id.toString(),
-                        label: supplier.name,
-                        searchText: supplier.name
-                      }))}
-                      value={filters.supplierId?.toString() || ""}
-                      onValueChange={(value) => {
-                        setFilters(prev => ({
-                          ...prev,
-                          supplierId: value ? parseInt(value) : undefined
-                        }));
-                      }}
-                      placeholder="Select supplier..."
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="statusFilter">Status</Label>
-                    <Select
-                      value={filters.status || "all"}
-                      onValueChange={(value) =>
-                        setFilters(prev => ({
-                          ...prev,
-                          status: value === "all" ? undefined : value
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="pending_approval">Pending Approval</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex gap-2">
-                    {/* <Button onClick={applyFilters} className="flex-1">Apply</Button> */}
-                    <Button onClick={clearFilters} variant="outline" className="flex-1">Clear</Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
             {canEdit && (
               <Button onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
@@ -1009,7 +981,8 @@ export default function PurchaseInvoicesIndex() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"> */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">Approved Invoices</CardTitle>
@@ -1065,6 +1038,117 @@ export default function PurchaseInvoicesIndex() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Filters Section */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="search">Search</Label>
+                  <Input
+                    id="search"
+                    placeholder="Invoice # or Supplier..."
+                    value={filters.search}
+                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="statusFilter">Status</Label>
+                  <Select
+                    value={filters.status || "all"}
+                    onValueChange={(value) =>
+                      setFilters(prev => ({
+                        ...prev,
+                        status: value === "all" ? undefined : value
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="pending_approval">Pending Approval</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="supplierFilter">Supplier</Label>
+                  <Autocomplete
+                    options={[
+                      { value: "all", label: "All Suppliers" },
+                      ...suppliers.map((supplier) => ({
+                        value: supplier.id.toString(),
+                        label: supplier.name,
+                        searchText: supplier.name
+                      }))
+                    ]}
+                    value={filters.supplierId?.toString() || "all"}
+                    onValueChange={(value) => {
+                      setFilters(prev => ({
+                        ...prev,
+                        supplierId: value === "all" ? undefined : parseInt(value)
+                      }));
+                    }}
+                    placeholder="Select supplier..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="projectFilter">Project</Label>
+                  <Autocomplete
+                    options={[
+                      { value: "all", label: "All Projects" },
+                      ...projects.map((project: any) => ({
+                        value: project.id.toString(),
+                        label: project.title,
+                        searchText: project.title
+                      }))
+                    ]}
+                    value={filters.projectId?.toString() || "all"}
+                    onValueChange={(value) => {
+                      setFilters(prev => ({
+                        ...prev,
+                        projectId: value === "all" ? undefined : parseInt(value)
+                      }));
+                    }}
+                    placeholder="Select project..."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="startDate">Invoice Date From</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={filters.startDate}
+                    onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="endDate">Invoice Date To</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={filters.endDate}
+                    onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button onClick={clearFilters} variant="outline" className="w-full">
+                    Clear All Filters
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Invoice List */}
         {isLoading ? (
@@ -1157,6 +1241,16 @@ export default function PurchaseInvoicesIndex() {
                                     onClick={() => handleEditInvoice(invoice)}
                                     className="h-8 px-2"
                                     data-testid={`button-edit-invoice-${invoice.id}`}
+                                  >
+                                    Edit
+                                  </Button>
+                                )}
+                                {invoice.status === "approved" && user?.role === "admin" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditInvoice(invoice)}
+                                    className="h-8 px-2"
                                   >
                                     Edit
                                   </Button>
@@ -1304,6 +1398,15 @@ export default function PurchaseInvoicesIndex() {
                 </Card>
               ))}
             </div>
+            {pagination && pagination.totalPages > 1 && (
+              <div className="p-4 border-t bg-white dark:bg-gray-900 rounded-b-lg">
+                <CustomPagination
+                  currentPage={page}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -1482,6 +1585,73 @@ export default function PurchaseInvoicesIndex() {
                         />
                       </div>
 
+                      <div className="space-y-2">
+                        <Label htmlFor="attachments">Attach Files (Optional)</Label>
+                        <Input
+                          id="attachments"
+                          type="file"
+                          multiple
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt,.csv,.xlsx,.xls"
+                          onChange={(e) => setSelectedInvoiceFiles(e.target.files)}
+                          className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        <p className="text-sm text-gray-500">
+                          You can attach multiple files (PDF, DOC, images, etc.). Max 10MB per file.
+                        </p>
+                        {selectedInvoiceFiles && selectedInvoiceFiles.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-sm font-medium">Selected files:</p>
+                            <ul className="text-sm text-gray-600 mt-1">
+                              {Array.from(selectedInvoiceFiles).map((file, index) => (
+                                <li key={index} className="flex items-center gap-2">
+                                  <span>• {file.name}</span>
+                                  <span className="text-xs text-gray-400">
+                                    ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {editingInvoice && existingInvoiceFiles.length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-sm font-medium mb-2">
+                              Currently Attached Files:
+                            </p>
+                            <ul className="space-y-2">
+                              {existingInvoiceFiles.map((file) => (
+                                <li
+                                  key={file.id}
+                                  className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
+                                >
+                                  <a
+                                    href={`/${file.filePath}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-blue-600 hover:underline truncate"
+                                  >
+                                    {file.originalName}
+                                  </a>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      setExistingInvoiceFiles(
+                                        existingInvoiceFiles.filter((f) => f.id !== file.id)
+                                      )
+                                    }
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
                     </div>
                   </CardContent>
                 </Card>
@@ -1535,8 +1705,8 @@ export default function PurchaseInvoicesIndex() {
                               <Autocomplete
                                 options={(inventoryItems || []).map((item) => ({
                                   value: item.id.toString(),
-                                  label: `${item.name}`,
-                                  searchText: `${item.name} ${item.unit}`
+                                  label: `${item.name}(${item.description || ""})`,
+                                  searchText: `${item.name} ${item.description || ""} ${item.unit}`
                                 }))}
                                 value={newItem.inventoryItemId || ""}
                                 onValueChange={(value) => setNewItem(prev => ({ ...prev, inventoryItemId: value }))}
@@ -1815,11 +1985,57 @@ export default function PurchaseInvoicesIndex() {
                     </div>
                   </CardContent>
                 </Card>
-              </form>
-            </div>
+
+                {/* Edit Note - INSIDE SCROLL */}
+                {editingInvoice && (
+                  <div className="space-y-2 border-t pt-4 mt-4">
+                    <Label className="text-sm font-medium text-red-600">
+                      Edit Note (Required) *
+                    </Label>
+
+                    <Textarea
+                      value={editNote}
+                      onChange={(e: any) => setEditNote(e.target.value)}
+                      placeholder="Explain the reason for this edit..."
+                      className="min-h-[80px]"
+                      required
+                    />
+                  </div>
+                )}
+
+                 <div className="flex justify-end gap-3 pt-4 border-t">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          setIsDialogOpen(false);
+          resetForm();
+        }}
+      >
+        Cancel
+      </Button>
+
+      <Button
+        type="submit"
+        disabled={
+          (editingInvoice
+            ? updateInvoiceMutation.isPending
+            : createInvoiceMutation.isPending) ||
+          !formData.supplierId ||
+          !formData.dueDate ||
+          invoiceItems.length === 0 ||
+          (editingInvoice && !editNote.trim())
+        }
+      >
+        {editingInvoice ? "Save Changes" : "Create Invoice"}
+      </Button>
+    </div>
+
+                </form>
+                </div>
 
             {/* Footer Actions */}
-            <div className="flex-shrink-0 border-t pt-4 mt-6">
+            {/* <div className="flex-shrink-0 border-t pt-4 mt-6">
               <div className="flex flex-col sm:flex-row justify-end gap-3">
                 <Button
                   type="button"
@@ -1847,7 +2063,7 @@ export default function PurchaseInvoicesIndex() {
                   )}
                 </Button>
               </div>
-            </div>
+            </div> */}
           </DialogContent>
         </Dialog>
 
@@ -1871,19 +2087,21 @@ export default function PurchaseInvoicesIndex() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 print:hidden w-full sm:w-auto">
-                    <div className="flex flex-col gap-1 items-end">
-                      {getApprovalStatusBadge(viewingInvoice.status)}{" "}
+                  <div className="flex items-center gap-3 print:hidden">
+                    <div className="flex items-center gap-2">
+                      {getApprovalStatusBadge(viewingInvoice.status)}
                       {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
                     </div>
+
                     <Button
                       variant="outline"
-                      size="icon"
+                      size="sm"
                       onClick={() => handlePrintPDF(viewingInvoice)}
                       data-testid="button-print-invoice"
-                      className="h-9 w-9"
+                      className="flex items-center gap-2"
                     >
                       <Printer className="w-4 h-4" />
+                      Print
                     </Button>
                   </div>
                 </div>
@@ -1954,6 +2172,45 @@ export default function PurchaseInvoicesIndex() {
                       Notes
                     </h3>
                     <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black break-words">{viewingInvoice.notes}</p>
+                  </div>
+                )}
+
+                {/* Attachments Card */}
+                {(viewingInvoice as any).files && (viewingInvoice as any).files.length > 0 && (
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
+                    <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                      <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                      Attachments
+                    </h3>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(viewingInvoice as any).files.map((file: any) => (
+                        <li
+                          key={file.id}
+                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                            <span className="text-sm truncate" title={file.originalName}>
+                              {file.originalName}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            className="h-8 ml-2"
+                          >
+                            <a
+                              href={`/${file.filePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Download
+                            </a>
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -2106,6 +2363,46 @@ export default function PurchaseInvoicesIndex() {
                   </div>
                 </div>
 
+                {/* Edit History */}
+                {viewingInvoice.editHistory && viewingInvoice.editHistory.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <History className="h-5 w-5" />
+                        Edit History ({viewingInvoice.editHistory.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {viewingInvoice.editHistory.map((entry: any) => (
+                          <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                              <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                              <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
+                            {entry.changes && Object.keys(entry.changes).length > 0 && (
+                              <div className="text-xs space-y-1">
+                                {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                  field !== "items" ? (
+                                    <div key={field} className="flex gap-2">
+                                      <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                      <span className="text-red-500 line-through">{String(change.old || "—")}</span>
+                                      <span className="text-green-600">{String(change.new || "—")}</span>
+                                    </div>
+                                  ) : (
+                                    <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                  )
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
                   {viewingInvoice.status === "draft" && canEdit && (
@@ -2119,6 +2416,26 @@ export default function PurchaseInvoicesIndex() {
                       Edit Invoice
                     </Button>
                   )}
+                  {viewingInvoice.status === "approved" && user?.role === "admin" && (
+                    <Button
+                      onClick={() => handleEditInvoice(viewingInvoice)}
+                      variant="outline"
+                      size="lg"
+                      className="w-full sm:w-auto"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Edit Invoice
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => handleDuplicateInvoice(viewingInvoice)}
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Duplicate
+                  </Button>
                   {viewingInvoice.status === "draft" && (
                     <Button
                       onClick={() => {

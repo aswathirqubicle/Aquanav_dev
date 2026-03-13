@@ -91,14 +91,16 @@ export function generateCommonHeader(options?: { company?: any }) {
   const company = options?.company;
 
   return `
-    <div class="print-header">
-      <div class="header-row">
-        <div class="header-left">
-          ${company?.logo ? `<img src="${company.logo}" class="company-logo" />` : ""}
-        </div>
-        <div class="header-right">
-          <div class="company-name">${company?.name || ""}</div>
-          <div class="address">${company?.address || ""}</div>
+    <div class="report-header-container">
+      <div class="print-header">
+        <div class="header-row">
+          <div class="header-left">
+            ${company?.logo ? `<img src="${company.logo}" class="company-logo" />` : ""}
+          </div>
+          <div class="header-right">
+            <div class="company-name">${company?.name || ""}</div>
+            <div class="address">${company?.address || ""}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -107,10 +109,26 @@ export function generateCommonHeader(options?: { company?: any }) {
 
 export function getCommonPrintStyles(): string {
   return `
+    .report-header-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background: white;
+      z-index: 1000;
+    }
+    .report-footer-container {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background: white;
+      z-index: 1000;
+    }
     .print-header {
-      border-bottom: 2px solid #333;
-      padding-bottom: 10px;
-      margin-bottom: 20px;
+      padding: 10px 20px;
     }
     .header-row {
       display: flex;
@@ -125,29 +143,29 @@ export function getCommonPrintStyles(): string {
       flex: 1;
     }
     .company-logo {
-      max-height: 60px;
+      max-height: 120px;
     }
     .company-name {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
-      margin-bottom: 5px;
+      color: #0b4d78;
+      margin-bottom: 2px;
     }
     .address {
-      font-size: 11px;
+      font-size: 10px;
       color: #555;
       white-space: pre-wrap;
+      line-height: 1.2;
     }
     .print-footer {
-      border-top: 1px solid #ccc;
-      padding-top: 15px;
-      font-size: 10px;
-      color: #666;
-      margin-top: 20px;
+      padding: 10px 40px;
     }
     .footer-content {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 10px;
+      color: #666;
     }
     .footer-item {
       flex: 1;
@@ -171,16 +189,38 @@ export function getPayslipStyles(): string {
         padding: 0;
         font-size: 12px;
         color: #333;
+        line-height: 1.4;
       }
       @page {
         size: A4;
-        margin: 15mm;
+        margin: 10mm;
       }
       ${getCommonPrintStyles()}
+
+      /* Layout table for repeating headers/footers */
+      .report-wrapper {
+        width: 100%;
+        border-collapse: collapse;
+        border: none !important;
+      }
+      .report-wrapper td {
+        border: none !important;
+        padding: 0 !important;
+      }
+      .report-header-space {
+        height: 160px;
+      }
+      .report-footer-space {
+        height: 60px;
+      }
+      .report-content-cell {
+        padding: 0 20px;
+        vertical-align: top;
+      }
+
       .payslip-container {
         page-break-after: always;
-        padding: 20px;
-        min-height: 250mm;
+        min-height: 275mm;
         display: flex;
         flex-direction: column;
         box-sizing: border-box;
@@ -308,6 +348,11 @@ export function getReportStyles(): string {
       .report-wrapper {
         width: 100%;
         border-collapse: collapse;
+        border: none !important;
+      }
+      .report-wrapper td {
+        border: none !important;
+        padding: 0 !important;
       }
       .report-header-container {
         position: fixed;
@@ -326,10 +371,10 @@ export function getReportStyles(): string {
         background: white;
       }
       .report-header-space {
-        height: 110px;
+        height: 160px;
       }
       .report-footer-space {
-        height: 70px;
+        height: 60px;
       }
       .report-content-cell {
         padding: 0 20px;
@@ -478,25 +523,27 @@ export function generateCommonFooter(options?: { company?: any }) {
   const company = options?.company;
 
   return `
-    <div class="print-footer">
-      <div class="footer-content">
-        ${company?.website ? `
-          <div class="footer-item">
-            🌐 <a href="${company.website}" target="_blank">${company.website}</a>
-          </div>
-        ` : ""}
+    <div class="report-footer-container">
+      <div class="print-footer">
+        <div class="footer-content">
+          ${company?.website ? `
+            <div class="footer-item">
+              🌐 <a href="${company.website}" target="_blank">${company.website}</a>
+            </div>
+          ` : ""}
 
-        ${company?.email ? `
-          <div class="footer-item">
-            ✉ <a href="mailto:${company.email}">${company.email}</a>
-          </div>
-        ` : ""}
+          ${company?.email ? `
+            <div class="footer-item">
+              ✉ <a href="mailto:${company.email}">${company.email}</a>
+            </div>
+          ` : ""}
 
-        ${company?.phone ? `
-          <div class="footer-item">
-            ☎ <a href="tel:${company.phone}">${company.phone}</a>
-          </div>
-        ` : ""}
+          ${company?.phone ? `
+            <div class="footer-item">
+              ☎ <a href="tel:${company.phone}">${company.phone}</a>
+            </div>
+          ` : ""}
+        </div>
       </div>
     </div>
   `;

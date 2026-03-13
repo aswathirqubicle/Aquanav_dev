@@ -8,11 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CustomPagination } from "@/components/ui/pagination";
 import { useAuth } from "@/hooks/use-auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -47,6 +50,16 @@ interface PurchaseRequest {
   items?: PurchaseRequestItem[];
 }
 
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 interface PurchaseRequestItem {
   id: number;
   requestId: number;
@@ -71,6 +84,11 @@ export default function PurchaseRequestsIndex() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
+  const [startDateFilter, setStartDateFilter] = useState("");
+  const [endDateFilter, setEndDateFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const debouncedSearch = useDebounce(searchQuery, 500);
 
   const [formData, setFormData] = useState({
     urgency: "normal",
@@ -101,10 +119,35 @@ export default function PurchaseRequestsIndex() {
     }
   }, [isAuthenticated, setLocation]);
 
-  const { data: requests, isLoading } = useQuery<PurchaseRequest[]>({
-    queryKey: ["/api/purchase-requests"],
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, urgencyFilter, startDateFilter, endDateFilter]);
+
+  const { data: prStats } = useQuery<{ totalRequests: number; pendingApproval: number; approved: number; urgentPriority: number; }>({
+    queryKey: ["/api/purchase-requests/stats"],
     enabled: isAuthenticated,
   });
+
+  const { data: paginatedData, isLoading } = useQuery<PaginatedResponse<PurchaseRequest>>({
+    queryKey: ["/api/purchase-requests", page, limit, debouncedSearch, statusFilter, urgencyFilter, startDateFilter, endDateFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        search: debouncedSearch,
+        status: statusFilter,
+        urgency: urgencyFilter,
+      });
+      if (startDateFilter) params.append("startDate", startDateFilter);
+      if (endDateFilter) params.append("endDate", endDateFilter);
+      const response = await apiRequest(`/api/purchase-requests?${params.toString()}`);
+      return response.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const requests = paginatedData?.data || [];
+  const pagination = paginatedData?.pagination;
 
   const { data: inventoryResponse } = useQuery<{ data: any[] }>({
     queryKey: ["/api/inventory"],
@@ -357,18 +400,7 @@ export default function PurchaseRequestsIndex() {
 
   const canApprove = user?.role === "admin";// || user?.role === "finance";
 
-  // Filter requests based on search and filters
-  const filteredRequests = requests?.filter(request => {
-    const matchesSearch = !searchQuery ||
-      request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.requestedByName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.reason?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || request.status === statusFilter;
-    const matchesUrgency = urgencyFilter === "all" || request.urgency === urgencyFilter;
-
-    return matchesSearch && matchesStatus && matchesUrgency;
-  }) || [];
+  const filteredRequests = requests;
 
   const applyFilters = () => {
     // Filters are applied automatically through filteredRequests
@@ -378,6 +410,8 @@ export default function PurchaseRequestsIndex() {
     setSearchQuery("");
     setStatusFilter("all");
     setUrgencyFilter("all");
+    setStartDateFilter("");
+    setEndDateFilter("");
   };
 
   if (!isAuthenticated) {
@@ -396,60 +430,6 @@ export default function PurchaseRequestsIndex() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
-            <div className="relative flex-1 sm:flex-none sm:w-64 lg:w-80">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search requests..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filters
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-4">
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium">Status</Label>
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Urgency</Label>
-                    <Select value={urgencyFilter} onValueChange={setUrgencyFilter}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Urgencies</SelectItem>
-                        <SelectItem value="urgent">Urgent</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="low">Low</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex gap-2">
-                    {/* <Button onClick={applyFilters} className="flex-1">Apply</Button> */}
-                    <Button onClick={clearFilters} variant="outline" className="flex-1">Clear</Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
             <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" />
               New Request
@@ -458,7 +438,7 @@ export default function PurchaseRequestsIndex() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center">
@@ -470,7 +450,7 @@ export default function PurchaseRequestsIndex() {
                     Total Requests
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {requests?.length || 0}
+                    {prStats?.totalRequests || 0}
                   </p>
                 </div>
               </div>
@@ -488,7 +468,7 @@ export default function PurchaseRequestsIndex() {
                     Pending Approval
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {requests?.filter(r => r.status === "pending").length || 0}
+                    {prStats?.pendingApproval || 0}
                   </p>
                 </div>
               </div>
@@ -506,7 +486,7 @@ export default function PurchaseRequestsIndex() {
                     Approved
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {requests?.filter(r => r.status === "approved").length || 0}
+                    {prStats?.approved || 0}
                   </p>
                 </div>
               </div>
@@ -524,13 +504,99 @@ export default function PurchaseRequestsIndex() {
                     Urgent Priority
                   </p>
                   <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {requests?.filter(r => r.urgency === "urgent" || r.urgency === "high").length || 0}
+                    {prStats?.urgentPriority || 0}
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Advanced Filters */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="searchFilter" className="text-sm font-medium">
+                    Search
+                  </Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      id="searchFilter"
+                      placeholder="Search requests..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="All Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Urgency</Label>
+                  <Select value={urgencyFilter} onValueChange={setUrgencyFilter}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="All Urgencies" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Urgencies</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button onClick={clearFilters} variant="outline" className="w-full">
+                    Clear All Filters
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="startDate" className="text-sm font-medium">
+                    Request Date From
+                  </Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDateFilter}
+                    onChange={(e) => setStartDateFilter(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="endDate" className="text-sm font-medium">
+                    Request Date To
+                  </Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDateFilter}
+                    onChange={(e) => setEndDateFilter(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Request List */}
         <Card>
@@ -744,6 +810,15 @@ export default function PurchaseRequestsIndex() {
               </>
             )}
           </CardContent>
+          {pagination && pagination.totalPages > 1 && (
+            <div className="p-4 border-t">
+              <CustomPagination
+                currentPage={page}
+                totalPages={pagination.totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
         </Card>
 
         {/* Create Request Dialog */}
@@ -828,21 +903,16 @@ export default function PurchaseRequestsIndex() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div>
                               <Label className="text-sm font-medium">Item *</Label>
-                              <Select
-                                value={newItem.inventoryItemId}
+                              <Autocomplete
+                                options={(inventoryItems || []).map((item) => ({
+                                  value: item.id.toString(),
+                                  label: `${item.name}(${item.description || ""})`,
+                                  searchText: `${item.name} ${item.description || ""} ${item.unit}`
+                                }))}
+                                value={newItem.inventoryItemId || ""}
                                 onValueChange={(value) => setNewItem(prev => ({ ...prev, inventoryItemId: value }))}
-                              >
-                                <SelectTrigger className="mt-1">
-                                  <SelectValue placeholder="Select item" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {inventoryItems?.map((invItem) => (
-                                    <SelectItem key={invItem.id} value={invItem.id.toString()}>
-                                      {invItem.name} ({invItem.unit})
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                placeholder="Search inventory items..."
+                              />
                             </div>
                             <div>
                               <Label className="text-sm font-medium">Quantity *</Label>

@@ -42,7 +42,7 @@ export default function CurrencySettings() {
         <div>
           <h1 className="text-3xl font-bold">Currency Management</h1>
           <p className="text-muted-foreground mt-2">
-            Manage multi-currency settings and exchange rates for the Aquanav ERP system
+            Manage multi-currency settings and exchange rates for the Aquasoft ERP system
           </p>
         </div>
         <Badge variant="outline" className="text-lg px-4 py-2">
