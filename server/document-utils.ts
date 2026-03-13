@@ -29,7 +29,9 @@ export function getCommonStyles(): string {
         border-collapse: collapse;
         border: none !important;
       }
-      .report-wrapper td {
+      .report-wrapper > thead > tr > td,
+      .report-wrapper > tbody > tr > td,
+      .report-wrapper > tfoot > tr > td {
         border: none !important;
         padding: 0 !important;
       }

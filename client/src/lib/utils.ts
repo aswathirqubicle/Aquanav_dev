@@ -92,14 +92,13 @@ export function generateCommonHeader(options?: { company?: any }) {
 
   return `
     <div class="report-header-container">
-      <div class="print-header">
-        <div class="header-row">
-          <div class="header-left">
-            ${company?.logo ? `<img src="${company.logo}" class="company-logo" />` : ""}
-          </div>
-          <div class="header-right">
-            <div class="company-name">${company?.name || ""}</div>
-            <div class="address">${company?.address || ""}</div>
+      <div class="header-content">
+        <div class="top-info">
+          ${company?.logo ? `<img src="${company.logo}" alt="${company.name}" class="company-logo" />` : ""}
+        </div>
+        <div class="title">
+          <div class="address">
+            ${company?.address || ""}
           </div>
         </div>
       </div>
@@ -127,35 +126,63 @@ export function getCommonPrintStyles(): string {
       background: white;
       z-index: 1000;
     }
-    .print-header {
+    .header-content {
       padding: 10px 20px;
-    }
-    .header-row {
+      margin-bottom: 0;
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
     }
-    .header-left {
-      flex: 0 0 auto;
+    .top-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
     }
-    .header-right {
-      text-align: right;
-      flex: 1;
+    .top-info img {
+      height: 120px;
     }
-    .company-logo {
-      max-height: 120px;
+    .company-details {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
     .company-name {
-      font-size: 16px;
+      font-size: 24px;
       font-weight: bold;
       color: #0b4d78;
       margin-bottom: 2px;
     }
     .address {
-      font-size: 10px;
+      line-height: 1.4;
+      font-size: 12px;
       color: #555;
       white-space: pre-wrap;
-      line-height: 1.2;
+    }
+    .title {
+      text-align: right;
+      font-size: 12px;
+      color: #0b4d78;
+      line-height: 1.4;
+    }
+    /* Layout table for repeating headers/footers */
+    .report-wrapper {
+      width: 100%;
+      border-collapse: collapse;
+      border: none !important;
+    }
+    /* Only target immediate cells of the layout table to avoid overriding nested data table borders */
+    .report-wrapper > thead > tr > td,
+    .report-wrapper > tbody > tr > td,
+    .report-wrapper > tfoot > tr > td {
+      border: none !important;
+      padding: 0 !important;
+    }
+    .report-header-space {
+      height: 160px;
+    }
+    .report-footer-space {
+      height: 60px;
     }
     .print-footer {
       padding: 10px 40px;
@@ -196,23 +223,6 @@ export function getPayslipStyles(): string {
         margin: 10mm;
       }
       ${getCommonPrintStyles()}
-
-      /* Layout table for repeating headers/footers */
-      .report-wrapper {
-        width: 100%;
-        border-collapse: collapse;
-        border: none !important;
-      }
-      .report-wrapper td {
-        border: none !important;
-        padding: 0 !important;
-      }
-      .report-header-space {
-        height: 160px;
-      }
-      .report-footer-space {
-        height: 60px;
-      }
       .report-content-cell {
         padding: 0 20px;
         vertical-align: top;
@@ -343,41 +353,35 @@ export function getReportStyles(): string {
         margin: 10mm;
       }
       ${getCommonPrintStyles()}
-
-      /* Layout table for repeating headers/footers */
-      .report-wrapper {
-        width: 100%;
-        border-collapse: collapse;
-        border: none !important;
-      }
-      .report-wrapper td {
-        border: none !important;
-        padding: 0 !important;
-      }
-      .report-header-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        width: 100%;
-        background: white;
-      }
-      .report-footer-container {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        width: 100%;
-        background: white;
-      }
-      .report-header-space {
-        height: 160px;
-      }
-      .report-footer-space {
-        height: 60px;
-      }
       .report-content-cell {
-        padding: 0 20px;
+        padding: 20px;
+        vertical-align: top;
+      }
+
+      .document-info {
+        margin-bottom: 30px;
+      }
+
+      .document-info h1 {
+        color: #0b4d78;
+        margin-bottom: 15px;
+        font-size: 24px;
+        margin-top: 0;
+        display: inline-block;
+        padding-right: 20px;
+        font-weight: 800;
+        letter-spacing: 1px;
+      }
+
+      .document-info p {
+        margin: 4px 0;
+        font-size: 13px;
+      }
+
+      .document-info p strong {
+        color: #555;
+        width: 140px;
+        display: inline-block;
       }
 
       .report-title-section {

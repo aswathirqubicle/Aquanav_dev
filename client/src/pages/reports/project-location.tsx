@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
+import { generateCommonHeader, generateCommonFooter, getReportStyles } from "@/lib/utils";
 import { ArrowLeft, MapPin, Calendar, ChevronDown, ChevronRight, Download, BarChart3, FileText } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -95,86 +96,52 @@ export default function ProjectLocationReport() {
     if (reportData) {
       for (const loc of reportData.locationReport) {
         tableRows += `<tr>
-          <td style="padding: 8px 12px; border: 1px solid #e5e7eb; font-weight: 500;">${loc.location}</td>
-          <td style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: center;">${loc.totalDays}</td>
-          <td style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: center;">${loc.activities.length}</td>
+          <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: 500;">${loc.location}</td>
+          <td style="padding: 8px 12px; border: 1px solid #ddd; text-align: center;">${loc.totalDays}</td>
+          <td style="padding: 8px 12px; border: 1px solid #ddd; text-align: center;">${loc.activities.length}</td>
         </tr>`;
 
         for (const act of loc.activities) {
           tableRows += `<tr style="background: #f9fafb;">
-            <td style="padding: 6px 12px 6px 30px; border: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">${act.date}</td>
-            <td colspan="2" style="padding: 6px 12px; border: 1px solid #e5e7eb; font-size: 12px; color: #374151;">${act.completedTasks || "No description"}</td>
+            <td style="padding: 6px 12px 6px 30px; border: 1px solid #ddd; font-size: 12px; color: #6b7280;">${act.date}</td>
+            <td colspan="2" style="padding: 6px 12px; border: 1px solid #ddd; font-size: 12px; color: #374151;">${act.completedTasks || "No description"}</td>
           </tr>`;
         }
       }
     }
-
-    const companyName = company?.name || "Company";
-    const companyAddress = company?.address || "";
-    const companyPhone = company?.phone || "";
-    const companyEmail = company?.email || "";
-    const companyWebsite = company?.website || "";
-
-    const companyDetailsHtml = [companyAddress, companyPhone, companyEmail, companyWebsite]
-      .filter(Boolean)
-      .join(" | ");
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
         <title>Project Location Report - ${reportData?.project.title || ""}</title>
+        ${getReportStyles()}
         <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #1f2937; line-height: 1.4; }
-          
-          /* Layout table for repeating headers/footers */
-          .report-wrapper { width: 100%; border-collapse: collapse; border: none !important; }
-          .report-wrapper td { border: none !important; padding: 0 !important; }
-          .report-header-container { position: fixed; top: 0; left: 0; right: 0; width: 100%; background: white; z-index: 1000; }
-          .report-footer-container { position: fixed; bottom: 0; left: 0; right: 0; width: 100%; background: white; z-index: 1000; }
-          .report-header-space { height: 160px; }
-          .report-footer-space { height: 60px; }
-          .report-content-cell { padding: 20px 40px; vertical-align: top; }
-
-          .company-header { text-align: center; padding: 15px 0; }
-          .company-name { font-size: 24px; font-weight: 700; color: #1e3a5f; margin: 0 0 6px 0; }
-          .company-details { font-size: 12px; color: #6b7280; margin: 0; line-height: 1.6; }
-          
-          .report-title { font-size: 18px; font-weight: 600; color: #1f2937; margin: 15px 0 3px 0; text-align: center; }
-          .project-name { font-size: 14px; color: #6b7280; margin: 0 0 20px 0; text-align: center; }
           .summary { display: flex; gap: 30px; margin-bottom: 20px; justify-content: center; }
           .summary-item { padding: 10px 15px; background: #f3f4f6; border-radius: 6px; min-width: 120px; text-align: center; }
           .summary-label { font-size: 12px; color: #6b7280; }
           .summary-value { font-size: 20px; font-weight: 700; }
-          
-          table:not(.report-wrapper) { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { padding: 10px 12px; background: #f3f4f6; border: 1px solid #e5e7eb; text-align: left; font-size: 13px; font-weight: 600; }
-          
-          .footer { padding: 15px 0; font-size: 11px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; }
-          
-          @media print { 
-            body { margin: 0; }
-            @page { size: A4; margin: 10mm; }
-          }
+          /* Hide redundant company name from header in this specific report as it's in the document-info */
+          .company-name { display: none; }
+          .table, .table th, .table td { border: 1px solid #ddd !important; border-collapse: collapse; }
         </style>
       </head>
       <body>
-        <div class="report-header-container">
-          <div class="company-header">
-            <div class="company-name">${companyName}</div>
-            <div class="company-details">${companyDetailsHtml}</div>
-          </div>
-        </div>
+        ${generateCommonHeader({ company })}
 
-        <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+        <table class="report-wrapper">
           <thead>
-            <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div></td></tr>
+            <tr><td><div class="report-header-space"></div></td></tr>
           </thead>
           <tbody>
             <tr>
               <td class="report-content-cell">
-                <div class="report-title">Project Location Report</div>
-                <div class="project-name">${reportData?.project.title || ""}</div>
+                <div class="document-info">
+                  <h1>Project Location Report</h1>
+                  <p><strong>Company:</strong> ${company?.name || ""}</p>
+                  <p><strong>Project:</strong> ${reportData?.project.title || ""}</p>
+                </div>
+
                 <div class="summary">
                   <div class="summary-item">
                     <div class="summary-label">Active Locations</div>
@@ -186,7 +153,7 @@ export default function ProjectLocationReport() {
                   </div>
                 </div>
                 ${chartHtml}
-                <table>
+                <table class="table">
                   <thead>
                     <tr>
                       <th>Location</th>
@@ -202,13 +169,11 @@ export default function ProjectLocationReport() {
             </tr>
           </tbody>
           <tfoot>
-            <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div></td></tr>
+            <tr><td><div class="report-footer-space"></div></td></tr>
           </tfoot>
         </table>
 
-        <div class="report-footer-container">
-          <div class="footer">${companyName} | Generated on ${new Date().toLocaleString()}</div>
-        </div>
+        ${generateCommonFooter({ company })}
       </body>
       </html>
     `);

@@ -1156,6 +1156,19 @@ body {
   print-color-adjust: exact;
 }
 
+/* Layout table for repeating headers/footers */
+.report-wrapper {
+  width: 100%;
+  border-collapse: collapse;
+  border: none !important;
+}
+.report-wrapper > thead > tr > td,
+.report-wrapper > tbody > tr > td,
+.report-wrapper > tfoot > tr > td {
+  border: none !important;
+  padding: 0 !important;
+}
+
 /* ===== FIXED HEADER ===== */
 .print-header {
   position: fixed;
@@ -1634,6 +1647,19 @@ body {
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+/* Layout table for repeating headers/footers */
+.report-wrapper {
+  width: 100%;
+  border-collapse: collapse;
+  border: none !important;
+}
+.report-wrapper > thead > tr > td,
+.report-wrapper > tbody > tr > td,
+.report-wrapper > tfoot > tr > td {
+  border: none !important;
+  padding: 0 !important;
 }
 
 /* ===== FIXED HEADER ===== */
