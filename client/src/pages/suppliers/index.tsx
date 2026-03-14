@@ -711,7 +711,7 @@ export default function SuppliersIndex() {
                         onChange={(e) => handleChange("creditLimit", e.target.value)}
                         placeholder="0.00"
                         type="number"
-                        step="0.01"
+                        step="any"
                       />
                     </div>
                   </div>

@@ -860,7 +860,7 @@ export default function InventoryIndex() {
                 <Input
                   id="unitPrice"
                   type="number"
-                  step="0.01"
+                  step="any"
                   value={formData.unitPrice}
                   onChange={(e) => handleChange("unitPrice", e.target.value)}
                   placeholder="0.00"
@@ -926,7 +926,7 @@ export default function InventoryIndex() {
                       <Input
                         className="h-9 w-full"
                         type="number"
-                        step="0.01"
+                        step="any"
                         min="0"
                         placeholder="0.00"
                         value={newSupplierMapping.unitCost}

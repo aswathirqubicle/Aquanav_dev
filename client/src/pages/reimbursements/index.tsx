@@ -589,7 +589,7 @@ export default function ReimbursementsIndex() {
               <Input
                 id="amount"
                 type="number"
-                step="0.01"
+                step="any"
                 placeholder="Enter amount"
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
@@ -906,7 +906,7 @@ export default function ReimbursementsIndex() {
               <Input
                 id="editAmount"
                 type="number"
-                step="0.01"
+                step="any"
                 placeholder="Enter amount"
                 value={editFormData.amount}
                 onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}

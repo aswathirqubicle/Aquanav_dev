@@ -4805,7 +4805,7 @@ function PayrollDetailsDialog({
                             <Input
                               id="addition-amount"
                               type="number"
-                              step="0.01"
+                              step="any"
                               value={additionForm.amount}
                               onChange={(e) =>
                                 setAdditionForm((prev) => ({
@@ -4967,7 +4967,7 @@ function PayrollDetailsDialog({
                             <Input
                               id="deduction-amount"
                               type="number"
-                              step="0.01"
+                              step="any"
                               value={deductionForm.amount}
                               onChange={(e) =>
                                 setDeductionForm((prev) => ({

@@ -1076,7 +1076,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="instanceCost"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.acquisitionCost}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, acquisitionCost: e.target.value })}
                       placeholder="0.00"
@@ -1087,7 +1087,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="currentValue"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.currentValue}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, currentValue: e.target.value })}
                       placeholder="0.00"
@@ -1098,7 +1098,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="monthlyRentalRate"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.monthlyRentalRate}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, monthlyRentalRate: e.target.value })}
                       placeholder="0.00"
@@ -1346,7 +1346,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="editInstanceCost"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.acquisitionCost}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, acquisitionCost: e.target.value })}
                       placeholder="0.00"
@@ -1357,7 +1357,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="editCurrentValue"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.currentValue}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, currentValue: e.target.value })}
                       placeholder="0.00"
@@ -1368,7 +1368,7 @@ export default function AssetInventoryIndex() {
                     <Input
                       id="editMonthlyRentalRate"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={newAssetInstance.monthlyRentalRate}
                       onChange={(e) => setNewAssetInstance({ ...newAssetInstance, monthlyRentalRate: e.target.value })}
                       placeholder="0.00"

@@ -189,6 +189,10 @@ export default function SalesIndex() {
     currency: "AED",
     exchangeRate: "1",
     remarks: "",
+    paymentTerms: "",
+    bankAccount: "",
+    billingAddress: "",
+    termsAndConditions: "",
   });
 
   const [invoiceFormData, setInvoiceFormData] =
@@ -211,6 +215,10 @@ export default function SalesIndex() {
       exchangeRate: "1",
       remarks: "",
       workOrderNumber: "",
+      paymentTerms: "",
+      bankAccount: "",
+      billingAddress: "",
+      termsAndConditions: "",
     });
 
   const getDefaultTaxRate = () =>
@@ -244,7 +252,13 @@ export default function SalesIndex() {
   };
 
   const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
-  const [newItem, setNewItem] = useState({
+  const [newItem, setNewItem] = useState<{
+    description: string;
+    quantity: number | "";
+    unitPrice: number | "";
+    taxRate: number | "";
+    taxAmount: number;
+  }>({
     description: "",
     quantity: 1,
     unitPrice: 0,
@@ -296,10 +310,12 @@ export default function SalesIndex() {
   // Recalculate quotation discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
-    const calcDiscount = (quotationSubtotal * pct / 100).toFixed(2);
+    const calcDiscountValue = quotationSubtotal * pct / 100;
+    const currentDiscountValue = parseFloat(formData.discount || "0");
     
-    if (formData.discount !== calcDiscount) {
-      setFormData(prev => ({ ...prev, discount: calcDiscount }));
+    // Only update if the difference is more than a small epsilon to avoid loop/jumping
+    if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
+      setFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
     }
   }, [quotationSubtotal, formData.discountPercentage]);
 
@@ -315,10 +331,11 @@ export default function SalesIndex() {
   // Recalculate invoice discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(invoiceFormData.discountPercentage || "0") || 0;
-    const calcDiscount = (invoiceSubtotalValue * pct / 100).toFixed(2);
+    const calcDiscountValue = invoiceSubtotalValue * pct / 100;
+    const currentDiscountValue = parseFloat(invoiceFormData.discount || "0");
 
-    if (invoiceFormData.discount !== calcDiscount) {
-      setInvoiceFormData(prev => ({ ...prev, discount: calcDiscount }));
+    if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
+      setInvoiceFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
     }
   }, [invoiceSubtotalValue, invoiceFormData.discountPercentage]);
 
@@ -492,12 +509,12 @@ export default function SalesIndex() {
         customerId: data.customerId
           ? parseInt(data.customerId.toString())
           : undefined,
-        validUntil: data.validUntil ? new Date(data.validUntil) : undefined,
-        subtotal: subtotal.toString(),
-        taxAmount: taxAmount.toString(),
-        totalAmount: totalAmount.toString(),
+        validUntil: data.validUntil && data.validUntil !== "" ? new Date(data.validUntil).toISOString() : null,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
         discountPercentage: data.discountPercentage || "0",
-        discount: discountAmount.toString(),
+        discount: discountAmount.toFixed(2),
       };
 
       const url =
@@ -1005,6 +1022,11 @@ export default function SalesIndex() {
       discount: "0",
       currency: "AED",
       exchangeRate: "1",
+      remarks: "",
+      paymentTerms: "",
+      bankAccount: "",
+      billingAddress: "",
+      termsAndConditions: "",
     });
 
     setNewItem({
@@ -1108,7 +1130,16 @@ export default function SalesIndex() {
       });
       return;
     }
-    createQuotationMutation.mutate(formData);
+    const processedFormData = {
+      ...formData,
+      items: formData.items.map(item => ({
+        ...item,
+        quantity: typeof item.quantity === 'string' ? parseFloat(item.quantity) || 0 : item.quantity,
+        unitPrice: typeof item.unitPrice === 'string' ? parseFloat(item.unitPrice) || 0 : item.unitPrice,
+        taxRate: typeof item.taxRate === 'string' ? parseFloat(item.taxRate) || 0 : item.taxRate,
+      }))
+    };
+    createQuotationMutation.mutate(processedFormData as any);
   };
 
   const handleInvoiceSubmit = (e: React.FormEvent) => {
@@ -1189,17 +1220,17 @@ export default function SalesIndex() {
       return;
     }
 
-    // 🔥 Force correct tax rate here
-    const taxRate = newItem.taxRate;
-    // customerVatTreatment === "standard" ? 5 : newItem.taxRate;
+    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
+    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
+    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
 
-    const lineSubtotal = newItem.quantity * newItem.unitPrice;
+    const lineSubtotal = quantity * unitPrice;
     const calculatedTaxAmount = lineSubtotal * (taxRate / 100);
 
     const item = {
       description: newItem.description,
-      quantity: newItem.quantity,
-      unitPrice: newItem.unitPrice,
+      quantity,
+      unitPrice,
       taxRate,
       taxAmount: calculatedTaxAmount,
     };
@@ -1235,17 +1266,17 @@ export default function SalesIndex() {
       return;
     }
 
-    // 🔥 FORCE VAT HERE
-    const taxRate = newItem.taxRate;
-    // customerVatTreatment === "standard" ? 5 : newItem.taxRate;
+    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
+    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
+    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
 
-    const lineSubtotal = newItem.quantity * newItem.unitPrice;
+    const lineSubtotal = quantity * unitPrice;
     const taxAmount = lineSubtotal * (taxRate / 100);
 
     const item = {
       description: newItem.description,
-      quantity: newItem.quantity,
-      unitPrice: newItem.unitPrice,
+      quantity,
+      unitPrice,
       taxRate,
       taxAmount,
     };
@@ -1432,6 +1463,7 @@ export default function SalesIndex() {
 
   const handleEditQuotation = (quotation?: SalesQuotation) => {
     if (quotation) {
+      setSelectedQuotation(quotation);
       setFormData({
         customerId: quotation.customerId,
         status: quotation.status,
@@ -1449,6 +1481,8 @@ export default function SalesIndex() {
         billingAddress: quotation.billingAddress || "",
         termsAndConditions: quotation.termsAndConditions || "",
         remarks: quotation.remarks || "",
+        currency: quotation.currency || "AED",
+        exchangeRate: quotation.exchangeRate || "1",
       });
       setIsEditingQuotation(true);
       setIsQuotationDetailsOpen(false);
@@ -1466,6 +1500,7 @@ export default function SalesIndex() {
           : "",
         items: quotation.items || [],
         discount: quotation.discount || "0",
+        discountPercentage: quotation.discountPercentage || "0",
         subtotal: quotation.subtotal || "0",
         taxAmount: quotation.taxAmount || "0",
         totalAmount: quotation.totalAmount || "0",
@@ -1635,6 +1670,10 @@ export default function SalesIndex() {
 
       // ✅ COPY FROM QUOTATION
       billingAddress: quotation.billingAddress || "",
+      bankAccount: quotation.bankAccount || "",
+      paymentTerms: quotation.paymentTerms || "",
+      termsAndConditions: quotation.termsAndConditions || "",
+      remarks: quotation.remarks || "",
 
       items: quotation.items || [],
       discountPercentage: quotation.discountPercentage || "0",
@@ -1642,9 +1681,6 @@ export default function SalesIndex() {
       subtotal: quotation.subtotal || "0",
       taxAmount: quotation.taxAmount || "0",
       totalAmount: quotation.totalAmount || "0",
-      paymentTerms: quotation.paymentTerms || "",
-      termsAndConditions: quotation.termsAndConditions || "",
-      remarks: quotation.remarks || "",
       currency: quotation.currency || "AED",
       exchangeRate: quotation.exchangeRate || "1",
       workOrderNumber: "",
@@ -1659,41 +1695,6 @@ export default function SalesIndex() {
   const totalInvoicesPages = invoicesResponse?.pagination?.totalPages || 1;
   const paginatedInvoices = invoices;
 
-  // Initialize new fields in quotation form state
-  const [quotationForm, setQuotationForm] = useState({
-    customerId: "",
-    validUntil: "",
-    paymentTerms: "",
-    bankAccount: "",
-    billingAddress: "",
-    termsAndConditions: "",
-    remarks: "",
-    discount: "0",
-    items: [] as Array<{
-      description: string;
-      quantity: number;
-      unitPrice: number;
-    }>,
-  });
-
-  // Initialize new fields in invoice form state
-  const [invoiceForm, setInvoiceForm] = useState({
-    customerId: "",
-    projectId: "",
-    quotationId: "",
-    invoiceDate: new Date().toISOString().split("T")[0],
-    dueDate: "",
-    paymentTerms: "",
-    bankAccount: "",
-    billingAddress: "",
-    termsAndConditions: "",
-    remarks: "",
-    items: [] as Array<{
-      description: string;
-      quantity: number;
-      unitPrice: number;
-    }>,
-  });
 
   useEffect(() => {
     setQuotationsCurrentPage(1);
@@ -2000,7 +2001,7 @@ export default function SalesIndex() {
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  quantity: parseInt(e.target.value) || 1,
+                                  quantity: e.target.value === "" ? "" : parseInt(e.target.value),
                                 }))
                               }
                             />
@@ -2011,13 +2012,13 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Unit price"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  unitPrice: parseFloat(e.target.value) || 0,
+                                  unitPrice: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -2028,13 +2029,13 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Tax %"
                               value={newItem.taxRate}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  taxRate: parseFloat(e.target.value) || 0,
+                                  taxRate: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -2100,7 +2101,7 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        {formData.currency || "AED"} {item.unitPrice.toFixed(2)}
+                                        {formData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -2144,12 +2145,17 @@ export default function SalesIndex() {
                             type="number"
                             min="0"
                             max="100"
-                            step="0.01"
+                            step="any"
                             value={formData.discountPercentage}
                             onChange={(e) => {
-                              const pct = parseFloat(e.target.value) || 0;
-                              const calcDiscount = (quotationSubtotal * pct / 100).toFixed(2);
-                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                              const val = e.target.value;
+                              const pct = parseFloat(val) || 0;
+                              const calcDiscount = (quotationSubtotal * pct / 100);
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                discountPercentage: val, 
+                                discount: val === "" ? "" : calcDiscount.toFixed(2)
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -2161,12 +2167,17 @@ export default function SalesIndex() {
                             id="discountAmount"
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             value={formData.discount}
                             onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              const calcPct = quotationSubtotal > 0 ? ((val / quotationSubtotal) * 100).toFixed(2) : "0";
-                              setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                              const val = e.target.value;
+                              const amount = parseFloat(val) || 0;
+                              const calcPct = quotationSubtotal > 0 ? ((amount / quotationSubtotal) * 100) : 0;
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                discount: val, 
+                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -2543,7 +2554,7 @@ export default function SalesIndex() {
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  quantity: parseInt(e.target.value) || 1,
+                                  quantity: e.target.value === "" ? "" : parseInt(e.target.value),
                                 }))
                               }
                             />
@@ -2554,13 +2565,13 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Unit price"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  unitPrice: parseFloat(e.target.value) || 0,
+                                  unitPrice: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -2571,13 +2582,13 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Tax %"
                               value={newItem.taxRate}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  taxRate: parseFloat(e.target.value) || 0,
+                                  taxRate: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -2643,7 +2654,7 @@ export default function SalesIndex() {
                                         {item.quantity}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
-                                        {invoiceFormData.currency || "AED"} {item.unitPrice.toFixed(2)}
+                                        {invoiceFormData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -2689,12 +2700,17 @@ export default function SalesIndex() {
                             type="number"
                             min="0"
                             max="100"
-                            step="0.01"
+                            step="any"
                             value={invoiceFormData.discountPercentage}
                             onChange={(e) => {
-                              const pct = parseFloat(e.target.value) || 0;
-                              const calcDiscount = (invoiceSubtotalValue * pct / 100).toFixed(2);
-                              setInvoiceFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                              const val = e.target.value;
+                              const pct = parseFloat(val) || 0;
+                              const calcDiscount = (invoiceSubtotalValue * pct / 100);
+                              setInvoiceFormData(prev => ({ 
+                                ...prev, 
+                                discountPercentage: val, 
+                                discount: val === "" ? "" : calcDiscount.toFixed(2) 
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -2706,12 +2722,17 @@ export default function SalesIndex() {
                             id="invoiceDiscountAmount"
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             value={invoiceFormData.discount}
                             onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              const calcPct = invoiceSubtotalValue > 0 ? ((val / invoiceSubtotalValue) * 100).toFixed(2) : "0";
-                              setInvoiceFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                              const val = e.target.value;
+                              const amount = parseFloat(val) || 0;
+                              const calcPct = invoiceSubtotalValue > 0 ? ((amount / invoiceSubtotalValue) * 100) : 0;
+                              setInvoiceFormData(prev => ({ 
+                                ...prev, 
+                                discount: val, 
+                                discountPercentage: val === "" ? "" : calcPct.toFixed(2) 
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -4830,7 +4851,7 @@ export default function SalesIndex() {
                   <Input
                     id="paymentAmount"
                     type="number"
-                    step="0.01"
+                    step="any"
                     value={paymentFormData.amount}
                     onChange={(e) =>
                       setPaymentFormData((prev) => ({

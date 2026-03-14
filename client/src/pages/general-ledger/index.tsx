@@ -617,7 +617,7 @@ export default function GeneralLedger() {
                     <Input
                       id="amount"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={formData.amount}
                       onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
                       required

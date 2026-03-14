@@ -121,9 +121,9 @@ interface ProformaInvoice {
 
 interface ProformaItem {
   description: string;
-  quantity: number;
-  unitPrice: number;
-  taxRate?: number;
+  quantity: number | "";
+  unitPrice: number | "";
+  taxRate?: number | "";
 }
 
 export default function ProformaInvoicesIndex() {
@@ -149,6 +149,12 @@ export default function ProformaInvoicesIndex() {
     currency: "AED",
     workOrderNumber: "",
     exchangeRate: "1",
+    paymentTerms: "",
+    deliveryTerms: "",
+    bankAccount: "",
+    billingAddress: "",
+    termsAndConditions: "",
+    remarks: "",
   });
 
   const [newItem, setNewItem] = useState<ProformaItem>({
@@ -209,10 +215,11 @@ export default function ProformaInvoicesIndex() {
   // Recalculate proforma discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
-    const calcDiscount = (proformaSubtotal * pct / 100).toFixed(2);
+    const calcDiscountValue = proformaSubtotal * pct / 100;
+    const currentDiscountValue = parseFloat(formData.discount || "0");
 
-    if (formData.discount !== calcDiscount) {
-      setFormData(prev => ({ ...prev, discount: calcDiscount }));
+    if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
+      setFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
     }
   }, [proformaSubtotal, formData.discountPercentage]);
 
@@ -270,10 +277,11 @@ export default function ProformaInvoicesIndex() {
       }
       const processedData = {
         ...data,
-        validUntil: data.validUntil ? data.validUntil : null,
-        subtotal: subtotal.toString(),
-        taxAmount: taxAmount.toString(),
-        totalAmount: totalAmount.toString(),
+        validUntil: data.validUntil && data.validUntil !== "" ? new Date(data.validUntil).toISOString() : null,
+        subtotal: subtotal.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        discount: discountAmount.toFixed(2),
         discountPercentage: data.discountPercentage || "0",
         currency: (data as any).currency || "AED",
         exchangeRate: (data as any).exchangeRate || "1",
@@ -388,6 +396,7 @@ export default function ProformaInvoicesIndex() {
       billingAddress: "",
       termsAndConditions: "",
       remarks: "",
+      validUntil: "",
     });
     setNewItem({
       description: "",
@@ -429,9 +438,18 @@ export default function ProformaInvoicesIndex() {
       return;
     }
 
+    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
+    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
+    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+
     setFormData((prev) => ({
       ...prev,
-      items: [...prev.items, { ...newItem }],
+      items: [...prev.items, { 
+        ...newItem,
+        quantity,
+        unitPrice,
+        taxRate
+      }],
     }));
 
     setNewItem({
@@ -598,6 +616,8 @@ export default function ProformaInvoicesIndex() {
       items: proforma.items || [],
       discountPercentage: proforma.discountPercentage || '0',
       discount: proforma.discount || '0',
+        currency: proforma.currency || 'AED',
+        exchangeRate: proforma.exchangeRate || '1',
       workOrderNumber: proforma.workOrderNumber || '',
     });
     // 🔹 ensure new item uses correct tax
@@ -642,7 +662,7 @@ export default function ProformaInvoicesIndex() {
 
                 <DialogHeader>
                   <DialogTitle>
-                    {isEditingProforma ? "Edit Proforma Invoice" : "Create Proforma Invoice"}
+                    {isEditingProforma ? `Edit Proforma Invoice — ${selectedProforma?.proformaNumber || ""}` : "Create Proforma Invoice"}
                   </DialogTitle>
                   <DialogDescription>
                     {isEditingProforma
@@ -914,7 +934,7 @@ export default function ProformaInvoicesIndex() {
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  quantity: parseInt(e.target.value) || 1,
+                                  quantity: e.target.value === "" ? "" : parseInt(e.target.value),
                                 }))
                               }
                             />
@@ -923,13 +943,13 @@ export default function ProformaInvoicesIndex() {
                             <Label className="text-xs text-gray-600">Unit Price</Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Unit price"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  unitPrice: parseFloat(e.target.value) || 0,
+                                  unitPrice: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -938,13 +958,13 @@ export default function ProformaInvoicesIndex() {
                             <Label className="text-xs text-gray-600">Tax Rate (%)</Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               placeholder="Tax %"
                               value={newItem.taxRate}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  taxRate: parseFloat(e.target.value) || 0,
+                                  taxRate: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />
@@ -1059,12 +1079,17 @@ export default function ProformaInvoicesIndex() {
                             type="number"
                             min="0"
                             max="100"
-                            step="0.01"
+                            step="any"
                             value={formData.discountPercentage}
                             onChange={(e) => {
-                              const pct = parseFloat(e.target.value) || 0;
-                              const calcDiscount = (proformaSubtotal * pct / 100).toFixed(2);
-                              setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                              const val = e.target.value;
+                              const pct = parseFloat(val) || 0;
+                              const calcDiscount = (proformaSubtotal * pct / 100);
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                discountPercentage: val, 
+                                discount: val === "" ? "" : calcDiscount.toFixed(2)
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -1076,12 +1101,17 @@ export default function ProformaInvoicesIndex() {
                             id="discountAmount"
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             value={formData.discount}
                             onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              const calcPct = proformaSubtotal > 0 ? ((val / proformaSubtotal) * 100).toFixed(2) : "0";
-                              setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                              const val = e.target.value;
+                              const amount = parseFloat(val) || 0;
+                              const calcPct = proformaSubtotal > 0 ? ((amount / proformaSubtotal) * 100) : 0;
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                discount: val, 
+                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
+                              }));
                             }}
                             placeholder="0.00"
                             className="mt-1"
@@ -1471,7 +1501,7 @@ export default function ProformaInvoicesIndex() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Proforma Invoice Details</DialogTitle>
+            <DialogTitle>Proforma Invoice Details — {selectedProforma?.proformaNumber || ""}</DialogTitle>
             <DialogDescription>
               View detailed information about this proforma invoice.
             </DialogDescription>
@@ -1714,6 +1744,7 @@ export default function ProformaInvoicesIndex() {
 
                       setCustomerVatTreatment(vatTreatment);
                       // Populate form with existing data
+                      setSelectedProforma(selectedProforma);
                       setFormData({
                         customerId: selectedProforma.customerId,
                         projectId: selectedProforma.projectId,

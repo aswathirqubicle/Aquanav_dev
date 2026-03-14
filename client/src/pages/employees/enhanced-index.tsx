@@ -1328,7 +1328,7 @@ export default function EmployeesIndex() {
                     <Input
                       id="salary"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={formData.salary || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
                     />
@@ -1369,7 +1369,7 @@ export default function EmployeesIndex() {
                     <Input
                       id="height"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={formData.height || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, height: e.target.value || null }))}
                     />
@@ -1379,7 +1379,7 @@ export default function EmployeesIndex() {
                     <Input
                       id="weight"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={formData.weight || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, weight: e.target.value || null }))}
                     />
@@ -1588,7 +1588,7 @@ export default function EmployeesIndex() {
                     <Input
                       id="editSalary"
                       type="number"
-                      step="0.01"
+                      step="any"
                       value={formData.salary || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
                     />

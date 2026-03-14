@@ -3018,7 +3018,7 @@ export default function ProjectDetail() {
                             <Input
                               id="hbmDailyRunningHours"
                               type="number"
-                              step="0.01"
+                              step="any"
                               value={activityData.hbmDailyRunningHours}
                               onChange={(e) => setActivityData(prev => ({ ...prev, hbmDailyRunningHours: e.target.value }))}
                               placeholder="Enter running hours..."
@@ -4739,7 +4739,7 @@ export default function ProjectDetail() {
                                     <Input
                                       type="number"
                                       min="0"
-                                      step="0.01"
+                                      step="any"
                                       placeholder="Cost per unit"
                                       value={newConsumableItem.unitCost}
                                       onChange={(e) => setNewConsumableItem(prev => ({ ...prev, unitCost: e.target.value }))}

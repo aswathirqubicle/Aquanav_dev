@@ -189,9 +189,9 @@ export default function PurchaseInvoicesIndex() {
     itemType: "product" as "product" | "service",
     inventoryItemId: "",
     description: "",
-    quantity: "1",
-    unitPrice: "0",
-    taxRate: "0",
+    quantity: "1" as string,
+    unitPrice: "0" as string,
+    taxRate: "0" as string,
     projectId: "",
     assetInstanceId: "",
   });
@@ -1741,7 +1741,7 @@ export default function PurchaseInvoicesIndex() {
                             <Label className="text-xs font-medium text-muted-foreground">UNIT PRICE</Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               min="0"
                               value={newItem.unitPrice}
                               onChange={(e) => setNewItem(prev => ({ ...prev, unitPrice: e.target.value }))}
@@ -1754,7 +1754,7 @@ export default function PurchaseInvoicesIndex() {
                             <Label className="text-xs font-medium text-muted-foreground">TAX (%)</Label>
                             <Input
                               type="number"
-                              step="0.01"
+                              step="any"
                               min="0"
                               max="100"
                               value={newItem.taxRate}
@@ -1902,13 +1902,18 @@ export default function PurchaseInvoicesIndex() {
                               type="number"
                               min="0"
                               max="100"
-                              step="0.01"
+                              step="any"
                               value={formData.discountPercentage}
                               onChange={(e) => {
-                                const pct = parseFloat(e.target.value) || 0;
+                                const val = e.target.value;
+                                const pct = parseFloat(val) || 0;
                                 const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                                const calcDiscount = (subtotal * pct / 100).toFixed(2);
-                                setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discountAmount: calcDiscount }));
+                                const calcDiscount = (subtotal * pct / 100);
+                                setFormData(prev => ({ 
+                                  ...prev, 
+                                  discountPercentage: val, 
+                                  discountAmount: val === "" ? "" : calcDiscount.toString() 
+                                }));
                               }}
                               placeholder="0.00"
                               className="mt-1"
@@ -1920,13 +1925,18 @@ export default function PurchaseInvoicesIndex() {
                               id="discountAmount"
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="any"
                               value={formData.discountAmount}
                               onChange={(e) => {
+                                const val = e.target.value;
+                                const amount = parseFloat(val) || 0;
                                 const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
-                                const val = parseFloat(e.target.value) || 0;
-                                const calcPct = subtotal > 0 ? ((val / subtotal) * 100).toFixed(2) : "0";
-                                setFormData(prev => ({ ...prev, discountAmount: e.target.value, discountPercentage: calcPct }));
+                                const calcPct = subtotal > 0 ? ((amount / subtotal) * 100) : 0;
+                                setFormData(prev => ({ 
+                                  ...prev, 
+                                  discountAmount: val, 
+                                  discountPercentage: val === "" ? "" : calcPct.toString() 
+                                }));
                               }}
                               placeholder="0.00"
                               className="mt-1"
@@ -2690,7 +2700,7 @@ export default function PurchaseInvoicesIndex() {
                 <Input
                   id="amount"
                   type="number"
-                  step="0.01"
+                  step="any"
                   min="0"
                   value={paymentData.amount}
                   onChange={(e) => setPaymentData(prev => ({ ...prev, amount: e.target.value }))}

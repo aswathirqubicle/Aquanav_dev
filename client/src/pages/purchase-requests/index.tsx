@@ -962,7 +962,7 @@ export default function PurchaseRequestsIndex() {
                               <Input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="any"
                                 value={newItem.unitPrice}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, unitPrice: e.target.value }))}
                                 placeholder="0.00"

@@ -346,7 +346,7 @@ export default function GoodsReceipt() {
                     <Input
                       className="h-9"
                       type="number"
-                      step="0.01"
+                      step="any"
                       min="0"
                       value={newItem.unitCost}
                       onChange={(e) => setNewItem(prev => ({ ...prev, unitCost: e.target.value }))}

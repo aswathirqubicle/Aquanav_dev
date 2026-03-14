@@ -195,7 +195,7 @@ export default function CreditNotesIndex() {
   };
 
   const CreditNoteForm = ({ creditNote, onSubmit }: { creditNote?: any; onSubmit: (data: CreditNoteFormData) => void }) => {
-    const [formData, setFormData] = useState<CreditNoteFormData>({
+    const [formData, setFormData] = useState<any>({
       salesInvoiceId: creditNote?.salesInvoiceId || selectedInvoiceId || 0,
       customerId: creditNote?.customerId || 0,
       status: creditNote?.status || "draft",
@@ -243,9 +243,13 @@ export default function CreditNotesIndex() {
       let subtotal = 0;
       let totalTaxAmount = 0;
 
-      formData.items.forEach((item) => {
-        const lineSubtotal = item.quantity * item.unitPrice;
-        const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+      formData.items.forEach((item: any) => {
+        const quantity = item.quantity === "" ? 0 : item.quantity;
+        const unitPrice = item.unitPrice === "" ? 0 : item.unitPrice;
+        const taxRate = item.taxRate === "" ? 0 : (item.taxRate || 0);
+
+        const lineSubtotal = quantity * unitPrice;
+        const taxAmount = lineSubtotal * (taxRate / 100);
         subtotal += lineSubtotal;
         totalTaxAmount += taxAmount;
       });
@@ -253,7 +257,7 @@ export default function CreditNotesIndex() {
       const discountAmount = parseFloat(formData.discount || "0");
       const totalAmount = subtotal - discountAmount + totalTaxAmount;
 
-      setFormData(prev => ({
+      setFormData((prev: any) => ({
         ...prev,
         subtotal: subtotal.toFixed(2),
         taxAmount: totalTaxAmount.toFixed(2),
@@ -265,15 +269,16 @@ export default function CreditNotesIndex() {
       calculateTotals();
     }, [formData.items, formData.discount]);
 
-    const creditNoteSubtotalValue = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+    const creditNoteSubtotalValue = formData.items.reduce((sum: number, item: any) => sum + ((typeof item.quantity === 'number' ? item.quantity : 0) || 0) * ((typeof item.unitPrice === 'number' ? item.unitPrice : 0) || 0), 0);
 
     // Recalculate credit note discount when items or percentage changes
     useEffect(() => {
       const pct = parseFloat(formData.discountPercentage || "0") || 0;
-      const calcDiscount = (creditNoteSubtotalValue * pct / 100).toFixed(2);
+      const calcDiscountValue = creditNoteSubtotalValue * pct / 100;
+      const currentDiscountValue = parseFloat(formData.discount || "0");
 
-      if (formData.discount !== calcDiscount) {
-        setFormData(prev => ({ ...prev, discount: calcDiscount }));
+      if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
+        setFormData((prev: any) => ({ ...prev, discount: calcDiscountValue.toString() }));
       }
     }, [creditNoteSubtotalValue, formData.discountPercentage]);
 
@@ -493,9 +498,9 @@ export default function CreditNotesIndex() {
                     id={`quantity-${index}`}
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="any"
                     value={item.quantity}
-                    onChange={(e) => updateItem(index, "quantity", parseFloat(e.target.value) || 0)}
+                    onChange={(e) => updateItem(index, "quantity", e.target.value === "" ? "" : parseFloat(e.target.value))}
                   />
                 </div>
                 <div className="w-32">
@@ -504,9 +509,9 @@ export default function CreditNotesIndex() {
                     id={`unitPrice-${index}`}
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="any"
                     value={item.unitPrice}
-                    onChange={(e) => updateItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
+                    onChange={(e) => updateItem(index, "unitPrice", e.target.value === "" ? "" : parseFloat(e.target.value))}
                   />
                 </div>
                 <div className="w-24">
@@ -516,9 +521,9 @@ export default function CreditNotesIndex() {
                     type="number"
                     min="0"
                     max="100"
-                    step="0.01"
-                    value={item.taxRate || 0}
-                    onChange={(e) => updateItem(index, "taxRate", parseFloat(e.target.value) || 0)}
+                    step="any"
+                    value={item.taxRate}
+                    onChange={(e) => updateItem(index, "taxRate", e.target.value === "" ? "" : parseFloat(e.target.value))}
                   />
                 </div>
                 <div className="flex items-end">
@@ -549,12 +554,17 @@ export default function CreditNotesIndex() {
                   type="number"
                   min="0"
                   max="100"
-                  step="0.01"
+                  step="any"
                   value={formData.discountPercentage}
                   onChange={(e) => {
-                    const pct = parseFloat(e.target.value) || 0;
-                    const calcDiscount = (creditNoteSubtotalValue * pct / 100).toFixed(2);
-                    setFormData(prev => ({ ...prev, discountPercentage: e.target.value, discount: calcDiscount }));
+                    const val = e.target.value;
+                    const pct = parseFloat(val) || 0;
+                    const calcDiscount = (creditNoteSubtotalValue * pct / 100);
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      discountPercentage: val, 
+                      discount: val === "" ? "" : calcDiscount.toString()
+                    }));
                   }}
                   placeholder="0.00"
                   className="mt-1"
@@ -566,12 +576,17 @@ export default function CreditNotesIndex() {
                   id="discountAmount"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="any"
                   value={formData.discount}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 0;
-                    const calcPct = creditNoteSubtotalValue > 0 ? ((val / creditNoteSubtotalValue) * 100).toFixed(2) : "0";
-                    setFormData(prev => ({ ...prev, discount: e.target.value, discountPercentage: calcPct }));
+                    const val = e.target.value;
+                    const amount = parseFloat(val) || 0;
+                    const calcPct = creditNoteSubtotalValue > 0 ? ((amount / creditNoteSubtotalValue) * 100) : 0;
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      discount: val, 
+                      discountPercentage: val === "" ? "" : calcPct.toString()
+                    }));
                   }}
                   placeholder="0.00"
                   className="mt-1"

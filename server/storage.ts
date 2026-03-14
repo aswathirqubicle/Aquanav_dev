@@ -8029,6 +8029,7 @@ export class Storage {
         subtotal: proformaData.subtotal || null,
         taxAmount: proformaData.taxAmount || null,
         discount: proformaData.discount || "0",
+        discountPercentage: proformaData.discountPercentage || "0",
         totalAmount: proformaData.totalAmount || null,
         isArchived: false,
       };
@@ -8114,6 +8115,8 @@ export class Storage {
       if (proformaData.taxAmount !== undefined) updateData.taxAmount || null;
       if (proformaData.discount !== undefined)
         updateData.discount = proformaData.discount || "0";
+      if (proformaData.discountPercentage !== undefined)
+        updateData.discountPercentage = proformaData.discountPercentage;
       if (proformaData.totalAmount !== undefined)
         updateData.totalAmount = proformaData.totalAmount || null;
       if (proformaData.currency !== undefined)

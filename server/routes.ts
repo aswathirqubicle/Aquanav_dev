@@ -9071,6 +9071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subtotal: proforma.subtotal,
           taxAmount: proforma.taxAmount,
           discount: proforma.discount,
+          discountPercentage: proforma.discountPercentage,
           totalAmount: proforma.totalAmount,
           paidAmount: "0",
         };
