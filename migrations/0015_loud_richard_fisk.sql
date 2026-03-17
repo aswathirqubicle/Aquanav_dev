@@ -1,0 +1,1 @@
+ALTER TABLE "companies" ADD COLUMN "bank_account_2" text;

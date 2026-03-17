@@ -19,6 +19,7 @@ import { z } from "zod";
 const updateCompanySchema = insertCompanySchema.extend({
   address: z.string().optional().nullable(),
   bankAccount: z.string().optional().nullable(),
+  bankAccount2: z.string().optional().nullable(),
 });
 
 type UpdateCompanyData = z.infer<typeof updateCompanySchema>;
@@ -33,6 +34,7 @@ export default function SettingsIndex() {
     name: "",
     address: "",
     bankAccount: "",
+    bankAccount2: "",
     phone: "",
     email: "",
     website: "",
@@ -68,6 +70,7 @@ export default function SettingsIndex() {
         name: company.name || "",
         address: company.address || "",
         bankAccount: company.bankAccount || "",
+        bankAccount2: company.bankAccount2 || "",
         phone: company.phone || "",
         email: company.email || "",
         website: company.website || "",
@@ -92,6 +95,7 @@ export default function SettingsIndex() {
       formData.append("phone", data.phone ?? "");
       formData.append("address", data.address ?? "");
       formData.append("bankAccount", data.bankAccount ?? "");
+      formData.append("bankAccount2", data.bankAccount2 ?? "");
       formData.append("website", data.website ?? "");
 
       if (companyLogoFile) {
@@ -430,13 +434,23 @@ export default function SettingsIndex() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="bankAccount">Bank Account</Label>
+                      <Label htmlFor="bankAccount">Bank Account 1</Label>
                       <Textarea
                         id="bankAccount"
                         value={companyData.bankAccount}
                         onChange={(e) => handleCompanyChange("bankAccount", e.target.value)}
                         rows={3}
                         placeholder="Bank account details"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="bankAccount2">Bank Account 2</Label>
+                      <Textarea
+                        id="bankAccount2"
+                        value={companyData.bankAccount2}
+                        onChange={(e) => handleCompanyChange("bankAccount2", e.target.value)}
+                        rows={3}
+                        placeholder="Additional bank account details"
                       />
                     </div>
                   </div>

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { insertCreditNoteSchema } from "@shared/schema";
 import { z } from "zod";
 import { printByUrl } from "@/lib/print-utils";
+import { formatDateForInput } from "@/lib/utils";
 
 const createCreditNoteSchema = insertCreditNoteSchema.extend({
   creditNoteDate: z.string(),
@@ -93,6 +94,10 @@ export default function CreditNotesIndex() {
   // Fetch projects
   const { data: projects = [] } = useQuery({
     queryKey: ["/api/projects"],
+  });
+
+  const { data: company } = useQuery({
+    queryKey: ["/api/company"],
   });
 
   // Create credit note mutation
@@ -199,8 +204,9 @@ export default function CreditNotesIndex() {
       salesInvoiceId: creditNote?.salesInvoiceId || selectedInvoiceId || 0,
       customerId: creditNote?.customerId || 0,
       status: creditNote?.status || "draft",
-      creditNoteDate: creditNote?.creditNoteDate?.split("T")[0] || new Date().toISOString().split("T")[0],
+      creditNoteDate: formatDateForInput(creditNote?.creditNoteDate) || formatDateForInput(new Date()),
       billingAddress: creditNote?.billingAddress || "",
+      bankAccount: creditNote?.bankAccount || "",
       reason: creditNote?.reason || "",
       items: creditNote?.items || [{ description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0 }],
       subtotal: creditNote?.subtotal || "0.00",

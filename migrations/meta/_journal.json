@@ -106,6 +106,13 @@
       "when": 1773239705038,
       "tag": "0014_tan_boomer",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1773728798019,
+      "tag": "0015_loud_richard_fisk",
+      "breakpoints": true
     }
   ]
 }

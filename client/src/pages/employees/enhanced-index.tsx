@@ -17,13 +17,16 @@ import { Autocomplete } from "@/components/ui/autocomplete";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { printByUrl } from "@/lib/print-utils";
 import { Employee, EmployeeNextOfKin, EmployeeTrainingRecord, EmployeeDocument, insertEmployeeSchema, insertEmployeeNextOfKinSchema, insertEmployeeTrainingRecordSchema, insertEmployeeDocumentSchema, type EmployeeFeedback, type User as UserType } from "@shared/schema";
+import { currencySelectOptions } from "@shared/currency";
 import { z } from "zod";
 
 const createEmployeeSchema = insertEmployeeSchema.extend({
   hireDate: z.string().optional(),
   dateOfBirth: z.string().optional(),
   salary: z.string().optional(),
+  contractSalary: z.string().optional(),
   height: z.string().optional(),
   weight: z.string().optional(),
 });
@@ -453,6 +456,8 @@ export default function EmployeesIndex() {
     department: null,
     category: "permanent",
     grade: null,
+    contractCurrency: "AED",
+    contractSalary: null,
     hireDate: null,
     salary: null,
     isActive: true,
@@ -592,6 +597,8 @@ export default function EmployeesIndex() {
         hireDate: data.data.hireDate ? new Date(data.data.hireDate).toISOString() : null,
         dateOfBirth: data.data.dateOfBirth ? new Date(data.data.dateOfBirth).toISOString() : null,
         salary: data.data.salary || null,
+        contractSalary: data.data.contractSalary || null,
+        contractCurrency: data.data.contractCurrency || "AED",
         height: data.data.height || null,
         weight: data.data.weight || null,
       };
@@ -635,8 +642,9 @@ export default function EmployeesIndex() {
         ...data,
         hireDate: data.hireDate ? new Date(data.hireDate).toISOString() : null,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
-
         salary: data.salary || null,
+        contractSalary: data.contractSalary || null,
+        contractCurrency: data.contractCurrency || "AED",
         height: data.height || null,
         weight: data.weight || null,
       };
@@ -1075,6 +1083,8 @@ export default function EmployeesIndex() {
       department: null,
       category: "permanent",
       grade: null,
+      contractCurrency: "AED",
+      contractSalary: null,
       hireDate: null,
       salary: null,
       isActive: true,
@@ -1112,6 +1122,8 @@ export default function EmployeesIndex() {
       department: employee.department,
       category: employee.category,
       grade: employee.grade,
+      contractCurrency: employee.contractCurrency || "AED",
+      contractSalary: employee.contractSalary,
       hireDate: employee.hireDate ? new Date(employee.hireDate).toISOString().split('T')[0] : null,
       salary: employee.salary,
       isActive: employee.isActive,
@@ -1134,19 +1146,11 @@ export default function EmployeesIndex() {
 
   const handleGenerateContract = async (employeeId: number) => {
     try {
-      const response = await apiRequest(`/api/employees/${employeeId}/employment-contract`, {
-        method: "GET",
+      await printByUrl(`/api/employees/${employeeId}/employment-contract`);
+      toast({
+        title: "Success",
+        description: "Print window opened successfully.",
       });
-      
-      if (response.ok) {
-        const contractHtml = await response.text();
-        const printWindow = window.open("", "_blank");
-        if (printWindow) {
-          printWindow.document.write(contractHtml);
-          printWindow.document.close();
-          printWindow.focus();
-        }
-      }
     } catch (error) {
       toast({
         title: "Error",
@@ -1265,22 +1269,15 @@ export default function EmployeesIndex() {
                       required
                     />
                   </div>
-                  {formData.category === "contract" && (
-                    <div>
-                      <Label htmlFor="grade">Grade</Label>
-                      <Select value={formData.grade || ""} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: value || null }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select grade" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Grade 1">Grade 1</SelectItem>
-                          <SelectItem value="Grade 2">Grade 2</SelectItem>
-                          <SelectItem value="Grade 3">Grade 3</SelectItem>
-                          <SelectItem value="Grade 4">Grade 4</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div>
+                    <Label htmlFor="grade">Grade (Integer)</Label>
+                    <Input
+                      id="grade"
+                      type="number"
+                      value={formData.grade ?? ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, grade: e.target.value !== "" ? parseInt(e.target.value) : null }))}
+                    />
+                  </div>
                   <div>
                     <Label htmlFor="position">Position</Label>
                     <Input
@@ -1324,13 +1321,39 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="salary">Salary</Label>
+                    <Label htmlFor="salary">Salary (AED)</Label>
                     <Input
                       id="salary"
                       type="number"
                       step="any"
                       value={formData.salary || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="contractCurrency">Contract Currency</Label>
+                    <Select value={formData.contractCurrency || "AED"} onValueChange={(value) => setFormData(prev => ({ ...prev, contractCurrency: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currencySelectOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="contractSalary">Contract Salary</Label>
+                    <Input
+                      id="contractSalary"
+                      type="number"
+                      step="any"
+                      value={formData.contractSalary || ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
                     />
                   </div>
                 </div>
@@ -1584,7 +1607,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editSalary">Salary</Label>
+                    <Label htmlFor="editSalary">Salary (AED)</Label>
                     <Input
                       id="editSalary"
                       type="number"
@@ -1592,23 +1615,42 @@ export default function EmployeesIndex() {
                       value={formData.salary || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
                     />
+                    <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
                   </div>
-                  {formData.category === "contract" && (
-                    <div>
-                      <Label htmlFor="editGrade">Grade</Label>
-                      <Select value={formData.grade || ""} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: value || null }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select grade" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Grade 1">Grade 1</SelectItem>
-                          <SelectItem value="Grade 2">Grade 2</SelectItem>
-                          <SelectItem value="Grade 3">Grade 3</SelectItem>
-                          <SelectItem value="Grade 4">Grade 4</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div>
+                    <Label htmlFor="editGrade">Grade (Integer)</Label>
+                    <Input
+                      id="editGrade"
+                      type="number"
+                      value={formData.grade ?? ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, grade: e.target.value !== "" ? parseInt(e.target.value) : null }))}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="editContractCurrency">Contract Currency</Label>
+                    <Select value={formData.contractCurrency || "AED"} onValueChange={(value) => setFormData(prev => ({ ...prev, contractCurrency: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currencySelectOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="editContractSalary">Contract Salary</Label>
+                    <Input
+                      id="editContractSalary"
+                      type="number"
+                      step="any"
+                      value={formData.contractSalary || ""}
+                      onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
+                    />
+                  </div>
                   <div>
                     <Label htmlFor="editIsActive">Status</Label>
                     <Select value={formData.isActive ? "active" : "inactive"} onValueChange={(value) => setFormData(prev => ({ ...prev, isActive: value === "active" }))}>
@@ -1960,8 +2002,12 @@ export default function EmployeesIndex() {
                         <p className="font-semibold">{formatDate(selectedEmployee.hireDate)}</p>
                       </div>
                       <div>
-                        <Label className="text-sm font-medium text-gray-600">Salary</Label>
-                        <p className="font-semibold">{selectedEmployee.salary ? `$${parseFloat(selectedEmployee.salary).toLocaleString()}` : "Not specified"}</p>
+                        <Label className="text-sm font-medium text-gray-600">Salary (AED)</Label>
+                        <p className="font-semibold">{selectedEmployee.salary ? `${parseFloat(selectedEmployee.salary).toLocaleString()} AED` : "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Contract Salary</Label>
+                        <p className="font-semibold">{selectedEmployee.contractSalary ? `${parseFloat(selectedEmployee.contractSalary).toLocaleString()} ${selectedEmployee.contractCurrency || "AED"}` : "Not specified"}</p>
                       </div>
                     </CardContent>
                   </Card>

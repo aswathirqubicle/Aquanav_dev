@@ -32,6 +32,7 @@ export const companies = pgTable("companies", {
   logo: text("logo"),
   address: text("address"),
   bankAccount: text("bank_account"),
+  bankAccount2: text("bank_account_2"),
   phone: text("phone"),
   email: text("email"),
   website: text("website"),
@@ -116,8 +117,10 @@ export const employees = pgTable("employees", {
   position: text("position"),
   department: text("department"),
   category: text("category").notNull().default("permanent"), // permanent, consultant, contract
-  grade: text("grade"), // Grade 1, Grade 2, Grade 3, Grade 4 for contract employees
+  grade: integer("grade"), // Grade 1, Grade 2, Grade 3, Grade 4 for contract employees
   salary: decimal("salary", { precision: 10, scale: 2 }),
+  contractCurrency: text("contract_currency"),
+  contractSalary: decimal("contract_salary", { precision: 10, scale: 2 }),
   hireDate: timestamp("hire_date"),
   isActive: boolean("is_active").notNull().default(true),
   userId: integer("user_id").references(() => users.id),
@@ -1285,10 +1288,9 @@ export const insertEmployeeSchema = createInsertSchema(employees)
     category: z
       .enum(["permanent", "consultant", "contract"])
       .default("permanent"),
-    grade: z
-      .enum(["Grade 1", "Grade 2", "Grade 3", "Grade 4"])
-      .nullable()
-      .optional(),
+    grade: z.coerce.number().nullable().optional(),
+    contractSalary: z.string().nullable().optional(),
+    contractCurrency: z.string().nullable().optional(),
     email: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
     position: z.string().nullable().optional(),

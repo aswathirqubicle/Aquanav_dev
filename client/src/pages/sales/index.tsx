@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
+import { formatDateForInput } from "@/lib/utils";
 import {
   FileText,
   Plus,
@@ -57,6 +58,7 @@ import {
   Customer,
   Project,
   InvoicePayment,
+  Company,
   insertSalesQuotationSchema,
   insertSalesInvoiceSchema,
   insertInvoicePaymentSchema,
@@ -201,10 +203,8 @@ export default function SalesIndex() {
       projectId: undefined,
       quotationId: undefined,
       status: "draft",
-      invoiceDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0],
+      invoiceDate: formatDateForInput(new Date()),
+      dueDate: formatDateForInput(new Date()),
       items: [],
       discountPercentage: "0",
       discount: "0",
@@ -269,7 +269,7 @@ export default function SalesIndex() {
   const [paymentFormData, setPaymentFormData] = useState<CreatePaymentData>({
     invoiceId: 0,
     amount: "0",
-    paymentDate: new Date().toISOString().split("T")[0],
+    paymentDate: formatDateForInput(new Date()),
     paymentMethod: "bank_transfer",
     referenceNumber: "",
     notes: "",
@@ -289,7 +289,7 @@ export default function SalesIndex() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: company } = useQuery({
+  const { data: company } = useQuery<Company>({
     queryKey: ["/api/company"],
     enabled: isAuthenticated,
   });
@@ -338,6 +338,33 @@ export default function SalesIndex() {
       setInvoiceFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
     }
   }, [invoiceSubtotalValue, invoiceFormData.discountPercentage]);
+
+  useEffect(() => {
+    if (!invoiceFormData.paymentTerms || !invoiceFormData.invoiceDate) return;
+
+    const baseDate = new Date(invoiceFormData.invoiceDate);
+    if (isNaN(baseDate.getTime())) return;
+
+    let daysToAdd = 0;
+    switch (invoiceFormData.paymentTerms) {
+      case "Net 10": daysToAdd = 10; break;
+      case "Net 15": daysToAdd = 15; break;
+      case "Net 30": daysToAdd = 30; break;
+      case "Due on receipt": daysToAdd = 0; break;
+      default: return;
+    }
+
+    const dueDate = new Date(baseDate);
+    dueDate.setUTCDate(baseDate.getUTCDate() + daysToAdd);
+    const dueDateString = dueDate.toISOString().split('T')[0];
+
+    if (invoiceFormData.dueDate !== dueDateString) {
+      setInvoiceFormData(prev => ({
+        ...prev,
+        dueDate: dueDateString
+      }));
+    }
+  }, [invoiceFormData.paymentTerms, invoiceFormData.invoiceDate]);
 
   const { data: salesStats } = useQuery<{
     totalQuotations: number;
@@ -525,7 +552,7 @@ export default function SalesIndex() {
 
       const response = await apiRequest(url, {
         method,
-        body: JSON.stringify(processedData),
+        body: processedData,
       });
       return response;
     },
@@ -739,10 +766,7 @@ export default function SalesIndex() {
 
       const response = await apiRequest("/api/sales-invoices", {
         method: "POST",
-        body: JSON.stringify(processedData),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        body: processedData,
       });
 
       console.log("Invoice creation response:", response);
@@ -805,8 +829,7 @@ export default function SalesIndex() {
 
       const response = await apiRequest(`/api/sales-invoices/${id}`, {
         method: "PUT",
-        body: JSON.stringify(processedData),
-        headers: { "Content-Type": "application/json" },
+        body: processedData,
       });
       return response;
     },
@@ -974,9 +997,7 @@ export default function SalesIndex() {
         {
           method: "POST",
           body: formData,
-          headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
         },
       );
       if (!response.ok) {
@@ -1047,10 +1068,8 @@ export default function SalesIndex() {
       projectId: undefined,
       quotationId: undefined,
       status: "draft",
-      invoiceDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0],
+      invoiceDate: formatDateForInput(new Date()),
+      dueDate: formatDateForInput(new Date()),
       items: [],
       discountPercentage: "0",
       discount: "0",
@@ -1077,7 +1096,7 @@ export default function SalesIndex() {
     setPaymentFormData({
       invoiceId: 0,
       amount: "0",
-      paymentDate: new Date().toISOString().split("T")[0],
+      paymentDate: formatDateForInput(new Date()),
       paymentMethod: "bank_transfer",
       referenceNumber: "",
       notes: "",
@@ -1094,7 +1113,7 @@ export default function SalesIndex() {
     setPaymentFormData({
       invoiceId: invoice.id,
       amount: outstandingAmount.toFixed(2),
-      paymentDate: new Date().toISOString().split("T")[0],
+      paymentDate: formatDateForInput(new Date()),
       paymentMethod: "bank_transfer",
       referenceNumber: "",
       notes: "",
@@ -1467,9 +1486,7 @@ export default function SalesIndex() {
       setFormData({
         customerId: quotation.customerId,
         status: quotation.status,
-        validUntil: quotation.validUntil
-          ? new Date(quotation.validUntil).toISOString().split("T")[0]
-          : "",
+        validUntil: formatDateForInput(quotation.validUntil),
         items: quotation.items || [],
         discountPercentage: quotation.discountPercentage || "0",
         discount: quotation.discount || "0",
@@ -1495,9 +1512,7 @@ export default function SalesIndex() {
       setFormData({
         customerId: quotation.customerId,
         status: "draft",
-        validUntil: quotation.validUntil
-          ? new Date(quotation.validUntil).toISOString().split("T")[0]
-          : "",
+        validUntil: formatDateForInput(quotation.validUntil),
         items: quotation.items || [],
         discount: quotation.discount || "0",
         discountPercentage: quotation.discountPercentage || "0",
@@ -1539,9 +1554,7 @@ export default function SalesIndex() {
     try {
       const response = await fetch(`/api/sales-invoices/${invoice.id}/pdf`, {
         method: "GET",
-        headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
       });
 
       if (!response.ok) {
@@ -1603,8 +1616,8 @@ export default function SalesIndex() {
       projectId: source.projectId || undefined,
       quotationId: undefined,
       status: "draft",
-      invoiceDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      invoiceDate: formatDateForInput(new Date()),
+      dueDate: formatDateForInput(new Date()),
       items: (source.items || []).map((item: any) => ({ ...item })),
       discountPercentage: source.discountPercentage || "0",
       discount: source.discount || "0",
@@ -1631,13 +1644,14 @@ export default function SalesIndex() {
 
   const handleEditInvoice = (invoice: any) => {
     setEditingInvoiceId(invoice.id);
+    setSelectedInvoice(invoice);
     setInvoiceFormData({
       customerId: invoice.customerId,
       projectId: invoice.projectId || undefined,
       quotationId: invoice.quotationId || undefined,
       status: invoice.status,
-      invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-      dueDate: invoice.dueDate ? new Date(invoice.dueDate).toISOString().split("T")[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      invoiceDate: formatDateForInput(invoice.invoiceDate) || formatDateForInput(new Date()),
+      dueDate: formatDateForInput(invoice.dueDate) || formatDateForInput(new Date()),
       items: invoice.items || [],
       discountPercentage: invoice.discountPercentage || "0",
       discount: invoice.discount || "0",
@@ -1663,10 +1677,8 @@ export default function SalesIndex() {
       projectId: undefined,
       quotationId: quotation.id,
       status: "draft",
-      invoiceDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0],
+      invoiceDate: formatDateForInput(new Date()),
+      dueDate: formatDateForInput(new Date()),
 
       // ✅ COPY FROM QUOTATION
       billingAddress: quotation.billingAddress || "",
@@ -1790,7 +1802,7 @@ export default function SalesIndex() {
                 <DialogHeader>
                   <DialogTitle>
                     {isEditingQuotation
-                      ? "Edit Sales Quotation"
+                      ? `Edit Sales Quotation — ${selectedQuotation?.quotationNumber}`
                       : "Create Sales Quotation"}
                   </DialogTitle>
                   <DialogDescription>
@@ -1807,7 +1819,7 @@ export default function SalesIndex() {
                         options={(customers || []).map((customer) => ({
                           value: customer.id.toString(),
                           label: customer.name,
-                          searchText: customer.name
+                          searchText: `${customer.name} ${customer.email || ""} ${customer.phone || ""}`
                         }))}
                         value={formData.customerId?.toString() || ""}
                         onValueChange={(value) => {
@@ -1891,7 +1903,35 @@ export default function SalesIndex() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="bankAccount">Bank Account</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="bankAccount">Bank Account</Label>
+                        {company && (company.bankAccount || company.bankAccount2) && (
+                          <div className="flex gap-2">
+                            {company.bankAccount && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setFormData(prev => ({ ...prev, bankAccount: company.bankAccount }))}
+                              >
+                                Use A/C 1
+                              </Button>
+                            )}
+                            {company.bankAccount2 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setFormData(prev => ({ ...prev, bankAccount: company.bankAccount2 }))}
+                              >
+                                Use A/C 2
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <textarea
                         id="bankAccount"
                         className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2273,7 +2313,7 @@ export default function SalesIndex() {
               </DialogTrigger>
               <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingInvoiceId ? "Edit Sales Invoice" : "Create Sales Invoice"}</DialogTitle>
+                  <DialogTitle>{editingInvoiceId ? `Edit Sales Invoice — ${selectedInvoice?.invoiceNumber}` : "Create Sales Invoice"}</DialogTitle>
                   <DialogDescription>
                     {editingInvoiceId ? "Update the details of this invoice." : "Fill in the details to create a new sales invoice."}
                   </DialogDescription>
@@ -2286,7 +2326,7 @@ export default function SalesIndex() {
                         options={(customers || []).map((customer) => ({
                           value: customer.id.toString(),
                           label: customer.name,
-                          searchText: customer.name
+                          searchText: `${customer.name} ${customer.email || ""} ${customer.phone || ""}`
                         }))}
                         value={invoiceFormData.customerId?.toString() || ""}
                         onValueChange={(value) => {
@@ -2397,6 +2437,7 @@ export default function SalesIndex() {
                           )
                         }
                         required
+                        disabled
                       />
                     </div>
                   </div>
@@ -2444,7 +2485,35 @@ export default function SalesIndex() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="invoiceBankAccount">Bank Account</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="invoiceBankAccount">Bank Account</Label>
+                        {company && (company.bankAccount || company.bankAccount2) && (
+                          <div className="flex gap-2">
+                            {company.bankAccount && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setInvoiceFormData(prev => ({ ...prev, bankAccount: company.bankAccount }))}
+                              >
+                                Use A/C 1
+                              </Button>
+                            )}
+                            {company.bankAccount2 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setInvoiceFormData(prev => ({ ...prev, bankAccount: company.bankAccount2 }))}
+                              >
+                                Use A/C 2
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <textarea
                         id="invoiceBankAccount"
                         className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -3000,7 +3069,7 @@ export default function SalesIndex() {
                           ...(customers || []).map((customer) => ({
                             value: customer.id.toString(),
                             label: customer.name,
-                            searchText: customer.name,
+                            searchText: `${customer.name} ${customer.email || ""} ${customer.phone || ""}`,
                           }))
                         ]}
                         value={customerFilter}
@@ -3441,7 +3510,7 @@ export default function SalesIndex() {
                           ...(customers || []).map((customer) => ({
                             value: customer.id.toString(),
                             label: customer.name,
-                            searchText: customer.name,
+                            searchText: `${customer.name} ${customer.email || ""} ${customer.phone || ""}`,
                           }))
                         ]}
                         value={invoiceCustomerFilter}

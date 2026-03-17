@@ -226,7 +226,9 @@ function generateQuotationHTML(
                     ? formatDate(quotation.validUntil)
                     : "further notice"
                 }.</p>
-                <p>Payment terms: Net 30 days</p>
+                ${quotation.paymentTerms ? `<p><strong>Payment Terms:</strong> ${quotation.paymentTerms}</p>` : "<p>Payment terms: Net 30 days</p>"}
+                ${quotation.bankAccount ? `<p><strong>Our Bank Details:</strong><br>${quotation.bankAccount}</p>` : ""}
+                ${quotation.termsAndConditions ? `<h3>Additional Terms:</h3><p>${quotation.termsAndConditions}</p>` : ""}
               </div>
             </td>
           </tr>

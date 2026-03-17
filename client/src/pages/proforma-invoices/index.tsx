@@ -155,6 +155,7 @@ export default function ProformaInvoicesIndex() {
     billingAddress: "",
     termsAndConditions: "",
     remarks: "",
+    validUntil: new Date().toISOString().split('T')[0],
   });
 
   const [newItem, setNewItem] = useState<ProformaItem>({
@@ -222,6 +223,33 @@ export default function ProformaInvoicesIndex() {
       setFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
     }
   }, [proformaSubtotal, formData.discountPercentage]);
+
+  useEffect(() => {
+    if (!formData.paymentTerms || !formData.invoiceDate) return;
+
+    const baseDate = new Date(formData.invoiceDate);
+    if (isNaN(baseDate.getTime())) return;
+
+    let daysToAdd = 0;
+    switch (formData.paymentTerms) {
+      case "Net 10": daysToAdd = 10; break;
+      case "Net 15": daysToAdd = 15; break;
+      case "Net 30": daysToAdd = 30; break;
+      case "Due on receipt": daysToAdd = 0; break;
+      default: return;
+    }
+
+    const validUntilDate = new Date(baseDate);
+    validUntilDate.setUTCDate(baseDate.getUTCDate() + daysToAdd);
+    const validUntilDateString = validUntilDate.toISOString().split('T')[0];
+
+    if (formData.validUntil !== validUntilDateString) {
+      setFormData(prev => ({
+        ...prev,
+        validUntil: validUntilDateString
+      }));
+    }
+  }, [formData.paymentTerms, formData.invoiceDate]);
 
   const { data: customersResponse } = useQuery<{
     data: Customer[];
@@ -396,7 +424,7 @@ export default function ProformaInvoicesIndex() {
       billingAddress: "",
       termsAndConditions: "",
       remarks: "",
-      validUntil: "",
+      validUntil: new Date().toISOString().split('T')[0],
     });
     setNewItem({
       description: "",
@@ -798,6 +826,7 @@ export default function ProformaInvoicesIndex() {
                             })),
                           )
                         }
+                        disabled
                       />
                     </div>
                   </div>
@@ -856,7 +885,35 @@ export default function ProformaInvoicesIndex() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="bankAccount">Bank Account</Label>
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="bankAccount">Bank Account</Label>
+                        {company && (company.bankAccount || company.bankAccount2) && (
+                          <div className="flex gap-2">
+                            {company.bankAccount && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setFormData(prev => ({ ...prev, bankAccount: company.bankAccount }))}
+                              >
+                                Use A/C 1
+                              </Button>
+                            )}
+                            {company.bankAccount2 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2"
+                                onClick={() => setFormData(prev => ({ ...prev, bankAccount: company.bankAccount2 }))}
+                              >
+                                Use A/C 2
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <Input
                         id="bankAccount"
                         value={formData.bankAccount || ""}

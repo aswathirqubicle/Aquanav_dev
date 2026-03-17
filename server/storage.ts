@@ -1772,7 +1772,7 @@ export class Storage {
             border: none;
         }
         .header-spacer {
-            height: 20mm;
+            height: 45mm;
             display: block;
         }
         .footer-spacer {
@@ -1788,7 +1788,7 @@ export class Storage {
         .page-content {
             padding: 10px 60px;
             text-align: justify;
-            font-size: 13px;
+            font-size: 15px;
         }
         .contract-header {
             margin-bottom: 25px;
@@ -1913,22 +1913,22 @@ export class Storage {
                             <div class="contract-header">
                                 <h2 style="text-align: center; text-decoration: underline; color: #0b4d78;">LETTER OF EMPLOYMENT</h2>
                                 <div class="ref-row">
-                                    <span>${formattedDate}</span>
-                                    <span>Ref: ${referenceNo}</span>
+                                    <span><strong>${formattedDate}</strong></span>
+                                    <span>Ref: <strong>${referenceNo}</strong></span>
                                 </div>
                             </div>
 
                             <div class="employee-details">
                                 <strong>Mr. ${employee.firstName} ${employee.lastName}</strong><br>
-                                <span style="white-space: pre-wrap;">${employee.address || "-"}</span>
+                                <span style="white-space: pre-wrap;"><strong>${employee.address || "-"}</strong></span>
                             </div>
 
                             <div class="salutation">
-                                Dear ${employee.firstName},
+                                Dear <strong>${employee.firstName}</strong>,
                             </div>
 
                             <div class="intro-text">
-                                <p>We are pleased to employ you as “${employee.position || "Coating Repair technician"}” in our organization on the following terms and conditions, for a period of 2 years from the date of this letter. Contract will be reviewed and extended every 2 years. Your employee number is ${employee.employeeCode}.</p>
+                                <p>We are pleased to employ you as "<strong>${employee.position || "Coating Repair technician"}</strong>" in our organization on the following terms and conditions, for a period of 2 years from the date of this letter. Contract will be reviewed and extended every 2 years. Your employee number is <strong>${employee.employeeCode}</strong>.</p>
                             </div>
 
                             <ol>
@@ -1936,7 +1936,7 @@ export class Storage {
                                 
                                 <li>This employment contract will be supplemented by the Seafarers Employment Agreement (SEA) signed between the RPSL Company and yourself, issued for the specific project/vessel, which will be governed as per CBA.</li>
                                 
-                                <li>You will be paid contractual gross salary on monthly basis as remuneration as per Aquanav’s salary matrix basis your employee grade, solely during the period of each project onboard the ship. You will be employed with Aquanav as a ${employee.grade || "Grade 1"} employee, with a Gross monthly salary of ${employee.salary ? parseFloat(employee.salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' USD' : "450.00 USD"}, equivalent in INR, before deductions.</li>
+                                <li>You will be paid contractual gross salary on monthly basis as remuneration as per Aquanav’s salary matrix basis your employee grade, solely during the period of each project onboard the ship. You will be employed with Aquanav as a <strong>Grade ${employee.grade || "1"}</strong> employee, with a Gross monthly salary of <strong>${employee.contractSalary ? parseFloat(employee.contractSalary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + (employee.contractCurrency || "AED") : (employee.salary ? parseFloat(employee.salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' AED' : "450.00 USD")}</strong>, before deductions.</li>
                                 
                                 <li>Your present place of work will be onboard the assigned vessel, but during the above assignment you shall be liable to be posted/transferred anywhere to serve any of the Company’s Projects, at the sole discretion of the Management.</li>
                                 
@@ -1987,7 +1987,7 @@ export class Storage {
                                     <p>Accepted and Agreed by<br><strong>Employee</strong></p>
                                     <div class="signature-line">
                                         <strong>${employee.firstName} ${employee.lastName}</strong><br>
-                                        Employee No: ${employee.employeeCode}
+                                        Employee No: <strong>${employee.employeeCode}</strong>
                                     </div>
                                 </div>
                             </div>
@@ -2729,6 +2729,9 @@ export class Storage {
           employeeCode: employees.employeeCode,
           category: employees.category,
           salary: employees.salary,
+          grade: employees.grade,
+          contractCurrency: employees.contractCurrency,
+          contractSalary: employees.contractSalary,
           hireDate: employees.hireDate,
           department: employees.department,
           position: employees.position,
@@ -2886,8 +2889,9 @@ export class Storage {
 
         // Calculate total salary cost
         for (const employee of projectEmployeesList) {
-          if (employee.salary && parseFloat(employee.salary) > 0) {
-            const monthlySalary = parseFloat(employee.salary);
+          const salaryToUse = employee.salary;
+          if (salaryToUse && parseFloat(salaryToUse) > 0) {
+            const monthlySalary = parseFloat(salaryToUse);
             let employeeCost: number;
 
             if (employee.category === "permanent") {
@@ -11336,6 +11340,9 @@ export class Storage {
           employeeCode: employees.employeeCode,
           category: employees.category,
           salary: employees.salary,
+          grade: employees.grade,
+          contractCurrency: employees.contractCurrency,
+          contractSalary: employees.contractSalary,
           isActive: employees.isActive,
         })
         .from(employees)
@@ -11399,7 +11406,8 @@ export class Storage {
           `Processing payroll for employee: ${logFirstName} ${logLastName} (${employee.category})`,
         );
 
-        let basicSalary = parseFloat(employee.salary || "0").toString(); // Ensure consistent use of "0" default for salary
+        const salaryToUse = employee.salary;
+        let basicSalary = parseFloat(salaryToUse || "0").toString(); // Ensure consistent use of "0" default for salary
         let workingDays = this.getCalendarDaysInMonth(month, year);
         let projectId: number | null = null;
 
@@ -11469,7 +11477,8 @@ export class Storage {
                   effectiveStart,
                   effectiveEnd,
                 );
-                const dailyRate = parseFloat(employee.salary || "0") / 22; // Assuming 22 working days per month
+                const salaryToUse = employee.salary;
+                const dailyRate = parseFloat(salaryToUse || "0") / 22; // Assuming 22 working days per month
                 totalEarnings += dailyRate * projectWorkingDays;
                 projectId = project.id; // Assign to the last project for GL tracking
               }
