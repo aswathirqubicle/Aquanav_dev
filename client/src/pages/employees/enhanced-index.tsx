@@ -1542,7 +1542,7 @@ export default function EmployeesIndex() {
                       <SelectContent>
                         <SelectItem value="permanent">Permanent</SelectItem>
                         <SelectItem value="contract">Contract</SelectItem>
-                        <SelectItem value="temporary">Temporary</SelectItem>
+                        <SelectItem value="contract">Contract</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
