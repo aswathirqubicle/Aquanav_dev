@@ -139,6 +139,10 @@ export default function PayrollIndex() {
 
   const { data: payrollEntries = [] } = useQuery<PayrollEntry[]>({
     queryKey: ["/api/payroll", { month: selectedMonth, year: selectedYear }],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/payroll?month=${selectedMonth}&year=${selectedYear}`);
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -457,10 +461,12 @@ export default function PayrollIndex() {
 
               <div class="earnings-section">
                 <div class="section-title earnings-title">Earnings</div>
+                ${parseFloat(entry.basicSalary) > 0 ? `
                 <div class="amount-row">
                   <span>Basic Salary</span>
                   <span>${formatCurrency(entry.basicSalary)}</span>
                 </div>
+                ` : ''}
                 ${additions
             .map(
               (addition) => `
@@ -1745,10 +1751,12 @@ function GeneratePayslipButton({
 
               <div class="earnings-section">
                 <div class="section-title earnings-title">Earnings</div>
+                ${parseFloat(payrollEntry.basicSalary) > 0 ? `
                 <div class="amount-row">
                   <span>Basic Salary</span>
                   <span>${formatCurrency(payrollEntry.basicSalary)}</span>
                 </div>
+                ` : ''}
                 ${additions
           .map(
             (addition) => `
@@ -2001,10 +2009,12 @@ function PrintPayslipButton({
 
               <div class="earnings-section">
                 <div class="section-title earnings-title">Earnings</div>
+                ${parseFloat(payrollEntry.basicSalary) > 0 ? `
                 <div class="amount-row">
                   <span>Basic Salary</span>
                   <span>${formatCurrency(payrollEntry.basicSalary)}</span>
                 </div>
+                ` : ''}
                 ${additions
           .map(
             (addition) => `
@@ -2206,10 +2216,12 @@ function PayslipDialog({
 
             <div class="earnings-section">
               <div class="section-title earnings-title">Earnings</div>
+                ${parseFloat(payrollEntry.basicSalary) > 0 ? `
               <div class="amount-row">
                 <span>Basic Salary</span>
                 <span>${formatCurrency(payrollEntry.basicSalary)}</span>
               </div>
+                ` : ''}
               ${additions
         .map(
           (addition) => `
@@ -2359,12 +2371,14 @@ function PayslipDialog({
             <h3 className="font-semibold mb-3 text-green-700">Earnings</h3>
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Basic Salary</span>
-                  <span className="font-medium">
-                    {formatCurrency(payrollEntry.basicSalary)}
-                  </span>
-                </div>
+                {parseFloat(payrollEntry.basicSalary) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>Basic Salary</span>
+                    <span className="font-medium">
+                      {formatCurrency(payrollEntry.basicSalary)}
+                    </span>
+                  </div>
+                )}
                 {additions.map((addition) => (
                   <div
                     key={addition.id}

@@ -260,10 +260,12 @@ function PrintPayslipBtn({ entry, company }: { entry: PayrollEntry; company?: Co
                       </div>
                       <div class="earnings-section">
                         <div class="section-title earnings-title">Earnings</div>
+                        ${parseFloat(entry.basicSalary) > 0 ? `
                         <div class="amount-row">
                           <span>Basic Salary</span>
                           <span>${formatCurrency(entry.basicSalary)}</span>
                         </div>
+                        ` : ''}
                         ${additions.map((a) => `
                         <div class="amount-row">
                           <span>${a.description}</span>
@@ -384,10 +386,12 @@ function PayslipViewDialog({
           <div className="border-t pt-3">
             <h4 className="font-semibold text-green-700 dark:text-green-400 mb-2">Earnings</h4>
             <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Basic Salary</span>
-                <span>{formatCurrency(entry.basicSalary)}</span>
-              </div>
+              {parseFloat(entry.basicSalary) > 0 && (
+                <div className="flex justify-between">
+                  <span>Basic Salary</span>
+                  <span>{formatCurrency(entry.basicSalary)}</span>
+                </div>
+              )}
               {additions.map((a) => (
                 <div key={a.id} className="flex justify-between">
                   <span>{a.description}</span>

@@ -1541,8 +1541,8 @@ export default function EmployeesIndex() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="permanent">Permanent</SelectItem>
-                        <SelectItem value="consultant">Consultant</SelectItem>
                         <SelectItem value="contract">Contract</SelectItem>
+                        <SelectItem value="consultant">Consultant</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

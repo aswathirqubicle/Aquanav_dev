@@ -740,6 +740,11 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (projectEmployees && isTeamDialogOpen) {
       setSelectedEmployees(projectEmployees.map(emp => emp.id));
+      setEmployeeAssignments(projectEmployees.map(emp => ({
+        employeeId: emp.id,
+        startDate: (emp as any).startDate ? (emp as any).startDate.split('T')[0] : "",
+        endDate: (emp as any).endDate ? (emp as any).endDate.split('T')[0] : ""
+      })));
     }
   }, [projectEmployees, isTeamDialogOpen]);
 
@@ -1454,16 +1459,8 @@ export default function ProjectDetail() {
       console.log('Sending assignment request with data:', assignments);
       const response = await apiRequest(`/api/projects/${id}/employees`, {
         method: "POST",
-        body: JSON.stringify({ assignments }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        body: { assignments },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
 
       return response.json();
     },
@@ -1480,9 +1477,14 @@ export default function ProjectDetail() {
     },
     onError: (error: Error) => {
       console.error('Team assignment error:', error);
+      // apiRequest already throws formatted error "400: Message"
+      const errorMessage = error.message.includes(':') 
+        ? error.message.split(':').slice(1).join(':').trim() 
+        : error.message;
+        
       toast({
-        title: "Error",
-        description: error.message || "Failed to assign team members",
+        title: "Team Assignment Failed",
+        description: errorMessage || "Failed to assign team members",
         variant: "destructive",
       });
     },

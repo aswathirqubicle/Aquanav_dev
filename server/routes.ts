@@ -4312,10 +4312,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(result);
       } catch (error) {
         console.error("Team assignment error:", error);
-        res.status(500).json({
-          message: "Failed to assign employees to project",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        const status = (error as any).message?.includes("already assigned") ? 400 : 500;
+        res.status(status).send(error instanceof Error ? error.message : "Unknown error");
       }
     },
   );

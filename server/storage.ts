@@ -2813,6 +2813,63 @@ export class Storage {
     assignments: AssignEmployeeData[],
   ): Promise<ProjectEmployee[]> {
     try {
+      const project = await this.getProject(projectId);
+      if (!project) throw new Error("Project not found");
+
+      // Validate contract employee availability
+      for (const assignment of assignments) {
+        const employee = await this.getEmployee(assignment.employeeId);
+        if (employee && employee.category === "contract") {
+          // Use assignment dates if provided, otherwise fallback to project dates
+          const newStart = assignment.startDate
+            ? new Date(assignment.startDate)
+            : project.startDate
+              ? new Date(project.startDate)
+              : new Date();
+          const newEnd = assignment.endDate
+            ? new Date(assignment.endDate)
+            : project.plannedEndDate
+              ? new Date(project.plannedEndDate)
+              : null;
+
+          // Check for overlapping assignments in OTHER projects
+          const existingAssignments = await db
+            .select({
+              projectId: projectEmployees.projectId,
+              projectTitle: projects.title,
+              startDate: projectEmployees.startDate,
+              endDate: projectEmployees.endDate,
+            })
+            .from(projectEmployees)
+            .leftJoin(projects, eq(projectEmployees.projectId, projects.id))
+            .where(
+              and(
+                eq(projectEmployees.employeeId, employee.id),
+                ne(projectEmployees.projectId, projectId),
+              ),
+            );
+
+          for (const existing of existingAssignments) {
+            const eStart = existing.startDate;
+            const eEnd = existing.endDate;
+
+            // Overlap check logic: (StartA <= EndB) AND (EndA >= StartB)
+            // Using large/small dates to handle nulls (ongoing assignments)
+            const startA = newStart.getTime();
+            const endA = newEnd ? newEnd.getTime() : 253402300799000; // Year 9999
+            const startB = eStart ? eStart.getTime() : -62135596800000; // Year 0001
+            const endB = eEnd ? eEnd.getTime() : 253402300799000; // Year 9999
+
+            if (startA <= endB && endA >= startB) {
+              const conflictRange = `${eStart ? eStart.toLocaleDateString() : "Ongoing"} to ${eEnd ? eEnd.toLocaleDateString() : "Ongoing"}`;
+              throw new Error(
+                `Contract employee ${employee.firstName} ${employee.lastName} is already assigned to project "${existing.projectTitle || "Unknown"}" during this period (${conflictRange}).`,
+              );
+            }
+          }
+        }
+      }
+
       // First, remove all existing assignments for this project
       await db
         .delete(projectEmployees)
@@ -2905,15 +2962,24 @@ export class Storage {
                 )}`,
               );
             } else {
-              // For consultants and contract employees, calculate based on actual working days
-              const dailyRate = monthlySalary / 22; // More accurate working days per month
-              employeeCost = dailyRate * workingDays;
+              // For consultants and contract employees, calculate based on actual working days assigned to the project within the project's current scope
+              const empStart = employee.startDate ? new Date(employee.startDate) : startDate;
+              const empEnd = employee.endDate ? new Date(employee.endDate) : endDate;
+              
+              // Ensure we only count days between project startDate and project endDate/now
+              const effectiveStart = empStart > startDate ? empStart : startDate;
+              const effectiveEnd = empEnd < endDate ? empEnd : endDate;
+              
+              const empWorkingDays = this.calculateWorkingDays(effectiveStart, effectiveEnd);
+
+              const dailyRate = monthlySalary / this.getWorkingDaysInMonth(effectiveStart.getMonth() + 1, effectiveStart.getFullYear());
+              employeeCost = dailyRate * empWorkingDays;
               console.log(
                 `Employee ${employee.firstName} ${employee.lastName} (${
                   employee.category
                 }): Monthly salary ${monthlySalary}, Daily rate ${dailyRate.toFixed(
                   2,
-                )}, Total cost ${employeeCost.toFixed(2)}`,
+                )}, Working days ${empWorkingDays}, Total cost ${employeeCost.toFixed(2)}`,
               );
             }
 
@@ -11407,89 +11473,76 @@ export class Storage {
         );
 
         const salaryToUse = employee.salary;
-        let basicSalary = parseFloat(salaryToUse || "0").toString(); // Ensure consistent use of "0" default for salary
+        let basicSalary = "0";
+        let consultantFee = 0;
         let workingDays = this.getCalendarDaysInMonth(month, year);
         let projectId: number | null = null;
-
-        // Basic salary is already defaulted using (employee.salary || "0") above
+        let projectEarningsList: Array<{ projectId: number, title: string, earnings: number }> = [];
 
         if (employee.category === "permanent") {
-          // For permanent employees, use full monthly salary - already handled by initialization of basicSalary
+          basicSalary = parseFloat(salaryToUse || "0").toFixed(2);
         } else if (
           employee.category === "consultant" ||
           employee.category === "contract"
         ) {
           // For consultants/contractors, check project assignments
           let totalEarnings = 0;
+          basicSalary = "0";
 
-          for (const project of activeProjects) {
-            if (!project || project.id == null) {
-              console.error(
-                `Skipping null project or project with null ID during payroll calculation for employee ID ${employee.id}. Project data: ${JSON.stringify(project)}`,
+          // Query assignments for this employee
+          const assignments = await db
+            .select({
+              projectId: projectEmployees.projectId,
+              assignmentStartDate: projectEmployees.startDate,
+              assignmentEndDate: projectEmployees.endDate,
+              projectTitle: projects.title,
+              projectStartDate: projects.startDate,
+              projectPlannedEndDate: projects.plannedEndDate,
+              projectActualEndDate: projects.actualEndDate,
+            })
+            .from(projectEmployees)
+            .leftJoin(projects, eq(projectEmployees.projectId, projects.id))
+            .where(eq(projectEmployees.employeeId, employee.id));
+
+          for (const assignment of assignments) {
+            if (!assignment.projectId) continue;
+
+            const pStart = assignment.assignmentStartDate ? new Date(assignment.assignmentStartDate) : (assignment.projectStartDate ? new Date(assignment.projectStartDate) : new Date(year, month - 1, 1));
+            const pEnd = assignment.assignmentEndDate ? new Date(assignment.assignmentEndDate) : (assignment.projectActualEndDate ? new Date(assignment.projectActualEndDate) : (assignment.projectPlannedEndDate ? new Date(assignment.projectPlannedEndDate) : new Date(year, month, 0)));
+
+            // Calculate working days in the month for this project
+            const monthStart = new Date(year, month - 1, 1);
+            const monthEnd = new Date(year, month, 0);
+
+            const effectiveStart = pStart > monthStart ? pStart : monthStart;
+            const effectiveEnd = pEnd < monthEnd ? pEnd : monthEnd;
+
+            if (effectiveStart <= effectiveEnd) {
+              const projectWorkingDays = this.calculateWorkingDays(
+                effectiveStart,
+                effectiveEnd,
               );
-              continue;
-            }
-            console.log(
-              `[Payroll] Getting project assignments for employee ID: ${employee.id} (${employee.firstName} ${employee.lastName}) for project ID: ${project.id}`,
-            );
-            const projectEmployees = await this.getProjectEmployees(project.id);
-            const isAssigned = projectEmployees.some(
-              (pe) => pe && pe.id != null && pe.id === employee.id,
-            );
+              const salaryToUse = employee.salary;
+              const dailyRate = parseFloat(salaryToUse || "0") / this.getWorkingDaysInMonth(month, year);
+              const earnings = dailyRate * projectWorkingDays;
 
-            if (isAssigned) {
-              let projectStartDate;
-              if (project.startDate) {
-                projectStartDate = new Date(project.startDate);
-              } else {
-                projectStartDate = new Date(year, month - 1, 1);
-                console.warn(
-                  `Project ID ${project.id} has null startDate. Defaulting to ${projectStartDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`,
-                );
-              }
-
-              let projectEndDate;
-              if (project.actualEndDate) {
-                projectEndDate = new Date(project.actualEndDate);
-              } else if (project.plannedEndDate) {
-                projectEndDate = new Date(project.plannedEndDate);
-                console.warn(
-                  `Project ID ${project.id} has null actualEndDate, using plannedEndDate ${projectEndDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`,
-                );
-              } else {
-                projectEndDate = new Date(year, month, 0); // Last day of current payroll month
-                console.warn(
-                  `Project ID ${project.id} has null actualEndDate and plannedEndDate. Defaulting to ${projectEndDate.toDateString()} for payroll calculation for employee ID ${employee.id}.`,
-                );
-              }
-
-              // Calculate working days in the month for this project
-              const monthStart = new Date(year, month - 1, 1);
-              const monthEnd = new Date(year, month, 0); // Corrected to last day of current month
-
-              const effectiveStart =
-                projectStartDate > monthStart ? projectStartDate : monthStart;
-              const effectiveEnd =
-                projectEndDate < monthEnd ? projectEndDate : monthEnd;
-
-              if (effectiveStart <= effectiveEnd) {
-                const projectWorkingDays = this.calculateWorkingDays(
-                  effectiveStart,
-                  effectiveEnd,
-                );
-                const salaryToUse = employee.salary;
-                const dailyRate = parseFloat(salaryToUse || "0") / 22; // Assuming 22 working days per month
-                totalEarnings += dailyRate * projectWorkingDays;
-                projectId = project.id; // Assign to the last project for GL tracking
+              if (earnings > 0) {
+                totalEarnings += earnings;
+                projectEarningsList.push({
+                  projectId: assignment.projectId,
+                  title: assignment.projectTitle || "Unknown Project",
+                  earnings: earnings
+                });
+                projectId = assignment.projectId; // Keep last for GL tracking as fallback
               }
             }
           }
 
-          basicSalary = totalEarnings.toFixed(2);
+          consultantFee = totalEarnings;
         }
 
         // Calculate deductions (5% TDS)
-        const calculatedTotalEarnings = parseFloat(basicSalary); // Renamed to avoid conflict
+        const calculatedTotalEarnings = parseFloat(basicSalary) + consultantFee;
         const tdsAmount = calculatedTotalEarnings * 0.05;
         const netAmount = calculatedTotalEarnings - tdsAmount;
 
@@ -11502,7 +11555,7 @@ export class Storage {
             year: year,
             workingDays: workingDays,
             basicSalary: basicSalary,
-            totalAdditions: "0",
+            totalAdditions: consultantFee.toFixed(2),
             totalDeductions: tdsAmount.toFixed(2),
             totalAmount: netAmount.toFixed(2),
             status: "generated",
@@ -11520,24 +11573,20 @@ export class Storage {
           });
         }
 
-        // Create consultant project addition if applicable
+        // Create consultant project additions if applicable
         if (
           (employee.category === "consultant" ||
             employee.category === "contract") &&
-          parseFloat(basicSalary) > 0
+          projectEarningsList.length > 0
         ) {
-          await db.insert(payrollAdditions).values({
-            payrollEntryId: payrollEntry.id,
-            description: "Project Consultant Fee",
-            amount: basicSalary,
-            note: `Consultant fee for ${this.getMonthName(month)} ${year}`,
-          });
-
-          // Update total additions
-          await db
-            .update(payrollEntries)
-            .set({ totalAdditions: basicSalary })
-            .where(eq(payrollEntries.id, payrollEntry.id));
+          for (const projectEarning of projectEarningsList) {
+            await db.insert(payrollAdditions).values({
+              payrollEntryId: payrollEntry.id,
+              description: `Project Fee: ${projectEarning.title}`,
+              amount: projectEarning.earnings.toFixed(2),
+              note: `Earnings for project during ${this.getMonthName(month)} ${year}`,
+            });
+          }
         }
 
         // Add approved reimbursements for this employee in this payroll period
@@ -11625,21 +11674,43 @@ export class Storage {
           );
 
           // 1. Debit: Salary Expense (increase expense)
-          await this.createGeneralLedgerEntry({
-            entryType: "payable",
-            referenceType: "manual",
-            referenceId: payrollEntry.id,
-            accountName: "Salary Expense",
-            description: `Salary for ${employeeName} - ${monthName} ${year}`,
-            debitAmount: calculatedTotalEarnings.toFixed(2),
-            creditAmount: "0",
-            entityId: employee.id,
-            entityName: employeeName,
-            projectId: projectId || undefined,
-            transactionDate: transactionDate,
-            status: "pending",
-            createdBy: userId,
-          });
+          if (projectEarningsList.length > 0) {
+            // Multiple GL entries for per-project allocation
+            for (const projectEarning of projectEarningsList) {
+              await this.createGeneralLedgerEntry({
+                entryType: "payable",
+                referenceType: "manual",
+                referenceId: payrollEntry.id,
+                accountName: "Salary Expense",
+                description: `Salary for ${employeeName} - Project: ${projectEarning.title} - ${monthName} ${year}`,
+                debitAmount: projectEarning.earnings.toFixed(2),
+                creditAmount: "0",
+                entityId: employee.id,
+                entityName: employeeName,
+                projectId: projectEarning.projectId,
+                transactionDate: transactionDate,
+                status: "pending",
+                createdBy: userId,
+              });
+            }
+          } else {
+            // Single GL entry for permanent employees or if no projects (though calculatedTotalEarnings > 0 implies one)
+            await this.createGeneralLedgerEntry({
+              entryType: "payable",
+              referenceType: "manual",
+              referenceId: payrollEntry.id,
+              accountName: "Salary Expense",
+              description: `Salary for ${employeeName} - ${monthName} ${year}`,
+              debitAmount: calculatedTotalEarnings.toFixed(2),
+              creditAmount: "0",
+              entityId: employee.id,
+              entityName: employeeName,
+              projectId: projectId || undefined,
+              transactionDate: transactionDate,
+              status: "pending",
+              createdBy: userId,
+            });
+          }
 
           // 2. Credit: Salary Payable (increase liability - what we owe the employee)
           await this.createGeneralLedgerEntry({
@@ -12653,6 +12724,12 @@ export class Storage {
 
   private getCalendarDaysInMonth(month: number, year: number): number {
     return new Date(year, month, 0).getDate();
+  }
+
+  private getWorkingDaysInMonth(month: number, year: number): number {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+    return this.calculateWorkingDays(startDate, endDate);
   }
 
   async getPurchaseCreditNote(id: number): Promise<any | undefined> {
