@@ -4647,6 +4647,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   app.get(
+    "/api/reports/customer-statement",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const filters = {
+          customerId: req.query.customerId
+            ? parseInt(req.query.customerId as string)
+            : undefined,
+          dateFrom: req.query.dateFrom as string,
+          dateTo: req.query.dateTo as string,
+          page: req.query.page ? parseInt(req.query.page as string) : 1,
+          limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+        };
+
+        const result = await storage.getCustomerStatement(filters);
+        res.json(result);
+      } catch (error) {
+        console.error("Customer statement report error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to generate customer statement report" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/reports/supplier-statement",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const filters = {
+          supplierId: req.query.supplierId
+            ? parseInt(req.query.supplierId as string)
+            : undefined,
+          dateFrom: req.query.dateFrom as string,
+          dateTo: req.query.dateTo as string,
+          page: req.query.page ? parseInt(req.query.page as string) : 1,
+          limit: req.query.limit ? parseInt(req.query.limit as string) : 10,
+        };
+
+        const result = await storage.getSupplierStatement(filters);
+        res.json(result);
+      } catch (error) {
+        console.error("Supplier statement report error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to generate supplier statement report" });
+      }
+    },
+  );
+
+  app.get(
     "/api/reports/project-location/:projectId",
     requireAuth,
     requireRole(["admin", "project_manager", "finance"]),

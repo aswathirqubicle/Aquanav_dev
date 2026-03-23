@@ -13790,6 +13790,234 @@ export class Storage {
       .where(eq(employeeFeedback.id, id));
     return result;
   }
+
+  async getCustomerStatement(filters: {
+    customerId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    data: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasMore: boolean;
+    };
+    totals: {
+      debit: number;
+      credit: number;
+      balance: number;
+    };
+  }> {
+    try {
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const offset = (page - 1) * limit;
+
+      const conditions: any[] = [
+        eq(generalLedgerEntries.accountName, "Accounts Receivable"),
+        eq(generalLedgerEntries.entryType, "receivable"),
+      ];
+
+      if (filters.customerId) {
+        conditions.push(eq(generalLedgerEntries.entityId, filters.customerId));
+      }
+      if (filters.dateFrom) {
+        conditions.push(
+          gte(generalLedgerEntries.transactionDate, filters.dateFrom),
+        );
+      }
+      if (filters.dateTo) {
+        conditions.push(
+          lte(generalLedgerEntries.transactionDate, filters.dateTo),
+        );
+      }
+
+      const finalConditions = and(...conditions);
+
+      // Fetch totals
+      const totalsResult = await db
+        .select({
+          debit: sql<string>`SUM(CAST(${generalLedgerEntries.debitAmount} AS DECIMAL))`,
+          credit: sql<string>`SUM(CAST(${generalLedgerEntries.creditAmount} AS DECIMAL))`,
+        })
+        .from(generalLedgerEntries)
+        .where(finalConditions);
+
+      const totalDebit = parseFloat(totalsResult[0]?.debit || "0");
+      const totalCredit = parseFloat(totalsResult[0]?.credit || "0");
+
+      // Fetch count
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(generalLedgerEntries)
+        .where(finalConditions);
+      const totalCount = Number(countResult[0]?.count || 0);
+      const totalPages = Math.ceil(totalCount / limit);
+
+      // Fetch data
+      const data = await db
+        .select({
+          id: generalLedgerEntries.id,
+          date: generalLedgerEntries.transactionDate,
+          type: generalLedgerEntries.referenceType,
+          reference: generalLedgerEntries.invoiceNumber,
+          description: generalLedgerEntries.description,
+          debit: generalLedgerEntries.debitAmount,
+          credit: generalLedgerEntries.creditAmount,
+          customerId: generalLedgerEntries.entityId,
+          customerName: generalLedgerEntries.entityName,
+        })
+        .from(generalLedgerEntries)
+        .where(finalConditions)
+        .orderBy(
+          asc(generalLedgerEntries.transactionDate),
+          asc(generalLedgerEntries.id),
+        )
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        data: data.map((t) => ({
+          ...t,
+          debit: parseFloat(t.debit || "0"),
+          credit: parseFloat(t.credit || "0"),
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages,
+          hasMore: page < totalPages,
+        },
+        totals: {
+          debit: totalDebit,
+          credit: totalCredit,
+          balance: totalDebit - totalCredit,
+        },
+      };
+    } catch (error) {
+      console.error("Error in getCustomerStatement:", error);
+      throw error;
+    }
+  }
+
+  async getSupplierStatement(filters: {
+    supplierId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    data: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasMore: boolean;
+    };
+    totals: {
+      debit: number;
+      credit: number;
+      balance: number;
+    };
+  }> {
+    try {
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const offset = (page - 1) * limit;
+
+      const conditions: any[] = [
+        eq(generalLedgerEntries.accountName, "Accounts Payable"),
+        eq(generalLedgerEntries.entryType, "payable"),
+      ];
+
+      if (filters.supplierId) {
+        conditions.push(eq(generalLedgerEntries.entityId, filters.supplierId));
+      }
+      if (filters.dateFrom) {
+        conditions.push(
+          gte(generalLedgerEntries.transactionDate, filters.dateFrom),
+        );
+      }
+      if (filters.dateTo) {
+        conditions.push(
+          lte(generalLedgerEntries.transactionDate, filters.dateTo),
+        );
+      }
+
+      const finalConditions = and(...conditions);
+
+      // Fetch totals
+      const totalsResult = await db
+        .select({
+          debit: sql<string>`SUM(CAST(${generalLedgerEntries.debitAmount} AS DECIMAL))`,
+          credit: sql<string>`SUM(CAST(${generalLedgerEntries.creditAmount} AS DECIMAL))`,
+        })
+        .from(generalLedgerEntries)
+        .where(finalConditions);
+
+      const totalDebit = parseFloat(totalsResult[0]?.debit || "0");
+      const totalCredit = parseFloat(totalsResult[0]?.credit || "0");
+
+      // Fetch count
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(generalLedgerEntries)
+        .where(finalConditions);
+      const totalCount = Number(countResult[0]?.count || 0);
+      const totalPages = Math.ceil(totalCount / limit);
+
+      // Fetch data
+      const data = await db
+        .select({
+          id: generalLedgerEntries.id,
+          date: generalLedgerEntries.transactionDate,
+          type: generalLedgerEntries.referenceType,
+          reference: generalLedgerEntries.invoiceNumber,
+          description: generalLedgerEntries.description,
+          debit: generalLedgerEntries.debitAmount,
+          credit: generalLedgerEntries.creditAmount,
+          supplierId: generalLedgerEntries.entityId,
+          supplierName: generalLedgerEntries.entityName,
+        })
+        .from(generalLedgerEntries)
+        .where(finalConditions)
+        .orderBy(
+          asc(generalLedgerEntries.transactionDate),
+          asc(generalLedgerEntries.id),
+        )
+        .limit(limit)
+        .offset(offset);
+
+      return {
+        data: data.map((t) => ({
+          ...t,
+          debit: parseFloat(t.debit || "0"),
+          credit: parseFloat(t.credit || "0"),
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages,
+          hasMore: page < totalPages,
+        },
+        totals: {
+          debit: totalDebit,
+          credit: totalCredit,
+          balance: totalDebit - totalCredit,
+        },
+      };
+    } catch (error) {
+      console.error("Error in getSupplierStatement:", error);
+      throw error;
+    }
+  }
 }
 
 export interface IStorage {
@@ -14326,6 +14554,48 @@ export interface IStorage {
   ): Promise<EmployeeFeedback | undefined>;
   deleteEmployeeFeedback(id: number): Promise<boolean>;
   getEmployeeFeedbackById(id: number): Promise<EmployeeFeedback | undefined>;
+  getCustomerStatement(filters: {
+    customerId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    data: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasMore: boolean;
+    };
+    totals: {
+      debit: number;
+      credit: number;
+      balance: number;
+    };
+  }>;
+  getSupplierStatement(filters: {
+    supplierId?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    data: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasMore: boolean;
+    };
+    totals: {
+      debit: number;
+      credit: number;
+      balance: number;
+    };
+  }>;
 }
 
 export const storage: IStorage = new Storage();
