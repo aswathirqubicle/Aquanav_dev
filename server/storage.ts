@@ -5783,9 +5783,23 @@ export class Storage {
         if (filters.status === "unpaid") {
           queryConditions.push(
             or(
+              eq(salesInvoices.status, "approved"),
               eq(salesInvoices.status, "unpaid"),
               eq(salesInvoices.status, "partially_paid"),
               eq(salesInvoices.status, "overdue"),
+            ),
+          );
+        } else if (filters.status === "overdue") {
+          const now = new Date().toISOString();
+          queryConditions.push(
+            and(
+              or(
+                eq(salesInvoices.status, "approved"),
+                eq(salesInvoices.status, "unpaid"),
+                eq(salesInvoices.status, "partially_paid"),
+                eq(salesInvoices.status, "overdue"),
+              ),
+              sql`${salesInvoices.dueDate} < ${now}`,
             ),
           );
         } else {
