@@ -1449,7 +1449,16 @@ export default function ProjectDetail() {
       return;
     }
 
-    const files = selectedFiles ? Array.from(selectedFiles) : [];
+    if (!selectedFiles || selectedFiles.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one photo for the group",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const files = Array.from(selectedFiles);
     createPhotoGroupMutation.mutate({
       ...photoGroupData,
       dailyActivityId: photoGroupData.dailyActivityId || undefined,
@@ -3772,7 +3781,7 @@ export default function ProjectDetail() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="photos">Select Photos</Label>
+                          <Label htmlFor="photos">Select Photos *</Label>
                           <Input
                             id="photos"
                             type="file"

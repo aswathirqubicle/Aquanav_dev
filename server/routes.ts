@@ -5076,6 +5076,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .json({ message: "Title and date are required" });
         }
 
+        if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
+          return res
+            .status(400)
+            .json({ message: "At least one photo is required" });
+        }
+
         const project = await storage.getProject(projectId);
         if (!project) {
           return res.status(404).json({ message: "Project not found" });
