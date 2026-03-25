@@ -90,6 +90,9 @@ function RevenueDetailsDialog({
                   <span>{payment.paymentMethod || 'Payment'}</span>
                   <span>{new Date(payment.paymentDate).toLocaleDateString()}</span>
                 </div>
+                {payment.invoiceNumber && (
+                  <div className="text-xs text-slate-400 mt-1">Invoice: {payment.invoiceNumber}</div>
+                )}
               </div>
             ))}
           </div>

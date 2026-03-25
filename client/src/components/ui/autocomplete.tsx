@@ -6,6 +6,12 @@ import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Check } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface AutocompleteOption {
   value: string
@@ -157,51 +163,73 @@ export function Autocomplete({
 
   return (
     <div className="relative">
-      <Input
-        ref={inputRef}
-        value={inputValue}
-        onChange={handleInputChange}
-        onKeyDown={handleKeyDown}
-        onClick={() => setIsOpen(true)}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={cn("w-full", className)}
-        autoComplete="off"
-      />
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="w-full">
+              <Input
+                ref={inputRef}
+                value={inputValue}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                onClick={() => setIsOpen(true)}
+                placeholder={placeholder}
+                disabled={disabled}
+                className={cn("w-full", className)}
+                autoComplete="off"
+              />
+            </div>
+          </TooltipTrigger>
+          {!isOpen && !isEditing && inputValue && (
+            <TooltipContent>
+              <p>{inputValue}</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
 
-      {isOpen && filteredOptions.length > 0 && (
+        {isOpen && filteredOptions.length > 0 && (
         <ul
           ref={listRef}
           className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg max-h-48 overflow-auto"
           style={{ position: 'absolute', top: '100%', left: 0 }}
         >
           {filteredOptions.map((option, index) => (
-            <li
-              key={option.value}
-              className={cn(
-                "px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 dark:hover:bg-slate-700",
-                highlightedIndex === index && "bg-gray-100 dark:bg-slate-700",
-                value === option.value && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-              )}
-              onClick={() => handleOptionSelect(option)}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-col min-w-0">
-                  <span className="font-medium truncate">{option.label}</span>
-                  {option.description && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400 truncate line-clamp-1">
-                      {option.description}
-                    </span>
+            <Tooltip key={option.value}>
+              <TooltipTrigger asChild>
+                <li
+                  className={cn(
+                    "px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 dark:hover:bg-slate-700",
+                    highlightedIndex === index && "bg-gray-100 dark:bg-slate-700",
+                    value === option.value && "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                   )}
+                  onClick={() => handleOptionSelect(option)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-medium truncate">{option.label}</span>
+                      {option.description && (
+                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate line-clamp-1">
+                          {option.description}
+                        </span>
+                      )}
+                    </div>
+                    {value === option.value && (
+                      <Check className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    )}
+                  </div>
+                </li>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                <div className="flex flex-col gap-1">
+                  <p className="font-semibold">{option.label}</p>
+                  {option.description && <p className="text-xs">{option.description}</p>}
                 </div>
-                {value === option.value && (
-                  <Check className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                )}
-              </div>
-            </li>
+              </TooltipContent>
+            </Tooltip>
           ))}
         </ul>
       )}
+      </TooltipProvider>
 
       {isOpen && filteredOptions.length === 0 && inputValue.trim() && (
         <div className="absolute z-[100] w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg p-3">

@@ -85,11 +85,43 @@ import {
 import { db } from "./db";
 import { sql as sqlRaw } from "./db";
 
+const sanitize = (html: string) => {
+  if (html === "null") return "";
+  return sanitizeHtml(html || "", {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+      "img",
+      "br",
+      "h1",
+      "h2",
+      "u",
+      "s",
+      "span",
+      "em",
+      "strong",
+    ]),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      "*": ["style"],
+      a: ["href", "name", "target"],
+    },
+    allowedStyles: {
+      "*": {
+        "color": [/^#(0x)?[0-9a-f]+$/i, /^rgb\(/, /^rgba\(/, /[a-z]+/],
+        "background-color": [/^#(0x)?[0-9a-f]+$/i, /^rgb\(/, /^rgba\(/, /[a-z]+/],
+        "text-align": [/^left$/, /^right$/, /^center$/, /^justify$/],
+        "font-size": [/^\d+(?:px|em|%|pt)$/],
+        "font-weight": [/[a-z0-9]+/],
+      },
+    },
+  });
+};
+
 function generateQuotationHTML(
   quotation: any,
   customer: any,
   company: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -111,7 +143,7 @@ function generateQuotationHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Quotation ${quotation.quotationNumber}</title>
+      <title>Quotation ${val(quotation.quotationNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -127,31 +159,43 @@ function generateQuotationHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>SALES QUOTATION</h1>
-                <p><strong>Quotation Number:</strong> ${quotation.quotationNumber}</p>
+                <p><strong>Quotation Number:</strong> ${val(quotation.quotationNumber)}</p>
                 <p><strong>Date:</strong> ${formatDate(quotation.createdDate)}</p>
-                ${quotation.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
-                ${quotation.projectId ? `<p><strong>Project:</strong> ${quotation.projectName || quotation.projectId}</p>` : ""}
+                ${val(quotation.validUntil) ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
+                ${val(quotation.projectId) ? `<p><strong>Project:</strong> ${val(quotation.projectName) || val(quotation.projectId)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>From:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address)}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Bill To:</h3>
-                  <p><strong>${customer.name}</strong></p>
-                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-                  <p style="white-space: pre-wrap;">${quotation.billingAddress || customer.address || ""}</p>
-                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                  <p><strong>${val(customer.name)}</strong></p>
+                  ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${val(quotation.billingAddress) || val(customer.address) || ""}</p>
+                  ${val(customer.phone) ? `<p>Phone: ${val(customer.phone)}</p>` : ""}
+                  ${val(customer.email) ? `<p>Email: ${val(customer.email)}</p>` : ""}
+                  ${val(customer.vatNumber) ? `<p><strong>TRN:</strong> ${val(customer.vatNumber)}</p>` : ""}
                 </div>
+              </div>
+
+              <div class="terms" style="margin-bottom: 20px;">
+                <h3>Terms and Conditions:</h3>
+                <p>This quotation is valid until ${
+                  val(quotation.validUntil)
+                    ? formatDate(quotation.validUntil)
+                    : "further notice"
+                }.</p>
+                ${val(quotation.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(quotation.paymentTerms)}</p>` : "<p>Payment terms: Net 30 days</p>"}
+                ${val(quotation.termsAndConditions) ? `<h3>Additional Terms:</h3><div class="rich-text-content">${sanitize(quotation.termsAndConditions)}</div>` : ""}
+                ${val(quotation.remarks) ? `<h3>Notes:</h3><div class="rich-text-content">${sanitize(quotation.remarks)}</div>` : ""}
               </div>
 
               <table>
@@ -173,8 +217,8 @@ function generateQuotationHTML(
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
-                      <td>${item.description}</td>
-                      <td class="text-right">${item.quantity}</td>
+                      <td>${val(item.description)}</td>
+                      <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${item.taxRate || 0}%</td>
                       <td class="text-right">${formatCurrency(taxAmount)}</td>
@@ -187,48 +231,50 @@ function generateQuotationHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      quotation.subtotal || 0,
-                    )}</td>
-                  </tr>
-                  ${
-                    quotation.discount && parseFloat(quotation.discount) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Discount:</strong></td>
-                    <td class="text-right">-${formatCurrency(quotation.discount)}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      quotation.taxAmount || 0,
-                    )}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Total Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      quotation.totalAmount || 0,
-                    )}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${quotation.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Our Bank Details:</strong>
+                          <div class="rich-text-content">${sanitize(quotation.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            quotation.subtotal || 0,
+                          )}</td>
+                        </tr>
+                        ${
+                          quotation.discount && parseFloat(quotation.discount) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(quotation.discount)}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            quotation.taxAmount || 0,
+                          )}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Total Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            quotation.totalAmount || 0,
+                          )}</td>
+                        </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
-              </div>
-
-              <div class="terms">
-                <h3>Terms and Conditions:</h3>
-                <p>This quotation is valid until ${
-                  quotation.validUntil
-                    ? formatDate(quotation.validUntil)
-                    : "further notice"
-                }.</p>
-                ${quotation.paymentTerms ? `<p><strong>Payment Terms:</strong> ${quotation.paymentTerms}</p>` : "<p>Payment terms: Net 30 days</p>"}
-                ${quotation.bankAccount ? `<p><strong>Our Bank Details:</strong><br>${quotation.bankAccount}</p>` : ""}
-                ${quotation.termsAndConditions ? `<h3>Additional Terms:</h3><p>${quotation.termsAndConditions}</p>` : ""}
               </div>
             </td>
           </tr>
@@ -250,6 +296,7 @@ function generateCreditNoteHTML(
   customer: any,
   company: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -271,7 +318,7 @@ function generateCreditNoteHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Credit Note ${creditNote.creditNoteNumber}</title>
+      <title>Credit Note ${val(creditNote.creditNoteNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -287,32 +334,45 @@ function generateCreditNoteHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>CREDIT NOTE</h1>
-                <p><strong>Credit Note Number:</strong> ${creditNote.creditNoteNumber}</p>
+                <p><strong>Credit Note Number:</strong> ${val(creditNote.creditNoteNumber)}</p>
                 <p><strong>Date:</strong> ${formatDate(creditNote.creditNoteDate)}</p>
-                ${creditNote.invoiceNumber ? `<p><strong>Related Invoice:</strong> ${creditNote.invoiceNumber}</p>` : ""}
-                ${creditNote.reason ? `<p><strong>Reason:</strong> ${creditNote.reason}</p>` : ""}
-                ${creditNote.projectId ? `<p><strong>Project:</strong> ${creditNote.projectName || creditNote.projectId}</p>` : ""}
+                ${val(creditNote.invoiceNumber) ? `<p><strong>Related Invoice:</strong> ${val(creditNote.invoiceNumber)}</p>` : ""}
+                ${val(creditNote.reason) ? `<p><strong>Reason:</strong> ${val(creditNote.reason)}</p>` : ""}
+                ${val(creditNote.projectId) ? `<p><strong>Project:</strong> ${val(creditNote.projectName) || val(creditNote.projectId)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>From:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address)}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Bill To:</h3>
-                  <p><strong>${customer.name}</strong></p>
-                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-                  <p style="white-space: pre-wrap;">${creditNote.billingAddress || customer.address || ""}</p>
-                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                  <p><strong>${val(customer.name)}</strong></p>
+                  ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${val(creditNote.billingAddress) || val(customer.address) || ""}</p>
+                  ${val(customer.phone) ? `<p>Phone: ${val(customer.phone)}</p>` : ""}
+                  ${val(customer.email) ? `<p>Email: ${val(customer.email)}</p>` : ""}
+                  ${val(customer.vatNumber) ? `<p><strong>TRN:</strong> ${val(customer.vatNumber)}</p>` : ""}
                 </div>
+              </div>
+
+              <div style="margin-bottom: 20px;">
+                <p><strong>Payment Terms:</strong></p>
+                <p>${
+                  val(creditNote.paymentTerms) ||
+                  "This credit note will be applied to your account balance."
+                }</p>
+                ${
+                  val(creditNote.remarks)
+                    ? `<p><strong>Remarks:</strong> ${val(creditNote.remarks)}</p>`
+                    : ""
+                }
               </div>
 
               <table>
@@ -334,8 +394,8 @@ function generateCreditNoteHTML(
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
-                      <td>${item.description}</td>
-                      <td class="text-right">${item.quantity}</td>
+                      <td>${val(item.description)}</td>
+                      <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${item.taxRate || 0}%</td>
                       <td class="text-right">${formatCurrency(taxAmount)}</td>
@@ -348,49 +408,53 @@ function generateCreditNoteHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      creditNote.subtotal || 0,
-                    )}</td>
-                  </tr>
-                  ${
-                    creditNote.discount && parseFloat(creditNote.discount) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Discount:</strong></td>
-                    <td class="text-right">-${formatCurrency(creditNote.discount)}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      creditNote.taxAmount || 0,
-                    )}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Credit Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      creditNote.totalAmount || 0,
-                    )}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${creditNote.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Bank Details:</strong>
+                          <div class="rich-text-content">${sanitize(creditNote.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            creditNote.subtotal || 0,
+                          )}</td>
+                        </tr>
+                        ${
+                          creditNote.discount && parseFloat(creditNote.discount) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(creditNote.discount)}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            creditNote.taxAmount || 0,
+                          )}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Credit Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            creditNote.totalAmount || 0,
+                          )}</td>
+                        </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
               </div>
 
               <div style="margin-top: 50px;">
-                <p><strong>Payment Terms:</strong></p>
-                <p>${
-                  creditNote.paymentTerms ||
-                  "This credit note will be applied to your account balance."
-                }</p>
-                ${
-                  creditNote.remarks
-                    ? `<p><strong>Remarks:</strong> ${creditNote.remarks}</p>`
-                    : ""
-                }
                 <p>Thank you for your business!</p>
               </div>
             </td>
@@ -413,6 +477,7 @@ function generateInvoiceHTML(
   customer: any,
   company: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -434,7 +499,7 @@ function generateInvoiceHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Invoice ${invoice.invoiceNumber}</title>
+      <title>Invoice ${val(invoice.invoiceNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -450,32 +515,42 @@ function generateInvoiceHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>TAX INVOICE</h1>
-                <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+                <p><strong>Invoice Number:</strong> ${val(invoice.invoiceNumber)}</p>
                 <p><strong>Invoice Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
                 <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
-                ${invoice.projectId ? `<p><strong>Project:</strong> ${invoice.projectName || invoice.projectId}</p>` : ""}
+                ${val(invoice.projectId) ? `<p><strong>Project:</strong> ${val(invoice.projectName) || val(invoice.projectId)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>From:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address)}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Bill To:</h3>
-                  <p><strong>${customer.name}</strong></p>
-                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-                  <p style="white-space: pre-wrap;">${invoice.billingAddress || customer.address || ""}</p>
-                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                  <p><strong>${val(customer.name)}</strong></p>
+                  ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${val(invoice.billingAddress) || val(customer.address) || ""}</p>
+                  ${val(customer.phone) ? `<p>Phone: ${val(customer.phone)}</p>` : ""}
+                  ${val(customer.email) ? `<p>Email: ${val(customer.email)}</p>` : ""}
+                  ${val(customer.vatNumber) ? `<p><strong>TRN:</strong> ${val(customer.vatNumber)}</p>` : ""}
                 </div>
               </div>
+
+              <div class="terms" style="margin-bottom: 20px;">
+                <p><strong>Payment Terms:</strong></p>
+                <p>${val(invoice.paymentTerms)}</p>
+              </div>
+              <div class="terms" style="margin-bottom: 20px;">
+                <p><strong>Terms & Conditions:</strong></p>
+                <div class="rich-text-content">${sanitize(invoice.termsAndConditions)}</div>
+              </div>
+              ${val(invoice.remarks) ? `<div class="terms" style="margin-bottom: 20px;"><p><strong>Notes:</strong></p><div class="rich-text-content">${sanitize(invoice.remarks)}</div></div>` : ""}
 
               <table>
                 <thead>
@@ -492,8 +567,8 @@ function generateInvoiceHTML(
                       const lineTotal = item.quantity * item.unitPrice;
                       return `
                     <tr>
-                      <td>${item.description}</td>
-                      <td class="text-right">${item.quantity}</td>
+                      <td>${val(item.description)}</td>
+                      <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${formatCurrency(lineTotal)}</td>
                     </tr>
@@ -504,66 +579,67 @@ function generateInvoiceHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${invoice.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Our Bank Details:</strong>
+                          <div class="rich-text-content">${sanitize(invoice.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                        </tr>
+                        ${
+                          invoice.discount && parseFloat(invoice.discount) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(invoice.discount)}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            invoice.taxAmount || 0,
+                          )}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Total Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            invoice.totalAmount || 0,
+                          )}</td>
+                        </tr>
+                        ${
+                          invoice.paidAmount && parseFloat(invoice.paidAmount) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Paid Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Balance Due:</strong></td>
+                          <td class="text-right">${formatCurrency(
+                            (
+                              parseFloat(invoice.totalAmount || "0") -
+                              parseFloat(invoice.paidAmount)
+                            ).toFixed(2),
+                          )}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                      </table>
+                    </td>
                   </tr>
-                  ${
-                    invoice.discount && parseFloat(invoice.discount) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Discount:</strong></td>
-                    <td class="text-right">-${formatCurrency(invoice.discount)}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      invoice.taxAmount || 0,
-                    )}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Total Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      invoice.totalAmount || 0,
-                    )}</td>
-                  </tr>
-                  ${
-                    invoice.paidAmount && parseFloat(invoice.paidAmount) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Paid Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Balance Due:</strong></td>
-                    <td class="text-right">${formatCurrency(
-                      (
-                        parseFloat(invoice.totalAmount || "0") -
-                        parseFloat(invoice.paidAmount)
-                      ).toFixed(2),
-                    )}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
                 </table>
-              </div>
-
-              <div class="terms">
-                <p><strong>Payment Terms:</strong></p>
-                <p>${invoice.paymentTerms}</p>
-              </div>
-              <div class="terms">
-                <p><strong>Terms & Conditions:</strong></p>
-                <p>${invoice.termsAndConditions}</p>
-              </div>
-              <div class="terms">
-                <p><strong>Our Bank Details:</strong></p>
-                <p>${invoice.bankAccount}</p>
               </div>
             </td>
           </tr>
@@ -586,6 +662,7 @@ function generateProformaHTML(
   company: any,
   project: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -607,7 +684,7 @@ function generateProformaHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Proforma Invoice ${proforma.proformaNumber}</title>
+      <title>Proforma Invoice ${val(proforma.proformaNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -623,32 +700,39 @@ function generateProformaHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>PROFORMA INVOICE</h1>
-                <p><strong>Proforma Number:</strong> ${proforma.proformaNumber}</p>
-                <p><strong>Work Order Number:</strong> ${proforma.workOrderNumber}</p>
+                <p><strong>Proforma Number:</strong> ${val(proforma.proformaNumber)}</p>
+                <p><strong>Work Order Number:</strong> ${val(proforma.workOrderNumber)}</p>
                 <p><strong>Date:</strong> ${formatDate(proforma.invoiceDate || proforma.createdDate)}</p>
-                ${proforma.validUntil ? `<p><strong>Valid Until:</strong> ${formatDate(proforma.validUntil)}</p>` : ""}
-                ${proforma.projectId ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
+                ${val(proforma.validUntil) ? `<p><strong>Valid Until:</strong> ${formatDate(proforma.validUntil)}</p>` : ""}
+                ${val(proforma.projectId) ? `<p><strong>Project:</strong> ${val(project.title)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>From:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address)}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Bill To:</h3>
-                  <p><strong>${customer.name}</strong></p>
-                  ${customer.contactPerson ? `<p>Contact: ${customer.contactPerson}</p>` : ""}
-                  <p style="white-space: pre-wrap;">${proforma.billingAddress || customer.address || ""}</p>
-                  ${customer.phone ? `<p>Phone: ${customer.phone}</p>` : ""}
-                  ${customer.email ? `<p>Email: ${customer.email}</p>` : ""}
-                  ${customer.vatNumber ? `<p><strong>TRN:</strong> ${customer.vatNumber}</p>` : ""}
+                  <p><strong>${val(customer.name)}</strong></p>
+                  ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
+                  <p style="white-space: pre-wrap;">${val(proforma.billingAddress) || val(customer.address) || ""}</p>
+                  ${val(customer.phone) ? `<p>Phone: ${val(customer.phone)}</p>` : ""}
+                  ${val(customer.email) ? `<p>Email: ${val(customer.email)}</p>` : ""}
+                  ${val(customer.vatNumber) ? `<p><strong>TRN:</strong> ${val(customer.vatNumber)}</p>` : ""}
                 </div>
+              </div>
+
+              <div class="terms" style="margin-bottom: 20px;">
+                ${val(proforma.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(proforma.paymentTerms)}</p>` : ""}
+                ${val(proforma.deliveryTerms) ? `<p><strong>Delivery Terms:</strong> ${val(proforma.deliveryTerms)}</p>` : ""}
+                ${val(proforma.remarks) ? `<h3>Remarks:</h3><div class="rich-text-content">${sanitize(proforma.remarks)}</div>` : ""}
+                ${val(proforma.termsAndConditions) ? `<h3>Terms and Conditions:</h3><div class="rich-text-content">${sanitize(proforma.termsAndConditions)}</div>` : ""}
               </div>
 
               <table>
@@ -669,8 +753,8 @@ function generateProformaHTML(
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
-                      <td>${item.description}</td>
-                      <td class="text-right">${item.quantity}</td>
+                      <td>${val(item.description)}</td>
+                      <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${item.taxRate || 0}%</td>
                       <td class="text-right">${formatCurrency(lineTotal)}</td>
@@ -682,38 +766,44 @@ function generateProformaHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
-                  </tr>
-                  ${
-                    proforma.discount && parseFloat(proforma.discount) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Discount:</strong></td>
-                    <td class="text-right">-${formatCurrency(proforma.discount)}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Total Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(proforma.totalAmount || 0)}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${proforma.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Bank Account:</strong>
+                          <div class="rich-text-content">${sanitize(proforma.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
+                        </tr>
+                        ${
+                          proforma.discount && parseFloat(proforma.discount) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(proforma.discount)}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Total Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(proforma.totalAmount || 0)}</td>
+                        </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
-              </div>
-
-              <div class="terms">
-                ${proforma.paymentTerms ? `<p><strong>Payment Terms:</strong> ${proforma.paymentTerms}</p>` : ""}
-                ${proforma.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${proforma.deliveryTerms}</p>` : ""}
-                ${proforma.bankAccount ? `<p><strong>Bank Account:</strong> ${proforma.bankAccount}</p>` : ""}
-                ${proforma.remarks ? `<h3>Remarks:</h3><p>${proforma.remarks}</p>` : ""}
-                ${proforma.termsAndConditions ? `<h3>Terms and Conditions:</h3><p>${proforma.termsAndConditions}</p>` : ""}
               </div>
             </td>
           </tr>
@@ -735,6 +825,7 @@ function generatePurchaseOrderHTML(
   supplier: any,
   company: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = supplier.currency || "AED";
@@ -756,7 +847,7 @@ function generatePurchaseOrderHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Purchase Order ${order.poNumber}</title>
+      <title>Purchase Order ${val(order.poNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -772,30 +863,36 @@ function generatePurchaseOrderHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>PURCHASE ORDER</h1>
-                <p><strong>PO Number:</strong> ${order.poNumber}</p>
+                <p><strong>PO Number:</strong> ${val(order.poNumber)}</p>
                 <p><strong>Date:</strong> ${formatDate(order.orderDate)}</p>
-                ${order.expectedDeliveryDate ? `<p><strong>Expected Delivery:</strong> ${formatDate(order.expectedDeliveryDate)}</p>` : ""}
-                ${order.projectId ? `<p><strong>Project:</strong> ${order.projectName || order.projectId}</p>` : ""}
+                ${val(order.expectedDeliveryDate) ? `<p><strong>Expected Delivery:</strong> ${formatDate(order.expectedDeliveryDate)}</p>` : ""}
+                ${val(order.projectId) ? `<p><strong>Project:</strong> ${val(order.projectName) || val(order.projectId)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>Supplier:</h3>
-                  <p><strong>${supplier.name}</strong></p>
-                  ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
-                  ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
-                  ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
-                  ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+                  <p><strong>${val(supplier.name)}</strong></p>
+                  ${val(supplier.address) ? `<p style="white-space: pre-wrap;">${val(supplier.address)}</p>` : ""}
+                  ${val(supplier.phone) ? `<p>Phone: ${val(supplier.phone)}</p>` : ""}
+                  ${val(supplier.email) ? `<p>Email: ${val(supplier.email)}</p>` : ""}
+                  ${val(supplier.vatNumber) ? `<p><strong>TRN:</strong> ${val(supplier.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Ship To / Bill To:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address || ""}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address) || ""}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
+              </div>
+
+              <div class="terms" style="margin-bottom: 20px;">
+                ${val(order.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(order.paymentTerms)}</p>` : ""}
+                ${val(order.deliveryTerms) ? `<p><strong>Delivery Terms:</strong> ${val(order.deliveryTerms)}</p>` : ""}
+                ${val(order.notes) ? `<h3>Notes:</h3><div>${sanitize(order.notes)}</div>` : ""}
               </div>
 
               <table>
@@ -816,8 +913,11 @@ function generatePurchaseOrderHTML(
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
-                      <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
-                      <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+                      <td>
+                        <div style="font-weight: 500;">${item.itemType === "product" ? val(item.inventoryItemName) : val(item.description)}</div>
+                        ${item.itemType === "product" && val(item.inventoryItemDescription) ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">${val(item.inventoryItemDescription)}</div>` : ""}
+                      </td>
+                      <td class="text-right">${val(item.quantity)} ${item.itemType === "product" ? val(item.inventoryItemUnit) : ""}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${item.taxRate || 0}%</td>
                       <td class="text-right">${formatCurrency(lineTotal)}</td>
@@ -829,37 +929,44 @@ function generatePurchaseOrderHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
-                  </tr>
-                   ${
-                     parseFloat(order.discountAmount || "0") > 0
-                       ? `
-                  <tr>
-                    <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
-                    <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
-                  </tr>
-                  `
-                       : ""
-                   }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Total Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(order.totalAmount || 0)}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${order.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Bank Account Details:</strong>
+                          <div class="rich-text-content">${sanitize(order.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
+                        </tr>
+                         ${
+                           parseFloat(order.discountAmount || "0") > 0
+                             ? `
+                        <tr>
+                          <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
+                          <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
+                        </tr>
+                        `
+                             : ""
+                         }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Total Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(order.totalAmount || 0)}</td>
+                        </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
-              </div>
-
-              <div class="terms">
-                ${order.paymentTerms ? `<p><strong>Payment Terms:</strong> ${order.paymentTerms}</p>` : ""}
-                ${order.deliveryTerms ? `<p><strong>Delivery Terms:</strong> ${order.deliveryTerms}</p>` : ""}
-                ${order.bankAccount ? `<h3>Bank Account Details:</h3><p>${order.bankAccount}</p>` : ""}
-                ${order.notes ? `<h3>Notes:</h3><p>${order.notes}</p>` : ""}
               </div>
             </td>
           </tr>
@@ -882,6 +989,7 @@ function generatePurchaseInvoiceHTML(
   company: any,
   project?: any,
 ): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = supplier.currency || "AED";
@@ -903,7 +1011,7 @@ function generatePurchaseInvoiceHTML(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Purchase Invoice ${invoice.invoiceNumber}</title>
+      <title>Purchase Invoice ${val(invoice.invoiceNumber)}</title>
       ${getCommonStyles()}
     </head>
     <body>
@@ -919,31 +1027,37 @@ function generatePurchaseInvoiceHTML(
             <td class="report-content-cell">
               <div class="document-info">
                 <h1>PURCHASE INVOICE</h1>
-                <p><strong>Invoice Number:</strong> ${invoice.invoiceNumber}</p>
+                <p><strong>Invoice Number:</strong> ${val(invoice.invoiceNumber)}</p>
+                ${val(invoice.supplierInvoiceNumber) ? `<p><strong>Supplier Invoice Number:</strong> ${val(invoice.supplierInvoiceNumber)}</p>` : ""}
                 <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
-                ${invoice.dueDate ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
-                ${invoice.poNumber ? `<p><strong>Linked PO:</strong> ${invoice.poNumber}</p>` : invoice.poId ? `<p><strong>Linked PO:</strong> PO-${invoice.poId}</p>` : ""}
-                ${project ? `<p><strong>Project:</strong> ${project.title}</p>` : ""}
+                ${val(invoice.dueDate) ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
+                ${val(invoice.poNumber) ? `<p><strong>Linked PO:</strong> ${val(invoice.poNumber)}</p>` : val(invoice.poId) ? `<p><strong>Linked PO:</strong> PO-${val(invoice.poId)}</p>` : ""}
+                ${project ? `<p><strong>Project:</strong> ${val(project.title)}</p>` : ""}
               </div>
 
               <div class="info-grid">
                 <div class="info-box">
                   <h3>Supplier:</h3>
-                  <p><strong>${supplier.name}</strong></p>
-                  ${supplier.address ? `<p style="white-space: pre-wrap;">${supplier.address}</p>` : ""}
-                  ${supplier.phone ? `<p>Phone: ${supplier.phone}</p>` : ""}
-                  ${supplier.email ? `<p>Email: ${supplier.email}</p>` : ""}
-                  ${supplier.vatNumber ? `<p><strong>TRN:</strong> ${supplier.vatNumber}</p>` : ""}
+                  <p><strong>${val(supplier.name)}</strong></p>
+                  ${val(supplier.address) ? `<p style="white-space: pre-wrap;">${val(supplier.address)}</p>` : ""}
+                  ${val(supplier.phone) ? `<p>Phone: ${val(supplier.phone)}</p>` : ""}
+                  ${val(supplier.email) ? `<p>Email: ${val(supplier.email)}</p>` : ""}
+                  ${val(supplier.vatNumber) ? `<p><strong>TRN:</strong> ${val(supplier.vatNumber)}</p>` : ""}
                 </div>
                 <div class="info-box">
                   <h3>Bill To:</h3>
-                  <p><strong>${company.name}</strong></p>
-                  <p style="white-space: pre-wrap;">${company.address || ""}</p>
-                  ${company.phone ? `<p>Phone: ${company.phone}</p>` : ""}
-                  ${company.email ? `<p>Email: ${company.email}</p>` : ""}
-                  ${company.website ? `<p>Website: ${company.website}</p>` : ""}
-                  ${company.vatNumber ? `<p><strong>TRN:</strong> ${company.vatNumber}</p>` : ""}
+                  <p><strong>${val(company.name)}</strong></p>
+                  <p style="white-space: pre-wrap;">${val(company.address) || ""}</p>
+                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
+                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
+                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
+                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
                 </div>
+              </div>
+
+              <div class="terms" style="margin-bottom: 20px;">
+                ${val(invoice.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(invoice.paymentTerms)}</p>` : ""}
+                ${val(invoice.notes) ? `<h3>Notes:</h3><div>${sanitize(invoice.notes)}</div>` : ""}
               </div>
 
               <table>
@@ -970,8 +1084,11 @@ function generatePurchaseInvoiceHTML(
 
                       return `
                     <tr>
-                      <td>${item.itemType === "product" ? item.inventoryItemName : item.description}</td>
-                      <td class="text-right">${item.quantity} ${item.itemType === "product" ? item.inventoryItemUnit : ""}</td>
+                      <td>
+                        <div style="font-weight: 500;">${item.itemType === "product" ? val(item.inventoryItemName) : val(item.description)}</div>
+                        ${item.itemType === "product" && val(item.inventoryItemDescription) ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">${val(item.inventoryItemDescription)}</div>` : ""}
+                      </td>
+                      <td class="text-right">${val(item.quantity)} ${item.itemType === "product" ? val(item.inventoryItemUnit) : ""}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${parseFloat(taxRate).toFixed(0)}%</td>
                       <td class="text-right">${formatCurrency(lineTotal)}</td>
@@ -983,50 +1100,58 @@ function generatePurchaseInvoiceHTML(
               </table>
 
               <div style="margin-top: 30px;">
-                <table style="width: 300px; margin-left: auto;">
+                <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
-                    <td><strong>Subtotal:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      ${invoice.bankAccount ? `
+                        <div style="font-size: 11px; color: #444;">
+                          <strong>Bank Account Details:</strong>
+                          <div class="rich-text-content">${sanitize(invoice.bankAccount)}</div>
+                        </div>
+                      ` : ""}
+                    </td>
+                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
+                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
+                        <tr>
+                          <td><strong>Subtotal:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
+                        </tr>
+                        ${
+                          parseFloat(invoice.discountAmount || "0") > 0
+                            ? `
+                        <tr>
+                          <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
+                          <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                        <tr>
+                          <td><strong>Tax Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
+                        </tr>
+                        <tr class="total-row">
+                          <td><strong>Total Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
+                        </tr>
+                        ${
+                          parseFloat(invoice.paidAmount || 0) > 0
+                            ? `
+                        <tr>
+                          <td><strong>Paid Amount:</strong></td>
+                          <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
+                        </tr>
+                        <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
+                          <td><strong>Balance Due:</strong></td>
+                          <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
+                        </tr>
+                        `
+                            : ""
+                        }
+                      </table>
+                    </td>
                   </tr>
-                  ${
-                    parseFloat(invoice.discountAmount || "0") > 0
-                      ? `
-                  <tr>
-                    <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
-                    <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td><strong>Tax Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
-                  </tr>
-                  <tr class="total-row">
-                    <td><strong>Total Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
-                  </tr>
-                  ${
-                    parseFloat(invoice.paidAmount || 0) > 0
-                      ? `
-                  <tr>
-                    <td><strong>Paid Amount:</strong></td>
-                    <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
-                  </tr>
-                  <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
-                    <td><strong>Balance Due:</strong></td>
-                    <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
                 </table>
-              </div>
-
-              <div class="terms">
-                ${invoice.paymentTerms ? `<p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>` : ""}
-                ${invoice.bankAccount ? `<h3>Bank Account Details:</h3><p style="white-space: pre-wrap;">${invoice.bankAccount}</p>` : ""}
-                ${invoice.notes ? `<h3>Notes:</h3><p style="white-space: pre-wrap;">${invoice.notes}</p>` : ""}
               </div>
             </td>
           </tr>
@@ -1044,14 +1169,18 @@ function generatePurchaseInvoiceHTML(
 }
 
 export function generateProjectPrintHTML(data: any): string {
-  const sanitize = (html: string) =>
-    sanitizeHtml(html || "", {
+  const sanitize = (html: string) => {
+    if (html === "null" || !html) return "";
+    return sanitizeHtml(html, {
       allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
       allowedAttributes: {
         ...sanitizeHtml.defaults.allowedAttributes,
         "*": ["style"],
       },
     });
+  };
+
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
 
   const gallery = data.gallery || [];
   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
@@ -1136,497 +1265,8 @@ export function generateProjectPrintHTML(data: any): string {
     {},
   );
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Weekly Report</title>
-
-<style>
-@page {
-  size: A4;
-  margin: 0;
-}
-
-/* ===== BODY ===== */
-body {
-  font-family: Inter, sans-serif;
-  margin: 0;
-  background: #f4f4f4;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-
-/* Layout table for repeating headers/footers */
-.report-wrapper {
-  width: 100%;
-  border-collapse: collapse;
-  border: none !important;
-}
-.report-wrapper > thead > tr > td,
-.report-wrapper > tbody > tr > td,
-.report-wrapper > tfoot > tr > td {
-  border: none !important;
-  padding: 0 !important;
-}
-
-/* ===== FIXED HEADER ===== */
-.print-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 160px;               /* MUST MATCH CONTAINER PADDING */
-  background: #ffffff;
-  z-index: 1000;
-  padding: 10px 20px;
-}
-
-.top-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.top-header img {
-  height: 120px;
-}
-
-/* ===== FIXED FOOTER ===== */
-.footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 60px;                /* MUST MATCH CONTAINER PADDING */
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.footer-content {
-  display: flex;
-  gap: 20px;
-  font-weight: bold;
-  color: #0019A5;
-}
-
-/* ===== MAIN CONTAINER ===== */
-.container {
-  background: #fff;
-  max-width: 900px;
-  margin: auto;
-
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-/* ===== TITLES ===== */
-.main-title {
-  text-align: center;
-  margin: 20px 0;
-  font-size: 20px;
-  font-weight: bold;
-}
-
-.highlight { color: red; }
-.vessel { color: #0019A5; }
-
-/* ===== SHIP IMAGE ===== */
-.ship-image img {
-  width: 100%;
-  max-height: 160px;
-  object-fit: cover;
-  border-radius: 15px;
-}
-
-/* ===== TABLES ===== */
-.project-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
-
-.project-table th,
-.project-table td {
-  border: 1px solid #ccc;
-  padding: 6px;
-}
-
-.project-table th {
-  background: #0019A5;
-  color: white;
-  text-align: center;
-}
-
-/* ===== SECTION TITLE ===== */
-.section-title {
-  background: #c00000;
-  color: white;
-  text-align: center;
-  padding: 6px;
-  margin-top: 20px;
-}
-
-/* ===== STEPS TABLE ===== */
-.steps-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-.steps-table th {
-  background: #f4b183;
-  border: 1px solid #ccc;
-  font-size: 12px;
-}
-
-.steps-table td {
-  background: #fff2cc;
-  border: 1px solid #ccc;
-  font-size: 10px;
-  padding: 6px;
-  vertical-align: top;
-}
-
-/* ===== IMAGE GALLERY ===== */
-.image-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.image-table td {
-  border: 1px solid #000;
-  padding: 5px;
-}
-
-.image-table img {
-  width: 100%;
-  height: 230px;
-  object-fit: contain;
-}
-
-/* ===== PAGE BREAK ===== */
-.page-break {
-  page-break-before: always;
-  margin-top: 140px;
-}
-
-.highlights-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 15px;
-  padding: 6px 0;
-  font-weight: bold;
-  font-size: 14px;
-  border-bottom: 2px solid #0019A5;
-}
-
-.left-title {
-  text-transform: uppercase;
-}
-
-.right-date {
-  font-size: 12px;
-  color: #0019A5;
-}
-
-/* ===== PRINT MODE ===== */
-@media print {
-  body {
-    margin: 0;
-  }
-
-  .print-header {
-    position: fixed;
-    top: 0;
-  }
-
-  .footer {
-    position: fixed;
-    bottom: 0;
-  }
-
-  .page-break {
-    page-break-before: always;
-    margin-top: 140px;
-  }
-
-}
-
-</style>
-</head>
-
-<body onload="window.print()">
-<table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
-  <thead>
-    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space" style="height: 160px;"><div class="print-header">
-            <div class="top-header">
-              <img src="${data.company?.logo || ""}" />
-              <div>${data.company?.address || ""}</div>
-            </div>
-          </div></div></td></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td class="report-content-cell">
-        <div class="container">
-          <!-- TITLE -->
-          <div class="main-title">
-            ${data.title || ""}<br/>
-            <span class="highlight">${sanitize(data.description)}</span><br/>
-            <span class="vessel">${data.reportTitle || "WEEKLY REPORT"}</span>
-          </div>
-
-          <!-- IMAGE -->
-          <div class="ship-image">
-            <img src="${data.vesselImage || ""}" />
-          </div>
-
-          <!-- PROJECT HIGHLIGHTS HEADER -->
-          <div class="highlights-header">
-            <div class="left-title">PROJECT HIGHLIGHTS</div>
-            <div class="right-date">
-              Report Date: ${data.reportDate}
-            </div>
-          </div>
-
-          <!-- PROJECT TABLE -->
-          <table class="project-table">
-            <tbody>
-              <tr>
-                <th>Project Start Date</th>
-                <td>${data.startDate || ""}</td>
-                <th>Vessel Name</th>
-                <td>${data.vesselName || ""}</td>
-              </tr>
-              <tr>
-                <th>Project Details</th>
-                <td>${sanitize(data.description)}</td>
-                <th>Client</th>
-                <td>${data.customerName || ""}</td>
-              </tr>
-              <tr>
-                <th>Mode of Contract</th>
-                <td>${data.modeOfContract || ""}</td>
-                <th>Riding crew Nos.</th>
-                <td>${data.ridgingCrewNos || ""}</td>
-              </tr>
-              <tr>
-                <th>PPE</th>
-                <td>${data.ppe || ""}</td>
-                <th>Working Hours</th>
-                <td>${data.workingHours || ""}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <h3 class="section-title">
-            COATING REPAIR PROCEDURE FOR MAIN DECK
-          </h3>
-
-          <table class="steps-table">
-            <tbody>
-              ${[1, 3, 5]
-                .map((start) => {
-                  const firstTitle = data[`additionalField${start}Title`];
-                  const firstDesc = data[`additionalField${start}Description`];
-                  const secondTitle = data[`additionalField${start + 1}Title`];
-                  const secondDesc = data[`additionalField${start + 1}Description`];
-                  if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
-                  return `
-                    <tr>
-                      <th style="width:10%;">Step-${start}</th>
-                      <td style="width:40%;">
-                        ${firstTitle?.trim() ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}` : ""}
-                      </td>
-                      <th style="width:10%;">Step-${start + 1}</th>
-                      <td style="width:40%;">
-                        ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
-                      </td>
-                    </tr>`;
-                }).join("")}
-            </tbody>
-          </table>
-
-          ${data.reportImage ? `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">WORK PLAN</h2>
-              <div class="ship-image">
-                <img src="${data.reportImage}" />
-              </div>
-            </div>` : ""}
-
-          ${Object.entries(weeklyReports).map(([week, reports]: any) => `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">Work done for the Week - ${week}</h2>
-              <table class="project-table">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Date</th>
-                    <th>Location</th>
-                    <th>Activities</th>
-                    ${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
-                  </tr>
-                </thead>
-                <tbody>
-                  ${reports.map((r: any) => `
-                    <tr>
-                      <td>Day ${r.day_num}</td>
-                      <td>${r.date}</td>
-                      <td>${r.location || ""}</td>
-                      <td>${r.activities || ""}</td>
-                      ${data?.includeHBMHours ? `<td>${r.hbmHours || ""}</td>` : ``}
-                    </tr>`).join("")}
-                </tbody>
-              </table>
-            </div>`).join("")}
-
-          ${gallery.map((g: any) => `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;text-transform: capitalize;">${g.title}</h2>
-              <h2 style="text-align:center;">${g.description}</h2>
-              <table class="image-table">
-                <tbody>
-                  ${g.photos.reduce((rows: any[], img: any, idx: number) => {
-                    if (idx % 2 === 0) rows.push([img]);
-                    else rows[rows.length - 1].push(img);
-                    return rows;
-                  }, []).map((row: any[]) => `
-                    <tr>
-                      ${row.map(img => `<td><img src="${img.filePath}" style="width:100%;height:auto;" /></td>`).join("")}
-                      ${row.length === 1 ? "<td></td>" : ""}
-                    </tr>`).join("")}
-                </tbody>
-              </table>
-            </div>`).join("")}
-
-          ${Object.entries(weeklyConsumables).map(([week, items]: any) => `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">Consumables Used - ${week}</h2>
-              <table class="project-table">
-                <thead>
-                  <tr><th>Date</th><th>Item</th><th>Qty</th></tr>
-                </thead>
-                <tbody>
-                  ${items.map((i: any) => `<tr><td>${i.date}</td><td>${i.itemName}</td><td>${i.quantity}</td></tr>`).join("")}
-                </tbody>
-              </table>
-            </div>`).join("")}
-
-          ${Object.entries(plannedReports).map(([week, reports]: any) => `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">Work Planned for the Week - ${week}</h2>
-              <table class="project-table">
-                <thead>
-                  <tr><th>Day</th><th>Date</th><th>Location</th><th>Activities</th></tr>
-                </thead>
-                <tbody>
-                  ${reports.map((r: any) => `
-                    <tr>
-                      <td>Day ${r.day_num}</td>
-                      <td>${r.date}</td>
-                      <td>${r.location || ""}</td>
-                      <td>${r.activities || ""}</td>
-                    </tr>`).join("")}
-                </tbody>
-              </table>
-            </div>`).join("")}
-
-          ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">Work Remaining Days</h2>
-              <table style="width:100%; border-collapse:collapse;" border="1">
-                <thead>
-                  <tr>
-                    <th style="padding:8px; text-align:left;">Location</th>
-                    <th style="padding:8px; text-align:left;">Remaining Days</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${data.workRemainingDays.map((item: any) => `
-                    <tr>
-                      <td style="padding:8px;">${item.location || "-"}</td>
-                      <td style="padding:8px;">${item.days || "-"}</td>
-                    </tr>`).join("")}
-                </tbody>
-              </table>
-            </div>` : ""}
-        </div>
-      </td>
-    </tr>
-  </tbody>
-  <tfoot>
-    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space">
-          <div class="footer">
-            <div class="footer-content">
-              <span>🌐 ${data.company?.website || ""}</span>
-              <span>✉ ${data.company?.email || ""}</span>
-              <span>☎ ${data.company?.phone || ""}</span>
-            </div>
-          </div>
-        </div>
-      </td>
-    </tr>
-  </tfoot>
-</table>
-</body>
-</html>
-`;
-}
-
-export function generateConsumablePrintHTML(data: any): string {
-  const sanitize = (html: string) =>
-    sanitizeHtml(html || "", {
-      allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
-      allowedAttributes: {
-        ...sanitizeHtml.defaults.allowedAttributes,
-        "*": ["style"],
-      },
-    });
-
-  // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
-  function getWeekRange(date: Date) {
-    const d = new Date(date);
-    const first = new Date(d);
-    first.setDate(d.getDate() - d.getDay()); // Sunday start
-
-    const last = new Date(first);
-    last.setDate(first.getDate() + 6);
-
-    return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
-  }
-
-  const weeklyConsumables = (data.consumables || []).reduce(
-    (acc: any, entry: any) => {
-      const weekKey = getWeekRange(entry.date);
-
-      if (!acc[weekKey]) {
-        acc[weekKey] = [];
-      }
-
-      // Only include manual entry items (no inventoryItemId) in reports
-      entry.items
-        .filter((item: any) => !item.inventoryItemId)
-        .forEach((item: any) => {
-          acc[weekKey].push({
-            date: new Date(entry.date).toLocaleDateString(),
-            createdBy: entry.createdByName,
-            itemName: item.itemName,
-            quantity: item.quantity,
-            unit: item.itemUnit,
-            unitCost: item.unitCost,
-            total: (item.quantity * parseFloat(item.unitCost)).toFixed(2),
-          });
-        });
-
-      return acc;
-    },
-    {},
+  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some(
+    (i) => data[`additionalField${i}Title`]?.trim(),
   );
 
   return `
@@ -1869,21 +1509,21 @@ body {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            ${data.title || ""}<br/>
+            ${val(data.title)}<br/>
             <span class="highlight">${sanitize(data.description)}</span><br/>
-            <span class="vessel">${data.vesselName || ""}</span>
+            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</span>
           </div>
 
           <!-- IMAGE -->
           <div class="ship-image">
-            <img src="${data.vesselImage || ""}" />
+            <img src="${val(data.vesselImage)}" />
           </div>
 
           <!-- PROJECT HIGHLIGHTS HEADER -->
           <div class="highlights-header">
             <div class="left-title">PROJECT HIGHLIGHTS</div>
             <div class="right-date">
-              Report Date: ${data.reportDate}
+              Report Date: ${val(data.reportDate)}
             </div>
           </div>
 
@@ -1892,31 +1532,34 @@ body {
             <tbody>
               <tr>
                 <th>Project Start Date</th>
-                <td>${data.startDate || ""}</td>
+                <td>${val(data.startDate)}</td>
                 <th>Vessel Name</th>
-                <td>${data.vesselName || ""}</td>
+                <td>${val(data.vesselName)}</td>
               </tr>
               <tr>
                 <th>Project Details</th>
                 <td>${sanitize(data.description)}</td>
                 <th>Client</th>
-                <td>${data.customerName || ""}</td>
+                <td>${val(data.customerName)}</td>
               </tr>
               <tr>
                 <th>Mode of Contract</th>
-                <td>${data.modeOfContract || ""}</td>
+                <td>${val(data.modeOfContract)}</td>
                 <th>Riding crew Nos.</th>
-                <td>${data.ridgingCrewNos || ""}</td>
+                <td>${val(data.ridgingCrewNos)}</td>
               </tr>
               <tr>
                 <th>PPE</th>
-                <td>${data.ppe || ""}</td>
+                <td>${val(data.ppe)}</td>
                 <th>Working Hours</th>
-                <td>${data.workingHours || ""}</td>
+                <td>${val(data.workingHours)}</td>
               </tr>
             </tbody>
           </table>
 
+          ${
+            hasAdditionalFields
+              ? `
           <h3 class="section-title">
             COATING REPAIR PROCEDURE FOR MAIN DECK
           </h3>
@@ -1928,7 +1571,8 @@ body {
                   const firstTitle = data[`additionalField${start}Title`];
                   const firstDesc = data[`additionalField${start}Description`];
                   const secondTitle = data[`additionalField${start + 1}Title`];
-                  const secondDesc = data[`additionalField${start + 1}Description`];
+                  const secondDesc =
+                    data[`additionalField${start + 1}Description`];
                   if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
                   return `
                     <tr>
@@ -1941,9 +1585,534 @@ body {
                         ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
                       </td>
                     </tr>`;
-                }).join("")}
+                })
+                .join("")}
             </tbody>
           </table>
+          `
+              : ""
+          }
+
+          ${data.reportImage ? `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">WORK PLAN</h2>
+              <div class="ship-image">
+                <img src="${data.reportImage}" />
+              </div>
+            </div>` : ""}
+
+          ${Object.entries(weeklyReports)
+            .filter(([_, reports]: any) => reports.length > 0)
+            .map(
+              ([week, reports]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work done for the Week - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Activities</th>
+                    ${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reports.map((r: any) => `
+                    <tr>
+                      <td>Day ${r.day_num}</td>
+                      <td>${val(r.date)}</td>
+                      <td>${val(r.location)}</td>
+                      <td>${val(r.activities)}</td>
+                      ${data?.includeHBMHours ? `<td>${val(r.hbmHours)}</td>` : ``}
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${gallery
+            .filter((g: any) => g.photos && g.photos.length > 0)
+            .map(
+              (g: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;text-transform: capitalize;">${val(g.title)}</h2>
+              <h2 style="text-align:center;">${val(g.description)}</h2>
+              <table class="image-table">
+                <tbody>
+                  ${g.photos.reduce((rows: any[], img: any, idx: number) => {
+                    if (idx % 2 === 0) rows.push([img]);
+                    else rows[rows.length - 1].push(img);
+                    return rows;
+                  }, []).map((row: any[]) => `
+                    <tr>
+                      ${row.map(img => `<td><img src="${val(img.filePath)}" style="width:100%;height:auto;" /></td>`).join("")}
+                      ${row.length === 1 ? "<td></td>" : ""}
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${Object.entries(weeklyConsumables)
+            .filter(([_, items]: any) => items.length > 0)
+            .map(
+              ([week, items]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Consumables Used - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr><th>Date</th><th>Item</th><th>Qty</th></tr>
+                </thead>
+                <tbody>
+                  ${items.map((i: any) => `<tr><td>${val(i.date)}</td><td>${val(i.itemName)}</td><td>${val(i.quantity)}</td></tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${Object.entries(plannedReports)
+            .filter(([_, reports]: any) => reports.length > 0)
+            .map(
+              ([week, reports]: any) => `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work Planned for the Week - ${week}</h2>
+              <table class="project-table">
+                <thead>
+                  <tr><th>Day</th><th>Date</th><th>Location</th><th>Activities</th></tr>
+                </thead>
+                <tbody>
+                  ${reports.map((r: any) => `
+                    <tr>
+                      <td>Day ${r.day_num}</td>
+                      <td>${val(r.date)}</td>
+                      <td>${val(r.location)}</td>
+                      <td>${val(r.activities)}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>`).join("")}
+
+          ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
+            <div class="page-break">
+              <h2 style="text-align:center;color:red;">Work Remaining Days</h2>
+              <table style="width:100%; border-collapse:collapse;" border="1">
+                <thead>
+                  <tr>
+                    <th style="padding:8px; text-align:left;">Location</th>
+                    <th style="padding:8px; text-align:left;">Remaining Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${data.workRemainingDays.map((item: any) => `
+                    <tr>
+                      <td style="padding:8px;">${val(item.location) || "-"}</td>
+                      <td style="padding:8px;">${val(item.days) || "-"}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>` : ""}
+        </div>
+      </td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space">
+          <div class="footer">
+            <div class="footer-content">
+              <span>🌐 ${data.company?.website || ""}</span>
+              <span>✉ ${data.company?.email || ""}</span>
+              <span>☎ ${data.company?.phone || ""}</span>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  </tfoot>
+</table>
+</body>
+</html>
+`;
+}
+
+export function generateConsumablePrintHTML(data: any): string {
+  const sanitize = (html: string) => {
+    if (html === "null" || !html) return "";
+    return sanitizeHtml(html, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        "*": ["style"],
+      },
+    });
+  };
+
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+
+  // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
+  function getWeekRange(date: Date) {
+    const d = new Date(date);
+    const first = new Date(d);
+    first.setDate(d.getDate() - d.getDay()); // Sunday start
+
+    const last = new Date(first);
+    last.setDate(first.getDate() + 6);
+
+    return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
+  }
+
+  const weeklyConsumables = (data.consumables || []).reduce(
+    (acc: any, entry: any) => {
+      const weekKey = getWeekRange(entry.date);
+
+      if (!acc[weekKey]) {
+        acc[weekKey] = [];
+      }
+
+      // Only include manual entry items (no inventoryItemId) in reports
+      entry.items
+        .filter((item: any) => !item.inventoryItemId)
+        .forEach((item: any) => {
+          acc[weekKey].push({
+            date: new Date(entry.date).toLocaleDateString(),
+            createdBy: entry.createdByName,
+            itemName: item.itemName,
+            quantity: item.quantity,
+            unit: item.itemUnit,
+            unitCost: item.unitCost,
+            total: (item.quantity * parseFloat(item.unitCost)).toFixed(2),
+          });
+        });
+
+      return acc;
+    },
+    {},
+  );
+
+  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some(
+    (i) => data[`additionalField${i}Title`]?.trim(),
+  );
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Weekly Report</title>
+
+<style>
+@page {
+  size: A4;
+  margin: 0;
+}
+
+/* ===== BODY ===== */
+body {
+  font-family: Inter, sans-serif;
+  margin: 0;
+  background: #f4f4f4;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Layout table for repeating headers/footers */
+.report-wrapper {
+  width: 100%;
+  border-collapse: collapse;
+  border: none !important;
+}
+.report-wrapper > thead > tr > td,
+.report-wrapper > tbody > tr > td,
+.report-wrapper > tfoot > tr > td {
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* ===== FIXED HEADER ===== */
+.print-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 160px;               /* MUST MATCH CONTAINER PADDING */
+  background: #ffffff;
+  z-index: 1000;
+  padding: 10px 20px;
+}
+
+.top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.top-header img {
+  height: 120px;
+}
+
+/* ===== FIXED FOOTER ===== */
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;                /* MUST MATCH CONTAINER PADDING */
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer-content {
+  display: flex;
+  gap: 20px;
+  font-weight: bold;
+  color: #0019A5;
+}
+
+/* ===== MAIN CONTAINER ===== */
+.container {
+  background: #fff;
+  max-width: 900px;
+  margin: auto;
+
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* ===== TITLES ===== */
+.main-title {
+  text-align: center;
+  margin: 20px 0;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.highlight { color: red; }
+.vessel { color: #0019A5; }
+
+/* ===== SHIP IMAGE ===== */
+.ship-image img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 15px;
+}
+
+/* ===== TABLES ===== */
+.project-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.project-table th,
+.project-table td {
+  border: 1px solid #ccc;
+  padding: 6px;
+}
+
+.project-table th {
+  background: #0019A5;
+  color: white;
+  text-align: center;
+}
+
+/* ===== SECTION TITLE ===== */
+.section-title {
+  background: #c00000;
+  color: white;
+  text-align: center;
+  padding: 6px;
+  margin-top: 20px;
+}
+
+/* ===== STEPS TABLE ===== */
+.steps-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.steps-table th {
+  background: #f4b183;
+  border: 1px solid #ccc;
+  font-size: 12px;
+}
+
+.steps-table td {
+  background: #fff2cc;
+  border: 1px solid #ccc;
+  font-size: 10px;
+  padding: 6px;
+  vertical-align: top;
+}
+
+/* ===== IMAGE GALLERY ===== */
+.image-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.image-table td {
+  border: 1px solid #000;
+  padding: 5px;
+}
+
+.image-table img {
+  width: 100%;
+  height: 230px;
+  object-fit: contain;
+}
+
+/* ===== PAGE BREAK ===== */
+.page-break {
+  page-break-before: always;
+  margin-top: 140px;
+}
+
+.highlights-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  padding: 6px 0;
+  font-weight: bold;
+  font-size: 14px;
+  border-bottom: 2px solid #0019A5;
+}
+
+.left-title {
+  text-transform: uppercase;
+}
+
+.right-date {
+  font-size: 12px;
+  color: #0019A5;
+}
+
+/* ===== PRINT MODE ===== */
+@media print {
+  body {
+    margin: 0;
+  }
+
+  .print-header {
+    position: fixed;
+    top: 0;
+  }
+
+  .footer {
+    position: fixed;
+    bottom: 0;
+  }
+
+  .page-break {
+    page-break-before: always;
+    margin-top: 140px;
+  }
+
+}
+
+</style>
+</head>
+
+<body onload="window.print()">
+<table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+  <thead>
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space" style="height: 160px;"><div class="print-header">
+            <div class="top-header">
+              <img src="${data.company?.logo || ""}" />
+              <div>${data.company?.address || ""}</div>
+            </div>
+          </div></div></td></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="report-content-cell">
+        <div class="container">
+          <!-- TITLE -->
+          <div class="main-title">
+            ${val(data.title)}<br/>
+            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span class="vessel">${val(data.vesselName)}</span>
+          </div>
+
+          <!-- IMAGE -->
+          <div class="ship-image">
+            <img src="${val(data.vesselImage)}" />
+          </div>
+
+          <!-- PROJECT HIGHLIGHTS HEADER -->
+          <div class="highlights-header">
+            <div class="left-title">PROJECT HIGHLIGHTS</div>
+            <div class="right-date">
+              Report Date: ${val(data.reportDate)}
+            </div>
+          </div>
+
+          <!-- PROJECT TABLE -->
+          <table class="project-table">
+            <tbody>
+              <tr>
+                <th>Project Start Date</th>
+                <td>${val(data.startDate)}</td>
+                <th>Vessel Name</th>
+                <td>${val(data.vesselName)}</td>
+              </tr>
+              <tr>
+                <th>Project Details</th>
+                <td>${sanitize(data.description)}</td>
+                <th>Client</th>
+                <td>${val(data.customerName)}</td>
+              </tr>
+              <tr>
+                <th>Mode of Contract</th>
+                <td>${val(data.modeOfContract)}</td>
+                <th>Riding crew Nos.</th>
+                <td>${val(data.ridgingCrewNos)}</td>
+              </tr>
+              <tr>
+                <th>PPE</th>
+                <td>${val(data.ppe)}</td>
+                <th>Working Hours</th>
+                <td>${val(data.workingHours)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          ${
+            hasAdditionalFields
+              ? `
+          <h3 class="section-title">
+            COATING REPAIR PROCEDURE FOR MAIN DECK
+          </h3>
+
+          <table class="steps-table">
+            <tbody>
+              ${[1, 3, 5]
+                .map((start) => {
+                  const firstTitle = data[`additionalField${start}Title`];
+                  const firstDesc = data[`additionalField${start}Description`];
+                  const secondTitle = data[`additionalField${start + 1}Title`];
+                  const secondDesc =
+                    data[`additionalField${start + 1}Description`];
+                  if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
+                  return `
+                    <tr>
+                      <th style="width:10%;">Step-${start}</th>
+                      <td style="width:40%;">
+                        ${firstTitle?.trim() ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}` : ""}
+                      </td>
+                      <th style="width:10%;">Step-${start + 1}</th>
+                      <td style="width:40%;">
+                        ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
+                      </td>
+                    </tr>`;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          `
+              : ""
+          }
 
           ${Object.entries(weeklyConsumables).map(([week, items]: any) => `
             <div class="page-break">
@@ -1953,7 +2122,7 @@ body {
                   <tr><th>Date</th><th>Item</th><th>Qty</th></tr>
                 </thead>
                 <tbody>
-                  ${items.map((i: any) => `<tr><td>${i.date}</td><td>${i.itemName}</td><td>${i.quantity}</td></tr>`).join("")}
+                  ${items.map((i: any) => `<tr><td>${val(i.date)}</td><td>${val(i.itemName)}</td><td>${val(i.quantity)}</td></tr>`).join("")}
                 </tbody>
               </table>
             </div>`).join("")}
@@ -4898,12 +5067,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const projectId = parseInt(req.params.id);
-        const { title, date, description, dailyActivityId } = req.body;
+        const { title, date, description } = req.body;
+        let { dailyActivityId } = req.body;
 
         if (!title || !date) {
           return res
             .status(400)
             .json({ message: "Title and date are required" });
+        }
+
+        const project = await storage.getProject(projectId);
+        if (!project) {
+          return res.status(404).json({ message: "Project not found" });
+        }
+
+        const photoDate = new Date(date);
+        if (project.startDate && photoDate < new Date(project.startDate)) {
+          return res.status(400).json({
+            message: "Photo group date cannot be before project start date",
+          });
+        }
+
+        const projectEndDate = project.actualEndDate || project.plannedEndDate;
+        if (projectEndDate && photoDate > new Date(projectEndDate)) {
+          return res.status(400).json({
+            message: "Photo group date cannot be after project end date",
+          });
+        }
+
+        // Auto-link to daily activity if not provided
+        if (!dailyActivityId) {
+          const activities = await storage.getDailyActivities(projectId);
+          const matchingActivity = activities.find((a) => {
+            const activityDate = new Date(a.date);
+            return (
+              activityDate.getUTCFullYear() === photoDate.getUTCFullYear() &&
+              activityDate.getUTCMonth() === photoDate.getUTCMonth() &&
+              activityDate.getUTCDate() === photoDate.getUTCDate()
+            );
+          });
+          if (matchingActivity) {
+            dailyActivityId = matchingActivity.id;
+          }
         }
 
         const parsedGroupData = insertProjectPhotoGroupSchema.parse({
@@ -5765,18 +5970,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Auto-generate quotation number if not provided
         if (!quotationData.quotationNumber) {
-          const latestQuotations = await storage.getSalesQuotations();
-          const latestNumber = latestQuotations.reduce((max, q) => {
-            const match = q.quotationNumber?.match(/QTN-(\d+)/);
-            if (match) {
-              const num = parseInt(match[1]);
-              return num > max ? num : max;
-            }
-            return max;
-          }, 0);
-          quotationData.quotationNumber = `QTN-${String(
-            latestNumber + 1,
-          ).padStart(4, "0")}`;
+          quotationData.quotationNumber = await storage.generateNextNumber(
+            "QTN",
+            salesQuotations,
+            salesQuotations.quotationNumber,
+          );
         }
 
         // Date fields should remain as ISO strings (YYYY-MM-DD format)

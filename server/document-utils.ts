@@ -202,6 +202,33 @@ export function getCommonStyles(): string {
         width: 140px;
         display: inline-block;
       }
+
+      /* Rich Text Content */
+      .rich-text-content {
+        line-height: 1.4;
+      }
+      .rich-text-content p {
+        margin: 0 0 8px 0;
+      }
+      .rich-text-content p:last-child {
+        margin-bottom: 0;
+      }
+      .rich-text-content ul, .rich-text-content ol {
+        margin: 0 0 8px 20px;
+        padding: 0;
+      }
+      .rich-text-content ul {
+        list-style-type: disc;
+      }
+      .rich-text-content ol {
+        list-style-type: decimal;
+      }
+      .rich-text-content h1, .rich-text-content h2 {
+        margin: 12px 0 8px 0;
+        color: #0b4d78;
+      }
+      .rich-text-content h1 { font-size: 18px; }
+      .rich-text-content h2 { font-size: 16px; }
     </style>
   `;
 }
@@ -217,10 +244,11 @@ export function imageToBase64(relativePath: string): string {
 }
 
 export function generateCommonHeader(options?: { company?: any }): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const company = options?.company;
   let logoHtml = "";
   
-  if (company && company.logo) {
+  if (company && val(company.logo)) {
     const base64Logo = imageToBase64(company.logo);
     if (base64Logo) {
       logoHtml = `<img src="${base64Logo}" alt="${company.name}" class="company-logo" />`;
@@ -235,7 +263,7 @@ export function generateCommonHeader(options?: { company?: any }): string {
       </div>
       <div class="title">
         <div class="address">
-          ${company?.address || ""}
+          ${val(company?.address)}
         </div>
       </div>
     </div>
@@ -244,6 +272,7 @@ export function generateCommonHeader(options?: { company?: any }): string {
 }
 
 export function generateCommonFooter(options?: { company?: any }): string {
+  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
   const company = options?.company;
 
   return `
@@ -251,15 +280,15 @@ export function generateCommonFooter(options?: { company?: any }): string {
       <div class="footer-content">
         <div class="footer-item">
           <i class="fas fa-globe"></i>
-          <a href="${company?.website || '#'}">${company?.website || ""}</a>
+          <a href="${val(company?.website) || '#'}">${val(company?.website)}</a>
         </div>
         <div class="footer-item">
           <i class="fas fa-envelope"></i>
-          <a href="mailto:${company?.email || ''}">${company?.email || ""}</a>
+          <a href="mailto:${val(company?.email)}">${val(company?.email)}</a>
         </div>
         <div class="footer-item">
           <i class="fas fa-phone"></i>
-          <a href="tel:${company?.phone || ''}">${company?.phone || ""}</a>
+          <a href="tel:${val(company?.phone)}">${val(company?.phone)}</a>
         </div>
       </div>
     </div>

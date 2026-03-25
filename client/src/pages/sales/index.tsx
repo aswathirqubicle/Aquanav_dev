@@ -35,6 +35,9 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { formatDateForInput } from "@/lib/utils";
+import { sanitize } from "@/lib/sanitize";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
   FileText,
   Plus,
@@ -185,6 +188,8 @@ export default function SalesIndex() {
   const [formData, setFormData] = useState<CreateSalesQuotationData>({
     customerId: undefined,
     status: "draft",
+    createdDate: formatDateForInput(new Date()),
+    validUntil: formatDateForInput(new Date()),
     items: [],
     discountPercentage: "0",
     discount: "0",
@@ -365,6 +370,34 @@ export default function SalesIndex() {
       }));
     }
   }, [invoiceFormData.paymentTerms, invoiceFormData.invoiceDate]);
+
+  // Recalculate quotation validUntil when paymentTerms or createdDate changes
+  useEffect(() => {
+    if (!formData.paymentTerms || !formData.createdDate) return;
+
+    const baseDate = new Date(formData.createdDate);
+    if (isNaN(baseDate.getTime())) return;
+
+    let daysToAdd = 0;
+    switch (formData.paymentTerms) {
+      case "Net 10": daysToAdd = 10; break;
+      case "Net 15": daysToAdd = 15; break;
+      case "Net 30": daysToAdd = 30; break;
+      case "Due on receipt": daysToAdd = 0; break;
+      default: return;
+    }
+
+    const validUntilDate = new Date(baseDate);
+    validUntilDate.setUTCDate(baseDate.getUTCDate() + daysToAdd);
+    const validUntilString = validUntilDate.toISOString().split('T')[0];
+
+    if (formData.validUntil !== validUntilString) {
+      setFormData(prev => ({
+        ...prev,
+        validUntil: validUntilString
+      }));
+    }
+  }, [formData.paymentTerms, formData.createdDate]);
 
   const { data: salesStats } = useQuery<{
     totalQuotations: number;
@@ -1038,6 +1071,8 @@ export default function SalesIndex() {
     setFormData({
       customerId: undefined,
       status: "draft",
+      createdDate: formatDateForInput(new Date()),
+      validUntil: formatDateForInput(new Date()),
       items: [],
       discountPercentage: "0",
       discount: "0",
@@ -1486,6 +1521,7 @@ export default function SalesIndex() {
       setFormData({
         customerId: quotation.customerId,
         status: quotation.status,
+        createdDate: formatDateForInput(quotation.createdDate),
         validUntil: formatDateForInput(quotation.validUntil),
         items: quotation.items || [],
         discountPercentage: quotation.discountPercentage || "0",
@@ -1859,10 +1895,27 @@ export default function SalesIndex() {
                       )}
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="createdDate">Quotation Date</Label>
+                      <Input
+                        id="createdDate"
+                        type="date"
+                        value={formData.createdDate || ""}
+                        onChange={(e) =>
+                          startTransition(() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              createdDate: e.target.value,
+                            })),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="validUntil">Valid Until</Label>
                       <Input
                         id="validUntil"
                         type="date"
+                        disabled
                         value={formData.validUntil || ""}
                         onChange={(e) =>
                           startTransition(() =>
@@ -1932,21 +1985,28 @@ export default function SalesIndex() {
                           </div>
                         )}
                       </div>
-                      <textarea
-                        id="bankAccount"
-                        className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        value={formData.bankAccount || ""}
-                        onChange={(e) =>
-                          startTransition(() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              bankAccount: e.target.value,
-                            })),
-                          )
-                        }
-                        placeholder="Bank account details"
-                        rows={3}
-                      />
+                      <div className="mt-1 border border-input rounded-md overflow-hidden">
+                        <ReactQuill
+                          theme="snow"
+                          value={formData.bankAccount || ""}
+                          onChange={(value) =>
+                            startTransition(() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                bankAccount: value,
+                              })),
+                            )
+                          }
+                          placeholder="Bank account details"
+                          modules={{
+                            toolbar: [
+                              ['bold', 'italic', 'underline', 'strike'],
+                              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                              ['clean']
+                            ],
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1990,21 +2050,28 @@ export default function SalesIndex() {
 
                   <div className="space-y-2">
                     <Label htmlFor="remarks">Notes</Label>
-                    <textarea
-                      id="remarks"
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={formData.remarks || ""}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            remarks: e.target.value,
-                          })),
-                        )
-                      }
-                      placeholder="Additional notes for this quotation"
-                      rows={3}
-                    />
+                    <div className="mt-1 border border-input rounded-md overflow-hidden text-sm">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.remarks || ""}
+                        onChange={(value) =>
+                          startTransition(() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              remarks: value,
+                            })),
+                          )
+                        }
+                        placeholder="Additional notes for this quotation"
+                        modules={{
+                          toolbar: [
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['clean']
+                          ],
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {/* Services Section */}
@@ -2514,21 +2581,28 @@ export default function SalesIndex() {
                           </div>
                         )}
                       </div>
-                      <textarea
-                        id="invoiceBankAccount"
-                        className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        value={invoiceFormData.bankAccount || ""}
-                        onChange={(e) =>
-                          startTransition(() =>
-                            setInvoiceFormData((prev) => ({
-                              ...prev,
-                              bankAccount: e.target.value,
-                            })),
-                          )
-                        }
-                        placeholder="Bank account details"
-                        rows={3}
-                      />
+                      <div className="mt-1 border border-input rounded-md overflow-hidden">
+                        <ReactQuill
+                          theme="snow"
+                          value={invoiceFormData.bankAccount || ""}
+                          onChange={(value) =>
+                            startTransition(() =>
+                              setInvoiceFormData((prev) => ({
+                                ...prev,
+                                bankAccount: value,
+                              })),
+                            )
+                          }
+                          placeholder="Bank account details"
+                          modules={{
+                            toolbar: [
+                              ['bold', 'italic', 'underline', 'strike'],
+                              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                              ['clean']
+                            ],
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -2572,21 +2646,28 @@ export default function SalesIndex() {
 
                   <div className="space-y-2">
                     <Label htmlFor="invoiceRemarks">Notes</Label>
-                    <textarea
-                      id="invoiceRemarks"
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={invoiceFormData.remarks || ""}
-                      onChange={(e) =>
-                        startTransition(() =>
-                          setInvoiceFormData((prev) => ({
-                            ...prev,
-                            remarks: e.target.value,
-                          })),
-                        )
-                      }
-                      placeholder="Additional notes for this invoice"
-                      rows={3}
-                    />
+                    <div className="mt-1 border border-input rounded-md overflow-hidden text-sm">
+                      <ReactQuill
+                        theme="snow"
+                        value={invoiceFormData.remarks || ""}
+                        onChange={(value) =>
+                          startTransition(() =>
+                            setInvoiceFormData((prev) => ({
+                              ...prev,
+                              remarks: value,
+                            })),
+                          )
+                        }
+                        placeholder="Additional notes for this invoice"
+                        modules={{
+                          toolbar: [
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['clean']
+                          ],
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {/* Services Section for Invoice */}
@@ -3986,9 +4067,10 @@ export default function SalesIndex() {
                     {selectedQuotation.bankAccount && (
                       <div>
                         <span className="font-medium">Bank Account:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedQuotation.bankAccount}
-                        </p>
+                        <div 
+                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
+                          dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.bankAccount) }}
+                        />
                       </div>
                     )}
                     {selectedQuotation.termsAndConditions && (
@@ -4002,9 +4084,10 @@ export default function SalesIndex() {
                     {selectedQuotation.remarks && (
                       <div>
                         <span className="font-medium">Notes:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedQuotation.remarks}
-                        </p>
+                        <div 
+                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
+                          dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.remarks) }}
+                        />
                       </div>
                     )}
                   </CardContent>
@@ -4359,9 +4442,10 @@ export default function SalesIndex() {
                     {selectedInvoice.bankAccount && (
                       <div>
                         <span className="font-medium">Bank Account:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedInvoice.bankAccount}
-                        </p>
+                        <div 
+                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
+                          dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.bankAccount) }}
+                        />
                       </div>
                     )}
                     {selectedInvoice.termsAndConditions && (
@@ -4375,9 +4459,10 @@ export default function SalesIndex() {
                     {selectedInvoice.remarks && (
                       <div>
                         <span className="font-medium">Notes:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedInvoice.remarks}
-                        </p>
+                        <div 
+                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
+                          dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.remarks) }}
+                        />
                       </div>
                     )}
                   </CardContent>

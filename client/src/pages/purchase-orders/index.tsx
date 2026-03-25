@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CustomPagination } from "@/components/ui/pagination";
@@ -19,6 +21,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
+import { sanitize } from "@/lib/sanitize";
 import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 
@@ -118,6 +121,7 @@ export default function PurchaseOrdersIndex() {
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const debouncedSearch = useDebounce(searchQuery, 500);
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
 
   const [formData, setFormData] = useState({
     supplierId: "",
@@ -157,6 +161,7 @@ export default function PurchaseOrdersIndex() {
   const [invoiceData, setInvoiceData] = useState({
     invoiceDate: new Date().toISOString().split('T')[0],
     dueDate: "",
+    supplierInvoiceNumber: "",
     partial: false,
     discountPercentage: "0",
     discountAmount: "0",
@@ -460,6 +465,7 @@ export default function PurchaseOrdersIndex() {
       discountPercentage: "0",
       discountAmount: "0",
     });
+    setSelectedBankId("");
     setOrderItems([]);
     setNewItem({
       itemType: "product",
@@ -686,6 +692,7 @@ export default function PurchaseOrdersIndex() {
     setInvoiceData({
       invoiceDate: new Date().toISOString().split('T')[0],
       dueDate: target.expectedDeliveryDate ? target.expectedDeliveryDate.split('T')[0] : "",
+      supplierInvoiceNumber: "",
       partial: false,
       discountPercentage: target.discountPercentage || "0",
       discountAmount: target.discountAmount || "0",
@@ -753,6 +760,7 @@ export default function PurchaseOrdersIndex() {
       invoiceData: {
         invoiceDate: invoiceData.invoiceDate,
         dueDate: invoiceData.dueDate || undefined,
+        supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || undefined,
         notes: invoiceNotes || undefined,
         paymentTerms: invoicePaymentTerms || undefined,
         currency: viewingOrder.currency || viewingOrder.supplierCurrency || "AED",
@@ -777,6 +785,12 @@ export default function PurchaseOrdersIndex() {
   const getItemName = (itemId: string) => {
     const item = inventoryItems.find(item => item.id === parseInt(itemId));
     return item ? item.name : "Unknown Item";
+  };
+
+  const getItemDescription = (itemId: string | number) => {
+    const id = typeof itemId === "string" ? parseInt(itemId) : itemId;
+    const item = inventoryItems.find(item => item.id === id);
+    return item ? item.description : "";
   };
 
   const getItemUnit = (itemId: string) => {
@@ -1333,8 +1347,15 @@ export default function PurchaseOrdersIndex() {
               <div>
                 <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
                 <Select
-                  value={formData.bankAccount}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                  value={selectedBankId}
+                  onValueChange={(value) => {
+                    setSelectedBankId(value);
+                    const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                    if (selected) {
+                      const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                      setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                    }
+                  }}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select bank account" />
@@ -1342,7 +1363,7 @@ export default function PurchaseOrdersIndex() {
                   <SelectContent>
                     {bankAccountOptions.map((detail, index) => (
                       <React.Fragment key={detail.id}>
-                        <SelectItem value={detail.accountDetails}>
+                        <SelectItem value={detail.id.toString()}>
                           <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
                         </SelectItem>
                         {index < bankAccountOptions.length - 1 && (
@@ -1352,17 +1373,43 @@ export default function PurchaseOrdersIndex() {
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="mt-2 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.bankAccount}
+                    onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                    placeholder="Enter or customize bank account details..."
+                    modules={{
+                      toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
               </div>
 
               <div>
                 <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Optional notes"
-                  className="mt-1"
-                />
+                <div className="mt-1 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.notes}
+                    onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                    placeholder="Optional notes"
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        ['link'],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -1469,7 +1516,8 @@ export default function PurchaseOrdersIndex() {
                           <Autocomplete
                             options={(inventoryItems || []).map((item) => ({
                               value: item.id.toString(),
-                              label: `${item.name}(${item.description || ""})`,
+                              label: item.name,
+                              description: item.description,
                               searchText: `${item.name} ${item.description || ""} ${item.unit}`
                             }))}
                             value={newItem.inventoryItemId || ""}
@@ -1571,9 +1619,21 @@ export default function PurchaseOrdersIndex() {
                                     </Badge>
                                   </TableCell>
                                   <TableCell className="font-medium">
-                                    {item.itemType === "product"
-                                      ? getItemName(item.inventoryItemId || "")
-                                      : item.description}
+                                    <div className="flex flex-col">
+                                      <span>
+                                        {item.itemType === "product"
+                                          ? getItemName(item.inventoryItemId || "")
+                                          : item.description}
+                                      </span>
+                                      {item.itemType === "product" && item.inventoryItemId && (() => {
+                                        const description = getItemDescription(item.inventoryItemId);
+                                        return description && (
+                                          <span className="text-xs text-muted-foreground">
+                                            {description}
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
                                   </TableCell>
                                   <TableCell>
                                     {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
@@ -1858,9 +1918,10 @@ export default function PurchaseOrdersIndex() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded-lg">
-                      {viewingOrder.bankAccount}
-                    </p>
+                    <div 
+                      className="text-sm bg-muted/50 p-3 rounded-lg rich-text-content"
+                      dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
+                    />
                   </CardContent>
                 </Card>
               )}
@@ -1875,7 +1936,10 @@ export default function PurchaseOrdersIndex() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">{viewingOrder.notes}</p>
+                    <div 
+                      className="text-sm text-muted-foreground rich-text-content"
+                      dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
+                    />
                   </CardContent>
                 </Card>
               )}
@@ -1962,9 +2026,19 @@ export default function PurchaseOrdersIndex() {
                                     Product
                                   </Badge>
                                 )}
-                                <span className="font-medium">
-                                  {item.itemType === "product" ? item.inventoryItemName : item.description}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">
+                                    {item.itemType === "product" ? item.inventoryItemName : item.description}
+                                  </span>
+                                  {item.itemType === "product" && item.inventoryItemId && (() => {
+                                    const description = getItemDescription(item.inventoryItemId);
+                                    return description && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {description}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -2039,6 +2113,16 @@ export default function PurchaseOrdersIndex() {
           <div className="space-y-5 pt-2">
             {/* Dates */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label htmlFor="supplierInvoiceNumber">Supplier Invoice Number</Label>
+                <Input
+                  id="supplierInvoiceNumber"
+                  value={invoiceData.supplierInvoiceNumber}
+                  onChange={(e) => setInvoiceData(prev => ({ ...prev, supplierInvoiceNumber: e.target.value }))}
+                  placeholder="e.g. INV-12345"
+                  className="mt-1"
+                />
+              </div>
               <div>
                 <Label htmlFor="invoiceDate">Invoice Date *</Label>
                 <Input
@@ -2076,14 +2160,24 @@ export default function PurchaseOrdersIndex() {
             {/* Notes */}
             <div>
               <Label htmlFor="invoiceNotes">Notes</Label>
-              <Textarea
-                id="invoiceNotes"
-                value={invoiceNotes}
-                onChange={(e) => setInvoiceNotes(e.target.value)}
-                placeholder="Any notes for this invoice..."
-                className="mt-1"
-                rows={3}
-              />
+              <div className="mt-1 border border-input rounded-md overflow-hidden">
+                <ReactQuill
+                  theme="snow"
+                  value={invoiceNotes}
+                  onChange={(value) => setInvoiceNotes(value)}
+                  placeholder="Any notes for this invoice..."
+                  modules={{
+                    toolbar: [
+                      [{ 'header': [1, 2, 3, false] }],
+                      ['bold', 'italic', 'underline', 'strike'],
+                      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                      [{ 'color': [] }, { 'background': [] }],
+                      ['link'],
+                      ['clean']
+                    ],
+                  }}
+                />
+              </div>
             </div>
 
             {/* Line Items */}
@@ -2111,10 +2205,20 @@ export default function PurchaseOrdersIndex() {
                     ) : invoiceFormItems.map((item, idx) => (
                       <TableRow key={idx}>
                         <TableCell>
-                          <div className="text-sm font-medium">
-                            {item.itemType === "product"
-                              ? (item.inventoryItemName || `Item #${item.inventoryItemId}`)
-                              : "Service"}
+                          <div className="flex flex-col">
+                            <div className="text-sm font-medium">
+                              {item.itemType === "product"
+                                ? (item.inventoryItemName || `Item #${item.inventoryItemId}`)
+                                : "Service"}
+                            </div>
+                            {item.itemType === "product" && item.inventoryItemId && (() => {
+                              const description = getItemDescription(item.inventoryItemId);
+                              return description && (
+                                <div className="text-xs text-muted-foreground">
+                                  {description}
+                                </div>
+                              );
+                            })()}
                           </div>
                           {item.description && (
                             <div className="text-xs text-muted-foreground">{item.description}</div>

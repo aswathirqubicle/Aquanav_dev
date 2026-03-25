@@ -365,6 +365,12 @@ export default function PurchaseRequestsIndex() {
     return item ? item.name : "Unknown Item";
   };
 
+  const getItemDescription = (itemId: string | number) => {
+    const id = typeof itemId === "string" ? parseInt(itemId) : itemId;
+    const item = inventoryItems?.find(item => item.id === id);
+    return item ? item.description : "";
+  };
+
   const getItemUnit = (itemId: string) => {
     const item = inventoryItems?.find(item => item.id === parseInt(itemId));
     return item ? item.unit : "";
@@ -906,7 +912,8 @@ export default function PurchaseRequestsIndex() {
                               <Autocomplete
                                 options={(inventoryItems || []).map((item) => ({
                                   value: item.id.toString(),
-                                  label: `${item.name}(${item.description || ""})`,
+                                  label: item.name,
+                                  description: item.description,
                                   searchText: `${item.name} ${item.description || ""} ${item.unit}`
                                 }))}
                                 value={newItem.inventoryItemId || ""}
@@ -1021,7 +1028,17 @@ export default function PurchaseRequestsIndex() {
                               </TableCell>
                               <TableCell className="font-medium">
                                 {item.itemType === "product"
-                                  ? item.inventoryItemId ? getItemName(item.inventoryItemId) : "-"
+                                  ? item.inventoryItemId ? (() => {
+                                    const description = getItemDescription(item.inventoryItemId);
+                                    return (
+                                      <div className="flex flex-col">
+                                        <span>{getItemName(item.inventoryItemId)}</span>
+                                        {description && (
+                                          <span className="text-xs text-muted-foreground">{description}</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })() : "-"
                                   : item.description || "-"
                                 }
                               </TableCell>
@@ -1162,11 +1179,15 @@ export default function PurchaseRequestsIndex() {
                               </Badge>
                             </TableCell>
                             <TableCell className="font-medium">
-                              {/* {item.itemType === "product"
-                                ? item.inventoryItemName || "-"
-                                : item.description || "-"
-                              } */}
-                              {item.inventoryItemName}
+                              <div className="flex flex-col">
+                                <span>{item.inventoryItemName}</span>
+                                {item.itemType === "product" && item.inventoryItemId && (() => {
+                                  const description = getItemDescription(item.inventoryItemId);
+                                  return description && (
+                                    <span className="text-xs text-muted-foreground">{description}</span>
+                                  );
+                                })()}
+                              </div>
                             </TableCell>
                             <TableCell>
                               {item.quantity}

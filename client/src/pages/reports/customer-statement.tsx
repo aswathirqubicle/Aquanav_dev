@@ -133,15 +133,35 @@ export default function CustomerStatementPage() {
       setPagination(result.pagination);
       setTotals(result.totals);
 
-      let runningBalance = 0;
+      // Start running balance from the cumulative total of all prior pages
+      let runningBalance: number = result.priorBalance ?? 0;
+
+      const effectiveCustomerForDesc = filters?.customer ?? selectedCustomer;
+      const isSingleCustomer =
+        effectiveCustomerForDesc && effectiveCustomerForDesc !== "all";
+
+      const typeLabel = (rawType: string): string => {
+        if (rawType === "invoice") return "Invoice";
+        if (rawType === "credit_note") return "Credit Note";
+        if (rawType === "payment") return "Payment";
+        return rawType
+          .split("_")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      };
+
       const transactionData = result.data.map((t: any) => {
         runningBalance += t.debit - t.credit;
         return {
           id: t.id,
           date: t.date,
-          type: t.type === "invoice" ? "Invoice" : "Payment",
+          type: typeLabel(t.type),
           reference: t.reference,
-          description: t.customerName || t.description,
+          // For a single-customer view the customer name adds no value —
+          // show the actual GL description instead
+          description: isSingleCustomer
+            ? t.description
+            : t.customerName || t.description,
           debit: t.debit,
           credit: t.credit,
           balance: runningBalance,
@@ -440,14 +460,20 @@ export default function CustomerStatementPage() {
                         </TableCell>
                         <TableCell className="text-xs py-2">
                           <Badge
-                            variant={row.type === "Invoice" ? "default" : "secondary"}
+                            variant={
+                              row.type === "Invoice"
+                                ? "default"
+                                : row.type === "Credit Note"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
                             className="text-xs"
                           >
                             {row.type}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs font-medium py-2">{row.reference}</TableCell>
-                        <TableCell className="text-xs hidden sm:table-cell max-w-[150px] truncate py-2">
+                        <TableCell className="text-xs hidden sm:table-cell py-2">
                           {row.description}
                         </TableCell>
                         <TableCell className="text-xs text-right py-2">

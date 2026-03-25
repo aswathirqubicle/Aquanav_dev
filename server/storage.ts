@@ -315,6 +315,7 @@ export interface CreatedGoodsReceipt {
 // For getProjectRevenue's invoicePayments array
 export interface InvoicePaymentWithCustomerName extends InvoicePayment {
   customerName: string | null;
+  invoiceNumber: string | null;
 }
 
 // For getCreditNotes return type
@@ -4677,6 +4678,7 @@ export class Storage {
           creditNoteId: invoicePayments.creditNoteId,
           // Joined field
           customerName: customers.name,
+          invoiceNumber: salesInvoices.invoiceNumber,
           invoiceCurrency: salesInvoices.currency,
           invoiceExchangeRate: salesInvoices.exchangeRate,
         })
@@ -4703,6 +4705,7 @@ export class Storage {
           paymentType: p.paymentType,
           creditNoteId: p.creditNoteId,
           customerName: p.customerName,
+          invoiceNumber: p.invoiceNumber,
         }));
 
       // Get purchase invoice items linked to this project
@@ -4976,7 +4979,11 @@ export class Storage {
       console.log("Creating credit note with data:", creditNoteData);
 
       // Generate credit note number
-      const creditNoteNumber = `CN-${Date.now()}`;
+      const creditNoteNumber = await this.generateNextNumber(
+        "CN",
+        creditNotes,
+        creditNotes.creditNoteNumber,
+      );
 
       // The InsertCreditNote type from schema.ts should be used.
       // If creditNoteData might contain fields not in InsertCreditNote (like projectId), they should be handled.
@@ -8088,7 +8095,11 @@ export class Storage {
       );
 
       // Generate proforma number
-      const proformaNumber =  `PI-${Date.now()}`;
+      const proformaNumber = await this.generateNextNumber(
+        "PRF",
+        proformaInvoices,
+        proformaInvoices.proformaNumber,
+      );
 
       // Prepare the data
       const insertData = {
@@ -8490,6 +8501,7 @@ export class Storage {
               inventoryItemId: purchaseRequestItems.inventoryItemId,
               inventoryItemName: inventoryItems.name,
               inventoryItemUnit: inventoryItems.unit,
+              inventoryItemDescription: inventoryItems.description,
               quantity: purchaseRequestItems.quantity,
               notes: purchaseRequestItems.notes,
             })
@@ -8582,6 +8594,7 @@ export class Storage {
               inventoryItemId: purchaseRequestItems.inventoryItemId,
               inventoryItemName: inventoryItems.name,
               inventoryItemUnit: inventoryItems.unit,
+              inventoryItemDescription: inventoryItems.description,
               quantity: purchaseRequestItems.quantity,
               notes: purchaseRequestItems.notes,
             })
@@ -8656,6 +8669,7 @@ export class Storage {
           inventoryItemId: purchaseRequestItems.inventoryItemId,
           inventoryItemName: inventoryItems.name,
           inventoryItemUnit: inventoryItems.unit,
+          inventoryItemDescription: inventoryItems.description,
           description: purchaseRequestItems.description,
           quantity: purchaseRequestItems.quantity,
           unitPrice: purchaseRequestItems.unitPrice,
@@ -8684,7 +8698,11 @@ export class Storage {
 
   async createPurchaseRequest(requestData: any): Promise<any> {
     try {
-      const requestNumber = `PR-${Date.now()}`;
+      const requestNumber = await this.generateNextNumber(
+        "PR",
+        purchaseRequests,
+        purchaseRequests.requestNumber,
+      );
 
       const [request] = await db
         .insert(purchaseRequests)
@@ -9039,6 +9057,7 @@ export class Storage {
           inventoryItemId: purchaseOrderItems.inventoryItemId,
           inventoryItemName: inventoryItems.name,
           inventoryItemUnit: inventoryItems.unit,
+          inventoryItemDescription: inventoryItems.description,
           description: purchaseOrderItems.description,
           quantity: purchaseOrderItems.quantity,
           unitPrice: purchaseOrderItems.unitPrice,
@@ -9365,6 +9384,7 @@ export class Storage {
     overrides?: {
       invoiceDate?: string;
       dueDate?: string;
+      supplierInvoiceNumber?: string;
       notes?: string;
       paymentTerms?: string;
       currency?: string;
@@ -9398,7 +9418,11 @@ export class Storage {
       }
 
       // Generate invoice number
-      const invoiceNumber = `PI-${Date.now()}`;
+      const invoiceNumber = await this.generateNextNumber(
+        "PI",
+        purchaseInvoices,
+        purchaseInvoices.invoiceNumber,
+      );
 
       // Use provided items or fall back to PO items for totals
       const itemsToUse =
@@ -9426,6 +9450,7 @@ export class Storage {
         .insert(purchaseInvoices)
         .values({
           invoiceNumber,
+          supplierInvoiceNumber: overrides?.supplierInvoiceNumber ?? null,
           supplierId: po.supplierId,
           poId: id,
           status: "draft",
@@ -9569,6 +9594,7 @@ export class Storage {
         .select({
           id: purchaseInvoices.id,
           invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
@@ -9690,6 +9716,7 @@ export class Storage {
         .select({
           id: purchaseInvoices.id,
           invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
@@ -9765,6 +9792,7 @@ export class Storage {
         .select({
           id: purchaseInvoices.id,
           invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
@@ -9813,6 +9841,7 @@ export class Storage {
         .select({
           id: purchaseInvoices.id,
           invoiceNumber: purchaseInvoices.invoiceNumber,
+          supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
           poId: purchaseInvoices.poId,
@@ -9855,6 +9884,7 @@ export class Storage {
           inventoryItemId: purchaseInvoiceItems.inventoryItemId,
           inventoryItemName: inventoryItems.name,
           inventoryItemUnit: inventoryItems.unit,
+          inventoryItemDescription: inventoryItems.description,
           description: purchaseInvoiceItems.description,
           quantity: purchaseInvoiceItems.quantity,
           unitPrice: purchaseInvoiceItems.unitPrice,
@@ -9898,6 +9928,7 @@ export class Storage {
         .insert(purchaseInvoices)
         .values({
           invoiceNumber,
+          supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
           supplierId: invoiceData.supplierId,
           poId: invoiceData.poId || null,
           projectId: invoiceData.projectId || null,
@@ -9983,6 +10014,7 @@ export class Storage {
         .update(purchaseInvoices)
         .set({
           supplierId: invoiceData.supplierId,
+          supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: invoiceData.paymentTerms || null,
@@ -10088,6 +10120,7 @@ export class Storage {
         .insert(purchaseInvoices)
         .values({
           invoiceNumber,
+          supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
           supplierId: po.supplierId,
           poId: poId,
           status: "draft",
@@ -12772,7 +12805,11 @@ export class Storage {
     try {
       console.log("Creating purchase credit note with data:", creditNoteData);
 
-      const creditNoteNumber = `PCN-${Date.now()}`;
+      const creditNoteNumber = await this.generateNextNumber(
+        "PCN",
+        purchaseCreditNotes,
+        purchaseCreditNotes.creditNoteNumber,
+      );
 
       const insertData = {
         ...creditNoteData,
@@ -13825,6 +13862,7 @@ export class Storage {
       credit: number;
       balance: number;
     };
+    priorBalance: number;
   }> {
     try {
       const page = filters.page || 1;
@@ -13845,14 +13883,18 @@ export class Storage {
         );
       }
       if (filters.dateTo) {
+        // Append end-of-day time so the full dateTo day is included
+        const dateToEndOfDay = filters.dateTo.includes("T")
+          ? filters.dateTo
+          : `${filters.dateTo}T23:59:59`;
         conditions.push(
-          lte(generalLedgerEntries.transactionDate, filters.dateTo),
+          lte(generalLedgerEntries.transactionDate, dateToEndOfDay),
         );
       }
 
       const finalConditions = and(...conditions);
 
-      // Fetch totals
+      // Fetch totals across the whole filtered set
       const totalsResult = await db
         .select({
           debit: sql<string>`SUM(CAST(${generalLedgerEntries.debitAmount} AS DECIMAL))`,
@@ -13872,7 +13914,31 @@ export class Storage {
       const totalCount = Number(countResult[0]?.count || 0);
       const totalPages = Math.ceil(totalCount / limit);
 
-      // Fetch data
+      // Compute the cumulative balance for all rows that come BEFORE this page
+      // so the frontend can start the running balance from the correct opening figure
+      let priorBalance = 0;
+      if (offset > 0) {
+        const priorRows = await db
+          .select({
+            debit: generalLedgerEntries.debitAmount,
+            credit: generalLedgerEntries.creditAmount,
+          })
+          .from(generalLedgerEntries)
+          .where(finalConditions)
+          .orderBy(
+            asc(generalLedgerEntries.transactionDate),
+            asc(generalLedgerEntries.id),
+          )
+          .limit(offset);
+
+        priorBalance = priorRows.reduce(
+          (sum, row) =>
+            sum + parseFloat(row.debit || "0") - parseFloat(row.credit || "0"),
+          0,
+        );
+      }
+
+      // Fetch current page data
       const data = await db
         .select({
           id: generalLedgerEntries.id,
@@ -13912,6 +13978,7 @@ export class Storage {
           credit: totalCredit,
           balance: totalDebit - totalCredit,
         },
+        priorBalance,
       };
     } catch (error) {
       console.error("Error in getCustomerStatement:", error);
@@ -13939,6 +14006,7 @@ export class Storage {
       credit: number;
       balance: number;
     };
+    priorBalance: number;
   }> {
     try {
       const page = filters.page || 1;
@@ -13959,14 +14027,18 @@ export class Storage {
         );
       }
       if (filters.dateTo) {
+        // Append end-of-day time so the full dateTo day is included
+        const dateToEndOfDay = filters.dateTo.includes("T")
+          ? filters.dateTo
+          : `${filters.dateTo}T23:59:59`;
         conditions.push(
-          lte(generalLedgerEntries.transactionDate, filters.dateTo),
+          lte(generalLedgerEntries.transactionDate, dateToEndOfDay),
         );
       }
 
       const finalConditions = and(...conditions);
 
-      // Fetch totals
+      // Fetch totals across the whole filtered set
       const totalsResult = await db
         .select({
           debit: sql<string>`SUM(CAST(${generalLedgerEntries.debitAmount} AS DECIMAL))`,
@@ -13986,7 +14058,33 @@ export class Storage {
       const totalCount = Number(countResult[0]?.count || 0);
       const totalPages = Math.ceil(totalCount / limit);
 
-      // Fetch data
+      // Compute the cumulative balance for all rows that come BEFORE this page
+      // so the frontend can start the running balance from the correct opening figure
+      let priorBalance = 0;
+      if (offset > 0) {
+        const priorRows = await db
+          .select({
+            debit: generalLedgerEntries.debitAmount,
+            credit: generalLedgerEntries.creditAmount,
+          })
+          .from(generalLedgerEntries)
+          .where(finalConditions)
+          .orderBy(
+            asc(generalLedgerEntries.transactionDate),
+            asc(generalLedgerEntries.id),
+          )
+          .limit(offset);
+
+        // AP convention: credit = invoice (increases payable), debit = payment/reversal (reduces payable)
+        // Outstanding balance = credit - debit (positive = you owe the supplier)
+        priorBalance = priorRows.reduce(
+          (sum, row) =>
+            sum + parseFloat(row.credit || "0") - parseFloat(row.debit || "0"),
+          0,
+        );
+      }
+
+      // Fetch current page data
       const data = await db
         .select({
           id: generalLedgerEntries.id,
@@ -14024,8 +14122,10 @@ export class Storage {
         totals: {
           debit: totalDebit,
           credit: totalCredit,
-          balance: totalDebit - totalCredit,
+          // AP convention: outstanding balance = credit - debit (positive = owed to supplier)
+          balance: totalCredit - totalDebit,
         },
+        priorBalance,
       };
     } catch (error) {
       console.error("Error in getSupplierStatement:", error);
@@ -14588,6 +14688,7 @@ export interface IStorage {
       credit: number;
       balance: number;
     };
+    priorBalance: number;
   }>;
   getSupplierStatement(filters: {
     supplierId?: number;
@@ -14609,6 +14710,7 @@ export interface IStorage {
       credit: number;
       balance: number;
     };
+    priorBalance: number;
   }>;
 }
 

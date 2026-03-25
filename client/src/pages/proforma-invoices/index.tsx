@@ -27,6 +27,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
+import { sanitize } from "@/lib/sanitize";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
   FileText,
   Plus,
@@ -914,17 +917,26 @@ export default function ProformaInvoicesIndex() {
                           </div>
                         )}
                       </div>
-                      <Input
-                        id="bankAccount"
-                        value={formData.bankAccount || ""}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            bankAccount: e.target.value,
-                          }))
-                        }
-                        placeholder="Bank account for payment"
-                      />
+                      <div className="mt-1 border border-input rounded-md overflow-hidden">
+                        <ReactQuill
+                          theme="snow"
+                          value={formData.bankAccount || ""}
+                          onChange={(value) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              bankAccount: value,
+                            }))
+                          }
+                          placeholder="Bank account for payment"
+                          modules={{
+                            toolbar: [
+                              ['bold', 'italic', 'underline', 'strike'],
+                              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                              ['clean']
+                            ],
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1110,18 +1122,26 @@ export default function ProformaInvoicesIndex() {
                   {/* Remarks */}
                   <div className="space-y-2">
                     <Label htmlFor="remarks">Remarks</Label>
-                    <Textarea
-                      id="remarks"
-                      value={formData.remarks || ""}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          remarks: e.target.value,
-                        }))
-                      }
-                      placeholder="Additional remarks or notes"
-                      rows={3}
-                    />
+                    <div className="mt-1 border border-input rounded-md overflow-hidden text-sm">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.remarks || ""}
+                        onChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            remarks: value,
+                          }))
+                        }
+                        placeholder="Additional remarks or notes"
+                        modules={{
+                          toolbar: [
+                            ['bold', 'italic', 'underline', 'strike'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['clean']
+                          ],
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {/* Financial Summary */}
@@ -1617,9 +1637,12 @@ export default function ProformaInvoicesIndex() {
                       </div>
                     )}
                     {selectedProforma.bankAccount && (
-                      <div className="flex justify-between">
+                      <div>
                         <span className="font-medium">Bank Account:</span>
-                        <span>{selectedProforma.bankAccount}</span>
+                        <div 
+                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
+                          dangerouslySetInnerHTML={{ __html: sanitize(selectedProforma.bankAccount) }}
+                        />
                       </div>
                     )}
                     {selectedProforma.billingAddress && (
@@ -1774,7 +1797,10 @@ export default function ProformaInvoicesIndex() {
                     <CardTitle className="text-lg">Remarks</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm">{selectedProforma.remarks}</p>
+                    <div 
+                      className="text-sm rich-text-content"
+                      dangerouslySetInnerHTML={{ __html: sanitize(selectedProforma.remarks) }}
+                    />
                   </CardContent>
                 </Card>
               )}

@@ -10,11 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
+import { sanitize } from "@/lib/sanitize";
 import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
@@ -36,6 +39,7 @@ interface Supplier {
 interface PurchaseInvoice {
   id: number;
   invoiceNumber: string;
+  supplierInvoiceNumber?: string;
   supplierId: number;
   supplierName: string;
   supplierCurrency?: string;
@@ -147,6 +151,7 @@ export default function PurchaseInvoicesIndex() {
   const [editNote, setEditNote] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -163,6 +168,7 @@ export default function PurchaseInvoicesIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
+    supplierInvoiceNumber: "",
     currency: "AED",
     exchangeRate: "1",
     invoiceDate: new Date().toISOString().split('T')[0],
@@ -367,6 +373,7 @@ export default function PurchaseInvoicesIndex() {
       setEditingInvoice(full);
       setFormData({
         supplierId: full.supplierId.toString(),
+        supplierInvoiceNumber: full.supplierInvoiceNumber || "",
         currency: full.currency || "AED",
         exchangeRate: full.exchangeRate || "1",
         invoiceDate: full.invoiceDate ? full.invoiceDate.split('T')[0] : new Date().toISOString().split('T')[0],
@@ -415,6 +422,7 @@ export default function PurchaseInvoicesIndex() {
     setEditingInvoice(null);
     setFormData({
       supplierId: source.supplierId?.toString() || "",
+      supplierInvoiceNumber: source.supplierInvoiceNumber || "",
       currency: source.currency || "AED",
       exchangeRate: source.exchangeRate || "1",
       invoiceDate: new Date().toISOString().split("T")[0],
@@ -599,7 +607,8 @@ export default function PurchaseInvoicesIndex() {
 
   const resetForm = () => {
     setFormData({
-      supplierId: "",      
+      supplierId: "",
+      supplierInvoiceNumber: "",
       currency: "AED",
       exchangeRate: "1",
       invoiceDate: new Date().toISOString().split('T')[0],
@@ -610,6 +619,7 @@ export default function PurchaseInvoicesIndex() {
       discountPercentage: "0",
       discountAmount: "0",
     });
+    setSelectedBankId("");
     setInvoiceItems([]);
     setNewItem({
       itemType: "product",
@@ -741,6 +751,7 @@ export default function PurchaseInvoicesIndex() {
 
     const formDataInstance = new FormData();
     formDataInstance.append("supplierId", formData.supplierId);
+    formDataInstance.append("supplierInvoiceNumber", formData.supplierInvoiceNumber);
     formDataInstance.append("currency", formData.currency);
     formDataInstance.append("exchangeRate", formData.exchangeRate);
     formDataInstance.append("invoiceDate", formData.invoiceDate);
@@ -870,6 +881,12 @@ export default function PurchaseInvoicesIndex() {
   const getItemName = (itemId: string) => {
     const item = inventoryItems.find(item => item.id === parseInt(itemId));
     return item ? item.name : "Unknown Item";
+  };
+
+  const getItemDescription = (itemId: string | number) => {
+    const id = typeof itemId === "string" ? parseInt(itemId) : itemId;
+    const item = inventoryItems?.find(item => item.id === id);
+    return item ? item.description : "";
   };
 
   const getItemUnit = (itemId: string) => {
@@ -1496,6 +1513,19 @@ export default function PurchaseInvoicesIndex() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label htmlFor="supplierInvoiceNumber" className="text-sm font-medium">
+                          Supplier Invoice Number
+                        </Label>
+                        <Input
+                          id="supplierInvoiceNumber"
+                          value={formData.supplierInvoiceNumber}
+                          onChange={(e) => setFormData(prev => ({ ...prev, supplierInvoiceNumber: e.target.value }))}
+                          placeholder="e.g. INV-12345"
+                          className="h-10"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="invoiceDate" className="text-sm font-medium">
                           Invoice Date <span className="text-red-500">*</span>
                         </Label>
@@ -1546,10 +1576,15 @@ export default function PurchaseInvoicesIndex() {
                       <div className="space-y-2">
                         <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
                         <Select
-                          value={formData.bankAccount}
-                          onValueChange={(value) =>
-                            setFormData(prev => ({ ...prev, bankAccount: value }))
-                          }
+                          value={selectedBankId}
+                          onValueChange={(value) => {
+                            setSelectedBankId(value);
+                            const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                            if (selected) {
+                              const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                              setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                            }
+                          }}
                           disabled={!formData.supplierId || bankAccountOptions.length === 0}
                         >
                           <SelectTrigger className="h-10">
@@ -1564,7 +1599,7 @@ export default function PurchaseInvoicesIndex() {
 
                           <SelectContent>
                             {bankAccountOptions.map((bank, index) => (
-                              <SelectItem key={bank.id} value={bank.accountDetails}>
+                              <SelectItem key={bank.id} value={bank.id.toString()}>
                                 <div className="whitespace-pre-wrap text-sm leading-snug">
                                   {bank.accountDetails}
                                 </div>
@@ -1572,17 +1607,43 @@ export default function PurchaseInvoicesIndex() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <div className="mt-2 border border-input rounded-md overflow-hidden">
+                          <ReactQuill
+                            theme="snow"
+                            value={formData.bankAccount}
+                            onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                            placeholder="Enter or customize bank account details..."
+                            modules={{
+                              toolbar: [
+                                ['bold', 'italic', 'underline', 'strike'],
+                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                ['clean']
+                              ],
+                            }}
+                          />
+                        </div>
                       </div>
 
                       <div className="space-y-2">
                         <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
-                        <Textarea
-                          id="notes"
-                          value={formData.notes}
-                          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                          placeholder="Additional notes or comments..."
-                          className="min-h-[80px] resize-none"
-                        />
+                        <div className="mt-1 border border-input rounded-md overflow-hidden">
+                          <ReactQuill
+                            theme="snow"
+                            value={formData.notes}
+                            onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                            placeholder="Additional notes or comments..."
+                            modules={{
+                              toolbar: [
+                                [{ 'header': [1, 2, 3, false] }],
+                                ['bold', 'italic', 'underline', 'strike'],
+                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                [{ 'color': [] }, { 'background': [] }],
+                                ['link'],
+                                ['clean']
+                              ],
+                            }}
+                          />
+                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -1705,7 +1766,8 @@ export default function PurchaseInvoicesIndex() {
                               <Autocomplete
                                 options={(inventoryItems || []).map((item) => ({
                                   value: item.id.toString(),
-                                  label: `${item.name}(${item.description || ""})`,
+                                  label: item.name,
+                                  description: item.description,
                                   searchText: `${item.name} ${item.description || ""} ${item.unit}`
                                 }))}
                                 value={newItem.inventoryItemId || ""}
@@ -1836,8 +1898,16 @@ export default function PurchaseInvoicesIndex() {
                                 </Badge>
                               </div>
                               <div className="col-span-3">
-                                <div className="font-medium text-sm">
-                                  {item.itemType === "product" ? getItemName(item.inventoryItemId || "") : item.description}
+                                <div className="flex flex-col">
+                                  <div className="font-medium text-sm">
+                                    {item.itemType === "product" ? getItemName(item.inventoryItemId || "") : item.description}
+                                  </div>
+                                  {item.itemType === "product" && item.inventoryItemId && (() => {
+                                    const description = getItemDescription(item.inventoryItemId);
+                                    return description && (
+                                      <div className="text-xs text-muted-foreground">{description}</div>
+                                    );
+                                  })()}
                                 </div>
                                 {item.itemType === "product" && (
                                   <div className="text-xs text-muted-foreground">{getItemUnit(item.inventoryItemId || "")}</div>
@@ -2127,6 +2197,12 @@ export default function PurchaseInvoicesIndex() {
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Supplier</p>
                       <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.supplierName}</p>
                     </div>
+                    {viewingInvoice.supplierInvoiceNumber && (
+                      <div>
+                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Supplier Invoice Number</p>
+                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.supplierInvoiceNumber}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Invoice Date</p>
                       <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
@@ -2168,9 +2244,10 @@ export default function PurchaseInvoicesIndex() {
                       <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
                       Bank Account Details
                     </h3>
-                    <pre className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black whitespace-pre-wrap font-sans break-words">
-                      {viewingInvoice.bankAccount}
-                    </pre>
+                    <div 
+                      className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
+                      dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.bankAccount || "") }}
+                    />
                   </div>
                 )}
 
@@ -2181,7 +2258,10 @@ export default function PurchaseInvoicesIndex() {
                       <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                       Notes
                     </h3>
-                    <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black break-words">{viewingInvoice.notes}</p>
+                    <div 
+                      className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
+                      dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.notes || "") }}
+                    />
                   </div>
                 )}
 
@@ -2298,9 +2378,19 @@ export default function PurchaseInvoicesIndex() {
                                         Product
                                       </Badge>
                                     )}
-                                    <span className="font-medium text-gray-900 dark:text-white print:text-black">
-                                      {item.itemType === "product" ? item.inventoryItemName : item.description}
-                                    </span>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium text-gray-900 dark:text-white print:text-black">
+                                        {item.itemType === "product" ? item.inventoryItemName : item.description}
+                                      </span>
+                                      {item.itemType === "product" && item.inventoryItemId && (() => {
+                                        const description = getItemDescription(item.inventoryItemId);
+                                        return description && (
+                                          <span className="text-xs text-muted-foreground print:text-gray-600">
+                                            {description}
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
                                     {item.projectId && (
                                       <Badge variant="outline" className="text-xs w-fit bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 print:border print:border-blue-500 print:bg-blue-50">
                                         <Briefcase className="w-3 h-3 mr-1" />

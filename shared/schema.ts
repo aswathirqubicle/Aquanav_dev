@@ -945,6 +945,7 @@ export const purchaseInvoiceFiles = pgTable("purchase_invoice_files", {
 export const purchaseInvoices = pgTable("purchase_invoices", {
   id: serial("id").primaryKey(),
   invoiceNumber: text("invoice_number").notNull().unique(),
+  supplierInvoiceNumber: text("supplier_invoice_number"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   poId: integer("po_id").references(() => purchaseOrders.id),
   // projectId: integer("project_id").references(() => projects.id),
