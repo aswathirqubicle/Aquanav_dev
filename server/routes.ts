@@ -2556,19 +2556,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (p) => p.status === "in_progress",
       ).length;
 
-      const completedThisMonth = allProjects.filter((p) => {
-        if (p.status !== "completed") return false;
-        if (!p.actualEndDate) return false;
-        const endDate = new Date(p.actualEndDate);
-        return endDate.getMonth() === currentMonth && endDate.getFullYear() === currentYear;
-      }).length;
-
-      const completedLastMonth = allProjects.filter((p) => {
-        if (p.status !== "completed") return false;
-        if (!p.actualEndDate) return false;
-        const endDate = new Date(p.actualEndDate);
-        return endDate.getMonth() === previousMonth && endDate.getFullYear() === previousYear;
-      }).length;
+      const totalCompletedProjects = allProjects.filter(
+        (p) => p.status === "completed",
+      ).length;
 
       const lowStockItems = inventoryItems.filter(
         (item) => item.currentStock <= item.minStockLevel,
@@ -2620,7 +2610,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).length;
 
       const activeProjectsChange = activeProjects - previousActiveProjects;
-      const completedProjectsChange = completedThisMonth - completedLastMonth;
 
       const monthlyRevenuePercentageChange =
         previousMonthRevenue > 0
@@ -2640,11 +2629,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         activeProjectsChangeLabel: activeProjectsChange >= 0
           ? `+${activeProjectsChange} from last month`
           : `${activeProjectsChange} from last month`,
-        completedProjects: completedThisMonth,
-        completedProjectsChange,
-        completedProjectsChangeLabel: completedProjectsChange >= 0
-          ? `+${completedProjectsChange} vs last month`
-          : `${completedProjectsChange} vs last month`,
+        completedProjects: totalCompletedProjects,
         lowStockItems,
         lowStockItemsChange: lowStockItems,
         lowStockItemsChangeLabel,
@@ -6187,6 +6172,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Update invoice status based on payment amounts and due date
         await storage.updateInvoicePaidAmount(invoiceId);
+
+        // If invoice is linked to a project, update project total revenue (accrual basis)
+        if (invoice.projectId) {
+          await storage.updateProjectRevenue(invoice.projectId);
+        }
 
         // Fetch and return the updated invoice with correct status
         const updatedInvoice = await storage.getSalesInvoice(invoiceId);

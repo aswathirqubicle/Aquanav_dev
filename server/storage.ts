@@ -4828,38 +4828,38 @@ export class Storage {
 
   async updateProjectRevenue(projectId: number): Promise<void> {
     try {
-      // Get all invoice payments for this project
-      const projectPayments = await db
+      // Sum total invoice amounts (in AED) for all approved sales invoices linked to this project.
+      // Revenue is recognised on accrual basis (invoice approval), not cash basis (payment received).
+      // Only count invoices that have been formally approved: approved, unpaid, partially_paid, paid, overdue.
+      // Excluded: draft (not submitted), pending_approval (awaiting review), cancelled (voided), rejected (denied).
+      const approvedStatuses = ["approved", "unpaid", "partially_paid", "paid", "overdue"];
+      const activeInvoices = await db
         .select({
-          amount: invoicePayments.amount,
+          totalAmount: salesInvoices.totalAmount,
           exchangeRate: salesInvoices.exchangeRate,
         })
-        .from(invoicePayments)
-        .leftJoin(
-          salesInvoices,
-          eq(invoicePayments.invoiceId, salesInvoices.id),
-        )
-        .where(eq(salesInvoices.projectId, projectId));
+        .from(salesInvoices)
+        .where(
+          and(
+            eq(salesInvoices.projectId, projectId),
+            inArray(salesInvoices.status, approvedStatuses),
+          ),
+        );
 
-      // Calculate total revenue in AED (convert using exchange rate)
-      const totalRevenue = projectPayments.reduce((sum, payment) => {
-        return sum + parseFloat(payment.amount || "0");
-        const exchangeRate = parseFloat(payment.exchangeRate || "1");
-        return sum + parseFloat(payment.amount || "0") * exchangeRate;
+      const totalRevenue = activeInvoices.reduce((sum, inv) => {
+        const amount = parseFloat(inv.totalAmount || "0");
+        const rate = parseFloat(inv.exchangeRate || "1");
+        return sum + amount * rate;
       }, 0);
 
-      // Update project total revenue
       await this.updateProject(projectId, {
         totalRevenue: totalRevenue.toFixed(2),
       });
 
       console.log(
-        `Updated project ${projectId} total revenue to ${totalRevenue.toFixed(
-          2,
-        )}`,
+        `Updated project ${projectId} total revenue to ${totalRevenue.toFixed(2)} (from ${activeInvoices.length} active invoice(s))`,
       );
     } catch (error: any) {
-      console.error("Original error in updateProjectRevenue:", error); // Keep original console.error
       await this.createErrorLog({
         message:
           `Error in updateProjectRevenue (projectId: ${projectId}): ` +
@@ -4926,11 +4926,6 @@ export class Storage {
           status,
         })
         .where(eq(salesInvoices.id, invoiceId));
-
-      // Update project revenue if invoice is linked to a project
-      if (invoiceData.projectId) {
-        await this.updateProjectRevenue(invoiceData.projectId);
-      }
 
       console.log(
         `Updated invoice ${invoiceId} paid amount to ${totalPaid.toFixed(
@@ -13213,6 +13208,11 @@ export class Storage {
 
       // Create GL entries
       await this.createInvoiceGLEntries(id);
+
+      // If invoice is linked to a project, update project total revenue (accrual basis)
+      if (invoice.projectId) {
+        await this.updateProjectRevenue(invoice.projectId);
+      }
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -13277,8 +13277,11 @@ export class Storage {
     try {
       const invoice = await this.getSalesInvoice(id);
       if (!invoice) throw new Error("Invoice not found");
-      if (invoice.status !== "approved")
-        throw new Error("Only approved invoices can be cancelled");
+
+      const cancellableStatuses = ["approved", "unpaid", "overdue"];
+      if (!cancellableStatuses.includes(invoice.status)) {
+        throw new Error("Only approved or unpaid invoices can be cancelled");
+      }
 
       const payments = await this.getInvoicePayments(id);
       if (payments && payments.length > 0) {
@@ -13296,6 +13299,11 @@ export class Storage {
         .where(eq(salesInvoices.id, id));
 
       await this.createCancellationGLEntries(id);
+
+      // If invoice was linked to a project, reverse the revenue contribution
+      if (invoice.projectId) {
+        await this.updateProjectRevenue(invoice.projectId);
+      }
 
       return this.getSalesInvoice(id);
     } catch (error: any) {

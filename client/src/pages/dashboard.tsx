@@ -918,7 +918,7 @@ function AdminDashboard() {
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Completed This Month</p>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Completed</p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {statsLoading ? "..." : stats?.completedProjects || 0}
                 </p>
@@ -926,15 +926,8 @@ function AdminDashboard() {
             </div>
             <div className="mt-4">
               <div className="flex items-center text-sm">
-                <span className={`font-medium ${
-                  (stats?.completedProjectsChange || 0) >= 0
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
-                }`}>
-                  {statsLoading ? "..." : ((stats?.completedProjectsChange || 0) >= 0 ? `+${stats?.completedProjectsChange || 0}` : (stats?.completedProjectsChange || 0))}
-                </span>
-                <span className="text-slate-500 dark:text-slate-400 ml-1">
-                  {statsLoading ? "..." : "vs last month"}
+                <span className="text-green-600 dark:text-green-400 font-medium">
+                  {statsLoading ? "..." : "All time"}
                 </span>
               </div>
             </div>
