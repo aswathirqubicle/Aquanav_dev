@@ -15,7 +15,7 @@
     "seed:customers": "npx tsx scripts/seed-customers-suppliers.ts",
     "seed:employees": "npx tsx scripts/seed-employees.ts",
     "seed:proforma": "npx tsx scripts/seed-proforma-invoices.ts",
-    "seed:chart": "npx tsx scripts/seed-chart-of-accounts.ts"
+    "reset:revenue": "npx tsx scripts/zero-project-financials.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
