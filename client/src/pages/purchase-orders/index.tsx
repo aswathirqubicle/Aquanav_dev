@@ -181,6 +181,7 @@ export default function PurchaseOrdersIndex() {
   }>>([]);
   const [invoiceNotes, setInvoiceNotes] = useState("");
   const [invoicePaymentTerms, setInvoicePaymentTerms] = useState("");
+  const [selectedInvoiceFiles, setSelectedInvoiceFiles] = useState<FileList | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -390,8 +391,11 @@ export default function PurchaseOrdersIndex() {
   });
 
   const convertToInvoiceMutation = useMutation({
-    mutationFn: async ({ orderId, invoiceData }: { orderId: number; invoiceData: any }) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/convert-to-invoice`, { method: "POST", body: invoiceData });
+    mutationFn: async ({ orderId, formData }: { orderId: number; formData: FormData }) => {
+      const response = await fetch(`/api/purchase-orders/${orderId}/convert-to-invoice`, {
+        method: "POST",
+        body: formData,
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to convert to invoice");
@@ -755,30 +759,39 @@ export default function PurchaseOrdersIndex() {
   const handleConvertToInvoice = (submitForApproval = false) => {
     if (!viewingOrder) return;
 
+    const formData = new FormData();
+    formData.append("invoiceDate", invoiceData.invoiceDate);
+    if (invoiceData.dueDate) formData.append("dueDate", invoiceData.dueDate);
+    if (invoiceData.supplierInvoiceNumber) formData.append("supplierInvoiceNumber", invoiceData.supplierInvoiceNumber);
+    if (invoiceNotes) formData.append("notes", invoiceNotes);
+    if (invoicePaymentTerms) formData.append("paymentTerms", invoicePaymentTerms);
+    formData.append("currency", viewingOrder.currency || viewingOrder.supplierCurrency || "AED");
+    formData.append("exchangeRate", viewingOrder.exchangeRate || "1");
+    formData.append("discountPercentage", invoiceData.discountPercentage);
+    formData.append("discountAmount", invoiceData.discountAmount);
+    formData.append("submitForApproval", submitForApproval.toString());
+
+    const items = invoiceFormItems.map(item => ({
+      itemType: item.itemType,
+      inventoryItemId: item.inventoryItemId ?? null,
+      description: item.description,
+      quantity: parseFloat(item.quantity) || 1,
+      unitPrice: parseFloat(item.unitPrice) || 0,
+      taxRate: parseFloat(item.taxRate) || 0,
+      taxAmount: parseFloat(item.taxAmount) || 0,
+      lineTotal: parseFloat(item.lineTotal) || 0,
+    }));
+    formData.append("items", JSON.stringify(items));
+
+    if (selectedInvoiceFiles) {
+      for (let i = 0; i < selectedInvoiceFiles.length; i++) {
+        formData.append("files", selectedInvoiceFiles[i]);
+      }
+    }
+
     convertToInvoiceMutation.mutate({
       orderId: viewingOrder.id,
-      invoiceData: {
-        invoiceDate: invoiceData.invoiceDate,
-        dueDate: invoiceData.dueDate || undefined,
-        supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || undefined,
-        notes: invoiceNotes || undefined,
-        paymentTerms: invoicePaymentTerms || undefined,
-        currency: viewingOrder.currency || viewingOrder.supplierCurrency || "AED",
-        exchangeRate: viewingOrder.exchangeRate || "1",
-        discountPercentage: invoiceData.discountPercentage,
-        discountAmount: invoiceData.discountAmount,
-        items: invoiceFormItems.map(item => ({
-          itemType: item.itemType,
-          inventoryItemId: item.inventoryItemId ?? null,
-          description: item.description,
-          quantity: parseFloat(item.quantity) || 1,
-          unitPrice: parseFloat(item.unitPrice) || 0,
-          taxRate: parseFloat(item.taxRate) || 0,
-          taxAmount: parseFloat(item.taxAmount) || 0,
-          lineTotal: parseFloat(item.lineTotal) || 0,
-        })),
-        submitForApproval,
-      },
+      formData,
     });
   };
 
@@ -2178,6 +2191,34 @@ export default function PurchaseOrdersIndex() {
                   }}
                 />
               </div>
+            </div>
+
+            {/* Attachments */}
+            <div>
+              <Label htmlFor="invoiceAttachments">Attach Files (Optional)</Label>
+              <Input
+                id="invoiceAttachments"
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt,.csv,.xlsx,.xls"
+                onChange={(e) => setSelectedInvoiceFiles(e.target.files)}
+                className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                You can attach vendor tax invoices or other relevant documents.
+              </p>
+              {selectedInvoiceFiles && selectedInvoiceFiles.length > 0 && (
+                <div className="mt-2 bg-muted/30 p-2 rounded-md">
+                  <p className="text-xs font-medium">Selected files:</p>
+                  <ul className="text-xs text-muted-foreground mt-1 list-disc list-inside">
+                    {Array.from(selectedInvoiceFiles).map((file, index) => (
+                      <li key={index} className="truncate">
+                        {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Line Items */}

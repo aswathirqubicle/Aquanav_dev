@@ -406,6 +406,50 @@ export class Storage {
     }
   }
 
+  async updateDailyActivity(
+    id: number,
+    updateData: Partial<InsertDailyActivity>,
+  ): Promise<DailyActivity | undefined> {
+    try {
+      const result = await db
+        .update(dailyActivities)
+        .set(updateData)
+        .where(eq(dailyActivities.id, id))
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateDailyActivity (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateDailyActivity",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteDailyActivity(id: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(dailyActivities)
+        .where(eq(dailyActivities.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in deleteDailyActivity (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteDailyActivity",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   // User methods
   async getUserByUsername(username: string): Promise<User | undefined> {
     try {
@@ -1511,6 +1555,25 @@ export class Storage {
   }
 
   // Employee Training Records methods
+  async getEmployeeTrainingRecord(id: number): Promise<EmployeeTrainingRecord | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(employeeTrainingRecords)
+        .where(eq(employeeTrainingRecords.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getEmployeeTrainingRecord (id: ${id}): ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getEmployeeTrainingRecord",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async getEmployeeTrainingRecords(
     employeeId: number,
   ): Promise<EmployeeTrainingRecord[]> {
@@ -1573,9 +1636,21 @@ export class Storage {
     data: Partial<InsertEmployeeTrainingRecord>,
   ): Promise<EmployeeTrainingRecord | undefined> {
     try {
+      const normalizedData = {
+        ...data,
+        trainingDate:
+          data.trainingDate instanceof Date
+            ? data.trainingDate.toISOString().split("T")[0]
+            : data.trainingDate,
+        expiryDate:
+          data.expiryDate instanceof Date
+            ? data.expiryDate.toISOString().split("T")[0]
+            : data.expiryDate,
+      };
+
       const result = await db
         .update(employeeTrainingRecords)
-        .set(data)
+        .set(normalizedData)
         .where(eq(employeeTrainingRecords.id, id))
         .returning();
       return result[0];
@@ -2296,7 +2371,9 @@ export class Storage {
       }
 
       if (toDate) {
-        dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+        const endOfDay = new Date(toDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        dateConditions.push(lte(dailyActivities.date, endOfDay));
       }
       res.dailyActivities = await db
         .select({
@@ -2341,13 +2418,15 @@ export class Storage {
 
       if (fromDate) {
         photoDateConditions.push(
-          gte(projectPhotoGroups.createdAt, new Date(fromDate)),
+          gte(projectPhotoGroups.date, new Date(fromDate)),
         );
       }
 
       if (toDate) {
+        const endOfDay = new Date(toDate);
+        endOfDay.setHours(23, 59, 59, 999);
         photoDateConditions.push(
-          lte(projectPhotoGroups.createdAt, new Date(toDate)),
+          lte(projectPhotoGroups.date, endOfDay),
         );
       }
 
@@ -2466,7 +2545,9 @@ export class Storage {
       }
 
       if (toDate) {
-        dateConditions.push(lte(dailyActivities.date, new Date(toDate)));
+        const endOfDay = new Date(toDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        dateConditions.push(lte(dailyActivities.date, endOfDay));
       }
       res.consumables = await storage.getProjectConsumables(
         id,
@@ -5784,23 +5865,17 @@ export class Storage {
       if (filters?.status && filters.status !== "all") {
         if (filters.status === "unpaid") {
           queryConditions.push(
-            or(
-              eq(salesInvoices.status, "approved"),
-              eq(salesInvoices.status, "unpaid"),
-              eq(salesInvoices.status, "partially_paid"),
-              eq(salesInvoices.status, "overdue"),
+            and(
+              notInArray(salesInvoices.status, ["draft", "rejected", "pending_approval", "cancelled"]),
+              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`
             ),
           );
         } else if (filters.status === "overdue") {
           const now = new Date().toISOString();
           queryConditions.push(
             and(
-              or(
-                eq(salesInvoices.status, "approved"),
-                eq(salesInvoices.status, "unpaid"),
-                eq(salesInvoices.status, "partially_paid"),
-                eq(salesInvoices.status, "overdue"),
-              ),
+              notInArray(salesInvoices.status, ["draft", "rejected", "pending_approval", "cancelled", "paid"]),
+              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`,
               sql`${salesInvoices.dueDate} < ${now}`,
             ),
           );
@@ -9397,6 +9472,7 @@ export class Storage {
         lineTotal: number;
       }>;
       submitForApproval?: boolean;
+      files?: any[];
     },
   ): Promise<any> {
     try {
@@ -9490,6 +9566,20 @@ export class Storage {
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
+      }
+
+      // Handle file attachments if provided in overrides
+      if (overrides?.files && Array.isArray(overrides.files) && overrides.files.length > 0) {
+        const filesToInsert = overrides.files.map((file: any) => ({
+          invoiceId: invoice.id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          filePath: file.path,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+        }));
+
+        await db.insert(purchaseInvoiceFiles).values(filesToInsert);
       }
 
       // Update the PO status to 'converted' and link the invoice
@@ -9625,12 +9715,27 @@ export class Storage {
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(finalConditions);
 
-      return this._getPaginatedResults<any>(
+      const paginatedResult = await this._getPaginatedResults<any>(
         dataQueryBuilder,
         countQueryBuilder,
         page,
         limit,
       );
+
+      // Fetch files for each invoice
+      if (paginatedResult.data && paginatedResult.data.length > 0) {
+        paginatedResult.data = await Promise.all(
+          paginatedResult.data.map(async (invoice: any) => {
+            const files = await db
+              .select()
+              .from(purchaseInvoiceFiles)
+              .where(eq(purchaseInvoiceFiles.invoiceId, invoice.id));
+            return { ...invoice, files };
+          }),
+        );
+      }
+
+      return paginatedResult;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -10847,7 +10952,9 @@ export class Storage {
       }
 
       if (toDate) {
-        conditions.push(lte(projectConsumables.date, new Date(toDate)));
+        const endOfDay = new Date(toDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        conditions.push(lte(projectConsumables.date, endOfDay));
       }
       const consumables: Array<Omit<ProjectConsumableWithItems, "items">> =
         await db

@@ -24,6 +24,7 @@ import {
   Camera,
   Activity,
   Edit,
+  Pencil,
   ArrowLeft,
   Plus,
   Upload,
@@ -532,6 +533,7 @@ export default function ProjectDetail() {
   const [isBulkLocationDialogOpen, setIsBulkLocationDialogOpen] = useState(false);
   const [isPhotoGroupDialogOpen, setIsPhotoGroupDialogOpen] = useState(false);
   const [selectedPhotoGroup, setSelectedPhotoGroup] = useState<PhotoGroupWithPhotos | null>(null);
+  const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
   const [photoGroupData, setPhotoGroupData] = useState({
     title: "",
     date: new Date().toISOString().split('T')[0],
@@ -967,6 +969,24 @@ export default function ProjectDetail() {
     },
   });
 
+  const openEditActivityDialog = (activity: DailyActivity) => {
+    setEditingActivityId(activity.id);
+    setActivityData({
+      date: activity.date ? new Date(activity.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      location: activity.location || "",
+      completedTasks: activity.completedTasks || "",
+      plannedTasks: activity.plannedTasks || "",
+      hbmDailyRunningHours: activity.hbmDailyRunningHours ? String(activity.hbmDailyRunningHours) : "",
+      remarks: activity.remarks || "",
+      photos: activity.photos || [],
+    });
+    setCompletedActivities([{
+      location: activity.location || "",
+      tasks: activity.completedTasks || ""
+    }]);
+    setIsActivityDialogOpen(true);
+  };
+
   const resetActivityForm = () => {
     setActivityData({
       date: new Date().toISOString().split('T')[0],
@@ -1000,8 +1020,9 @@ export default function ProjectDetail() {
     const activityDate = new Date(activityData.date + 'T00:00:00.000Z');
 
     try {
-      // Create a separate record for each completed activity
-      for (const activity of completedActivities) {
+      if (editingActivityId) {
+        // Update single activity
+        const activity = completedActivities[0];
         const submitData: CreateActivityData = {
           projectId: parseInt(id!),
           date: activityDate,
@@ -1013,23 +1034,48 @@ export default function ProjectDetail() {
           photos: [],
         };
 
-        await apiRequest(`/api/projects/${id}/activities`, {
-          method: "POST",
+        await apiRequest(`/api/projects/${id}/activities/${editingActivityId}`, {
+          method: "PUT",
           body: submitData,
+        });
+        
+        toast({
+          title: "Activity Updated",
+          description: "Daily activity has been updated successfully.",
+        });
+      } else {
+        // Create a separate record for each completed activity
+        for (const activity of completedActivities) {
+          const submitData: CreateActivityData = {
+            projectId: parseInt(id!),
+            date: activityDate,
+            location: activity.location || "",
+            completedTasks: activity.tasks,
+            plannedTasks: activityData.plannedTasks || "",
+            hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
+            remarks: activityData.remarks || "",
+            photos: [],
+          };
+
+          await apiRequest(`/api/projects/${id}/activities`, {
+            method: "POST",
+            body: submitData,
+          });
+        }
+        
+        toast({
+          title: "Activities Added",
+          description: "Daily activities have been logged successfully.",
         });
       }
 
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
-      toast({
-        title: "Activities Added",
-        description: "Daily activities have been logged successfully.",
-      });
       setIsActivityDialogOpen(false);
       resetActivityForm();
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to add activities",
+        description: error.message || `Failed to ${editingActivityId ? 'update' : 'add'} activities`,
         variant: "destructive",
       });
     }
@@ -1051,6 +1097,7 @@ export default function ProjectDetail() {
       tasks: "",
     });
     setIsCustomCompletedLocation(true);
+    setEditingActivityId(null);
   };
 
   const removeCompletedActivity = (index: number) => {
@@ -1935,7 +1982,13 @@ export default function ProjectDetail() {
   };
 
   const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+    if (!date) return "";
+    const d = new Date(date);
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getUTCMonth()];
+    const year = d.getUTCFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   const canEdit = user?.role === "admin" || user?.role === "project_manager";
@@ -3012,7 +3065,7 @@ export default function ProjectDetail() {
                     </DialogTrigger>
                     <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
-                        <DialogTitle>Log Daily Activity</DialogTitle>
+                        <DialogTitle>{editingActivityId ? 'Edit Daily Activity' : 'Log Daily Activity'}</DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handleActivitySubmit} className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3232,6 +3285,45 @@ export default function ProjectDetail() {
                             </p>
                           )}
                         </div>
+                        {canEdit && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-slate-500 hover:text-ocean-600"
+                              onClick={() => openEditActivityDialog(activity)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-slate-500 hover:text-red-600"
+                              onClick={async () => {
+                                if (confirm("Are you sure you want to delete this activity?")) {
+                                  try {
+                                    await apiRequest(`/api/projects/${id}/activities/${activity.id}`, {
+                                      method: "DELETE",
+                                    });
+                                    queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
+                                    toast({
+                                      title: "Activity Deleted",
+                                      description: "Daily activity has been deleted successfully.",
+                                    });
+                                  } catch (error: any) {
+                                    toast({
+                                      title: "Error",
+                                      description: error.message || "Failed to delete activity",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
                       {activity.completedTasks && (

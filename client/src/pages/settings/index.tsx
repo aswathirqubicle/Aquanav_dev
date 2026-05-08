@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Settings, Building, Database, Download, RefreshCw, Activity, Trash2, Loader2, CheckCircle, XCircle, AlertTriangle, DollarSign, Plus, Pencil, Trash, Save, X } from "lucide-react";
 import { Company, insertCompanySchema, ExchangeRate } from "@shared/schema";
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { z } from "zod";
 
 const updateCompanySchema = insertCompanySchema.extend({
@@ -435,23 +437,39 @@ export default function SettingsIndex() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="bankAccount">Bank Account 1</Label>
-                      <Textarea
-                        id="bankAccount"
-                        value={companyData.bankAccount}
-                        onChange={(e) => handleCompanyChange("bankAccount", e.target.value)}
-                        rows={3}
-                        placeholder="Bank account details"
-                      />
+                      <div className="mt-1 border border-input rounded-md overflow-hidden">
+                        <ReactQuill
+                          theme="snow"
+                          value={companyData.bankAccount || ""}
+                          onChange={(value) => handleCompanyChange("bankAccount", value)}
+                          placeholder="Bank account details"
+                          modules={{
+                            toolbar: [
+                              ['bold', 'italic', 'underline', 'strike'],
+                              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                              ['clean']
+                            ],
+                          }}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="bankAccount2">Bank Account 2</Label>
-                      <Textarea
-                        id="bankAccount2"
-                        value={companyData.bankAccount2}
-                        onChange={(e) => handleCompanyChange("bankAccount2", e.target.value)}
-                        rows={3}
-                        placeholder="Additional bank account details"
-                      />
+                      <div className="mt-1 border border-input rounded-md overflow-hidden">
+                        <ReactQuill
+                          theme="snow"
+                          value={companyData.bankAccount2 || ""}
+                          onChange={(value) => handleCompanyChange("bankAccount2", value)}
+                          placeholder="Additional bank account details"
+                          modules={{
+                            toolbar: [
+                              ['bold', 'italic', 'underline', 'strike'],
+                              [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                              ['clean']
+                            ],
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
 

@@ -81,6 +81,7 @@ import {
   purchaseInvoicePayments,
   projectEmployees,
   salesInvoices,
+  salesQuotations,
 } from "@shared/schema";
 import { db } from "./db";
 import { sql as sqlRaw } from "./db";
@@ -552,6 +553,11 @@ function generateInvoiceHTML(
               </div>
               ${val(invoice.remarks) ? `<div class="terms" style="margin-bottom: 20px;"><p><strong>Notes:</strong></p><div class="rich-text-content">${sanitize(invoice.remarks)}</div></div>` : ""}
 
+              ${val(invoice.currency) && invoice.currency !== "AED" ? `
+                <div style="text-align: right; margin-bottom: 10px; font-size: 12px;">
+                  <strong>Exchange Rate:</strong> 1 ${invoice.currency} = ${invoice.exchangeRate} AED
+                </div>
+              ` : ""}
               <table>
                 <thead>
                   <tr>
@@ -892,7 +898,6 @@ function generatePurchaseOrderHTML(
               <div class="terms" style="margin-bottom: 20px;">
                 ${val(order.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(order.paymentTerms)}</p>` : ""}
                 ${val(order.deliveryTerms) ? `<p><strong>Delivery Terms:</strong> ${val(order.deliveryTerms)}</p>` : ""}
-                ${val(order.notes) ? `<h3>Notes:</h3><div>${sanitize(order.notes)}</div>` : ""}
               </div>
 
               <table>
@@ -968,6 +973,8 @@ function generatePurchaseOrderHTML(
                   </tr>
                 </table>
               </div>
+
+              ${val(order.notes) ? `<div class="terms" style="margin-top: 20px;"><h3>Notes:</h3><div>${sanitize(order.notes)}</div></div>` : ""}
             </td>
           </tr>
         </tbody>
@@ -1057,7 +1064,6 @@ function generatePurchaseInvoiceHTML(
 
               <div class="terms" style="margin-bottom: 20px;">
                 ${val(invoice.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(invoice.paymentTerms)}</p>` : ""}
-                ${val(invoice.notes) ? `<h3>Notes:</h3><div>${sanitize(invoice.notes)}</div>` : ""}
               </div>
 
               <table>
@@ -1153,6 +1159,8 @@ function generatePurchaseInvoiceHTML(
                   </tr>
                 </table>
               </div>
+
+              ${val(invoice.notes) ? `<div class="terms" style="margin-top: 20px;"><h3>Notes:</h3><div>${sanitize(invoice.notes)}</div></div>` : ""}
             </td>
           </tr>
         </tbody>
@@ -1182,6 +1190,16 @@ export function generateProjectPrintHTML(data: any): string {
 
   const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
 
+  const formatDateDDMMMYYYY = (date: string | Date) => {
+    if (!date) return "";
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   const gallery = data.gallery || [];
   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
   function getWeekRange(date: Date) {
@@ -1192,7 +1210,7 @@ export function generateProjectPrintHTML(data: any): string {
     const last = new Date(first);
     last.setDate(first.getDate() + 6);
 
-    return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
+    return `${formatDateDDMMMYYYY(first)} - ${formatDateDDMMMYYYY(last)}`;
   }
 
   // Group by week
@@ -1206,9 +1224,10 @@ export function generateProjectPrintHTML(data: any): string {
 
       acc[weekKey].push({
         day_num: new Date(activity.date).getDay(),
-        date: new Date(activity.date).toLocaleDateString(),
+        date: formatDateDDMMMYYYY(activity.date),
         location: activity.location,
         activities: activity.tasks,
+        remarks: activity.remarks,
         hbmHours: activity.hbmDailyRunningHours,
       });
 
@@ -1227,9 +1246,10 @@ export function generateProjectPrintHTML(data: any): string {
 
       acc[weekKey].push({
         day_num: new Date(activity.date).getDay(),
-        date: new Date(activity.date).toLocaleDateString(),
+        date: formatDateDDMMMYYYY(activity.date),
         location: activity.location,
         activities: activity.tasks,
+        remarks: activity.remarks,
       });
 
       return acc;
@@ -1250,7 +1270,7 @@ export function generateProjectPrintHTML(data: any): string {
         .filter((item: any) => !item.inventoryItemId)
         .forEach((item: any) => {
           acc[weekKey].push({
-            date: new Date(entry.date).toLocaleDateString(),
+            date: formatDateDDMMMYYYY(entry.date),
             createdBy: entry.createdByName,
             itemName: item.itemName,
             quantity: item.quantity,
@@ -1438,7 +1458,7 @@ body {
 .image-table img {
   width: 100%;
   height: 230px;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 /* ===== PAGE BREAK ===== */
@@ -1523,7 +1543,7 @@ body {
           <div class="highlights-header">
             <div class="left-title">PROJECT HIGHLIGHTS</div>
             <div class="right-date">
-              Report Date: ${val(data.reportDate)}
+              Report Date: ${formatDateDDMMMYYYY(data.reportDate)}
             </div>
           </div>
 
@@ -1532,7 +1552,7 @@ body {
             <tbody>
               <tr>
                 <th>Project Start Date</th>
-                <td>${val(data.startDate)}</td>
+                <td>${formatDateDDMMMYYYY(data.startDate)}</td>
                 <th>Vessel Name</th>
                 <td>${val(data.vesselName)}</td>
               </tr>
@@ -1593,12 +1613,13 @@ body {
               : ""
           }
 
-          ${data.reportImage ? `
+          ${data.reportImage || Object.keys(plannedReports).length > 0 ? `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">WORK PLAN</h2>
+              ${data.reportImage ? `
               <div class="ship-image">
                 <img src="${data.reportImage}" />
-              </div>
+              </div>` : ""}
             </div>` : ""}
 
           ${Object.entries(weeklyReports)
@@ -1614,6 +1635,7 @@ body {
                     <th>Date</th>
                     <th>Location</th>
                     <th>Activities</th>
+                    <th>Remarks</th>
                     ${data?.includeHBMHours ? `<th>HBM Hours</th>` : ``}
                   </tr>
                 </thead>
@@ -1624,6 +1646,7 @@ body {
                       <td>${val(r.date)}</td>
                       <td>${val(r.location)}</td>
                       <td>${val(r.activities)}</td>
+                      <td>${val(r.remarks)}</td>
                       ${data?.includeHBMHours ? `<td>${val(r.hbmHours)}</td>` : ``}
                     </tr>`).join("")}
                 </tbody>
@@ -1640,13 +1663,14 @@ body {
               <table class="image-table">
                 <tbody>
                   ${g.photos.reduce((rows: any[], img: any, idx: number) => {
-                    if (idx % 2 === 0) rows.push([img]);
+                    const columns = 2; // 2 columns for symmetry
+                    if (idx % columns === 0) rows.push([img]);
                     else rows[rows.length - 1].push(img);
                     return rows;
                   }, []).map((row: any[]) => `
                     <tr>
-                      ${row.map(img => `<td><img src="${val(img.filePath)}" style="width:100%;height:auto;" /></td>`).join("")}
-                      ${row.length === 1 ? "<td></td>" : ""}
+                      ${row.map(img => `<td style="width: 50%;"><img src="${val(img.filePath)}" class="image-table img" /></td>`).join("")}
+                      ${row.length === 1 ? "<td style=\"width: 50%;\"></td>" : ""}
                     </tr>`).join("")}
                 </tbody>
               </table>
@@ -1676,7 +1700,13 @@ body {
               <h2 style="text-align:center;color:red;">Work Planned for the Week - ${week}</h2>
               <table class="project-table">
                 <thead>
-                  <tr><th>Day</th><th>Date</th><th>Location</th><th>Activities</th></tr>
+                  <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Activities</th>
+                    <th>Remarks</th>
+                  </tr>
                 </thead>
                 <tbody>
                   ${reports.map((r: any) => `
@@ -1685,6 +1715,7 @@ body {
                       <td>${val(r.date)}</td>
                       <td>${val(r.location)}</td>
                       <td>${val(r.activities)}</td>
+                      <td>${val(r.remarks)}</td>
                     </tr>`).join("")}
                 </tbody>
               </table>
@@ -1746,6 +1777,16 @@ export function generateConsumablePrintHTML(data: any): string {
 
   const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
 
+  const formatDateDDMMMYYYY = (date: string | Date) => {
+    if (!date) return "";
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
   function getWeekRange(date: Date) {
     const d = new Date(date);
@@ -1755,7 +1796,7 @@ export function generateConsumablePrintHTML(data: any): string {
     const last = new Date(first);
     last.setDate(first.getDate() + 6);
 
-    return `${first.toLocaleDateString()} - ${last.toLocaleDateString()}`;
+    return `${formatDateDDMMMYYYY(first)} - ${formatDateDDMMMYYYY(last)}`;
   }
 
   const weeklyConsumables = (data.consumables || []).reduce(
@@ -1771,7 +1812,7 @@ export function generateConsumablePrintHTML(data: any): string {
         .filter((item: any) => !item.inventoryItemId)
         .forEach((item: any) => {
           acc[weekKey].push({
-            date: new Date(entry.date).toLocaleDateString(),
+            date: formatDateDDMMMYYYY(entry.date),
             createdBy: entry.createdByName,
             itemName: item.itemName,
             quantity: item.quantity,
@@ -2044,7 +2085,7 @@ body {
           <div class="highlights-header">
             <div class="left-title">PROJECT HIGHLIGHTS</div>
             <div class="right-date">
-              Report Date: ${val(data.reportDate)}
+              Report Date: ${formatDateDDMMMYYYY(data.reportDate)}
             </div>
           </div>
 
@@ -2053,7 +2094,7 @@ body {
             <tbody>
               <tr>
                 <th>Project Start Date</th>
-                <td>${val(data.startDate)}</td>
+                <td>${formatDateDDMMMYYYY(data.startDate)}</td>
                 <th>Vessel Name</th>
                 <td>${val(data.vesselName)}</td>
               </tr>
@@ -3722,20 +3763,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/employees/:id/training-records",
     requireAuth,
     requireRole(["admin", "project_manager"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const employeeId = parseInt(req.params.id);
         const trainingData = { ...req.body, employeeId };
 
-        // Convert date strings to Date objects and format them properly
-        // if (trainingData.trainingDate) {
-        //   const date = new Date(trainingData.trainingDate);
-        //   trainingData.trainingDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-        // }
-        // if (trainingData.expiryDate) {
-        //   const date = new Date(trainingData.expiryDate);
-        //   trainingData.expiryDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-        // }
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          const attachments = req.files.map((file) => ({
+            fileName: file.filename,
+            originalName: file.originalname,
+            filePath: file.path,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+          }));
+          trainingData.attachments = attachments;
+        }
 
         const parsedData =
           insertEmployeeTrainingRecordSchema.parse(trainingData);
@@ -3757,28 +3800,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/employees/training-records/:id",
     requireAuth,
     requireRole(["admin", "project_manager"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const updateData = req.body;
+        const { existingAttachments, ...updateData } = req.body;
 
-        // Convert date strings to Date objects
-        // if (updateData.trainingDate) {
-        //   updateData.trainingDate = new Date(updateData.trainingDate);
-        // }
-        // if (updateData.expiryDate) {
-        //   updateData.expiryDate = new Date(updateData.expiryDate);
-        // }
-
-        const result = await storage.updateEmployeeTrainingRecord(
-          id,
-          updateData,
-        );
-        if (!result) {
+        const currentRecord = await storage.getEmployeeTrainingRecord(id);
+        if (!currentRecord) {
           return res.status(404).json({ message: "Training record not found" });
         }
+
+        let attachments = [];
+        if (existingAttachments) {
+          attachments = Array.isArray(existingAttachments)
+            ? existingAttachments.map((a) => JSON.parse(a))
+            : [JSON.parse(existingAttachments)];
+        }
+
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          const newAttachments = req.files.map((file) => ({
+            fileName: file.filename,
+            originalName: file.originalname,
+            filePath: file.path,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+          }));
+          attachments = [...attachments, ...newAttachments];
+        }
+
+        const result = await storage.updateEmployeeTrainingRecord(id, {
+          ...updateData,
+          attachments,
+        });
+
         res.json(result);
       } catch (error) {
+        console.error("Update training record error:", error);
         res.status(500).json({ message: "Failed to update training record" });
       }
     },
@@ -5323,6 +5381,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.put(
+    "/api/projects/:projectId/activities/:activityId",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const activityId = parseInt(req.params.activityId);
+        const updateData = {
+          ...req.body,
+          date: req.body.date ? new Date(req.body.date) : undefined,
+        };
+
+        const activity = await storage.updateDailyActivity(activityId, updateData);
+        if (!activity) {
+          return res.status(404).json({ message: "Daily activity not found" });
+        }
+        res.json(activity);
+      } catch (error) {
+        console.error("Activity update error:", error);
+        res.status(500).json({ message: "Failed to update daily activity" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/projects/:projectId/activities/:activityId",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const activityId = parseInt(req.params.activityId);
+        const success = await storage.deleteDailyActivity(activityId);
+        if (!success) {
+          return res.status(404).json({ message: "Daily activity not found" });
+        }
+        res.json({ message: "Daily activity deleted successfully" });
+      } catch (error) {
+        console.error("Activity deletion error:", error);
+        res.status(500).json({ message: "Failed to delete daily activity" });
+      }
+    },
+  );
+
   // Asset assignment routes
   app.post(
     "/api/projects/:id/asset-assignments",
@@ -5957,7 +6058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(["admin", "finance"]),
     async (req, res) => {
       try {
-        const quotationData = req.body;
+        const quotationData = { ...req.body };
 
         // Auto-generate quotation number if not provided
         if (!quotationData.quotationNumber) {
@@ -5970,12 +6071,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Date fields should remain as ISO strings (YYYY-MM-DD format)
         // No conversion needed - Drizzle expects strings for date() columns
+        
+        console.log(`Attempting to create sales quotation: ${quotationData.quotationNumber}`);
+
+        // Ensure numeric fields are strings for decimal columns
+        const decimalFields = ['subtotal', 'taxAmount', 'discount', 'totalAmount', 'exchangeRate', 'discountPercentage'];
+        decimalFields.forEach(field => {
+          if (quotationData[field] !== undefined && quotationData[field] !== null) {
+            quotationData[field] = quotationData[field].toString();
+          }
+        });
 
         const quotation = await storage.createSalesQuotation(quotationData);
         res.status(201).json(quotation);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Sales quotation creation error:", error);
-        res.status(500).json({ message: "Failed to create sales quotation" });
+        res.status(500).json({ 
+          message: "Failed to create sales quotation",
+          details: error?.message || "Unknown error"
+        });
       }
     },
   );
@@ -8445,11 +8559,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/purchase-orders/:id/convert-to-invoice",
     requireAuth,
     requireRole(["admin", "finance"]),
+    upload.array("files"),
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const overrides =
-          req.body && Object.keys(req.body).length > 0 ? req.body : undefined;
+        let overrides = undefined;
+        if (req.body && Object.keys(req.body).length > 0) {
+          overrides = { ...req.body };
+          if (overrides.items && typeof overrides.items === "string") {
+            try {
+              overrides.items = JSON.parse(overrides.items);
+            } catch (e) {
+              console.error("Error parsing items in PO conversion:", e);
+            }
+          }
+          overrides.files = req.files;
+        }
+
         const result = await storage.convertPurchaseOrderToInvoice(
           id,
           req.session.userId!,

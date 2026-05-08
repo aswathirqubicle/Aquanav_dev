@@ -1915,7 +1915,6 @@ export default function SalesIndex() {
                       <Input
                         id="validUntil"
                         type="date"
-                        disabled
                         value={formData.validUntil || ""}
                         onChange={(e) =>
                           startTransition(() =>

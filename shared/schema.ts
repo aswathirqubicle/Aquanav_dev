@@ -170,7 +170,7 @@ export const employeeTrainingRecords = pgTable("employee_training_records", {
   expiryDate: date("expiry_date"),
   status: text("status").notNull().default("active"), // active, expired, cancelled
   notes: text("notes"),
-  attachments: json("attachments").$type<string[]>().default([]),
+  attachments: json("attachments").$type<any[]>().default([]),
 });
 
 // Employee Documents Management

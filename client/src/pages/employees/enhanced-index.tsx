@@ -497,6 +497,7 @@ export default function EmployeesIndex() {
     notes: null,
     attachments: [],
   });
+  const [selectedTrainingFiles, setSelectedTrainingFiles] = useState<FileList | null>(null);
 
   const [editingTraining, setEditingTraining] = useState<EmployeeTrainingRecord | null>(null);
 
@@ -781,10 +782,22 @@ export default function EmployeesIndex() {
 
   const createTrainingRecordMutation = useMutation({
     mutationFn: async (data: CreateTrainingRecordData) => {
+      const fd = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          fd.append(key, String(value));
+        }
+      });
+
+      if (selectedTrainingFiles) {
+        Array.from(selectedTrainingFiles).forEach(file => {
+          fd.append("files", file);
+        });
+      }
+
       const response = await apiRequest(`/api/employees/${selectedEmployee?.id}/training-records`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: fd,
       });
       if (!response.ok) throw new Error("Failed to create training record");
       return response.json();
@@ -801,6 +814,7 @@ export default function EmployeesIndex() {
         notes: null,
         attachments: [],
       });
+      setSelectedTrainingFiles(null);
       toast({ title: "Success", description: "Training record created successfully." });
     },
   });
@@ -813,12 +827,28 @@ export default function EmployeesIndex() {
       id: number;
       data: CreateTrainingRecordData;
     }) => {
+      const fd = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (key === "attachments") {
+          if (Array.isArray(value)) {
+            value.forEach((v) => fd.append("existingAttachments", JSON.stringify(v)));
+          }
+        } else if (value !== null && value !== undefined) {
+          fd.append(key, String(value));
+        }
+      });
+
+      if (selectedTrainingFiles) {
+        Array.from(selectedTrainingFiles).forEach(file => {
+          fd.append("files", file);
+        });
+      }
+
       const response = await apiRequest(
         `/api/employees/training-records/${id}`,
         {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
+          body: fd,
         }
       );
 
@@ -846,6 +876,7 @@ export default function EmployeesIndex() {
         notes: null,
         attachments: [],
       });
+      setSelectedTrainingFiles(null);
 
       toast({
         title: "Success",
@@ -2384,6 +2415,42 @@ export default function EmployeesIndex() {
                         />
                       </div>
                       <div className="col-span-2">
+                        <Label htmlFor="trainingFiles">Attachments</Label>
+                        <Input
+                          id="trainingFiles"
+                          type="file"
+                          multiple
+                          onChange={(e) => setSelectedTrainingFiles(e.target.files)}
+                        />
+                      </div>
+                      {editingTraining && trainingData.attachments && trainingData.attachments.length > 0 && (
+                        <div className="col-span-2">
+                          <Label>Existing Attachments</Label>
+                          <div className="flex flex-wrap gap-2 mt-1">
+                            {trainingData.attachments.map((file: any, idx: number) => (
+                              <div key={idx} className="flex items-center text-xs bg-gray-100 px-2 py-1 rounded">
+                                <FileText className="h-3 w-3 mr-1" />
+                                <span className="max-w-[150px] truncate">{file.originalName}</span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4 ml-1 text-red-500 hover:text-red-700"
+                                  onClick={() => {
+                                    setTrainingData(prev => ({
+                                      ...prev,
+                                      attachments: prev.attachments?.filter((_, i) => i !== idx) || []
+                                    }));
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="col-span-2">
                         <Button
                           onClick={() => {
                             if (editingTraining) {
@@ -2482,6 +2549,25 @@ export default function EmployeesIndex() {
                                 <p className="text-sm">{training.notes}</p>
                               </div>
                             )}
+                            {training.attachments && Array.isArray(training.attachments) && training.attachments.length > 0 && (
+                              <div className="col-span-3">
+                                <Label className="text-sm font-medium text-gray-600">Attachments</Label>
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                  {training.attachments.map((file: any, idx: number) => (
+                                    <a
+                                      key={idx}
+                                      href={`/${file.filePath}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
+                                    >
+                                      <FileText className="h-3 w-3 mr-1" />
+                                      {file.originalName}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                           <div className="flex space-x-2">
                             <Button
@@ -2501,7 +2587,7 @@ export default function EmployeesIndex() {
                                     : null,
                                   status: training.status,
                                   notes: training.notes,
-                                  attachments: [],
+                                  attachments: training.attachments || [],
                                 });
                               }}
                             >
