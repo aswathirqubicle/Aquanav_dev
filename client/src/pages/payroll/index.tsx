@@ -115,6 +115,7 @@ export default function PayrollIndex() {
   const [clearMonth, setClearMonth] = useState(new Date().getMonth() + 1);
   const [clearYear, setClearYear] = useState(new Date().getFullYear());
   const [selectedPayrollIds, setSelectedPayrollIds] = useState<number[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { data: company, isLoading } = useQuery<Company>({
     queryKey: ["/api/company"],
@@ -833,22 +834,36 @@ export default function PayrollIndex() {
   }, [employees]);
 
   const enrichedPayrollEntries = useMemo(() => {
-    return payrollEntries
+    let entries = payrollEntries
       .map((entry) => ({
         ...entry,
         employee: employeeMap.get(entry.employeeId),
-      }))
-      .sort((a, b) => {
-        // Sort by status: draft/generated first, then approved, then paid
-        const statusOrder: Record<string, number> = { draft: 0, generated: 0, approved: 1, paid: 2 };
-        const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
-        if (statusDiff !== 0) return statusDiff;
-        // Within same status, sort by total amount descending
-        const amountA = parseFloat(String(a.totalAmount || 0));
-        const amountB = parseFloat(String(b.totalAmount || 0));
-        return amountB - amountA;
+      }));
+
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      entries = entries.filter((entry) => {
+        const emp = entry.employee;
+        if (!emp) return false;
+        const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+        return (
+          fullName.includes(lowerSearchTerm) ||
+          (emp.employeeCode && emp.employeeCode.toLowerCase().includes(lowerSearchTerm))
+        );
       });
-  }, [payrollEntries, employeeMap]);
+    }
+
+    return entries.sort((a, b) => {
+      // Sort by status: draft/generated first, then approved, then paid
+      const statusOrder: Record<string, number> = { draft: 0, generated: 0, approved: 1, paid: 2 };
+      const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+      // Within same status, sort by total amount descending
+      const amountA = parseFloat(String(a.totalAmount || 0));
+      const amountB = parseFloat(String(b.totalAmount || 0));
+      return amountB - amountA;
+    });
+  }, [payrollEntries, employeeMap, searchTerm]);
 
   const enrichedAllPayrollEntries = useMemo(() => {
     return allPayrollEntries.map((entry) => ({
@@ -1195,6 +1210,14 @@ export default function PayrollIndex() {
                 </div>
               ) : (
                 <>
+                  <div className="mb-4">
+                    <Input
+                      placeholder="Search by employee name or code..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-md"
+                    />
+                  </div>
                   {user?.role === "admin" && enrichedPayrollEntries.some(e => e.status === "draft" || e.status === "generated") && (
                     <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                       {selectedPayrollIds.length > 0 ? (
@@ -1266,7 +1289,7 @@ export default function PayrollIndex() {
                             entry={entry}
                             isAdmin={user?.role === "admin"}
                             isSelected={selectedPayrollIds.includes(entry.id)}
-            company={company}
+                            company={company}
                             onSelect={(id, checked) => {
                               if (checked) {
                                 setSelectedPayrollIds(prev => [...prev, id]);

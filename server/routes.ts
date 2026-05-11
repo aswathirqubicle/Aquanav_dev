@@ -1613,7 +1613,7 @@ body {
               : ""
           }
 
-          ${data.reportImage || Object.keys(plannedReports).length > 0 ? `
+          ${data.reportImage ? `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">WORK PLAN</h2>
               ${data.reportImage ? `

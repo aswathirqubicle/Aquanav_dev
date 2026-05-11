@@ -373,7 +373,7 @@ export default function SalesIndex() {
 
   // Recalculate quotation validUntil when paymentTerms or createdDate changes
   useEffect(() => {
-    if (!formData.paymentTerms || !formData.createdDate) return;
+    if (isEditingQuotation || !formData.paymentTerms || !formData.createdDate) return;
 
     const baseDate = new Date(formData.createdDate);
     if (isNaN(baseDate.getTime())) return;
@@ -397,7 +397,7 @@ export default function SalesIndex() {
         validUntil: validUntilString
       }));
     }
-  }, [formData.paymentTerms, formData.createdDate]);
+  }, [formData.paymentTerms, formData.createdDate, isEditingQuotation]);
 
   const { data: salesStats } = useQuery<{
     totalQuotations: number;
@@ -3134,7 +3134,7 @@ export default function SalesIndex() {
                         <SelectContent>
                           <SelectItem value="all">All Statuses</SelectItem>
                           <SelectItem value="draft">Draft</SelectItem>
-                          <SelectItem value="sent">Sent</SelectItem>
+                          <SelectItem value="pending_approval">Pending Approval</SelectItem>
                           <SelectItem value="approved">Approved</SelectItem>
                           <SelectItem value="rejected">Rejected</SelectItem>
                           <SelectItem value="converted">Converted</SelectItem>
