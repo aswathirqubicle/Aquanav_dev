@@ -23,6 +23,9 @@ async function runMasterSeeding() {
   console.log('This will seed all entities with realistic mock data\n');
   
   try {
+    // Seed master locations first
+    await runSeedingScript('seed-locations.ts', 'Vessel Locations Seeding');
+
     // First run the main seeding script
     await runSeedingScript('seed-all-data.ts', 'Main Data Seeding (Customers, Suppliers, Employees, Projects, Inventory, Sales)');
     

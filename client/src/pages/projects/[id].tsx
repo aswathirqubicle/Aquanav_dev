@@ -669,6 +669,7 @@ export default function ProjectDetail() {
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
   const [newLocation, setNewLocation] = useState("");
+  const [locationSearchTerm, setLocationSearchTerm] = useState("");
   const [bulkLocations, setBulkLocations] = useState("");
   const [employeeAssignments, setEmployeeAssignments] = useState<
     { employeeId: number; startDate: string; endDate: string }[]
@@ -4310,85 +4311,110 @@ export default function ProjectDetail() {
         <TabsContent value="locations">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Project Locations</CardTitle>
-                {canEdit && (
-                  <div className="flex space-x-2">
-                    <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button size="sm">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Location
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Add New Location</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleAddLocation} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="newLocation">Location Name</Label>
-                            <Input
-                              id="newLocation"
-                              value={newLocation}
-                              onChange={(e) => setNewLocation(e.target.value)}
-                              placeholder="Enter location name..."
-                              required
-                            />
-                          </div>
-
-                          <div className="flex justify-end space-x-2">
-                            <Button type="button" variant="outline" onClick={() => setIsLocationDialogOpen(false)}>
-                              Cancel
-                            </Button>
-                            <Button type="submit" disabled={addLocationMutation.isPending}>
-                              {addLocationMutation.isPending ? "Adding..." : "Add Location"}
-                            </Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-
-                    <Dialog open={isBulkLocationDialogOpen} onOpenChange={setIsBulkLocationDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button size="sm" variant="outline">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Bulk Upload
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Bulk Upload Locations</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleBulkAddLocations} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="bulkLocations">Locations (one per line)</Label>
-                            <Textarea
-                              id="bulkLocations"
-                              value={bulkLocations}
-                              onChange={(e) => setBulkLocations(e.target.value)}
-                              placeholder="Location 1&#10;Location 2&#10;Location 3&#10;..."
-                              rows={8}
-                              required
-                            />
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              Enter each location on a new line. Duplicate locations will be automatically filtered out.
-                            </p>
-                          </div>
-
-                          <div className="flex justify-end space-x-2">
-                            <Button type="button" variant="outline" onClick={() => setIsBulkLocationDialogOpen(false)}>
-                              Cancel
-                            </Button>
-                            <Button type="submit" disabled={addBulkLocationsMutation.isPending}>
-                              {addBulkLocationsMutation.isPending ? "Uploading..." : "Upload Locations"}
-                            </Button>
-                          </div>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <CardTitle>Project Locations</CardTitle>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {project.locations?.length || 0} locations total
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <div className="relative w-full sm:w-64">
+                    <Input
+                      placeholder="Search locations..."
+                      value={locationSearchTerm}
+                      onChange={(e) => setLocationSearchTerm(e.target.value)}
+                      className="pr-8"
+                    />
+                    {locationSearchTerm && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-2 hover:bg-transparent"
+                        onClick={() => setLocationSearchTerm("")}
+                      >
+                        ×
+                      </Button>
+                    )}
                   </div>
-                )}
+                  {canEdit && (
+                    <div className="flex space-x-2 w-full sm:w-auto">
+                      <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" className="flex-1 sm:flex-none">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Location
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Add New Location</DialogTitle>
+                          </DialogHeader>
+                          <form onSubmit={handleAddLocation} className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="newLocation">Location Name</Label>
+                              <Input
+                                id="newLocation"
+                                value={newLocation}
+                                onChange={(e) => setNewLocation(e.target.value)}
+                                placeholder="Enter location name..."
+                                required
+                              />
+                            </div>
+
+                            <div className="flex justify-end space-x-2">
+                              <Button type="button" variant="outline" onClick={() => setIsLocationDialogOpen(false)}>
+                                Cancel
+                              </Button>
+                              <Button type="submit" disabled={addLocationMutation.isPending}>
+                                {addLocationMutation.isPending ? "Adding..." : "Add Location"}
+                              </Button>
+                            </div>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Dialog open={isBulkLocationDialogOpen} onOpenChange={setIsBulkLocationDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="flex-1 sm:flex-none">
+                            <Upload className="h-4 w-4 mr-2" />
+                            Bulk Upload
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Bulk Upload Locations</DialogTitle>
+                          </DialogHeader>
+                          <form onSubmit={handleBulkAddLocations} className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="bulkLocations">Locations (one per line)</Label>
+                              <Textarea
+                                id="bulkLocations"
+                                value={bulkLocations}
+                                onChange={(e) => setBulkLocations(e.target.value)}
+                                placeholder="Location 1&#10;Location 2&#10;Location 3&#10;..."
+                                rows={8}
+                                required
+                              />
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Enter each location on a new line. Duplicate locations will be automatically filtered out.
+                              </p>
+                            </div>
+
+                            <div className="flex justify-end space-x-2">
+                              <Button type="button" variant="outline" onClick={() => setIsBulkLocationDialogOpen(false)}>
+                                Cancel
+                              </Button>
+                              <Button type="submit" disabled={addBulkLocationsMutation.isPending}>
+                                {addBulkLocationsMutation.isPending ? "Uploading..." : "Upload Locations"}
+                              </Button>
+                            </div>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -4418,31 +4444,59 @@ export default function ProjectDetail() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                  {project.locations.map((location, index) => (
-                    <div key={index} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4">
-                      <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
-                        <div className="flex items-center space-x-2 min-w-0 flex-1">
-                          <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                          <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
-                            {location}
-                          </span>
-                        </div>
-                        {canEdit && (
+                <>
+                  {(() => {
+                    const filtered = project.locations.filter(loc =>
+                      loc.toLowerCase().includes(locationSearchTerm.toLowerCase())
+                    );
+
+                    if (filtered.length === 0 && locationSearchTerm) {
+                      return (
+                        <div className="text-center py-12 border border-dashed rounded-lg">
+                          <MapPin className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                          <p className="text-slate-500 dark:text-slate-400">
+                            No locations match "{locationSearchTerm}"
+                          </p>
                           <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveLocation(location)}
-                            disabled={removeLocationMutation.isPending}
-                            className="w-full sm:w-auto shrink-0 text-red-500 hover:text-red-700"
+                            variant="link"
+                            onClick={() => setLocationSearchTerm("")}
+                            className="mt-2"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            Clear search
                           </Button>
-                        )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                        {filtered.map((location, index) => (
+                          <div key={index} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4">
+                            <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
+                              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
+                                <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                                  {location}
+                                </span>
+                              </div>
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveLocation(location)}
+                                  disabled={removeLocationMutation.isPending}
+                                  className="w-full sm:w-auto shrink-0 text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    );
+                  })()}
+                </>
               )}
             </CardContent>
           </Card>

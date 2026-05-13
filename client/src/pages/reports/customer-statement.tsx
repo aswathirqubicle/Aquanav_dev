@@ -230,10 +230,20 @@ export default function CustomerStatementPage() {
     }).format(num || 0);
   };
 
+  const getSelectedCustomerName = () => {
+    if (selectedCustomer === "all") return "";
+    const customer = customers.find((c) => c.id.toString() === selectedCustomer);
+    return customer ? customer.name : "";
+  };
+
   const exportToCSV = () => {
     if (!transactions.length) return;
 
+    const customerName = getSelectedCustomerName();
     let csvContent = "Customer Statement of Account\n";
+    if (customerName) {
+      csvContent += `Customer: ${customerName}\n`;
+    }
     csvContent += `Generated: ${new Date().toLocaleDateString()}\n\n`;
     csvContent += "Date,Type,Reference,Description,Debit,Credit,Balance\n";
 
@@ -266,7 +276,10 @@ export default function CustomerStatementPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Customer Statement of Account</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">
+              Customer Statement of Account
+              {selectedCustomer !== "all" && ` — ${getSelectedCustomerName()}`}
+            </h1>
             <p className="text-sm text-muted-foreground">View customer invoices and payment transactions</p>
           </div>
         </div>

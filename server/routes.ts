@@ -1613,7 +1613,7 @@ body {
               : ""
           }
 
-          ${data.reportImage ? `
+          ${data.reportImage || Object.keys(plannedReports).length > 0 ? `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">WORK PLAN</h2>
               ${data.reportImage ? `
@@ -2376,6 +2376,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  app.get("/api/locations", requireAuth, async (req, res) => {
+    try {
+      const locations = await storage.getLocations();
+      res.json(locations);
+    } catch (error) {
+      console.error("Get locations error:", error);
+      res.status(500).json({ message: "Failed to get locations" });
+    }
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     try {
       if (!req.session.userId) {
@@ -2432,6 +2442,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(userWithoutPassword);
       } catch (error) {
         res.status(500).json({ message: "Failed to get user" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/purchase-orders/:id/edit-history",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        const history = await storage.getInvoiceEditHistory("purchase_order", id);
+        res.json(history);
+      } catch (error) {
+        console.error("Get purchase order edit history error:", error);
+        res.status(500).json({ message: "Failed to get edit history" });
       }
     },
   );
@@ -6524,12 +6550,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   app.get(
-    "/api/general-ledger/receivables",
+    "/api/receivables",
     requireAuth,
     requireRole(["admin", "finance"]),
     async (req, res) => {
       try {
-        const receivables = await storage.getReceivables();
+        const { customerId, projectId, startDate, endDate } = req.query;
+        const filters = {
+          customerId: customerId ? parseInt(customerId as string) : undefined,
+          projectId: projectId ? parseInt(projectId as string) : undefined,
+          startDate: startDate as string,
+          endDate: endDate as string,
+        };
+        const receivables = await storage.getReceivables(filters);
         res.json(receivables);
       } catch (error) {
         console.error("Get receivables error:", error);
@@ -6538,14 +6571,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  // Add missing sales invoice and receivables methods
   app.get(
-    "/api/receivables",
+    "/api/general-ledger/receivables",
     requireAuth,
     requireRole(["admin", "finance"]),
     async (req, res) => {
       try {
-        const receivables = await storage.getReceivables();
+        const { customerId, projectId, startDate, endDate } = req.query;
+        const filters = {
+          customerId: customerId ? parseInt(customerId as string) : undefined,
+          projectId: projectId ? parseInt(projectId as string) : undefined,
+          startDate: startDate as string,
+          endDate: endDate as string,
+        };
+        const receivables = await storage.getReceivables(filters);
         res.json(receivables);
       } catch (error) {
         console.error("Get receivables error:", error);
@@ -7035,21 +7074,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  // Receivables routes
-  app.get(
-    "/api/receivables",
-    requireAuth,
-    requireRole(["admin", "finance"]),
-    async (req, res) => {
-      try {
-        const receivables = await storage.getReceivables();
-        res.json(receivables);
-      } catch (error) {
-        console.error("Get receivables error:", error);
-        res.status(500).json({ message: "Failed to get receivables" });
-      }
-    },
-  );
 
   // Goods Receipt routes
   app.get(
@@ -8409,19 +8433,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
+        const existingOrder = await storage.getPurchaseOrder(id);
+        if (!existingOrder) {
+          return res.status(404).json({ message: "Purchase order not found" });
+        }
+
+        const isAdmin = req.session.userRole === "admin";
+        const editableStatuses = ["draft", "pending_approval", "approved", "rejected"];
+        if (!editableStatuses.includes(existingOrder.status)) {
+          return res.status(400).json({
+            message: "This purchase order cannot be edited in its current status",
+          });
+        }
+
+        if (existingOrder.status !== "draft" && !isAdmin && req.session.userRole !== "finance") {
+          return res
+            .status(403)
+            .json({ message: "Insufficient permissions to edit this purchase order" });
+        }
+
+        const { editNote, ...orderDataBody } = req.body;
+        if (!editNote || !editNote.trim()) {
+          return res.status(400).json({
+            message: "Edit note is required when updating a purchase order",
+          });
+        }
+
+        const orderItems = JSON.parse(req.body.items || "[]");
         const orderData = {
-          ...req.body,
-          items: JSON.parse(req.body.items || "[]"),
+          ...orderDataBody,
+          items: orderItems,
           existingFiles: req.body.existingFiles
             ? JSON.parse(req.body.existingFiles)
             : undefined,
           files: req.files,
         };
 
+        const changes: Record<string, { old: any; new: any }> = {};
+        const fieldsToTrack = [
+          "supplierId",
+          "totalAmount",
+          "subtotal",
+          "taxAmount",
+          "discountPercentage",
+          "discountAmount",
+          "orderDate",
+          "expectedDeliveryDate",
+          "currency",
+          "exchangeRate",
+          "paymentTerms",
+          "deliveryTerms",
+          "bankAccount",
+          "notes",
+        ];
+
+        for (const field of fieldsToTrack) {
+          const oldVal = (existingOrder as any)[field];
+          let newVal = orderData[field];
+
+          if (field === "orderDate" || field === "expectedDeliveryDate") {
+            const oldDate = oldVal ? new Date(oldVal).toISOString().split('T')[0] : null;
+            const newDate = newVal ? new Date(newVal).toISOString().split('T')[0] : null;
+            if (oldDate !== newDate) {
+              changes[field] = { old: oldDate, new: newDate };
+            }
+          } else if (newVal !== undefined && String(oldVal || "") !== String(newVal || "")) {
+            changes[field] = { old: oldVal, new: newVal };
+          }
+        }
+
+        const existingItems = await storage.getPurchaseOrderItems(id);
+        if (JSON.stringify(existingItems) !== JSON.stringify(orderItems)) {
+          changes["items"] = {
+            old: existingItems,
+            new: orderItems,
+          };
+        }
+
         const order = await storage.updatePurchaseOrder(id, orderData);
         if (!order) {
           return res.status(404).json({ message: "Purchase order not found" });
         }
+
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "purchase_order",
+          invoiceId: id,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
 
         res.json(order);
       } catch (error) {

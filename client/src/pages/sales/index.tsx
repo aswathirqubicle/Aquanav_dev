@@ -436,7 +436,7 @@ export default function SalesIndex() {
       const [_base, params] = queryKey as [string, any];
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") {
+        if (value !== undefined && value !== null && value !== "") {
           searchParams.append(key, value.toString());
         }
       });
@@ -474,7 +474,7 @@ export default function SalesIndex() {
       const [_base, params] = queryKey as [string, any];
       const searchParams = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") {
+        if (value !== undefined && value !== null && value !== "") {
           searchParams.append(key, value.toString());
         }
       });
@@ -513,7 +513,26 @@ export default function SalesIndex() {
   });
 
   const { data: receivables } = useQuery<any[]>({
-    queryKey: ["/api/receivables"],
+    queryKey: [
+      "/api/receivables",
+      {
+        customerId: invoiceCustomerFilter !== "all" ? invoiceCustomerFilter : undefined,
+        projectId: invoiceProjectFilter !== "all" ? (invoiceProjectFilter === "no-project" ? -1 : invoiceProjectFilter) : undefined,
+        startDate: invoiceStartDateFilter,
+        endDate: invoiceEndDateFilter,
+      },
+    ],
+    queryFn: async ({ queryKey }) => {
+      const [_base, params] = queryKey as [string, any];
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          searchParams.append(key, value.toString());
+        }
+      });
+      const response = await apiRequest(`${_base}?${searchParams.toString()}`);
+      return response.json();
+    },
     enabled: isAuthenticated,
   });
 

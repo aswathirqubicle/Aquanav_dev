@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 
 interface Supplier {
@@ -113,6 +113,7 @@ export default function PurchaseOrdersIndex() {
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [editNote, setEditNote] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -233,6 +234,15 @@ export default function PurchaseOrdersIndex() {
   const { data: inventoryResponse } = useQuery<{ data: InventoryItem[] }>({
     queryKey: ["/api/inventory"],
     enabled: isAuthenticated,
+  });
+
+  const { data: poEditHistory } = useQuery<any[]>({
+    queryKey: ["/api/purchase-orders", viewingOrder?.id, "edit-history"],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/purchase-orders/${viewingOrder?.id}/edit-history`);
+      return response.json();
+    },
+    enabled: isAuthenticated && !!viewingOrder && (user?.role === "admin" || user?.role === "finance"),
   });
 
 
@@ -481,6 +491,7 @@ export default function PurchaseOrdersIndex() {
     });
     setSelectedFiles(null);
     setEditingOrder(null);
+    setEditNote("");
   };
 
   const handleEditOrder = (order: PurchaseOrder) => {
@@ -513,6 +524,7 @@ export default function PurchaseOrdersIndex() {
     }
 
     setExistingFiles(order.files || []);
+    setEditNote("");
 
     setIsDialogOpen(true);
   };
@@ -659,6 +671,15 @@ export default function PurchaseOrdersIndex() {
     }
 
     if (editingOrder) {
+      if (!editNote.trim()) {
+        toast({
+          title: "Error",
+          description: "Please provide an edit note",
+          variant: "destructive",
+        });
+        return;
+      }
+      formDataInstance.append("editNote", editNote.trim());
       const keptFileIds = existingFiles.map((file) => file.id);
       formDataInstance.append("existingFiles", JSON.stringify(keptFileIds));
       updateOrderMutation.mutate({ orderId: editingOrder.id, formDataInstance });
@@ -1150,8 +1171,8 @@ export default function PurchaseOrdersIndex() {
                             <span className="hidden sm:inline">View</span>
                           </Button>
 
-                          {/* Edit - Draft orders only */}
-                          {order.status === "draft" && (
+                          {/* Edit - Draft and Approved/Pending orders for admin/finance */}
+                          {(order.status === "draft" || (["approved", "pending_approval", "rejected"].includes(order.status) && (user?.role === "admin" || user?.role === "finance"))) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1759,6 +1780,20 @@ export default function PurchaseOrdersIndex() {
                 )}
               </div>
 
+              {editingOrder && (
+                <div className="space-y-2 border-t pt-4">
+                  <Label htmlFor="editNote" className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
+                  <Textarea
+                    id="editNote"
+                    value={editNote}
+                    onChange={(e) => setEditNote(e.target.value)}
+                    placeholder="Explain the reason for this edit..."
+                    className="min-h-[80px]"
+                    required
+                  />
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                   Cancel
@@ -2000,6 +2035,46 @@ export default function PurchaseOrdersIndex() {
                         </li>
                       ))}
                     </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Edit History */}
+              {poEditHistory && poEditHistory.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <History className="w-4 h-4" />
+                      Edit History ({poEditHistory.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {poEditHistory.map((entry: any) => (
+                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
+                          {entry.changes && Object.keys(entry.changes).length > 0 && (
+                            <div className="text-xs space-y-1">
+                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                field !== "items" ? (
+                                  <div key={field} className="flex gap-2">
+                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
+                                    <span className="text-green-600">{String(change.new || "—")}</span>
+                                  </div>
+                                ) : (
+                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               )}

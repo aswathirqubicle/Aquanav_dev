@@ -15,7 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertProjectSchema, Customer } from "@shared/schema";
 import { z } from "zod";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const createProjectSchema = insertProjectSchema.extend({
   startDate: z.string().optional(),
@@ -59,9 +58,6 @@ export default function ProjectCreate() {
     additionalField6Description: "",
   });
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
-
-  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
-  const [newLocation, setNewLocation] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -161,41 +157,6 @@ export default function ProjectCreate() {
 
   const handleChange = (field: keyof CreateProjectData, value: any) => {
     setFormData((prev: CreateProjectData) => ({ ...prev, [field]: value }));
-  };
-
-  const addLocation = () => {
-    if (!newLocation.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a location name",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check for duplicates
-    if (formData.locations?.includes(newLocation.trim())) {
-      toast({
-        title: "Error",
-        description: "This location already exists",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setFormData((prev: CreateProjectData) => ({
-      ...prev,
-      locations: [...(prev.locations || []), newLocation.trim()],
-    }));
-    setNewLocation("");
-    setIsLocationDialogOpen(false);
-  };
-
-  const removeLocation = (index: number) => {
-    setFormData((prev: CreateProjectData) => ({
-      ...prev,
-      locations: prev.locations?.filter((_, i) => i !== index) || [],
-    }));
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -391,69 +352,6 @@ export default function ProjectCreate() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Locations</Label>
-                <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button type="button" variant="outline" size="sm">
-                      Add Location
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Add New Location</DialogTitle>
-                    </DialogHeader>
-                    {/* <form onSubmit={(e) => { e.preventDefault(); addLocation(); }} className="space-y-4"> */}
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="newLocation">Location Name</Label>
-                        <Input
-                          id="newLocation"
-                          value={newLocation}
-                          onChange={(e) => setNewLocation(e.target.value)}
-                          placeholder="Enter location name..."
-                          required
-                        />
-                      </div>
-
-                      <div className="flex justify-end space-x-2">
-                        <Button type="button" variant="outline" onClick={() => setIsLocationDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={addLocation}
-                        >
-                          Add Location
-                        </Button>
-                      </div>
-                    </div>
-                    {/* </form> */}
-                  </DialogContent>
-                </Dialog>
-              </div>
-              {formData.locations && formData.locations.length > 0 && (
-                <div className="space-y-2">
-                  {formData.locations.map((location, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
-                        {location}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeLocation(index)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* New Fields Section */}
             <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-700">

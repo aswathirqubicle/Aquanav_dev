@@ -41,6 +41,7 @@ import {
   payrollEntries,
   payrollAdditions,
   payrollDeductions,
+  locations,
   salesQuotations,
   salesInvoices,
   supplierInventoryItems,
@@ -141,6 +142,7 @@ import {
   type ChartOfAccount,
   type EmployeeFeedback,
   type InsertEmployeeFeedback,
+  type Location,
 } from "@shared/schema";
 import bcrypt from "bcrypt";
 import fs from "fs/promises";
@@ -402,6 +404,20 @@ export class Storage {
       };
     } catch (error) {
       console.error("Error in _getPaginatedResults:", error);
+      throw error;
+    }
+  }
+
+  async getLocations(): Promise<Location[]> {
+    try {
+      return await db.select().from(locations).orderBy(asc(locations.name));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in getLocations: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getLocations",
+        severity: "error",
+      });
       throw error;
     }
   }
@@ -2642,7 +2658,19 @@ export class Storage {
 
   async createProject(projectData: InsertProject): Promise<Project> {
     try {
-      const result = await db.insert(projects).values(projectData).returning();
+      // Fetch master locations to use as defaults
+      const masterLocations = await this.getLocations();
+      const defaultLocationNames = masterLocations.map(l => l.name);
+
+      // If no locations were provided, use the default master list
+      const finalProjectData = {
+        ...projectData,
+        locations: (projectData.locations && projectData.locations.length > 0)
+          ? projectData.locations
+          : defaultLocationNames
+      };
+
+      const result = await db.insert(projects).values(finalProjectData).returning();
       return result[0];
     } catch (error: any) {
       await this.createErrorLog({
@@ -6563,26 +6591,48 @@ export class Storage {
     }
   }
 
-  async getReceivables(): Promise<any[]> {
+  async getReceivables(filters?: {
+    customerId?: number;
+    projectId?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any[]> {
     try {
+      const queryConditions = [
+        ne(salesInvoices.status, "draft"),
+        ne(salesInvoices.status, "rejected"),
+        ne(salesInvoices.status, "pending_approval"),
+        or(
+          eq(salesInvoices.status, "approved"),
+          eq(salesInvoices.status, "partially_paid"),
+          eq(salesInvoices.status, "paid"),
+          isNotNull(salesInvoices.invoiceNumber),
+        ),
+      ];
+
+      if (filters?.customerId) {
+        queryConditions.push(eq(salesInvoices.customerId, filters.customerId));
+      }
+      if (filters?.projectId) {
+        if (filters.projectId === -1) {
+          queryConditions.push(isNull(salesInvoices.projectId));
+        } else {
+          queryConditions.push(eq(salesInvoices.projectId, filters.projectId));
+        }
+      }
+      if (filters?.startDate) {
+        queryConditions.push(gte(salesInvoices.invoiceDate, filters.startDate));
+      }
+      if (filters?.endDate) {
+        queryConditions.push(lte(salesInvoices.invoiceDate, filters.endDate));
+      }
+
       // Get all invoices that could have receivables (exclude draft and rejected)
       const invoicesList = await db
         .select()
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
-        .where(
-          and(
-            ne(salesInvoices.status, "draft"),
-            ne(salesInvoices.status, "rejected"),
-            ne(salesInvoices.status, "pending_approval"),
-            or(
-              eq(salesInvoices.status, "approved"),
-              eq(salesInvoices.status, "partially_paid"),
-              eq(salesInvoices.status, "paid"),
-              isNotNull(salesInvoices.invoiceNumber),
-            ),
-          ),
-        )
+        .where(and(...queryConditions))
         .orderBy(desc(salesInvoices.invoiceDate));
       // Get all payments for sales invoices
       const paymentsList = await db.select().from(invoicePayments);
@@ -14598,7 +14648,12 @@ export interface IStorage {
     paymentData: InsertInvoicePayment,
   ): Promise<InvoicePayment>;
   updateInvoicePaidAmount(invoiceId: number): Promise<void>;
-  getReceivables(): Promise<any[]>;
+  getReceivables(filters?: {
+    customerId?: number;
+    projectId?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any[]>;
 
   // Project Revenue methods
   getProjectRevenue(projectId: number): Promise<{
@@ -14751,6 +14806,7 @@ export interface IStorage {
   getChartOfAccountByName(
     accountName: string,
   ): Promise<ChartOfAccount | undefined>;
+  getLocations(): Promise<Location[]>;
   //Profile
   changePassword(
     id: number,

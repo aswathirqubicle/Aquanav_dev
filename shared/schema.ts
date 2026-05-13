@@ -233,6 +233,14 @@ export const projects = pgTable("projects", {
     .default([]),
 });
 
+// Locations
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Project Employee Assignments
 export const projectEmployees = pgTable("project_employees", {
   id: serial("id").primaryKey(),
@@ -1372,6 +1380,12 @@ export const insertEmployeeDocumentSchema = createInsertSchema(
       .transform((d) => (d ? d.toISOString().slice(0, 10) : null)),
     status: z.enum(["active", "expired", "pending_renewal"]).default("active"),
   });
+export const insertLocationSchema = createInsertSchema(locations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertProjectSchema = createInsertSchema(projects)
   .omit({ id: true, actualCost: true })
   .extend({
@@ -1657,6 +1671,8 @@ export type InsertEmployeeDocument = z.infer<
 // export type Project = typeof projects.$inferSelect;
 export type Project = typeof projects.$inferSelect & { customerName?: string };
 export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 
