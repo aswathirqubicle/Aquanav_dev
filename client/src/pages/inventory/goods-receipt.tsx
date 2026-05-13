@@ -31,6 +31,8 @@ import {
   DollarSign,
   ArrowDownLeft,
   Trash2,
+  Filter,
+  X,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { z } from "zod";
@@ -69,6 +71,7 @@ type GoodsReceiptRecord = {
   reference: string;
   timestamp: string;
   createdByName?: string;
+  supplierName?: string;
   items: {
     inventoryItemName: string;
     quantity: number;
@@ -83,6 +86,10 @@ export default function GoodsReceipt() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterItem, setFilterItem] = useState("all");
+  const [filterSupplier, setFilterSupplier] = useState("all");
 
   const [formData, setFormData] = useState({
     reference: "",
@@ -253,6 +260,49 @@ export default function GoodsReceipt() {
 
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString();
+  };
+
+  const uniqueSuppliers = Array.from(
+    new Map(
+      (receiptsData || [])
+        .filter((r) => r.supplierName)
+        .map((r) => [r.supplierName, r.supplierName])
+    ).values()
+  ).sort();
+
+  const filteredReceipts = (receiptsData || []).filter((receipt) => {
+    if (filterDateFrom) {
+      const txDate = new Date(receipt.timestamp);
+      txDate.setHours(0, 0, 0, 0);
+      const from = new Date(filterDateFrom);
+      if (txDate < from) return false;
+    }
+    if (filterDateTo) {
+      const txDate = new Date(receipt.timestamp);
+      txDate.setHours(23, 59, 59, 999);
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (txDate > to) return false;
+    }
+    if (filterItem && filterItem !== "all") {
+      const hasItem = receipt.items.some((i) =>
+        i.inventoryItemName.toLowerCase().includes(filterItem.toLowerCase())
+      );
+      if (!hasItem) return false;
+    }
+    if (filterSupplier && filterSupplier !== "all") {
+      if (receipt.supplierName !== filterSupplier) return false;
+    }
+    return true;
+  });
+
+  const hasActiveFilters = filterDateFrom || filterDateTo || (filterItem && filterItem !== "all") || (filterSupplier && filterSupplier !== "all");
+
+  const clearFilters = () => {
+    setFilterDateFrom("");
+    setFilterDateTo("");
+    setFilterItem("all");
+    setFilterSupplier("all");
   };
 
   if (
@@ -431,8 +481,79 @@ export default function GoodsReceipt() {
         </Dialog>
       </div>
 
+      {/* Filter Bar */}
+      <div className="mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 shrink-0">
+            <Filter className="h-4 w-4" />
+            Filters
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500 dark:text-slate-400">From Date</label>
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              className="h-9 w-40 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500 dark:text-slate-400">To Date</label>
+            <Input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              className="h-9 w-40 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs text-slate-500 dark:text-slate-400">Item</label>
+            <Select value={filterItem} onValueChange={setFilterItem}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="All items" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All items</SelectItem>
+                {inventoryItems?.map((item) => (
+                  <SelectItem key={item.id} value={item.name}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs text-slate-500 dark:text-slate-400">Supplier</label>
+            <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="All suppliers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All suppliers</SelectItem>
+                {uniqueSuppliers.map((name) => (
+                  <SelectItem key={name as string} value={name as string}>
+                    {name as string}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
+          {hasActiveFilters && (
+            <span className="text-xs text-slate-500 dark:text-slate-400 self-end pb-2">
+              {filteredReceipts.length} of {receiptsData?.length || 0} records
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Receipts List */}
-      {receiptsData && receiptsData.length > 0 ? (
+      {filteredReceipts.length > 0 ? (
         <div className="space-y-6">
           {/* Desktop Table View */}
           <Card className="hidden md:block">
@@ -460,12 +581,15 @@ export default function GoodsReceipt() {
                         Total Value
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Supplier
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         Created By
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-700">
-                    {receiptsData.map((receipt) => (
+                    {filteredReceipts.map((receipt) => (
                       <tr key={receipt.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
@@ -505,6 +629,11 @@ export default function GoodsReceipt() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-slate-600 dark:text-slate-400">
+                            {receipt.supplierName || "-"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-slate-600 dark:text-slate-400">
                             {receipt.createdByName || "-"}
                           </div>
                         </td>
@@ -524,7 +653,7 @@ export default function GoodsReceipt() {
                 Goods Receipt Records
               </h2>
             </div>
-            {receiptsData.map((receipt) => (
+            {filteredReceipts.map((receipt) => (
               <Card key={receipt.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="space-y-3">
@@ -559,6 +688,13 @@ export default function GoodsReceipt() {
                       </div>
                     </div>
 
+                    {receipt.supplierName && (
+                      <div className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Supplier:</span>
+                        <span className="font-medium text-slate-900 dark:text-slate-100">{receipt.supplierName}</span>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
                       <div>
                         <span className="text-xs text-slate-500 dark:text-slate-400">Total Value:</span>
@@ -589,16 +725,33 @@ export default function GoodsReceipt() {
         <Card>
           <CardContent className="text-center py-12">
             <Package className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
-              No goods receipts found
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 mb-6">
-              Start by creating your first goods receipt
-            </p>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create First Receipt
-            </Button>
+            {hasActiveFilters ? (
+              <>
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                  No receipts match your filters
+                </h3>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  Try adjusting the date range or item selection
+                </p>
+                <Button variant="outline" onClick={clearFilters}>
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                  No goods receipts found
+                </h3>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  Start by creating your first goods receipt
+                </p>
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Receipt
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}

@@ -276,6 +276,7 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   reference: text("reference"), // PI number, GI number, etc.
   createdBy: integer("created_by").references(() => users.id),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
+  consumableId: integer("consumable_id"), // link back to project_consumables record
 });
 
 // Asset Types (Master catalog for asset categories with inventory tracking)
@@ -524,6 +525,7 @@ export const projectConsumables = pgTable("project_consumables", {
   date: timestamp("date").notNull(),
   recordedBy: integer("recorded_by").references(() => users.id),
   recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  goodsIssueRef: text("goods_issue_ref"),
 });
 
 // Project Consumable Items

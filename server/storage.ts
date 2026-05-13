@@ -15,6 +15,7 @@ import {
   ne,
   inArray,
   notInArray,
+  like,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -270,6 +271,7 @@ export interface PayrollEntryEmployeeDetails {
   firstName: string | null;
   lastName: string | null;
   employeeCode: string | null;
+  category: string | null;
 }
 
 export interface PayrollEntryWithEmployeeDetails extends PayrollEntry {
@@ -3033,70 +3035,40 @@ export class Storage {
         return;
       }
 
-      const projectEmployeesList = await this.getProjectEmployees(projectId);
-      console.log(
-        `Recalculating cost for project ${projectId} with ${projectEmployeesList.length} employees`,
-      );
-
-      // Calculate labor costs
-      let totalLaborCost = 0;
-      if (projectEmployeesList.length > 0) {
-        // Use project start date or current date if no start date
-        const startDate = project.startDate
-          ? new Date(project.startDate)
-          : new Date();
-        const endDate = project.actualEndDate
-          ? new Date(project.actualEndDate)
-          : new Date();
-        const workingDays = this.calculateWorkingDays(startDate, endDate);
-
-        console.log(
-          `Project ${projectId}: ${workingDays} working days from ${startDate.toDateString()} to ${endDate.toDateString()}`,
+      // Labor costs from approved/paid payroll entries for this project
+      // (reimbursement additions baked into totalAmount are subtracted to avoid double-counting)
+      const laborPayrollData = await db
+        .select({ id: payrollEntries.id, totalAmount: payrollEntries.totalAmount })
+        .from(payrollEntries)
+        .where(
+          and(
+            eq(payrollEntries.projectId, projectId),
+            inArray(payrollEntries.status, ["approved", "paid"]),
+          ),
         );
-
-        // Calculate total salary cost
-        for (const employee of projectEmployeesList) {
-          const salaryToUse = employee.salary;
-          if (salaryToUse && parseFloat(salaryToUse) > 0) {
-            const monthlySalary = parseFloat(salaryToUse);
-            let employeeCost: number;
-
-            if (employee.category === "permanent") {
-              // For permanent employees, allocate full monthly salary to project
-              employeeCost = monthlySalary;
-              console.log(
-                `Employee ${employee.firstName} ${
-                  employee.lastName
-                } (Permanent): Monthly salary ${monthlySalary}, Total cost ${employeeCost.toFixed(
-                  2,
-                )}`,
-              );
-            } else {
-              // For consultants and contract employees, calculate based on actual working days assigned to the project within the project's current scope
-              const empStart = employee.startDate ? new Date(employee.startDate) : startDate;
-              const empEnd = employee.endDate ? new Date(employee.endDate) : endDate;
-              
-              // Ensure we only count days between project startDate and project endDate/now
-              const effectiveStart = empStart > startDate ? empStart : startDate;
-              const effectiveEnd = empEnd < endDate ? empEnd : endDate;
-              
-              const empWorkingDays = this.calculateWorkingDays(effectiveStart, effectiveEnd);
-
-              const dailyRate = monthlySalary / this.getWorkingDaysInMonth(effectiveStart.getMonth() + 1, effectiveStart.getFullYear());
-              employeeCost = dailyRate * empWorkingDays;
-              console.log(
-                `Employee ${employee.firstName} ${employee.lastName} (${
-                  employee.category
-                }): Monthly salary ${monthlySalary}, Daily rate ${dailyRate.toFixed(
-                  2,
-                )}, Working days ${empWorkingDays}, Total cost ${employeeCost.toFixed(2)}`,
-              );
-            }
-
-            totalLaborCost += employeeCost;
-          }
-        }
+      let totalLaborCost = laborPayrollData.reduce(
+        (sum, e) => sum + parseFloat(String(e.totalAmount || "0")),
+        0,
+      );
+      // Subtract reimbursement additions that are already included in payroll totalAmount
+      const payrollEntryIds = laborPayrollData.map(e => e.id);
+      if (payrollEntryIds.length > 0) {
+        const reimbAdditions = await db
+          .select({ amount: payrollAdditions.amount })
+          .from(payrollAdditions)
+          .where(
+            and(
+              inArray(payrollAdditions.payrollEntryId, payrollEntryIds),
+              like(payrollAdditions.description, "Reimbursement:%"),
+            ),
+          );
+        const reimbInPayroll = reimbAdditions.reduce(
+          (sum, a) => sum + parseFloat(String(a.amount || "0")),
+          0,
+        );
+        totalLaborCost -= reimbInPayroll;
       }
+      console.log(`Project ${projectId}: labor cost from payroll (net of reimbursements) = ${totalLaborCost.toFixed(2)}`);
 
       // Calculate inventory/consumables costs
       let totalInventoryCost = 0;
@@ -3120,7 +3092,12 @@ export class Storage {
             inventoryItems,
             eq(projectConsumableItems.inventoryItemId, inventoryItems.id),
           )
-          .where(eq(projectConsumableItems.consumableId, record.id));
+          .where(
+            and(
+              eq(projectConsumableItems.consumableId, record.id),
+              isNotNull(projectConsumableItems.inventoryItemId),
+            ),
+          );
 
         for (const item of items) {
           if (item.unitCost) {
@@ -3155,13 +3132,54 @@ export class Storage {
         `Total asset rental cost: ${totalAssetRentalCost.toFixed(2)}`,
       );
 
+      // Purchase invoice line item costs (approved invoices allocated to this project)
+      let totalPurchaseInvoiceCost = 0;
+      const purchaseLineItems = await db
+        .select({
+          lineTotal: purchaseInvoiceItems.lineTotal,
+          exchangeRate: purchaseInvoices.exchangeRate,
+        })
+        .from(purchaseInvoiceItems)
+        .innerJoin(purchaseInvoices, eq(purchaseInvoiceItems.invoiceId, purchaseInvoices.id))
+        .where(
+          and(
+            eq(purchaseInvoiceItems.projectId, projectId),
+            inArray(purchaseInvoices.status, ["approved", "partially_paid", "paid"]),
+          ),
+        );
+      for (const item of purchaseLineItems) {
+        totalPurchaseInvoiceCost +=
+          parseFloat(item.lineTotal) * parseFloat(item.exchangeRate || "1");
+      }
+
+      // Approved reimbursements linked to this project
+      let totalReimbursementCost = 0;
+      const projectReimbursements = await db
+        .select({ amount: reimbursements.amount })
+        .from(reimbursements)
+        .where(
+          and(
+            eq(reimbursements.projectId, projectId),
+            eq(reimbursements.status, "approved"),
+          ),
+        );
+      for (const reimb of projectReimbursements) {
+        totalReimbursementCost += parseFloat(String(reimb.amount || "0"));
+      }
+
       const totalProjectCost =
-        totalLaborCost + totalInventoryCost + totalAssetRentalCost;
+        totalLaborCost +
+        totalInventoryCost +
+        totalAssetRentalCost +
+        totalPurchaseInvoiceCost +
+        totalReimbursementCost;
 
       console.log(`Project ${projectId} cost breakdown:`);
-      console.log(`- Labor cost: ${totalLaborCost.toFixed(2)}`);
+      console.log(`- Labor cost (payroll): ${totalLaborCost.toFixed(2)}`);
       console.log(`- Inventory cost: ${totalInventoryCost.toFixed(2)}`);
       console.log(`- Asset rental cost: ${totalAssetRentalCost.toFixed(2)}`);
+      console.log(`- Purchase invoice cost: ${totalPurchaseInvoiceCost.toFixed(2)}`);
+      console.log(`- Reimbursement cost: ${totalReimbursementCost.toFixed(2)}`);
       console.log(`- Total cost: ${totalProjectCost.toFixed(2)}`);
 
       // Update project actual cost with proper formatting
@@ -4824,6 +4842,8 @@ export class Storage {
           quantity: purchaseInvoiceItems.quantity,
           unitPrice: purchaseInvoiceItems.unitPrice,
           taxAmount: purchaseInvoiceItems.taxAmount,
+          lineTotal: purchaseInvoiceItems.lineTotal,
+          exchangeRate: purchaseInvoices.exchangeRate,
           supplierName: suppliers.name,
           invoiceNumber: purchaseInvoices.invoiceNumber,
           invoiceDate: purchaseInvoices.invoiceDate,
@@ -4837,19 +4857,18 @@ export class Storage {
         .where(
           and(
             eq(purchaseInvoiceItems.projectId, projectId),
-            eq(purchaseInvoices.status, "approved"),
+            inArray(purchaseInvoices.status, ["approved", "partially_paid", "paid"]),
           ),
         )
         .orderBy(desc(purchaseInvoices.invoiceDate));
 
       const purchaseItems = purchaseItemsData.map((item) => {
-        const quantity = parseFloat(String(item.quantity || "1"));
-        const unitPrice = parseFloat(String(item.unitPrice || "0"));
-        const taxAmount = parseFloat(String(item.taxAmount || "0"));
-        const totalAmount = quantity * unitPrice + taxAmount;
+        const lineTotal = parseFloat(String(item.lineTotal || "0"));
+        const exRate = parseFloat(String(item.exchangeRate || "1"));
+        const totalAmountAED = lineTotal * exRate;
         return {
           description: item.description || "Unknown item",
-          amount: totalAmount.toFixed(2),
+          amount: totalAmountAED.toFixed(2),
           supplierName: item.supplierName,
           invoiceNumber: item.invoiceNumber,
           date: item.invoiceDate ? String(item.invoiceDate) : null,
@@ -4887,6 +4906,121 @@ export class Storage {
           : null,
       }));
 
+      // Labor cost breakdown from approved/paid payroll entries
+      const laborPayrollRows = await db
+        .select({
+          id: payrollEntries.id,
+          totalAmount: payrollEntries.totalAmount,
+          basicSalary: payrollEntries.basicSalary,
+          month: payrollEntries.month,
+          year: payrollEntries.year,
+          workingDays: payrollEntries.workingDays,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+        })
+        .from(payrollEntries)
+        .leftJoin(employees, eq(payrollEntries.employeeId, employees.id))
+        .where(
+          and(
+            eq(payrollEntries.projectId, projectId),
+            inArray(payrollEntries.status, ["approved", "paid"]),
+          ),
+        )
+        .orderBy(desc(payrollEntries.year), desc(payrollEntries.month));
+
+      // Subtract reimbursement additions baked into each payroll entry's totalAmount
+      const laborPayrollEntryIds = laborPayrollRows.map(r => r.id).filter(Boolean);
+      let reimbByEntryId: Record<number, number> = {};
+      if (laborPayrollEntryIds.length > 0) {
+        const reimbAdditionRows = await db
+          .select({
+            payrollEntryId: payrollAdditions.payrollEntryId,
+            amount: payrollAdditions.amount,
+          })
+          .from(payrollAdditions)
+          .where(
+            and(
+              inArray(payrollAdditions.payrollEntryId, laborPayrollEntryIds),
+              like(payrollAdditions.description, "Reimbursement:%"),
+            ),
+          );
+        for (const r of reimbAdditionRows) {
+          const eid = r.payrollEntryId!;
+          reimbByEntryId[eid] = (reimbByEntryId[eid] || 0) + parseFloat(String(r.amount || "0"));
+        }
+      }
+
+      const laborItems: { name: string; month: number; year: number; workingDays: number; amount: string }[] = laborPayrollRows.map(row => {
+        const entryId = row.id;
+        const netAmount = parseFloat(String(row.totalAmount || "0")) - (reimbByEntryId[entryId] || 0);
+        return {
+          name: row.firstName && row.lastName ? `${row.firstName} ${row.lastName}` : "Employee",
+          month: row.month,
+          year: row.year,
+          workingDays: row.workingDays,
+          amount: Math.max(0, netAmount).toFixed(2),
+        };
+      });
+      let totalLaborCost = laborItems.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+
+      // Consumables breakdown
+      const consumableItems: { name: string; quantity: number; unitCost: string; amount: string; date: string | null }[] = [];
+      let totalConsumablesCost = 0;
+      const consumableRecords = await db
+        .select()
+        .from(projectConsumables)
+        .where(eq(projectConsumables.projectId, projectId));
+      for (const record of consumableRecords) {
+        const cItems = await db
+          .select({
+            quantity: projectConsumableItems.quantity,
+            unitCost: projectConsumableItems.unitCost,
+            itemName: inventoryItems.name,
+          })
+          .from(projectConsumableItems)
+          .leftJoin(inventoryItems, eq(projectConsumableItems.inventoryItemId, inventoryItems.id))
+          .where(
+            and(
+              eq(projectConsumableItems.consumableId, record.id),
+              isNotNull(projectConsumableItems.inventoryItemId),
+            ),
+          );
+        for (const ci of cItems) {
+          if (ci.unitCost) {
+            const unitCost = parseFloat(ci.unitCost);
+            const amount = unitCost * ci.quantity;
+            totalConsumablesCost += amount;
+            consumableItems.push({
+              name: ci.itemName || "Unknown item",
+              quantity: ci.quantity,
+              unitCost: unitCost.toFixed(2),
+              amount: amount.toFixed(2),
+              date: record.date ? String(record.date) : null,
+            });
+          }
+        }
+      }
+
+      // Asset rental breakdown
+      const assetRentalItems: { name: string; startDate: string; endDate: string; monthlyRate: string; amount: string }[] = [];
+      let totalAssetRentalCost = 0;
+      const assetAssignments = await this.getProjectAssetInstanceAssignments(projectId);
+      for (const assignment of assetAssignments) {
+        const rentalCost = await this.calculateAssetRentalCost(
+          new Date(assignment.startDate),
+          new Date(assignment.endDate),
+          assignment.monthlyRate,
+        );
+        totalAssetRentalCost += rentalCost;
+        assetRentalItems.push({
+          name: (assignment as any).assetName || `Asset #${assignment.instanceId}`,
+          startDate: String(assignment.startDate),
+          endDate: String(assignment.endDate),
+          monthlyRate: String(assignment.monthlyRate || "0"),
+          amount: rentalCost.toFixed(2),
+        });
+      }
+
       // Calculate totals
       const purchaseTotal = purchaseItems.reduce(
         (sum, item) => sum + parseFloat(item.amount),
@@ -4918,8 +5052,14 @@ export class Storage {
         expenses: {
           purchaseItems,
           reimbursements: reimbursementItems,
+          laborItems,
+          consumableItems,
+          assetRentalItems,
           purchaseTotal: purchaseTotal.toFixed(2),
           reimbursementTotal: reimbursementTotal.toFixed(2),
+          laborTotal: totalLaborCost.toFixed(2),
+          consumablesTotal: totalConsumablesCost.toFixed(2),
+          assetRentalTotal: totalAssetRentalCost.toFixed(2),
         },
       };
     } catch (error: any) {
@@ -6264,6 +6404,96 @@ export class Storage {
     }
   }
 
+  async getProfitLossEntries(filters: {
+    startDate?: string;
+    endDate?: string;
+    projectId?: number;
+  }): Promise<{
+    entries: {
+      id: number;
+      entryType: string;
+      referenceType: string;
+      referenceId: number | null;
+      accountName: string;
+      accountType: string;
+      accountCategory: string;
+      description: string;
+      debitAmount: string;
+      creditAmount: string;
+      entityId: number | null;
+      entityName: string | null;
+      projectId: number | null;
+      projectTitle: string | null;
+      invoiceNumber: string | null;
+      transactionDate: string;
+      status: string;
+      notes: string | null;
+    }[];
+  }> {
+    try {
+      const conditions: string[] = [
+        `coa.account_type IN ('revenue', 'expense')`,
+      ];
+      const params: (string | number)[] = [];
+      let paramIdx = 1;
+
+      if (filters.startDate) {
+        conditions.push(`gle.transaction_date >= $${paramIdx++}`);
+        params.push(filters.startDate);
+      }
+      if (filters.endDate) {
+        conditions.push(`gle.transaction_date <= $${paramIdx++}`);
+        params.push(filters.endDate);
+      }
+      if (filters.projectId) {
+        conditions.push(`gle.project_id = $${paramIdx++}`);
+        params.push(filters.projectId);
+      }
+
+      const whereClause = conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+      const query = `
+        SELECT
+          gle.id,
+          gle.entry_type       AS "entryType",
+          gle.reference_type   AS "referenceType",
+          gle.reference_id     AS "referenceId",
+          gle.account_name     AS "accountName",
+          coa.account_type     AS "accountType",
+          coa.account_category AS "accountCategory",
+          gle.description,
+          gle.debit_amount     AS "debitAmount",
+          gle.credit_amount    AS "creditAmount",
+          gle.entity_id        AS "entityId",
+          gle.entity_name      AS "entityName",
+          gle.project_id       AS "projectId",
+          p.title              AS "projectTitle",
+          gle.invoice_number   AS "invoiceNumber",
+          gle.transaction_date AS "transactionDate",
+          gle.status,
+          gle.notes
+        FROM general_ledger_entries gle
+        JOIN chart_of_accounts coa
+          ON LOWER(TRIM(gle.account_name)) = LOWER(TRIM(coa.account_name))
+        LEFT JOIN projects p ON gle.project_id = p.id
+        ${whereClause}
+        ORDER BY gle.transaction_date DESC, gle.created_at DESC
+      `;
+
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const result = await pool.query(query, params);
+      await pool.end();
+
+      return { entries: result.rows };
+    } catch (error: any) {
+      console.error("Error in getProfitLossEntries:", error?.message);
+      throw error;
+    }
+  }
+
   async createGeneralLedgerEntry(entryData: {
     entryType: string;
     referenceType: string;
@@ -6354,18 +6584,9 @@ export class Storage {
         } ${debitAmount > 0 ? debitAmount.toFixed(2) : creditAmount.toFixed(2)}`,
       );
 
-      // If this is a payable entry linked to a project, add to project costs
+      // If this is a payable entry linked to a project, trigger full cost recalculation
       if (entryData.entryType === "payable" && entryData.projectId) {
-        const project = await this.getProject(entryData.projectId);
-        if (project) {
-          const currentCost = parseFloat(project.actualCost || "0");
-          const additionalCost = parseFloat(entryData.creditAmount || "0");
-          const newCost = currentCost + additionalCost;
-
-          await this.updateProject(entryData.projectId, {
-            actualCost: newCost.toFixed(2),
-          });
-        }
+        await this.recalculateProjectCost(entryData.projectId);
       }
 
       return result[0];
@@ -7138,42 +7359,30 @@ export class Storage {
   // Goods Receipt methods
   async getGoodsReceipts(): Promise<GoodsReceiptDetails[]> {
     try {
-      const flatTransactions: Array<{
-        transactionId: number;
-        reference: string | null;
-        timestamp: Date;
-        createdByName: string | null;
-        inventoryItemName: string | null;
-        quantity: number;
-        unit: string | null;
-        unitCost: string | null; // Assuming unitCost from inventory_transactions is string or can be converted
-      }> = await db
+      const flatTransactions = await db
         .select({
           transactionId: inventoryTransactions.id,
           reference: inventoryTransactions.reference,
           timestamp: inventoryTransactions.timestamp,
-          // projectId: inventoryTransactions.projectId, // Not in original SQL group by or select
-          // projectTitle: projects.title, // Not in original SQL group by or select
           createdById: inventoryTransactions.createdBy,
           createdByName: users.username,
           inventoryItemId: inventoryItems.id,
           inventoryItemName: inventoryItems.name,
           quantity: inventoryTransactions.quantity,
           unit: inventoryItems.unit,
-          unitCost: inventoryTransactions.unitCost, // unit_cost is from inventory_transactions
+          unitCost: inventoryTransactions.unitCost,
+          supplierName: suppliers.name,
         })
         .from(inventoryTransactions)
-        // .leftJoin(projects, eq(inventoryTransactions.projectId, projects.id)) // Not in original
         .leftJoin(users, eq(inventoryTransactions.createdBy, users.id))
-        .leftJoin(
-          inventoryItems,
-          eq(inventoryTransactions.itemId, inventoryItems.id),
-        )
+        .leftJoin(inventoryItems, eq(inventoryTransactions.itemId, inventoryItems.id))
+        .leftJoin(purchaseInvoices, sql`${inventoryTransactions.reference} = 'PI-' || ${purchaseInvoices.invoiceNumber}`)
+        .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(eq(inventoryTransactions.type, "inflow"))
         .orderBy(
-          inventoryTransactions.reference, // Order to help with grouping
-          users.username, // Order to help with grouping
-          inventoryTransactions.id, // Mimics ORDER BY it.id for items array
+          inventoryTransactions.reference,
+          users.username,
+          inventoryTransactions.id,
         );
 
       if (flatTransactions.length === 0) {
@@ -7192,9 +7401,10 @@ export class Storage {
             id: t.transactionId,
             reference: t.reference,
             timestamp: t.timestamp,
-            projectId: null, // As per original SQL
-            projectTitle: null, // As per original SQL
+            projectId: null,
+            projectTitle: null,
             createdByName: t.createdByName,
+            supplierName: (t as any).supplierName || null,
             items: [],
           });
         }
@@ -10418,24 +10628,6 @@ export class Storage {
         const lineAmountInCurrency = parseFloat(item.lineTotal);
         const lineAmountAED = lineAmountInCurrency * exchangeRateForAllocations;
 
-        // If line item is linked to a project, add line item amount (in AED) to project's actual cost
-        if (item.projectId) {
-          const [project] = await db
-            .select()
-            .from(projects)
-            .where(eq(projects.id, item.projectId));
-
-          if (project) {
-            const currentCost = parseFloat(project.actualCost || "0");
-            const newCost = currentCost + lineAmountAED;
-
-            await db
-              .update(projects)
-              .set({ actualCost: newCost.toFixed(2) })
-              .where(eq(projects.id, item.projectId));
-          }
-        }
-
         // If line item is linked to an asset instance, create a maintenance record (in AED)
         if (item.assetInstanceId) {
           await db.insert(assetInventoryMaintenanceRecords).values({
@@ -10448,6 +10640,12 @@ export class Storage {
             performedBy: userId,
           });
         }
+      }
+
+      // Trigger full cost recalculation for all projects affected by this invoice's line items
+      const affectedProjectIds = [...new Set(items.filter(i => i.projectId).map(i => i.projectId as number))];
+      for (const pid of affectedProjectIds) {
+        await this.recalculateProjectCost(pid);
       }
 
       // Create Goods Receipt for inventory items in the purchase invoice
@@ -10580,22 +10778,6 @@ export class Storage {
       const cancelExchangeRate = parseFloat(invoice.exchangeRate || "1");
       for (const item of items) {
         const lineAmountAED = parseFloat(item.lineTotal) * cancelExchangeRate;
-        if (item.projectId) {
-          const [project] = await db
-            .select()
-            .from(projects)
-            .where(eq(projects.id, item.projectId));
-          if (project) {
-            const newCost = Math.max(
-              0,
-              parseFloat(project.actualCost || "0") - lineAmountAED,
-            );
-            await db
-              .update(projects)
-              .set({ actualCost: newCost.toFixed(2) })
-              .where(eq(projects.id, item.projectId));
-          }
-        }
 
         // Reverse asset maintenance records created during approval
         if (item.assetInstanceId) {
@@ -10618,6 +10800,12 @@ export class Storage {
               .where(eq(assetInventoryMaintenanceRecords.id, record.id));
           }
         }
+      }
+
+      // Trigger full cost recalculation for all projects affected by this invoice's line items
+      const cancelAffectedProjectIds = [...new Set(items.filter(i => i.projectId).map(i => i.projectId as number))];
+      for (const pid of cancelAffectedProjectIds) {
+        await this.recalculateProjectCost(pid);
       }
 
       // Reverse inventory stock for product items (goods issue)
@@ -11015,6 +11203,7 @@ export class Storage {
             createdBy: projectConsumables.recordedBy,
             createdAt: projectConsumables.recordedAt,
             createdByName: users.username,
+            goodsIssueRef: (projectConsumables as any).goodsIssueRef,
           })
           .from(projectConsumables)
           .leftJoin(users, eq(projectConsumables.recordedBy, users.id))
@@ -11143,7 +11332,8 @@ export class Storage {
             projectId: projectId,
             reference: `Project Consumables - ${date}`,
             createdBy: userId || null,
-          });
+            consumableId: consumable.id,
+          } as any);
 
           console.log(
             `Updated inventory item ${item.inventoryItemId} stock from ${inventoryItem.currentStock} to ${newStock}`,
@@ -11185,6 +11375,41 @@ export class Storage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createProjectConsumables",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createConsumablesGoodsIssue(
+    projectId: number,
+    consumableIds: number[],
+    userId?: number,
+  ): Promise<{ goodsIssueRef: string; updatedCount: number }> {
+    try {
+      const timestamp = Date.now();
+      const goodsIssueRef = `GI-CONS-${timestamp}`;
+
+      // Update inventory_transactions reference for all transactions linked to these consumable records
+      for (const consumableId of consumableIds) {
+        await db
+          .update(inventoryTransactions)
+          .set({ reference: goodsIssueRef } as any)
+          .where(eq((inventoryTransactions as any).consumableId, consumableId));
+
+        // Mark the consumable record as issued
+        await db
+          .update(projectConsumables)
+          .set({ goodsIssueRef } as any)
+          .where(eq(projectConsumables.id, consumableId));
+      }
+
+      return { goodsIssueRef, updatedCount: consumableIds.length };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: "Error in createConsumablesGoodsIssue: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createConsumablesGoodsIssue",
         severity: "error",
       });
       throw error;
@@ -11512,6 +11737,7 @@ export class Storage {
             firstName: employeeData.firstName,
             lastName: employeeData.lastName,
             employeeCode: employeeData.employeeCode,
+            category: employeeData.category,
           };
         }
 
@@ -11686,6 +11912,7 @@ export class Storage {
         ) {
           // For consultants/contractors, check project assignments
           let totalEarnings = 0;
+          let totalActualWorkingDays = 0;
           basicSalary = "0";
 
           // Query assignments for this employee
@@ -11727,6 +11954,7 @@ export class Storage {
 
               if (earnings > 0) {
                 totalEarnings += earnings;
+                totalActualWorkingDays += projectWorkingDays;
                 projectEarningsList.push({
                   projectId: assignment.projectId,
                   title: assignment.projectTitle || "Unknown Project",
@@ -11738,10 +11966,21 @@ export class Storage {
           }
 
           consultantFee = totalEarnings;
+          // Store actual working days (not calendar days) for contract/consultant employees
+          workingDays = totalActualWorkingDays;
         }
 
         // Calculate deductions (5% TDS)
         const calculatedTotalEarnings = parseFloat(basicSalary) + consultantFee;
+
+        // Skip employees with zero total earnings (e.g. consultants with no active project assignments)
+        if (calculatedTotalEarnings === 0) {
+          console.log(
+            `Skipping payroll for ${logFirstName} ${logLastName} (${employee.category}) — zero earnings for ${this.getMonthName(month)} ${year}`,
+          );
+          continue;
+        }
+
         const tdsAmount = calculatedTotalEarnings * 0.05;
         const netAmount = calculatedTotalEarnings - tdsAmount;
 
@@ -12769,25 +13008,9 @@ export class Storage {
         payrollYear = nextMonth.getFullYear();
       }
 
-      // If a project is selected, add the reimbursement amount to the project's actual cost
+      // If a project is selected, trigger full cost recalculation (includes reimbursements)
       if (reimbursement.projectId) {
-        const project = await this.getProject(reimbursement.projectId);
-        if (project) {
-          const currentActualCost = parseFloat(
-            String(project.actualCost || "0"),
-          );
-          const reimbursementAmount = parseFloat(
-            String(reimbursement.amount || "0"),
-          );
-          const newActualCost = (
-            currentActualCost + reimbursementAmount
-          ).toFixed(2);
-
-          await db
-            .update(projects)
-            .set({ actualCost: newActualCost })
-            .where(eq(projects.id, reimbursement.projectId));
-        }
+        await this.recalculateProjectCost(reimbursement.projectId);
       }
 
       const [result] = await db
@@ -14519,6 +14742,11 @@ export interface IStorage {
     items: CreateProjectConsumableItemInput[],
     userId?: number,
   ): Promise<CreatedProjectConsumable>;
+  createConsumablesGoodsIssue(
+    projectId: number,
+    consumableIds: number[],
+    userId?: number,
+  ): Promise<{ goodsIssueRef: string; updatedCount: number }>;
 
   // Payroll methods
   getPayrollEntries(

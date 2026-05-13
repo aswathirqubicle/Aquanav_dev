@@ -36,6 +36,7 @@ interface PayrollEntry {
     firstName: string;
     lastName: string;
     employeeCode: string;
+    category?: string;
   };
 }
 
@@ -250,8 +251,13 @@ function PrintPayslipBtn({ entry, company }: { entry: PayrollEntry; company?: Co
                           </div>
                           <div class="info-row">
                             <span class="info-label">Calendar Days:</span>
-                            <span class="info-value">${entry.workingDays}</span>
+                            <span class="info-value">${new Date(entry.year, entry.month, 0).getDate()}</span>
                           </div>
+                          ${['contract','consultant'].includes(entry.employee?.category || '') ? `
+                          <div class="info-row">
+                            <span class="info-label">Working Days:</span>
+                            <span class="info-value">${entry.workingDays}</span>
+                          </div>` : ''}
                           <div class="info-row">
                             <span class="info-label">Generated Date:</span>
                             <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
@@ -375,8 +381,14 @@ function PayslipViewDialog({
             </div>
             <div>
               <p className="text-slate-500 dark:text-slate-400">Calendar Days</p>
-              <p className="font-medium">{entry.workingDays}</p>
+              <p className="font-medium">{new Date(entry.year, entry.month, 0).getDate()}</p>
             </div>
+            {['contract','consultant'].includes(entry.employee?.category || '') && (
+              <div>
+                <p className="text-slate-500 dark:text-slate-400">Working Days</p>
+                <p className="font-medium">{entry.workingDays}</p>
+              </div>
+            )}
             <div>
               <p className="text-slate-500 dark:text-slate-400">Generated Date</p>
               <p className="font-medium">{new Date(entry.generatedDate).toLocaleDateString()}</p>

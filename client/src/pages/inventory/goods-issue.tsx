@@ -30,6 +30,8 @@ import {
   ArrowUpRight,
   Trash2,
   AlertTriangle,
+  Filter,
+  X,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { z } from "zod";
@@ -89,7 +91,11 @@ export default function GoodsIssue() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterItem, setFilterItem] = useState("all");
+  const [filterProject, setFilterProject] = useState("all");
 
   const [formData, setFormData] = useState({
     reference: "",
@@ -262,6 +268,50 @@ export default function GoodsIssue() {
     return new Date(date).toLocaleDateString();
   };
 
+  const uniqueProjects = Array.from(
+    new Map(
+      (issuesData || [])
+        .filter((i) => i.projectTitle)
+        .map((i) => [i.projectTitle, i.projectTitle])
+    ).values()
+  ).sort();
+
+  const filteredIssues = (issuesData || []).filter((issue) => {
+    if (filterDateFrom) {
+      const txDate = new Date(issue.timestamp);
+      txDate.setHours(0, 0, 0, 0);
+      const from = new Date(filterDateFrom);
+      if (txDate < from) return false;
+    }
+    if (filterDateTo) {
+      const txDate = new Date(issue.timestamp);
+      txDate.setHours(23, 59, 59, 999);
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (txDate > to) return false;
+    }
+    if (filterItem && filterItem !== "all") {
+      const hasItem = issue.items.some((i) =>
+        i.inventoryItemName.toLowerCase().includes(filterItem.toLowerCase())
+      );
+      if (!hasItem) return false;
+    }
+    if (filterProject && filterProject !== "all") {
+      if (issue.projectTitle !== filterProject) return false;
+    }
+    return true;
+  });
+
+  const hasActiveFilters = filterDateFrom || filterDateTo || (filterItem && filterItem !== "all") || (filterProject && filterProject !== "all");
+
+  const clearFilters = () => {
+    setFilterDateFrom("");
+    setFilterDateTo("");
+    setFilterItem("all");
+    setFilterProject("all");
+    setCurrentPage(1);
+  };
+
   if (
     !isAuthenticated ||
     (user?.role !== "admin" &&
@@ -271,12 +321,12 @@ export default function GoodsIssue() {
     return null;
   }
 
-  const paginatedData = issuesData?.slice(
+  const paginatedData = filteredIssues.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  const totalPages = issuesData ? Math.ceil(issuesData.length / itemsPerPage) : 0;
+  const totalPages = Math.ceil(filteredIssues.length / itemsPerPage);
 
   return (
     <div className="p-6">
@@ -449,6 +499,77 @@ export default function GoodsIssue() {
             </form>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 shrink-0">
+            <Filter className="h-4 w-4" />
+            Filters
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500 dark:text-slate-400">From Date</label>
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => { setFilterDateFrom(e.target.value); setCurrentPage(1); }}
+              className="h-9 w-40 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-slate-500 dark:text-slate-400">To Date</label>
+            <Input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => { setFilterDateTo(e.target.value); setCurrentPage(1); }}
+              className="h-9 w-40 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs text-slate-500 dark:text-slate-400">Item</label>
+            <Select value={filterItem} onValueChange={(v) => { setFilterItem(v); setCurrentPage(1); }}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="All items" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All items</SelectItem>
+                {inventoryItems?.map((item) => (
+                  <SelectItem key={item.id} value={item.name}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-xs text-slate-500 dark:text-slate-400">Project</label>
+            <Select value={filterProject} onValueChange={(v) => { setFilterProject(v); setCurrentPage(1); }}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="All projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                {uniqueProjects.map((name) => (
+                  <SelectItem key={name as string} value={name as string}>
+                    {name as string}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
+          {hasActiveFilters && (
+            <span className="text-xs text-slate-500 dark:text-slate-400 self-end pb-2">
+              {filteredIssues.length} of {issuesData?.length || 0} records
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Issues List */}
@@ -644,16 +765,33 @@ export default function GoodsIssue() {
         <Card>
           <CardContent className="text-center py-12">
             <Package className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
-              No goods issues found
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 mb-6">
-              Start by creating your first goods issue
-            </p>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create First Issue
-            </Button>
+            {hasActiveFilters ? (
+              <>
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                  No issues match your filters
+                </h3>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  Try adjusting the date range or item selection
+                </p>
+                <Button variant="outline" onClick={clearFilters}>
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                  No goods issues found
+                </h3>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  Start by creating your first goods issue
+                </p>
+                <Button onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Issue
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}

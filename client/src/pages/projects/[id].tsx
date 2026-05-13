@@ -33,7 +33,11 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  Clock
+  Clock,
+  RefreshCw,
+  ClipboardCheck,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
 import { Autocomplete } from "@/components/ui/autocomplete";
@@ -135,149 +139,219 @@ function ExpenseDetailsDialog({
   expenses: {
     purchaseItems: any[];
     reimbursements: any[];
+    laborItems: any[];
+    consumableItems: any[];
+    assetRentalItems: any[];
     purchaseTotal: string;
     reimbursementTotal: string;
+    laborTotal: string;
+    consumablesTotal: string;
+    assetRentalTotal: string;
   };
   formatCurrency: (amount: string | number) => string;
 }) {
-  const [purchasePage, setPurchasePage] = useState(1);
-  const [reimbursementPage, setReimbursementPage] = useState(1);
+  const laborItems = expenses.laborItems || [];
+  const consumableItems = expenses.consumableItems || [];
+  const assetRentalItems = expenses.assetRentalItems || [];
 
-  const purchaseTotalPages = Math.ceil(expenses.purchaseItems.length / ITEMS_PER_PAGE);
-  const reimbursementTotalPages = Math.ceil(expenses.reimbursements.length / ITEMS_PER_PAGE);
+  const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  const purchaseStartIndex = (purchasePage - 1) * ITEMS_PER_PAGE;
-  const reimbursementStartIndex = (reimbursementPage - 1) * ITEMS_PER_PAGE;
+  const categories = [
+    { key: "labor", label: "Labor", items: laborItems, total: parseFloat(expenses.laborTotal || "0"), color: "bg-blue-500", textColor: "text-blue-600 dark:text-blue-400", badgeColor: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+    { key: "consumables", label: "Consumables", items: consumableItems, total: parseFloat(expenses.consumablesTotal || "0"), color: "bg-amber-400", textColor: "text-amber-600 dark:text-amber-400", badgeColor: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+    { key: "assets", label: "Asset Rental", items: assetRentalItems, total: parseFloat(expenses.assetRentalTotal || "0"), color: "bg-purple-500", textColor: "text-purple-600 dark:text-purple-400", badgeColor: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" },
+    { key: "purchases", label: "Purchases", items: expenses.purchaseItems, total: parseFloat(expenses.purchaseTotal || "0"), color: "bg-rose-500", textColor: "text-rose-600 dark:text-rose-400", badgeColor: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+    { key: "reimbursements", label: "Reimbursements", items: expenses.reimbursements, total: parseFloat(expenses.reimbursementTotal || "0"), color: "bg-orange-400", textColor: "text-orange-600 dark:text-orange-400", badgeColor: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" },
+  ].filter(c => c.total > 0);
 
-  const paginatedPurchases = expenses.purchaseItems.slice(purchaseStartIndex, purchaseStartIndex + ITEMS_PER_PAGE);
-  const paginatedReimbursements = expenses.reimbursements.slice(reimbursementStartIndex, reimbursementStartIndex + ITEMS_PER_PAGE);
+  const grandTotal = categories.reduce((sum, c) => sum + c.total, 0);
+  const defaultTab = categories[0]?.key || "labor";
 
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-xs">
+        <Button variant="ghost" size="sm" className="text-xs h-7 px-2">
           <Eye className="h-3 w-3 mr-1" />
           Details
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Cost Details - Expenses</DialogTitle>
-          <DialogDescription>
-            Breakdown of all expenses for this project
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 mt-4">
-          <div className="grid grid-cols-2 gap-4 border-b pb-3">
-            <div>
-              <p className="text-xs text-slate-500">Purchase Items</p>
-              <p className="font-bold text-red-600 dark:text-red-400">
-                {formatCurrency(expenses.purchaseTotal)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500">Reimbursements</p>
-              <p className="font-bold text-orange-600 dark:text-orange-400">
-                {formatCurrency(expenses.reimbursementTotal)}
-              </p>
-            </div>
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <DialogTitle className="text-base font-semibold">Cost Breakdown</DialogTitle>
+          <DialogDescription className="sr-only">Breakdown of all project cost components</DialogDescription>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Total Project Cost</span>
+            <span className="text-xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(grandTotal.toFixed(2))}</span>
           </div>
-          {expenses.purchaseItems.length > 0 && (
-            <div>
-              <p className="text-sm font-medium mb-2">Purchase Items ({expenses.purchaseItems.length})</p>
-              <div className="space-y-2">
-                {paginatedPurchases.map((item: any, index: number) => (
-                  <div key={`purchase-${purchaseStartIndex + index}`} className="text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded">
-                    <div className="flex justify-between">
-                      <span className="font-medium truncate max-w-[60%]">{item.description}</span>
-                      <span className="font-bold text-red-600 dark:text-red-400">
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                    <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
-                      <span>{item.supplierName || 'Unknown supplier'}</span>
-                      {item.date && <span>{new Date(item.date).toLocaleDateString()}</span>}
-                    </div>
-                    {item.invoiceNumber && (
-                      <div className="text-xs text-slate-400 mt-1">Invoice: {item.invoiceNumber}</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {purchaseTotalPages > 1 && (
-                <div className="flex items-center justify-between pt-2 mt-2">
-                  <span className="text-xs text-slate-500">
-                    Page {purchasePage} of {purchaseTotalPages}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPurchasePage(p => Math.max(1, p - 1))}
-                      disabled={purchasePage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPurchasePage(p => Math.min(purchaseTotalPages, p + 1))}
-                      disabled={purchasePage === purchaseTotalPages}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+          {/* Proportional stacked bar */}
+          {grandTotal > 0 && (
+            <div className="mt-3 flex h-2 rounded-full overflow-hidden gap-px">
+              {categories.map(c => (
+                <div
+                  key={c.key}
+                  className={`${c.color} transition-all`}
+                  style={{ width: `${(c.total / grandTotal) * 100}%` }}
+                  title={`${c.label}: ${((c.total / grandTotal) * 100).toFixed(1)}%`}
+                />
+              ))}
             </div>
           )}
-          {expenses.reimbursements.length > 0 && (
-            <div>
-              <p className="text-sm font-medium mb-2">Reimbursements ({expenses.reimbursements.length})</p>
-              <div className="space-y-2">
-                {paginatedReimbursements.map((item: any, index: number) => (
-                  <div key={`reimb-${reimbursementStartIndex + index}`} className="text-sm bg-orange-50 dark:bg-orange-900/20 p-3 rounded">
-                    <div className="flex justify-between">
-                      <span className="font-medium truncate max-w-[60%]">{item.description}</span>
-                      <span className="font-bold text-orange-600 dark:text-orange-400">
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                    <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
-                      <span>{item.employeeName || 'Employee'}</span>
-                      {item.date && <span>{new Date(item.date).toLocaleDateString()}</span>}
-                    </div>
-                  </div>
-                ))}
+          {/* Legend */}
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            {categories.map(c => (
+              <div key={c.key} className="flex items-center gap-1">
+                <span className={`inline-block w-2 h-2 rounded-full ${c.color}`} />
+                <span className="text-xs text-slate-500 dark:text-slate-400">{c.label}</span>
+                <span className={`text-xs font-medium ${c.textColor}`}>{((c.total / grandTotal) * 100).toFixed(0)}%</span>
               </div>
-              {reimbursementTotalPages > 1 && (
-                <div className="flex items-center justify-between pt-2 mt-2">
-                  <span className="text-xs text-slate-500">
-                    Page {reimbursementPage} of {reimbursementTotalPages}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setReimbursementPage(p => Math.max(1, p - 1))}
-                      disabled={reimbursementPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setReimbursementPage(p => Math.min(reimbursementTotalPages, p + 1))}
-                      disabled={reimbursementPage === reimbursementTotalPages}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            ))}
+          </div>
         </div>
+
+        {/* Tabs */}
+        <Tabs defaultValue={defaultTab} className="flex flex-col flex-1 min-h-0">
+          <div className="px-5 pt-3 border-b border-slate-100 dark:border-slate-800">
+            <TabsList className="h-auto bg-transparent p-0 gap-1 flex flex-wrap">
+              {categories.map(c => (
+                <TabsTrigger
+                  key={c.key}
+                  value={c.key}
+                  className="h-8 text-xs px-3 rounded-md data-[state=active]:bg-slate-100 dark:data-[state=active]:bg-slate-800 data-[state=active]:shadow-none border-0"
+                >
+                  {c.label}
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${c.badgeColor}`}>
+                    {c.items.length}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {/* Labor Tab */}
+            {categories.find(c => c.key === "labor") && (
+              <TabsContent value="labor" className="m-0 p-5 space-y-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{laborItems.length} payroll record{laborItems.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-bold text-blue-600 dark:text-blue-400">{formatCurrency(expenses.laborTotal)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  {laborItems.map((item: any, index: number) => (
+                    <div key={index} className={`flex items-center justify-between px-4 py-3 ${index < laborItems.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {MONTH_NAMES[(item.month ?? 1) - 1]} {item.year}
+                          {item.workingDays != null && <span className="ml-2">{item.workingDays} working day{item.workingDays !== 1 ? "s" : ""}</span>}
+                        </p>
+                      </div>
+                      <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Consumables Tab */}
+            {categories.find(c => c.key === "consumables") && (
+              <TabsContent value="consumables" className="m-0 p-5 space-y-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{consumableItems.length} item{consumableItems.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatCurrency(expenses.consumablesTotal)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  {consumableItems.map((item: any, index: number) => (
+                    <div key={index} className={`flex items-center justify-between px-4 py-3 ${index < consumableItems.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {item.quantity} × {formatCurrency(item.unitCost)}
+                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                        </p>
+                      </div>
+                      <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Asset Rental Tab */}
+            {categories.find(c => c.key === "assets") && (
+              <TabsContent value="assets" className="m-0 p-5 space-y-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{assetRentalItems.length} asset{assetRentalItems.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{formatCurrency(expenses.assetRentalTotal)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  {assetRentalItems.map((item: any, index: number) => (
+                    <div key={index} className={`flex items-center justify-between px-4 py-3 ${index < assetRentalItems.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}
+                          <span className="ml-2">{formatCurrency(item.monthlyRate)}/mo</span>
+                        </p>
+                      </div>
+                      <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Purchases Tab */}
+            {categories.find(c => c.key === "purchases") && (
+              <TabsContent value="purchases" className="m-0 p-5 space-y-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{expenses.purchaseItems.length} line item{expenses.purchaseItems.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-bold text-rose-600 dark:text-rose-400">{formatCurrency(expenses.purchaseTotal)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  {expenses.purchaseItems.map((item: any, index: number) => (
+                    <div key={index} className={`flex items-center justify-between px-4 py-3 ${index < expenses.purchaseItems.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.description}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {item.supplierName || "Unknown supplier"}
+                          {item.invoiceNumber && <span className="ml-2 font-mono">#{item.invoiceNumber}</span>}
+                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                        </p>
+                      </div>
+                      <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Reimbursements Tab */}
+            {categories.find(c => c.key === "reimbursements") && (
+              <TabsContent value="reimbursements" className="m-0 p-5 space-y-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{expenses.reimbursements.length} reimbursement{expenses.reimbursements.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-bold text-orange-600 dark:text-orange-400">{formatCurrency(expenses.reimbursementTotal)}</span>
+                </div>
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
+                  {expenses.reimbursements.map((item: any, index: number) => (
+                    <div key={index} className={`flex items-center justify-between px-4 py-3 ${index < expenses.reimbursements.length - 1 ? "border-b border-slate-100 dark:border-slate-800" : ""}`}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.description}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {item.employeeName || "Employee"}
+                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                        </p>
+                      </div>
+                      <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+          </div>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
@@ -544,6 +618,8 @@ export default function ProjectDetail() {
   const [selectedImageForPreview, setSelectedImageForPreview] = useState<ProjectPhoto | null>(null);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isConsumablesDialogOpen, setIsConsumablesDialogOpen] = useState(false);
+  const [isReviewConsumablesOpen, setIsReviewConsumablesOpen] = useState(false);
+  const [selectedConsumableIds, setSelectedConsumableIds] = useState<number[]>([]);
   const [consumablesData, setConsumablesData] = useState({
     date: new Date().toISOString().split('T')[0],
   });
@@ -972,13 +1048,19 @@ export default function ProjectDetail() {
 
   const openEditActivityDialog = (activity: DailyActivity) => {
     setEditingActivityId(activity.id);
+    // Load the day-level remark: find the first non-empty remark among all
+    // activities on the same date (not just this record's own remark)
+    const activityDateStr = activity.date ? new Date(activity.date).toISOString().split('T')[0] : "";
+    const dayRemark = allActivities
+      ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === activityDateStr)
+      ?.find(a => a.remarks)?.remarks || activity.remarks || "";
     setActivityData({
-      date: activity.date ? new Date(activity.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      date: activityDateStr || new Date().toISOString().split('T')[0],
       location: activity.location || "",
       completedTasks: activity.completedTasks || "",
       plannedTasks: activity.plannedTasks || "",
       hbmDailyRunningHours: activity.hbmDailyRunningHours ? String(activity.hbmDailyRunningHours) : "",
-      remarks: activity.remarks || "",
+      remarks: dayRemark,
       photos: activity.photos || [],
     });
     setCompletedActivities([{
@@ -1046,7 +1128,9 @@ export default function ProjectDetail() {
         });
       } else {
         // Create a separate record for each completed activity
-        for (const activity of completedActivities) {
+        // Remarks are stored only on the first record (one remark per day)
+        for (let i = 0; i < completedActivities.length; i++) {
+          const activity = completedActivities[i];
           const submitData: CreateActivityData = {
             projectId: parseInt(id!),
             date: activityDate,
@@ -1054,7 +1138,7 @@ export default function ProjectDetail() {
             completedTasks: activity.tasks,
             plannedTasks: activityData.plannedTasks || "",
             hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
-            remarks: activityData.remarks || "",
+            remarks: i === 0 ? (activityData.remarks || "") : "",
             photos: [],
           };
 
@@ -1596,6 +1680,33 @@ export default function ProjectDetail() {
       toast({
         title: "Error",
         description: error.message || "Failed to record consumables usage",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createConsumablesGoodIssueMutation = useMutation({
+    mutationFn: async (consumableIds: number[]) => {
+      const response = await apiRequest(`/api/projects/${id}/consumables/goods-issue`, {
+        method: "POST",
+        body: { consumableIds },
+      });
+      return response;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "consumables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/goods-issue"] });
+      toast({
+        title: "Goods Issue Created",
+        description: `Goods Issue ${data.goodsIssueRef} has been created for ${data.updatedCount} consumable record(s).`,
+      });
+      setIsReviewConsumablesOpen(false);
+      setSelectedConsumableIds([]);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create goods issue",
         variant: "destructive",
       });
     },
@@ -2895,10 +3006,24 @@ export default function ProjectDetail() {
           {(user?.role === "admin" || user?.role === "finance") && projectRevenue && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  {/* <DollarSign className="h-5 w-5 mr-2" /> */}
-                  Revenue & Profit
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center">
+                    {/* <DollarSign className="h-5 w-5 mr-2" /> */}
+                    Revenue & Profit
+                  </CardTitle>
+                  {user?.role === "admin" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRecalculateCost}
+                      disabled={recalculateCostMutation.isPending}
+                      className="flex items-center gap-1 text-xs"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${recalculateCostMutation.isPending ? "animate-spin" : ""}`} />
+                      {recalculateCostMutation.isPending ? "Recalculating..." : "Recalculate Cost"}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -2923,7 +3048,7 @@ export default function ProjectDetail() {
                       {formatCurrency(projectRevenue.totalCost)}
                     </p>
                   </div>
-                  {projectRevenue.expenses && (parseFloat(projectRevenue.expenses.purchaseTotal) > 0 || parseFloat(projectRevenue.expenses.reimbursementTotal) > 0) && (
+                  {projectRevenue.expenses && parseFloat(projectRevenue.totalCost) > 0 && (
                     <ExpenseDetailsDialog
                       expenses={projectRevenue.expenses}
                       formatCurrency={formatCurrency}
@@ -3266,7 +3391,13 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredActivities.map((activity) => (
+                  {filteredActivities.map((activity) => {
+                    // Find the day's remark: first non-empty remark among all activities on the same date
+                    const activityDateStr = activity.date ? new Date(activity.date).toISOString().split('T')[0] : "";
+                    const dayRemark = allActivities
+                      ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === activityDateStr)
+                      ?.find(a => a.remarks)?.remarks || "";
+                    return (
                     <div key={activity.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div className="space-y-1">
@@ -3376,12 +3507,6 @@ export default function ProjectDetail() {
                       )}
 
 
-                      {activity.remarks && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Remarks</p>
-                          <p className="text-sm text-slate-600 dark:text-slate-400">{activity.remarks}</p>
-                        </div>
-                      )}
 
                       {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
                         <div className="flex flex-wrap gap-2 mt-4">
@@ -3393,8 +3518,16 @@ export default function ProjectDetail() {
                           ))}
                         </div>
                       )}
+
+                      {dayRemark && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Remarks</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400 italic">{dayRemark}</p>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -3663,23 +3796,16 @@ export default function ProjectDetail() {
                                 ))}
                               </div>
 
-                              {/* Show remarks if any activity has them */}
-                              {activities.some(activity => activity.remarks) && (
-                                <div className="mt-4 pt-3 border-t border-slate-300 dark:border-slate-600">
-                                  <h6 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">Remarks:</h6>
-                                  {activities
-                                    .filter(activity => activity.remarks)
-                                    .map((activity, index) => (
-                                      <div key={index} className="text-sm text-slate-600 dark:text-slate-400 italic mb-2 last:mb-0">
-                                        {activity.location && (
-                                          <span className="font-medium">[{activity.location}] </span>
-                                        )}
-                                        {activity.remarks}
-                                      </div>
-                                    ))
-                                  }
-                                </div>
-                              )}
+                              {/* Show one remark per day (first non-empty) */}
+                              {(() => {
+                                const dayRemark = activities.find(a => a.remarks)?.remarks;
+                                return dayRemark ? (
+                                  <div className="mt-4 pt-3 border-t border-slate-300 dark:border-slate-600">
+                                    <h6 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Remarks:</h6>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 italic">{dayRemark}</p>
+                                  </div>
+                                ) : null;
+                              })()}
                             </div>
                           ));
                       })()}
@@ -4747,7 +4873,21 @@ export default function ProjectDetail() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Consumables Usage</CardTitle>
-                {canEdit && (
+                <div className="flex items-center gap-2">
+                  {(user?.role === "admin" || user?.role === "project_manager") && consumablesHistory && consumablesHistory.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedConsumableIds([]);
+                        setIsReviewConsumablesOpen(true);
+                      }}
+                    >
+                      <ClipboardCheck className="h-4 w-4 mr-2" />
+                      Review & Issue
+                    </Button>
+                  )}
+                  {canEdit && (
                   <Dialog open={isConsumablesDialogOpen} onOpenChange={setIsConsumablesDialogOpen}>
                     <DialogTrigger asChild>
                       <Button size="sm">
@@ -4969,7 +5109,8 @@ export default function ProjectDetail() {
                       </form>
                     </DialogContent>
                   </Dialog>
-                )}
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -5031,6 +5172,155 @@ export default function ProjectDetail() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Review Consumables Usage Dialog */}
+        <Dialog open={isReviewConsumablesOpen} onOpenChange={setIsReviewConsumablesOpen}>
+          <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-blue-600" />
+                Review Consumables Usage
+              </DialogTitle>
+              <DialogDescription>
+                Select consumable records to formally issue as a Goods Issue. Inventory was already deducted when usage was recorded.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 mt-2">
+              {/* Select all */}
+              {consumablesHistory && consumablesHistory.filter((r: any) => !r.goodsIssueRef).length > 0 && (
+                <div className="flex items-center justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const unissued = (consumablesHistory || []).filter((r: any) => !r.goodsIssueRef).map((r: any) => r.id);
+                        setSelectedConsumableIds(prev =>
+                          prev.length === unissued.length ? [] : unissued
+                        );
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800"
+                    >
+                      {selectedConsumableIds.length === (consumablesHistory || []).filter((r: any) => !r.goodsIssueRef).length
+                        ? <CheckSquare className="h-5 w-5" />
+                        : <Square className="h-5 w-5" />
+                      }
+                    </button>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Select all pending</span>
+                  </div>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {selectedConsumableIds.length} of {(consumablesHistory || []).filter((r: any) => !r.goodsIssueRef).length} selected
+                  </span>
+                </div>
+              )}
+
+              {/* List of consumable records */}
+              {(consumablesHistory || [])
+                .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                .map((record: any) => {
+                  const isIssued = !!record.goodsIssueRef;
+                  const isSelected = selectedConsumableIds.includes(record.id);
+                  const inventoryItems = (record.items || []).filter((i: any) => i.inventoryItemId);
+
+                  return (
+                    <div
+                      key={record.id}
+                      className={`border rounded-lg p-4 transition-colors ${
+                        isIssued
+                          ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10"
+                          : isSelected
+                          ? "border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/10"
+                          : "border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {!isIssued && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedConsumableIds(prev =>
+                                prev.includes(record.id)
+                                  ? prev.filter(id => id !== record.id)
+                                  : [...prev, record.id]
+                              );
+                            }}
+                            className="mt-0.5 text-blue-600 dark:text-blue-400 hover:text-blue-800 flex-shrink-0"
+                          >
+                            {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                          </button>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-medium text-slate-900 dark:text-slate-100">
+                              {new Date(record.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                            </span>
+                            {isIssued ? (
+                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs font-mono">
+                                {record.goodsIssueRef}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                Pending Issue
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {(record.items || []).map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between text-sm">
+                                <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                  {item.itemName || `Item #${item.inventoryItemId}`}
+                                  {!item.inventoryItemId && (
+                                    <Badge variant="outline" className="text-xs py-0">Manual</Badge>
+                                  )}
+                                </span>
+                                <span className="text-slate-500 dark:text-slate-400 text-xs">
+                                  Qty: {item.quantity}{item.itemUnit ? ` ${item.itemUnit}` : ""}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {inventoryItems.length === 0 && !isIssued && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                              No inventory items — only manual entries (no GI transaction needed)
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {consumablesHistory && consumablesHistory.filter((r: any) => !r.goodsIssueRef).length === 0 && (
+                <div className="text-center py-6 text-slate-500 dark:text-slate-400">
+                  <ClipboardCheck className="h-10 w-10 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm font-medium">All records have been issued</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsReviewConsumablesOpen(false);
+                  setSelectedConsumableIds([]);
+                }}
+              >
+                Close
+              </Button>
+              <Button
+                disabled={selectedConsumableIds.length === 0 || createConsumablesGoodIssueMutation.isPending}
+                onClick={() => createConsumablesGoodIssueMutation.mutate(selectedConsumableIds)}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <ClipboardCheck className="h-4 w-4 mr-2" />
+                {createConsumablesGoodIssueMutation.isPending
+                  ? "Creating..."
+                  : `Create Goods Issue (${selectedConsumableIds.length} record${selectedConsumableIds.length !== 1 ? "s" : ""})`}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <TabsContent value="live-location">
           <Card>

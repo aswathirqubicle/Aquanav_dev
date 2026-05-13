@@ -80,7 +80,7 @@ interface PayrollEntry {
   totalAmount: string;
   status: string;
   generatedDate: string;
-  employee?: Employee;
+  employee?: Employee & { category?: string };
 }
 
 interface PayrollAddition {
@@ -447,8 +447,13 @@ export default function PayrollIndex() {
                   </div>
                   <div class="info-row">
                     <span class="info-label">Calendar Days:</span>
-                    <span class="info-value">${entry.workingDays}</span>
+                    <span class="info-value">${new Date(entry.year, entry.month, 0).getDate()}</span>
                   </div>
+                  ${['contract','consultant'].includes(entry.employee?.category || '') ? `
+                  <div class="info-row">
+                    <span class="info-label">Working Days:</span>
+                    <span class="info-value">${entry.workingDays}</span>
+                  </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
                     <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
@@ -1759,8 +1764,13 @@ function GeneratePayslipButton({
                   </div>
                   <div class="info-row">
                     <span class="info-label">Calendar Days:</span>
-                    <span class="info-value">${payrollEntry.workingDays}</span>
+                    <span class="info-value">${new Date(payrollEntry.year, payrollEntry.month, 0).getDate()}</span>
                   </div>
+                  ${['contract','consultant'].includes(payrollEntry.employee?.category || '') ? `
+                  <div class="info-row">
+                    <span class="info-label">Working Days:</span>
+                    <span class="info-value">${payrollEntry.workingDays}</span>
+                  </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
                     <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
@@ -2017,8 +2027,13 @@ function PrintPayslipButton({
                   </div>
                   <div class="info-row">
                     <span class="info-label">Calendar Days:</span>
-                    <span class="info-value">${payrollEntry.workingDays}</span>
+                    <span class="info-value">${new Date(payrollEntry.year, payrollEntry.month, 0).getDate()}</span>
                   </div>
+                  ${['contract','consultant'].includes(payrollEntry.employee?.category || '') ? `
+                  <div class="info-row">
+                    <span class="info-label">Working Days:</span>
+                    <span class="info-value">${payrollEntry.workingDays}</span>
+                  </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
                     <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
@@ -2224,8 +2239,13 @@ function PayslipDialog({
                 </div>
                 <div class="info-row">
                   <span class="info-label">Calendar Days:</span>
-                  <span class="info-value">${payrollEntry.workingDays}</span>
+                  <span class="info-value">${new Date(payrollEntry.year, payrollEntry.month, 0).getDate()}</span>
                 </div>
+                ${['contract','consultant'].includes(payrollEntry.employee?.category || '') ? `
+                <div class="info-row">
+                  <span class="info-label">Working Days:</span>
+                  <span class="info-value">${payrollEntry.workingDays}</span>
+                </div>` : ''}
                 <div class="info-row">
                   <span class="info-label">Generated Date:</span>
                   <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
@@ -2370,9 +2390,15 @@ function PayslipDialog({
                 <div className="flex justify-between">
                   <span className="text-slate-600">Calendar Days:</span>
                   <span className="font-medium">
-                    {payrollEntry.workingDays}
+                    {new Date(payrollEntry.year, payrollEntry.month, 0).getDate()}
                   </span>
                 </div>
+                {['contract','consultant'].includes(payrollEntry.employee?.category || '') && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Working Days:</span>
+                    <span className="font-medium">{payrollEntry.workingDays}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-600">Generated Date:</span>
                   <span className="font-medium">
@@ -4246,8 +4272,13 @@ function EmployeeSalarySlipsDialog({
                       </div>
                       <div class="info-row">
                         <span class="info-label">Calendar Days:</span>
-                        <span class="info-value">${employeePayroll.workingDays}</span>
+                        <span class="info-value">${new Date(monthYear.year, monthYear.month, 0).getDate()}</span>
                       </div>
+                      ${['contract','consultant'].includes(employeePayroll.employee?.category || '') ? `
+                      <div class="info-row">
+                        <span class="info-label">Working Days:</span>
+                        <span class="info-value">${employeePayroll.workingDays}</span>
+                      </div>` : ''}
                       <div class="info-row">
                         <span class="info-label">Generated Date:</span>
                         <span class="info-value">${new Date(employeePayroll.generatedDate).toLocaleDateString()}</span>

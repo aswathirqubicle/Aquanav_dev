@@ -4139,6 +4139,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get(
+    "/api/projects/revenues",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const projectIds = req.query.projectIds as string;
+        if (!projectIds) {
+          return res.status(400).json({ message: "Project IDs are required" });
+        }
+
+        const ids = projectIds
+          .split(",")
+          .map((id) => parseInt(id.trim()))
+          .filter((id) => !isNaN(id));
+        if (ids.length === 0) {
+          return res
+            .status(400)
+            .json({ message: "Valid project IDs are required" });
+        }
+
+        const revenuePromises = ids.map(async (projectId) => {
+          try {
+            const revenueData = await storage.getProjectRevenue(projectId);
+            return { projectId, ...revenueData };
+          } catch (error) {
+            console.error(
+              `Failed to get revenue for project ${projectId}:`,
+              error,
+            );
+            return { projectId, error: true };
+          }
+        });
+
+        const results = await Promise.all(revenuePromises);
+        res.json(results.filter((result) => !result.error));
+      } catch (error) {
+        console.error("Get bulk project revenues error:", error);
+        res.status(500).json({ message: "Failed to get project revenues" });
+      }
+    },
+  );
+
   app.get("/api/projects/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -4400,49 +4443,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Get project revenue error:", error);
         res.status(500).json({ message: "Failed to get project revenue" });
-      }
-    },
-  );
-
-  app.get(
-    "/api/projects/revenues",
-    requireAuth,
-    requireRole(["admin", "finance"]),
-    async (req, res) => {
-      try {
-        const projectIds = req.query.projectIds as string;
-        if (!projectIds) {
-          return res.status(400).json({ message: "Project IDs are required" });
-        }
-
-        const ids = projectIds
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter((id) => !isNaN(id));
-        if (ids.length === 0) {
-          return res
-            .status(400)
-            .json({ message: "Valid project IDs are required" });
-        }
-
-        const revenuePromises = ids.map(async (projectId) => {
-          try {
-            const revenueData = await storage.getProjectRevenue(projectId);
-            return { projectId, ...revenueData };
-          } catch (error) {
-            console.error(
-              `Failed to get revenue for project ${projectId}:`,
-              error,
-            );
-            return { projectId, error: true };
-          }
-        });
-
-        const results = await Promise.all(revenuePromises);
-        res.json(results.filter((result) => !result.error));
-      } catch (error) {
-        console.error("Get bulk project revenues error:", error);
-        res.status(500).json({ message: "Failed to get project revenues" });
       }
     },
   );
@@ -5332,6 +5332,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.post(
+    "/api/projects/:projectId/consumables/goods-issue",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const projectId = parseInt(req.params.projectId);
+        if (isNaN(projectId)) {
+          return res.status(400).json({ message: "Invalid project ID" });
+        }
+        const { consumableIds } = req.body;
+        if (!consumableIds || !Array.isArray(consumableIds) || consumableIds.length === 0) {
+          return res.status(400).json({ message: "consumableIds array is required" });
+        }
+        const result = await storage.createConsumablesGoodsIssue(
+          projectId,
+          consumableIds,
+          req.session.userId,
+        );
+        res.status(201).json(result);
+      } catch (error) {
+        console.error("Error creating consumables goods issue:", error);
+        res.status(500).json({ message: "Failed to create goods issue", error: error.message });
+      }
+    },
+  );
+
   app.get(
     "/api/projects/activities/activities",
     requireAuth,
@@ -5414,6 +5441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const activityId = parseInt(req.params.activityId);
+        const projectId = parseInt(req.params.projectId);
         const updateData = {
           ...req.body,
           date: req.body.date ? new Date(req.body.date) : undefined,
@@ -5423,6 +5451,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!activity) {
           return res.status(404).json({ message: "Daily activity not found" });
         }
+
+        // Enforce one remark per day: if this record has a remark, clear remarks
+        // from all other records for the same project and date
+        if (activity.remarks && activity.date) {
+          const activityDate = new Date(activity.date);
+          const startOfDay = new Date(activityDate);
+          startOfDay.setUTCHours(0, 0, 0, 0);
+          const endOfDay = new Date(activityDate);
+          endOfDay.setUTCHours(23, 59, 59, 999);
+
+          await db
+            .update(dailyActivities)
+            .set({ remarks: "" })
+            .where(
+              and(
+                eq(dailyActivities.projectId, projectId),
+                gte(dailyActivities.date, startOfDay),
+                lte(dailyActivities.date, endOfDay),
+                ne(dailyActivities.id, activityId),
+              )
+            );
+        }
+
         res.json(activity);
       } catch (error) {
         console.error("Activity update error:", error);
@@ -6452,6 +6503,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res
           .status(500)
           .json({ message: "Failed to get general ledger entries" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/reports/profit-loss-entries",
+    requireAuth,
+    requireRole(["admin", "finance"]),
+    async (req, res) => {
+      try {
+        const filters = {
+          startDate: req.query.startDate as string | undefined,
+          endDate: req.query.endDate as string | undefined,
+          projectId: req.query.projectId
+            ? parseInt(req.query.projectId as string)
+            : undefined,
+        };
+        const result = await storage.getProfitLossEntries(filters);
+        res.json(result);
+      } catch (error) {
+        console.error("Get profit loss entries error:", error);
+        res.status(500).json({ message: "Failed to get profit loss entries" });
       }
     },
   );
