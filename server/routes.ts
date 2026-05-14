@@ -1302,6 +1302,10 @@ export function generateProjectPrintHTML(data: any): string {
   margin: 0;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 /* ===== BODY ===== */
 body {
   font-family: Inter, sans-serif;
@@ -1309,6 +1313,14 @@ body {
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+.report-header-space {
+  height: 160px;
+}
+
+.report-footer-space {
+  height: 60px;
 }
 
 /* Layout table for repeating headers/footers */
@@ -1379,9 +1391,13 @@ body {
 /* ===== TITLES ===== */
 .main-title {
   text-align: center;
-  margin: 20px 0;
+  margin: 10px 0;
   font-size: 20px;
   font-weight: bold;
+}
+
+h2, h3 {
+  margin: 10px 0;
 }
 
 .highlight { color: red; }
@@ -1400,12 +1416,13 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 10px;
+  page-break-inside: avoid;
 }
 
 .project-table th,
 .project-table td {
   border: 1px solid #ccc;
-  padding: 6px;
+  padding: 4px;
 }
 
 .project-table th {
@@ -1448,6 +1465,7 @@ body {
 .image-table {
   width: 100%;
   border-collapse: collapse;
+  page-break-inside: avoid;
 }
 
 .image-table td {
@@ -1463,8 +1481,7 @@ body {
 
 /* ===== PAGE BREAK ===== */
 .page-break {
-  page-break-before: always;
-  margin-top: 140px;
+  margin-top: 20px;
 }
 
 .highlights-header {
@@ -1504,8 +1521,7 @@ body {
   }
 
   .page-break {
-    page-break-before: always;
-    margin-top: 140px;
+    margin-top: 20px;
   }
 
 }
@@ -1529,9 +1545,9 @@ body {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            ${val(data.title)}<br/>
-            <span class="highlight">${sanitize(data.description)}</span><br/>
-            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</span>
+            <div>${data.vesselName}</div>
+            <div class="highlight">${data.title}</div>
+            <div class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</div>
           </div>
 
           <!-- IMAGE -->
@@ -1844,6 +1860,10 @@ export function generateConsumablePrintHTML(data: any): string {
   margin: 0;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 /* ===== BODY ===== */
 body {
   font-family: Inter, sans-serif;
@@ -1851,6 +1871,14 @@ body {
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+.report-header-space {
+  height: 160px;
+}
+
+.report-footer-space {
+  height: 60px;
 }
 
 /* Layout table for repeating headers/footers */
@@ -1921,9 +1949,13 @@ body {
 /* ===== TITLES ===== */
 .main-title {
   text-align: center;
-  margin: 20px 0;
+  margin: 10px 0;
   font-size: 20px;
   font-weight: bold;
+}
+
+h2, h3 {
+  margin: 10px 0;
 }
 
 .highlight { color: red; }
@@ -1942,12 +1974,13 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 10px;
+  page-break-inside: avoid;
 }
 
 .project-table th,
 .project-table td {
   border: 1px solid #ccc;
-  padding: 6px;
+  padding: 4px;
 }
 
 .project-table th {
@@ -1990,6 +2023,7 @@ body {
 .image-table {
   width: 100%;
   border-collapse: collapse;
+  page-break-inside: avoid;
 }
 
 .image-table td {
@@ -2005,8 +2039,7 @@ body {
 
 /* ===== PAGE BREAK ===== */
 .page-break {
-  page-break-before: always;
-  margin-top: 140px;
+  margin-top: 20px;
 }
 
 .highlights-header {
@@ -2046,8 +2079,7 @@ body {
   }
 
   .page-break {
-    page-break-before: always;
-    margin-top: 140px;
+    margin-top: 20px;
   }
 
 }
@@ -2071,9 +2103,9 @@ body {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            ${val(data.title)}<br/>
-            <span class="highlight">${sanitize(data.description)}</span><br/>
-            <span class="vessel">${val(data.vesselName)}</span>
+            <div>${data.vesselName}</div>
+            <div class="highlight">${data.title}</div>
+            <div class="vessel">${val(data.vesselName)}</div>
           </div>
 
           <!-- IMAGE -->
