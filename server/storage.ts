@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import { db } from "./db";
 import {
   getTableColumns,
@@ -2973,7 +2974,7 @@ export class Storage {
             const endB = eEnd ? eEnd.getTime() : 253402300799000; // Year 9999
 
             if (startA <= endB && endA >= startB) {
-              const conflictRange = `${eStart ? eStart.toLocaleDateString() : "Ongoing"} to ${eEnd ? eEnd.toLocaleDateString() : "Ongoing"}`;
+              const conflictRange = `${eStart ? format(eStart, "dd-MMM-yyyy") : "Ongoing"} to ${eEnd ? format(eEnd, "dd-MMM-yyyy") : "Ongoing"}`;
               throw new Error(
                 `Contract employee ${employee.firstName} ${employee.lastName} is already assigned to project "${existing.projectTitle || "Unknown"}" during this period (${conflictRange}).`,
               );

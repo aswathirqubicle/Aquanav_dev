@@ -16,7 +16,7 @@ import { Download, Eye, FileText, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Company, Employee } from "@shared/schema";
-import { generateCommonHeader, generateCommonFooter, getPayslipStyles } from "@/lib/utils";
+import { generateCommonHeader, generateCommonFooter, getPayslipStyles, formatDisplayDate } from "@/lib/utils";
 import { printHtml } from "@/lib/print-utils";
 
 interface PayrollEntry {
@@ -160,7 +160,7 @@ export default function MyPayslips() {
                     </TableCell>
                     <TableCell className="font-semibold">{formatCurrency(entry.totalAmount)}</TableCell>
                     <TableCell className="text-sm text-slate-500">
-                      {new Date(entry.generatedDate).toLocaleDateString()}
+                      {formatDisplayDate(entry.generatedDate)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -260,7 +260,7 @@ function PrintPayslipBtn({ entry, company }: { entry: PayrollEntry; company?: Co
                           </div>` : ''}
                           <div class="info-row">
                             <span class="info-label">Generated Date:</span>
-                            <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
+                            <span class="info-value">${formatDisplayDate(entry.generatedDate)}</span>
                           </div>
                         </div>
                       </div>
@@ -391,7 +391,7 @@ function PayslipViewDialog({
             )}
             <div>
               <p className="text-slate-500 dark:text-slate-400">Generated Date</p>
-              <p className="font-medium">{new Date(entry.generatedDate).toLocaleDateString()}</p>
+              <p className="font-medium">{formatDisplayDate(entry.generatedDate)}</p>
             </div>
           </div>
 

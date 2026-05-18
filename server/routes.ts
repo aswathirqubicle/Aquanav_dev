@@ -135,8 +135,15 @@ function generateQuotationHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -310,8 +317,15 @@ function generateCreditNoteHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -491,8 +505,15 @@ function generateInvoiceHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -681,8 +702,15 @@ function generateProformaHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -844,8 +872,15 @@ function generatePurchaseOrderHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -1009,8 +1044,15 @@ function generatePurchaseInvoiceHTML(
       .replace(currency, currency + " ");
   };
 
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+  const formatDate = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "";
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   };
 
   return `
@@ -1302,10 +1344,6 @@ export function generateProjectPrintHTML(data: any): string {
   margin: 0;
 }
 
-* {
-  box-sizing: border-box;
-}
-
 /* ===== BODY ===== */
 body {
   font-family: Inter, sans-serif;
@@ -1313,14 +1351,6 @@ body {
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-}
-
-.report-header-space {
-  height: 160px;
-}
-
-.report-footer-space {
-  height: 60px;
 }
 
 /* Layout table for repeating headers/footers */
@@ -1391,13 +1421,9 @@ body {
 /* ===== TITLES ===== */
 .main-title {
   text-align: center;
-  margin: 10px 0;
+  margin: 20px 0;
   font-size: 20px;
   font-weight: bold;
-}
-
-h2, h3 {
-  margin: 10px 0;
 }
 
 .highlight { color: red; }
@@ -1416,13 +1442,12 @@ h2, h3 {
   width: 100%;
   border-collapse: collapse;
   font-size: 10px;
-  page-break-inside: avoid;
 }
 
 .project-table th,
 .project-table td {
   border: 1px solid #ccc;
-  padding: 4px;
+  padding: 6px;
 }
 
 .project-table th {
@@ -1465,7 +1490,6 @@ h2, h3 {
 .image-table {
   width: 100%;
   border-collapse: collapse;
-  page-break-inside: avoid;
 }
 
 .image-table td {
@@ -1481,7 +1505,8 @@ h2, h3 {
 
 /* ===== PAGE BREAK ===== */
 .page-break {
-  margin-top: 20px;
+  page-break-before: always;
+  margin-top: 140px;
 }
 
 .highlights-header {
@@ -1521,7 +1546,8 @@ h2, h3 {
   }
 
   .page-break {
-    margin-top: 20px;
+    page-break-before: always;
+    margin-top: 140px;
   }
 
 }
@@ -1545,9 +1571,9 @@ h2, h3 {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            <div>${data.vesselName}</div>
-            <div class="highlight">${data.title}</div>
-            <div class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</div>
+            ${val(data.title)}<br/>
+            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</span>
           </div>
 
           <!-- IMAGE -->
@@ -1860,10 +1886,6 @@ export function generateConsumablePrintHTML(data: any): string {
   margin: 0;
 }
 
-* {
-  box-sizing: border-box;
-}
-
 /* ===== BODY ===== */
 body {
   font-family: Inter, sans-serif;
@@ -1871,14 +1893,6 @@ body {
   background: #f4f4f4;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
-}
-
-.report-header-space {
-  height: 160px;
-}
-
-.report-footer-space {
-  height: 60px;
 }
 
 /* Layout table for repeating headers/footers */
@@ -1949,13 +1963,9 @@ body {
 /* ===== TITLES ===== */
 .main-title {
   text-align: center;
-  margin: 10px 0;
+  margin: 20px 0;
   font-size: 20px;
   font-weight: bold;
-}
-
-h2, h3 {
-  margin: 10px 0;
 }
 
 .highlight { color: red; }
@@ -1974,13 +1984,12 @@ h2, h3 {
   width: 100%;
   border-collapse: collapse;
   font-size: 10px;
-  page-break-inside: avoid;
 }
 
 .project-table th,
 .project-table td {
   border: 1px solid #ccc;
-  padding: 4px;
+  padding: 6px;
 }
 
 .project-table th {
@@ -2023,7 +2032,6 @@ h2, h3 {
 .image-table {
   width: 100%;
   border-collapse: collapse;
-  page-break-inside: avoid;
 }
 
 .image-table td {
@@ -2039,7 +2047,8 @@ h2, h3 {
 
 /* ===== PAGE BREAK ===== */
 .page-break {
-  margin-top: 20px;
+  page-break-before: always;
+  margin-top: 140px;
 }
 
 .highlights-header {
@@ -2079,7 +2088,8 @@ h2, h3 {
   }
 
   .page-break {
-    margin-top: 20px;
+    page-break-before: always;
+    margin-top: 140px;
   }
 
 }
@@ -2103,9 +2113,9 @@ h2, h3 {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            <div>${data.vesselName}</div>
-            <div class="highlight">${data.title}</div>
-            <div class="vessel">${val(data.vesselName)}</div>
+            ${val(data.title)}<br/>
+            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span class="vessel">${val(data.vesselName)}</span>
           </div>
 
           <!-- IMAGE -->

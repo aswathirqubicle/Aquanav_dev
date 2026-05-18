@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { insertCreditNoteSchema } from "@shared/schema";
 import { z } from "zod";
 import { printByUrl } from "@/lib/print-utils";
-import { formatDateForInput } from "@/lib/utils";
+import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 
 const createCreditNoteSchema = insertCreditNoteSchema.extend({
   creditNoteDate: z.string(),
@@ -403,7 +403,7 @@ export default function CreditNotesIndex() {
                         <span className="font-medium">Amount:</span> {formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}
                       </div>
                       <div>
-                        <span className="font-medium">Date:</span> {new Date(selectedInvoice.invoiceDate).toLocaleDateString()}
+                        <span className="font-medium">Date:</span> {formatDisplayDate(selectedInvoice.invoiceDate)}
                       </div>
                       <div>
                         <span className="font-medium">Status:</span> {selectedInvoice.status}
@@ -711,7 +711,7 @@ export default function CreditNotesIndex() {
                     <TableCell>{creditNote.invoiceNumber}</TableCell>
                     <TableCell>{creditNote.customerName}</TableCell>
                     <TableCell>
-                      {new Date(creditNote.creditNoteDate).toLocaleDateString()}
+                      {formatDisplayDate(creditNote.creditNoteDate)}
                     </TableCell>
                     <TableCell>{creditNote.reason || '-'}</TableCell>
                     <TableCell>{formatCurrency(creditNote.totalAmount || 0, creditNote.currency)}</TableCell>
@@ -811,7 +811,7 @@ export default function CreditNotesIndex() {
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-                      <p>{new Date(viewingCreditNote.creditNoteDate).toLocaleDateString()}</p>
+                      <p>{formatDisplayDate(viewingCreditNote.creditNoteDate)}</p>
                     </div>
                   </div>
 

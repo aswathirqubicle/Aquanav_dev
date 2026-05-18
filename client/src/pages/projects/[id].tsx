@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, startTransition } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -93,7 +94,7 @@ function RevenueDetailsDialog({
                 </div>
                 <div className="text-slate-500 dark:text-slate-400 text-xs mt-1 flex justify-between">
                   <span>{payment.paymentMethod || 'Payment'}</span>
-                  <span>{new Date(payment.paymentDate).toLocaleDateString()}</span>
+                  <span>{formatDisplayDate(payment.paymentDate)}</span>
                 </div>
                 {payment.invoiceNumber && (
                   <div className="text-xs text-slate-400 mt-1">Invoice: {payment.invoiceNumber}</div>
@@ -267,7 +268,7 @@ function ExpenseDetailsDialog({
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.name}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           {item.quantity} × {formatCurrency(item.unitCost)}
-                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                          {item.date && <span className="ml-2">{formatDisplayDate(item.date)}</span>}
                         </p>
                       </div>
                       <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
@@ -290,7 +291,7 @@ function ExpenseDetailsDialog({
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.name}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          {new Date(item.startDate).toLocaleDateString()} – {new Date(item.endDate).toLocaleDateString()}
+                          {formatDisplayDate(item.startDate)} – {formatDisplayDate(item.endDate)}
                           <span className="ml-2">{formatCurrency(item.monthlyRate)}/mo</span>
                         </p>
                       </div>
@@ -316,7 +317,7 @@ function ExpenseDetailsDialog({
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           {item.supplierName || "Unknown supplier"}
                           {item.invoiceNumber && <span className="ml-2 font-mono">#{item.invoiceNumber}</span>}
-                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                          {item.date && <span className="ml-2">{formatDisplayDate(item.date)}</span>}
                         </p>
                       </div>
                       <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
@@ -340,7 +341,7 @@ function ExpenseDetailsDialog({
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{item.description}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           {item.employeeName || "Employee"}
-                          {item.date && <span className="ml-2">{new Date(item.date).toLocaleDateString()}</span>}
+                          {item.date && <span className="ml-2">{formatDisplayDate(item.date)}</span>}
                         </p>
                       </div>
                       <span className="ml-4 text-sm font-semibold text-slate-900 dark:text-slate-100 shrink-0">{formatCurrency(item.amount)}</span>
@@ -2094,13 +2095,7 @@ export default function ProjectDetail() {
   };
 
   const formatDate = (date: string | Date) => {
-    if (!date) return "";
-    const d = new Date(date);
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[d.getUTCMonth()];
-    const year = d.getUTCFullYear();
-    return `${day}-${month}-${year}`;
+    return formatDisplayDate(date);
   };
 
   const canEdit = user?.role === "admin" || user?.role === "project_manager";
@@ -4263,7 +4258,7 @@ export default function ProjectDetail() {
                                                   ]);
                                                 }}
                                                 className="h-9 w-full"
-                                                placeholder={project?.startDate ? `Default: ${new Date(project.startDate).toLocaleDateString()}` : "Select start date"}
+                                                placeholder={project?.startDate ? `Default: ${formatDisplayDate(project.startDate)}` : "Select start date"}
                                               />
                                             </div>
                                             <div className="space-y-2">
@@ -4285,7 +4280,7 @@ export default function ProjectDetail() {
                                                 }}
                                                 className="h-9 w-full"
                                                 min={assignment?.startDate || ""}
-                                                placeholder={project?.plannedEndDate ? `Default: ${new Date(project.plannedEndDate).toLocaleDateString()}` : "Select end date"}
+                                                placeholder={project?.plannedEndDate ? `Default: ${formatDisplayDate(project.plannedEndDate)}` : "Select end date"}
                                               />
                                             </div>
                                           </div>
@@ -4405,11 +4400,11 @@ export default function ProjectDetail() {
                           {(employee.startDate || employee.endDate) && (
                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                               {employee.startDate && (
-                                <span>From: {new Date(employee.startDate).toLocaleDateString()}</span>
+                                <span>From: {formatDisplayDate(employee.startDate)}</span>
                               )}
                               {employee.startDate && employee.endDate && <span> • </span>}
                               {employee.endDate && (
-                                <span>To: {new Date(employee.endDate).toLocaleDateString()}</span>
+                                <span>To: {formatDisplayDate(employee.endDate)}</span>
                               )}
                             </div>
                           )}
@@ -5252,7 +5247,7 @@ export default function ProjectDetail() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="font-medium text-slate-900 dark:text-slate-100">
-                              {new Date(record.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                              {formatDisplayDate(record.date)}
                             </span>
                             {isIssued ? (
                               <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 text-xs font-mono">

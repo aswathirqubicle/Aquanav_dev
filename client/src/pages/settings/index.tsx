@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -736,7 +737,7 @@ export default function SettingsIndex() {
                             </span>
                           </td>
                           <td className="p-3 text-right text-sm text-slate-500 dark:text-slate-400">
-                            {rate.updatedAt ? new Date(rate.updatedAt).toLocaleDateString() : "-"}
+                            {rate.updatedAt ? formatDisplayDate(rate.updatedAt) : "-"}
                           </td>
                           <td className="p-3 text-right">
                             <div className="flex justify-end space-x-1">

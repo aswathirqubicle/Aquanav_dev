@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -120,7 +121,7 @@ function EmployeeProjectsTab({ employeeId }: { employeeId: number }) {
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString();
+    return formatDisplayDate(dateStr);
   };
 
   if (isLoading) {
@@ -1193,7 +1194,7 @@ export default function EmployeesIndex() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "Not specified";
-    return new Date(dateString).toLocaleDateString();
+    return formatDisplayDate(dateString);
   };
 
   const getStatusBadge = (status: string) => {

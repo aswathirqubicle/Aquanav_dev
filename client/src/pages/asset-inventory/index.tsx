@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1713,7 +1714,7 @@ export default function AssetInventoryIndex() {
                                 <div className="flex items-center">
                                   <Calendar className="h-3 w-3 mr-1" />
                                   <span className="font-medium">Acquired:</span>
-                                  <span className="ml-1">{instance.acquisitionDate ? new Date(instance.acquisitionDate).toLocaleDateString() : 'N/A'}</span>
+                                  <span className="ml-1">{instance.acquisitionDate ? formatDisplayDate(instance.acquisitionDate) : 'N/A'}</span>
                                 </div>
                                 <div className="flex items-center">
                                   <DollarSign className="h-3 w-3 mr-1" />
@@ -1733,12 +1734,12 @@ export default function AssetInventoryIndex() {
                               <div className="mt-2 flex gap-2 text-xs">
                                 {instance.warrantyExpiryDate && (
                                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    Warranty: {new Date(instance.warrantyExpiryDate).toLocaleDateString()}
+                                    Warranty: {formatDisplayDate(instance.warrantyExpiryDate)}
                                   </span>
                                 )}
                                 {instance.nextMaintenanceDate && (
                                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                    Next Maintenance: {new Date(instance.nextMaintenanceDate).toLocaleDateString()}
+                                    Next Maintenance: {formatDisplayDate(instance.nextMaintenanceDate)}
                                   </span>
                                 )}
                               </div>
@@ -1949,28 +1950,28 @@ export default function AssetInventoryIndex() {
                       <Label className="text-sm font-medium">Acquisition Date</Label>
                       <p className="text-sm text-muted-foreground">
                         {selectedInstanceForDetail.acquisitionDate ? 
-                          new Date(selectedInstanceForDetail.acquisitionDate).toLocaleDateString() : 'Not specified'}
+                          formatDisplayDate(selectedInstanceForDetail.acquisitionDate) : 'Not specified'}
                       </p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Warranty Expiry</Label>
                       <p className="text-sm text-muted-foreground">
                         {selectedInstanceForDetail.warrantyExpiryDate ? 
-                          new Date(selectedInstanceForDetail.warrantyExpiryDate).toLocaleDateString() : 'Not specified'}
+                          formatDisplayDate(selectedInstanceForDetail.warrantyExpiryDate) : 'Not specified'}
                       </p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Last Maintenance</Label>
                       <p className="text-sm text-muted-foreground">
                         {selectedInstanceForDetail.lastMaintenanceDate ? 
-                          new Date(selectedInstanceForDetail.lastMaintenanceDate).toLocaleDateString() : 'Not specified'}
+                          formatDisplayDate(selectedInstanceForDetail.lastMaintenanceDate) : 'Not specified'}
                       </p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Next Maintenance</Label>
                       <p className="text-sm text-muted-foreground">
                         {selectedInstanceForDetail.nextMaintenanceDate ? 
-                          new Date(selectedInstanceForDetail.nextMaintenanceDate).toLocaleDateString() : 'Not scheduled'}
+                          formatDisplayDate(selectedInstanceForDetail.nextMaintenanceDate) : 'Not scheduled'}
                       </p>
                     </div>
                   </div>

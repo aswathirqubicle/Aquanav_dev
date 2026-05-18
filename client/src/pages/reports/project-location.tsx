@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
-import { generateCommonHeader, generateCommonFooter, getReportStyles } from "@/lib/utils";
+import { generateCommonHeader, generateCommonFooter, getReportStyles, formatDisplayDate } from "@/lib/utils";
 import { ArrowLeft, MapPin, Calendar, ChevronDown, ChevronRight, Download, BarChart3, FileText } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -373,7 +373,7 @@ export default function ProjectLocationReport() {
                               {loc.activities.map((act, actIndex) => (
                                 <tr key={actIndex} className="border-b last:border-b-0 hover:bg-gray-100 dark:hover:bg-gray-700/50">
                                   <td className="p-3 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                                    {act.date ? new Date(act.date + "T00:00:00").toLocaleDateString() : "—"}
+                                    {act.date ? formatDisplayDate(act.date + "T00:00:00") : "—"}
                                   </td>
                                   <td className="p-3 text-gray-700 dark:text-gray-300 max-w-xs">
                                     <div className="whitespace-pre-wrap break-words">{act.completedTasks || "—"}</div>

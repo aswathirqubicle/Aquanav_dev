@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -202,11 +203,11 @@ export default function SupplierStatementPage() {
     if (!transactions.length) return;
 
     let csvContent = "Supplier Statement of Account\n";
-    csvContent += `Generated: ${new Date().toLocaleDateString()}\n\n`;
+    csvContent += `Generated: ${formatDisplayDate()}\n\n`;
     csvContent += "Date,Type,Reference,Description,Debit,Credit,Balance\n";
 
     transactions.forEach((t) => {
-      csvContent += `${new Date(t.date).toLocaleDateString()},${t.type},${t.reference},"${t.description}",${Number(t.debit).toFixed(2)},${Number(t.credit).toFixed(2)},${Number(t.balance).toFixed(2)}\n`;
+      csvContent += `${formatDisplayDate(t.date)},${t.type},${t.reference},"${t.description}",${Number(t.debit).toFixed(2)},${Number(t.credit).toFixed(2)},${Number(t.balance).toFixed(2)}\n`;
     });
 
     if (totals) {
@@ -410,7 +411,7 @@ export default function SupplierStatementPage() {
                         className={row.type === "Payment" ? "bg-green-50/50 dark:bg-green-900/10" : ""}
                       >
                         <TableCell className="text-xs whitespace-nowrap py-2">
-                          {new Date(row.date).toLocaleDateString()}
+                          {formatDisplayDate(row.date)}
                         </TableCell>
                         <TableCell className="text-xs py-2">
                           <Badge

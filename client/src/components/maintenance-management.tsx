@@ -24,12 +24,11 @@ import {
   FileText, Calendar, CheckCircle, Clock, Plus, Archive, ArchiveRestore
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatDisplayDate } from "@/lib/utils";
 
 /* ================= SAFE DATE ================= */
 const safeFormatDate = (date?: string | null) => {
-  if (!date) return '—';
-  const d = new Date(date);
-  return isNaN(d.getTime()) ? '—' : format(d, 'MMM dd, yyyy');
+    return formatDisplayDate(date) || '—';
 };
 
 const toDateInputValue = (date?: string | null) => {

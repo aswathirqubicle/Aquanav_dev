@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -1499,7 +1500,7 @@ export default function ReportsIndex() {
         if (dialogStatementDueMoreThan) {
           csvContent += `Due More Than: ${dialogStatementDueMoreThan} days\n`;
         }
-        csvContent += `Generated: ${new Date().toLocaleDateString()}\n\n`;
+        csvContent += `Generated: ${formatDisplayDate()}\n\n`;
         
         // Summary section
         csvContent += "SUMMARY\n";
@@ -1513,7 +1514,7 @@ export default function ReportsIndex() {
         csvContent += `Date,Type,Reference,Description,Debit,Credit,Balance\n`;
         
         generatedReportData.data.forEach((row: any) => {
-          csvContent += `${new Date(row.date).toLocaleDateString()},"${row.type}","${row.reference}","${row.description}",${row.debit.toFixed(2)},${row.credit.toFixed(2)},${row.balance.toFixed(2)}\n`;
+          csvContent += `${formatDisplayDate(row.date)},"${row.type}","${row.reference}","${row.description}",${row.debit.toFixed(2)},${row.credit.toFixed(2)},${row.balance.toFixed(2)}\n`;
         });
       }
       // Default export for other chart reports
@@ -2816,7 +2817,7 @@ export default function ReportsIndex() {
                                 {statusGroup.projects.map((project: any, projIdx: number) => {
                                   const formatDate = (date: any) => {
                                     if (!date) return '-';
-                                    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    return formatDisplayDate(date);
                                   };
                                   return (
                                     <div key={projIdx} className="flex flex-col gap-1 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
@@ -3210,7 +3211,7 @@ export default function ReportsIndex() {
                             generatedReportData.data.map((row: any, index: number) => (
                               <TableRow key={index} className={row.type === 'Payment' ? 'bg-green-50/50 dark:bg-green-900/10' : ''}>
                                 <TableCell className="text-[10px] sm:text-xs whitespace-nowrap py-2">
-                                  {new Date(row.date).toLocaleDateString()}
+                                  {formatDisplayDate(row.date)}
                                 </TableCell>
                                 <TableCell className="text-[10px] sm:text-xs py-2">
                                   <Badge variant={row.type === 'Invoice' ? 'default' : 'secondary'} className="text-[10px] sm:text-xs px-1 sm:px-2">

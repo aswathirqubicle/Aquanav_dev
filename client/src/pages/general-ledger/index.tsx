@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useState } from "react";
 import { useLocation } from "wouter";
@@ -391,7 +392,7 @@ export default function GeneralLedger() {
     ];
 
     const csvData = entries.map(entry => [
-      new Date(entry.transactionDate).toLocaleDateString(),
+      formatDisplayDate(entry.transactionDate),
       entry.entryType,
       entry.accountName,
       entry.description,
@@ -739,7 +740,7 @@ export default function GeneralLedger() {
                       entries.map((entry) => (
                         <TableRow key={entry.id}>
                           <TableCell>
-                            {new Date(entry.transactionDate).toLocaleDateString()}
+                            {formatDisplayDate(entry.transactionDate)}
                           </TableCell>
                           <TableCell>
                             <Badge variant={getEntryTypeBadgeVariant(entry.entryType)}>

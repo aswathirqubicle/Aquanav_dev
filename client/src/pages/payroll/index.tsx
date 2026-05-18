@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -456,7 +457,7 @@ export default function PayrollIndex() {
                   </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
-                    <span class="info-value">${new Date(entry.generatedDate).toLocaleDateString()}</span>
+                    <span class="info-value">${formatDisplayDate(entry.generatedDate)}</span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Status:</span>
@@ -1773,7 +1774,7 @@ function GeneratePayslipButton({
                   </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
-                    <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
+                    <span class="info-value">${formatDisplayDate(payrollEntry.generatedDate)}</span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Status:</span>
@@ -2036,7 +2037,7 @@ function PrintPayslipButton({
                   </div>` : ''}
                   <div class="info-row">
                     <span class="info-label">Generated Date:</span>
-                    <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
+                    <span class="info-value">${formatDisplayDate(payrollEntry.generatedDate)}</span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Status:</span>
@@ -2248,7 +2249,7 @@ function PayslipDialog({
                 </div>` : ''}
                 <div class="info-row">
                   <span class="info-label">Generated Date:</span>
-                  <span class="info-value">${new Date(payrollEntry.generatedDate).toLocaleDateString()}</span>
+                  <span class="info-value">${formatDisplayDate(payrollEntry.generatedDate)}</span>
                 </div>
                 <div class="info-row">
                   <span class="info-label">Status:</span>
@@ -2402,7 +2403,7 @@ function PayslipDialog({
                 <div className="flex justify-between">
                   <span className="text-slate-600">Generated Date:</span>
                   <span className="font-medium">
-                    {new Date(payrollEntry.generatedDate).toLocaleDateString()}
+                    {formatDisplayDate(payrollEntry.generatedDate)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -2511,7 +2512,7 @@ function PayslipDialog({
               signature.
             </p>
             <p>
-              Generated on {new Date().toLocaleDateString()} at{" "}
+              Generated on {formatDisplayDate()} at{" "}
               {new Date().toLocaleTimeString()}
             </p>
           </div>
@@ -2833,7 +2834,7 @@ function PayrollHistoryTab({
                             {getStatusBadge(period.overallStatus)}
                           </TableCell>
                           <TableCell>
-                            {period.latestGeneratedDate?.toLocaleDateString()}
+                            {formatDisplayDate(period.latestGeneratedDate)}
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
@@ -2882,7 +2883,7 @@ function PayrollHistoryTab({
                             <div>
                               <div>{getMonthName(period.month)} {period.year}</div>
                               <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {period.latestGeneratedDate?.toLocaleDateString()}
+                                {formatDisplayDate(period.latestGeneratedDate)}
                               </div>
                             </div>
                           </TableCell>
@@ -2957,7 +2958,7 @@ function PayrollHistoryTab({
                             Generated:
                           </span>
                           <span className="text-sm text-slate-900 dark:text-slate-100">
-                            {period.latestGeneratedDate?.toLocaleDateString()}
+                            {formatDisplayDate(period.latestGeneratedDate)}
                           </span>
                         </div>
                       </div>
@@ -4281,7 +4282,7 @@ function EmployeeSalarySlipsDialog({
                       </div>` : ''}
                       <div class="info-row">
                         <span class="info-label">Generated Date:</span>
-                        <span class="info-value">${new Date(employeePayroll.generatedDate).toLocaleDateString()}</span>
+                        <span class="info-value">${formatDisplayDate(employeePayroll.generatedDate)}</span>
                       </div>
                       <div class="info-row">
                         <span class="info-label">Status:</span>

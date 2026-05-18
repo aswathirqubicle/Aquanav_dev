@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useState } from "react";
 import { useLocation } from "wouter";
@@ -403,13 +404,13 @@ export default function PayablesReceivablesReport() {
     ];
 
     const csvData = data.map(entry => [
-      new Date(entry.transactionDate).toLocaleDateString(),
+      formatDisplayDate(entry.transactionDate),
       entry.description,
       entry.entityName || "-",
       entry.projectTitle || "-",
       entry.invoiceNumber || "-",
       type === "receivables" ? entry.debitAmount : entry.creditAmount,
-      entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : "-",
+      entry.dueDate ? formatDisplayDate(entry.dueDate) : "-",
       entry.status,
       entry.notes || "-"
     ]);
@@ -552,7 +553,7 @@ export default function PayablesReceivablesReport() {
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">
                   {filters.startDate && filters.endDate 
-                    ? `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`
+                    ? `${formatDisplayDate(filters.startDate)} - ${formatDisplayDate(filters.endDate)}`
                     : "All dates"}
                 </span>
               </div>
@@ -707,14 +708,14 @@ export default function PayablesReceivablesReport() {
                     <tbody>
                       {filteredReceivableEntries.map((entry) => (
                         <tr key={entry.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                          <td className="p-2">{formatDisplayDate(entry.transactionDate)}</td>
                           <td className="p-2 text-xs text-muted-foreground">{entry.accountName}</td>
                           <td className="p-2">{entry.description}</td>
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>
                           <td className="p-2">{entry.invoiceNumber || "-"}</td>
                           <td className="p-2 text-right font-medium">{formatCurrency(entry.debitAmount)}</td>
-                          <td className="p-2">{entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : "-"}</td>
+                          <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                           <td className="p-2">{getStatusBadge(entry.status)}</td>
                         </tr>
                       ))}
@@ -794,14 +795,14 @@ export default function PayablesReceivablesReport() {
                     <tbody>
                       {filteredPayableEntries.map((entry) => (
                         <tr key={entry.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                          <td className="p-2">{formatDisplayDate(entry.transactionDate)}</td>
                           <td className="p-2 text-xs text-muted-foreground">{entry.accountName}</td>
                           <td className="p-2">{entry.description}</td>
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>
                           <td className="p-2">{entry.invoiceNumber || "-"}</td>
                           <td className="p-2 text-right font-medium">{formatCurrency(entry.creditAmount)}</td>
-                          <td className="p-2">{entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : "-"}</td>
+                          <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                           <td className="p-2">{getStatusBadge(entry.status)}</td>
                         </tr>
                       ))}

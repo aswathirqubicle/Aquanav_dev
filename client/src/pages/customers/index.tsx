@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, startTransition } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1090,7 +1091,7 @@ export default function CustomersIndex() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Added {new Date(customer.createdAt).toLocaleDateString()}
+                        Added {formatDisplayDate(customer.createdAt)}
                       </p>
                     </div>
                   </div>

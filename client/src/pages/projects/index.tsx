@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -233,7 +234,7 @@ export default function ProjectsIndex() {
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Timeline</p>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {project.startDate && project.plannedEndDate
-                            ? `${new Date(project.startDate).toLocaleDateString()} - ${new Date(project.plannedEndDate).toLocaleDateString()}`
+                            ? `${formatDisplayDate(project.startDate)} - ${formatDisplayDate(project.plannedEndDate)}`
                             : "Not set"
                           }
                         </p>

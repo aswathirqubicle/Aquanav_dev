@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState, startTransition } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -549,7 +550,7 @@ export default function ProformaInvoicesIndex() {
   };
 
   const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+    return formatDisplayDate(date);
   };
 
   const getCustomerName = (customerId: number, customerName?: string) => {

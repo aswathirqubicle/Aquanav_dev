@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -308,7 +309,7 @@ function FinanceDashboard() {
                       <p className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(inv.totalAmount)}</p>
                       {inv.dueDate && (
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Due: {new Date(inv.dueDate).toLocaleDateString()}
+                          Due: {formatDisplayDate(inv.dueDate)}
                         </p>
                       )}
                     </div>
@@ -355,7 +356,7 @@ function FinanceDashboard() {
                       <p className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(inv.totalAmount)}</p>
                       {inv.dueDate && (
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Due: {new Date(inv.dueDate).toLocaleDateString()}
+                          Due: {formatDisplayDate(inv.dueDate)}
                         </p>
                       )}
                     </div>
@@ -778,7 +779,7 @@ function EmployeeDashboard() {
                     </div>
                     {project.plannedEndDate && (
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Due: {new Date(project.plannedEndDate).toLocaleDateString()}
+                        Due: {formatDisplayDate(project.plannedEndDate)}
                       </p>
                     )}
                   </div>
@@ -810,7 +811,7 @@ function EmployeeDashboard() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{r.description}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {new Date(r.submissionTimestamp).toLocaleDateString()}
+                        {formatDisplayDate(r.submissionTimestamp)}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 ml-4">
@@ -1059,7 +1060,7 @@ function AdminDashboard() {
                       <td className="py-4 px-4">{getStatusBadge(project.status)}</td>
                       <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
                         {project.plannedEndDate
-                          ? new Date(project.plannedEndDate).toLocaleDateString()
+                          ? formatDisplayDate(project.plannedEndDate)
                           : "N/A"
                         }
                       </td>

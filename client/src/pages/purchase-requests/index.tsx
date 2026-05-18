@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -690,7 +691,7 @@ export default function PurchaseRequestsIndex() {
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
-                              {new Date(request.requestDate).toLocaleDateString()}
+                              {formatDisplayDate(request.requestDate)}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -764,7 +765,7 @@ export default function PurchaseRequestsIndex() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                                <span>{new Date(request.requestDate).toLocaleDateString()}</span>
+                                <span>{formatDisplayDate(request.requestDate)}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Package className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -1127,7 +1128,7 @@ export default function PurchaseRequestsIndex() {
                   <div className="space-y-4">
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Request Date</Label>
-                      <p className="mt-1">{new Date(viewingRequest.requestDate).toLocaleDateString()}</p>
+                      <p className="mt-1">{formatDisplayDate(viewingRequest.requestDate)}</p>
                     </div>
                     {viewingRequest.approvedByName && (
                       <>
@@ -1142,7 +1143,7 @@ export default function PurchaseRequestsIndex() {
                             <Label className="text-sm font-medium text-muted-foreground">
                               {viewingRequest.status === "approved" ? "Approval Date" : "Rejection Date"}
                             </Label>
-                            <p className="mt-1">{new Date(viewingRequest.approvalDate).toLocaleDateString()}</p>
+                            <p className="mt-1">{formatDisplayDate(viewingRequest.approvalDate)}</p>
                           </div>
                         )}
                       </>

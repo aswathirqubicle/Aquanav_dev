@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, FileText, Edit, Trash2, Download, Upload } from "lucide-react";
 import { format } from "date-fns";
+import { formatDisplayDate } from "@/lib/utils";
 
 interface Document {
   id: number;
@@ -440,12 +441,12 @@ export function DocumentManager({ entityId, entityType, title }: DocumentManager
                   </TableCell>
                   <TableCell>{document.documentNumber || "N/A"}</TableCell>
                   <TableCell>
-                    {document.dateOfIssue ? format(new Date(document.dateOfIssue), "dd/MM/yyyy") : "N/A"}
+                    {document.dateOfIssue ? formatDisplayDate(document.dateOfIssue) : "N/A"}
                   </TableCell>
                   <TableCell>
                     {document.expiryDate ? (
                       <span className={isExpiringSoon(document.expiryDate) ? "text-orange-600 font-medium" : ""}>
-                        {format(new Date(document.expiryDate), "dd/MM/yyyy")}
+                        {formatDisplayDate(document.expiryDate)}
                         {isExpiringSoon(document.expiryDate) && " ⚠️"}
                       </span>
                     ) : "N/A"}

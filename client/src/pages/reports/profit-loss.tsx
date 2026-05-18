@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -284,7 +285,7 @@ export default function ProfitLossReport() {
         entry.accountCategory,
         entry.projectTitle || "General",
         entry.invoiceNumber || entry.referenceType || "-",
-        new Date(entry.transactionDate).toLocaleDateString(),
+        formatDisplayDate(entry.transactionDate),
         entry.description,
         entry.debitAmount,
         entry.creditAmount,
@@ -429,7 +430,7 @@ export default function ProfitLossReport() {
               <span className="text-muted-foreground">Showing:</span>
               <span className="font-medium">
                 {filters.startDate && filters.endDate 
-                  ? `${new Date(filters.startDate).toLocaleDateString()} - ${new Date(filters.endDate).toLocaleDateString()}`
+                  ? `${formatDisplayDate(filters.startDate)} - ${formatDisplayDate(filters.endDate)}`
                   : "Select a period"}
               </span>
               {filters.projectId && projects && (
@@ -756,8 +757,8 @@ export default function ProfitLossReport() {
                                   <div className="flex-1 min-w-0 pr-2">
                                     <h4 className="font-semibold text-sm sm:text-base truncate">{project.title}</h4>
                                     <p className="text-xs text-muted-foreground">
-                                      {project.startDate && new Date(project.startDate).toLocaleDateString()} - 
-                                      {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'Ongoing'}
+                                      {project.startDate && formatDisplayDate(project.startDate)} - 
+                                      {project.actualEndDate ? formatDisplayDate(project.actualEndDate) : 'Ongoing'}
                                     </p>
                                   </div>
                                   <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -821,8 +822,8 @@ export default function ProfitLossReport() {
                                     <div>
                                       <div className="font-medium">{project.title}</div>
                                       <div className="text-sm text-muted-foreground">
-                                        {project.startDate && new Date(project.startDate).toLocaleDateString()} - 
-                                        {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'Ongoing'}
+                                        {project.startDate && formatDisplayDate(project.startDate)} - 
+                                        {project.actualEndDate ? formatDisplayDate(project.actualEndDate) : 'Ongoing'}
                                       </div>
                                     </div>
                                   </td>
@@ -953,7 +954,7 @@ export default function ProfitLossReport() {
                                   <p className="text-xs text-muted-foreground truncate">{entry.description}</p>
                                   <div className="flex gap-2 mt-1 flex-wrap">
                                     <p className="text-xs text-muted-foreground">
-                                      {new Date(entry.transactionDate).toLocaleDateString()}
+                                      {formatDisplayDate(entry.transactionDate)}
                                     </p>
                                     {entry.invoiceNumber && (
                                       <span className="text-xs text-blue-600">{entry.invoiceNumber}</span>
@@ -997,7 +998,7 @@ export default function ProfitLossReport() {
                                   <p className="text-xs text-muted-foreground truncate">{entry.description}</p>
                                   <div className="flex gap-2 mt-1 flex-wrap">
                                     <p className="text-xs text-muted-foreground">
-                                      {new Date(entry.transactionDate).toLocaleDateString()}
+                                      {formatDisplayDate(entry.transactionDate)}
                                     </p>
                                     {entry.invoiceNumber && (
                                       <span className="text-xs text-blue-600">{entry.invoiceNumber}</span>

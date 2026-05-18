@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
-import { formatDateForInput } from "@/lib/utils";
+import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 import { sanitize } from "@/lib/sanitize";
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -1506,7 +1506,7 @@ export default function SalesIndex() {
   };
 
   const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString();
+    return formatDisplayDate(date);
   };
 
   const totalQuotationValue = parseFloat(salesStats?.totalQuotationValue || "0");

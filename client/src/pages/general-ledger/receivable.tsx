@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -363,12 +364,12 @@ export default function GeneralLedgerReceivable() {
                 <tbody>
                   {entries.map((entry) => (
                     <tr key={entry.id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                      <td className="p-2">{formatDisplayDate(entry.transactionDate)}</td>
                       <td className="p-2">{entry.description}</td>
                       <td className="p-2">{entry.entityName || "-"}</td>
                       <td className="p-2">{entry.invoiceNumber || "-"}</td>
                       <td className="p-2 text-right font-medium">{formatCurrency(entry.debitAmount)}</td>
-                      <td className="p-2">{entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : "-"}</td>
+                      <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>

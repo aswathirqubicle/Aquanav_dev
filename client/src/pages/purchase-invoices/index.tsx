@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1225,10 +1226,10 @@ export default function PurchaseInvoicesIndex() {
                               <div className="font-medium">{invoice.supplierName}</div>
                             </td>
                             <td className="p-4">
-                              <div className="text-sm">{new Date(invoice.invoiceDate).toLocaleDateString()}</div>
+                              <div className="text-sm">{formatDisplayDate(invoice.invoiceDate)}</div>
                             </td>
                             <td className="p-4">
-                              <div className="text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</div>
+                              <div className="text-sm">{formatDisplayDate(invoice.dueDate)}</div>
                             </td>
                             <td className="p-4 text-right">
                               <div className="font-semibold">{formatCurrency(invoice.totalAmount, invoice.supplierCurrency)}</div>
@@ -1344,11 +1345,11 @@ export default function PurchaseInvoicesIndex() {
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Invoice Date:</span>
-                          <p>{new Date(invoice.invoiceDate).toLocaleDateString()}</p>
+                          <p>{formatDisplayDate(invoice.invoiceDate)}</p>
                         </div>
                         <div>
                           <span className="font-medium text-gray-600 dark:text-gray-400">Due Date:</span>
-                          <p>{new Date(invoice.dueDate).toLocaleDateString()}</p>
+                          <p>{formatDisplayDate(invoice.dueDate)}</p>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-sm">
@@ -2206,13 +2207,13 @@ export default function PurchaseInvoicesIndex() {
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Invoice Date</p>
                       <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
-                        {new Date(viewingInvoice.invoiceDate).toLocaleDateString()}
+                        {formatDisplayDate(viewingInvoice.invoiceDate)}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Due Date</p>
                       <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
-                        {new Date(viewingInvoice.dueDate).toLocaleDateString()}
+                        {formatDisplayDate(viewingInvoice.dueDate)}
                       </p>
                     </div>
                     <div>
@@ -2659,7 +2660,7 @@ export default function PurchaseInvoicesIndex() {
                                   {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
                                 </span>
                                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                                  {new Date(payment.paymentDate).toLocaleDateString()}
+                                  {formatDisplayDate(payment.paymentDate)}
                                 </span>
                                 <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
                                   {payment.paymentMethod?.replace("_", " ") || "N/A"}
@@ -2667,7 +2668,7 @@ export default function PurchaseInvoicesIndex() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-500">
-                                  Recorded: {new Date(payment.recordedAt).toLocaleDateString()}
+                                  Recorded: {formatDisplayDate(payment.recordedAt)}
                                 </span>
                                 <svg
                                   className={`h-4 w-4 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}

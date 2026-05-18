@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -586,7 +587,7 @@ export default function UsersIndex() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Created: {new Date(userItem.createdAt).toLocaleDateString()}
+                        Created: {formatDisplayDate(userItem.createdAt)}
                       </p>
                     </div>
                   </div>

@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -1150,7 +1151,7 @@ export default function PurchaseOrdersIndex() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {new Date(order.orderDate).toLocaleDateString()}
+                        {formatDisplayDate(order.orderDate)}
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(order.status)}
@@ -1160,7 +1161,7 @@ export default function PurchaseOrdersIndex() {
                       </TableCell>
                       <TableCell>
                         {order.expectedDeliveryDate
-                          ? new Date(order.expectedDeliveryDate).toLocaleDateString()
+                          ? formatDisplayDate(order.expectedDeliveryDate)
                           : "-"
                         }
                       </TableCell>
@@ -1871,7 +1872,7 @@ export default function PurchaseOrdersIndex() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
-                        <p className="text-sm font-medium mt-1">{new Date(viewingOrder.orderDate).toLocaleDateString()}</p>
+                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
                       </div>
                       {viewingOrder.paymentTerms && (
                         <div>
@@ -1884,7 +1885,7 @@ export default function PurchaseOrdersIndex() {
                       {viewingOrder.expectedDeliveryDate && (
                         <div>
                           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Delivery</label>
-                          <p className="text-sm font-medium mt-1">{new Date(viewingOrder.expectedDeliveryDate).toLocaleDateString()}</p>
+                          <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.expectedDeliveryDate)}</p>
                         </div>
                       )}
                       {viewingOrder.deliveryTerms && (

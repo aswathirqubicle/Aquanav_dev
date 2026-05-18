@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -462,8 +463,8 @@ export default function ReimbursementsIndex() {
                           </div>
                         </TableCell>
                         <TableCell>AED {parseFloat(reimbursement.amount).toLocaleString()}</TableCell>
-                        <TableCell>{new Date(reimbursement.originalExpenseDate).toLocaleDateString()}</TableCell>
-                        <TableCell>{new Date(reimbursement.submissionTimestamp).toLocaleDateString()}</TableCell>
+                        <TableCell>{formatDisplayDate(reimbursement.originalExpenseDate)}</TableCell>
+                        <TableCell>{formatDisplayDate(reimbursement.submissionTimestamp)}</TableCell>
                         <TableCell>{getStatusBadge(reimbursement.status)}</TableCell>
                         <TableCell>{getPayrollPeriod(reimbursement.payrollMonth, reimbursement.payrollYear)}</TableCell>
                         <TableCell className="text-right">
@@ -515,7 +516,7 @@ export default function ReimbursementsIndex() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-muted-foreground" />
-                            <span>{new Date(reimbursement.originalExpenseDate).toLocaleDateString()}</span>
+                            <span>{formatDisplayDate(reimbursement.originalExpenseDate)}</span>
                           </div>
                         </div>
                         <div className="flex gap-2 pt-2 border-t">
@@ -727,7 +728,7 @@ export default function ReimbursementsIndex() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs sm:text-sm">Expense Date</Label>
-                  <p className="font-medium text-sm sm:text-base">{new Date(selectedReimbursement.originalExpenseDate).toLocaleDateString()}</p>
+                  <p className="font-medium text-sm sm:text-base">{formatDisplayDate(selectedReimbursement.originalExpenseDate)}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs sm:text-sm">Submitted</Label>

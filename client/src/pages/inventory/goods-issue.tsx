@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/utils";
+import { apiRequest, formatDisplayDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -265,7 +265,7 @@ export default function GoodsIssue() {
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString();
+    return formatDisplayDate(date);
   };
 
   const uniqueProjects = Array.from(
