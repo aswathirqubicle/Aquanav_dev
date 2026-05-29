@@ -38,7 +38,12 @@ import {
   RefreshCw,
   ClipboardCheck,
   CheckSquare,
-  Square
+  Square,
+  FileText,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Image,
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
 import { Autocomplete } from "@/components/ui/autocomplete";
@@ -617,6 +622,19 @@ export default function ProjectDetail() {
   });
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [selectedImageForPreview, setSelectedImageForPreview] = useState<ProjectPhoto | null>(null);
+
+  // Completion report dialog
+  const [isCompletionReportOpen, setIsCompletionReportOpen] = useState(false);
+  const [completionReportTitle, setCompletionReportTitle] = useState("");
+  const [completionReportSections, setCompletionReportSections] = useState({
+    totalDays: true,
+    locationBreakdown: true,
+    photoGallery: true,
+    consumables: true,
+  });
+  const [selectedCompletionPhotoIds, setSelectedCompletionPhotoIds] = useState<number[]>([]);
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  const [completionReportSubmitting, setCompletionReportSubmitting] = useState(false);
   const [isEditProjectDialogOpen, setIsEditProjectDialogOpen] = useState(false);
   const [isConsumablesDialogOpen, setIsConsumablesDialogOpen] = useState(false);
   const [isReviewConsumablesOpen, setIsReviewConsumablesOpen] = useState(false);
@@ -708,6 +726,8 @@ export default function ProjectDetail() {
     hbmDailyRunningHours: string;
     remarks: string;
     photos: string[];
+    isStoppage: boolean;
+    stoppageReason: string;
   }>({
     date: new Date().toISOString().split('T')[0],
     location: "",
@@ -716,6 +736,8 @@ export default function ProjectDetail() {
     hbmDailyRunningHours: "",
     remarks: "",
     photos: [],
+    isStoppage: false,
+    stoppageReason: "",
   });
 
   const [completedActivities, setCompletedActivities] = useState<Array<{
@@ -800,6 +822,18 @@ export default function ProjectDetail() {
       return response.json();
     },
     enabled: isAuthenticated && !!id,
+  });
+
+  const { data: completionReportPhotoGroups } = useQuery<any[]>({
+    queryKey: ["/api/projects", id, "completion-report", "photos"],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${id}/completion-report/photos`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch photo groups");
+      return response.json();
+    },
+    enabled: isAuthenticated && !!id && isCompletionReportOpen,
   });
 
   const { data: employees } = useQuery<Employee[]>({
@@ -1063,6 +1097,8 @@ export default function ProjectDetail() {
       hbmDailyRunningHours: activity.hbmDailyRunningHours ? String(activity.hbmDailyRunningHours) : "",
       remarks: dayRemark,
       photos: activity.photos || [],
+      isStoppage: (activity as any).isStoppage || false,
+      stoppageReason: (activity as any).stoppageReason || "",
     });
     setCompletedActivities([{
       location: activity.location || "",
@@ -1080,6 +1116,8 @@ export default function ProjectDetail() {
       hbmDailyRunningHours: "",
       remarks: "",
       photos: [],
+      isStoppage: false,
+      stoppageReason: "",
     });
     setCompletedActivities([]);
     setNewCompletedActivity({
@@ -1116,7 +1154,9 @@ export default function ProjectDetail() {
           hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
           remarks: activityData.remarks || "",
           photos: [],
-        };
+          isStoppage: activityData.isStoppage,
+          stoppageReason: activityData.isStoppage ? activityData.stoppageReason : null,
+        } as any;
 
         await apiRequest(`/api/projects/${id}/activities/${editingActivityId}`, {
           method: "PUT",
@@ -1141,7 +1181,9 @@ export default function ProjectDetail() {
             hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
             remarks: i === 0 ? (activityData.remarks || "") : "",
             photos: [],
-          };
+            isStoppage: activityData.isStoppage,
+            stoppageReason: activityData.isStoppage ? activityData.stoppageReason : null,
+          } as any;
 
           await apiRequest(`/api/projects/${id}/activities`, {
             method: "POST",
@@ -3170,6 +3212,16 @@ export default function ProjectDetail() {
                     </span>
                   )}
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsCompletionReportOpen(true)}
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Completion Report
+                  </Button>
                 {canEdit && (
                   <Dialog open={isActivityDialogOpen} onOpenChange={(isOpen) => {
                     setIsActivityDialogOpen(isOpen);
@@ -3333,6 +3385,37 @@ export default function ProjectDetail() {
                           />
                         </div>
 
+                        {/* Stoppage Day Toggle */}
+                        <div className="border border-amber-200 dark:border-amber-800 rounded-lg p-4 bg-amber-50 dark:bg-amber-950/30 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                              <Label className="text-sm font-medium text-amber-700 dark:text-amber-400">Stoppage Day</Label>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={activityData.isStoppage}
+                              onClick={() => setActivityData(prev => ({ ...prev, isStoppage: !prev.isStoppage, stoppageReason: prev.isStoppage ? "" : prev.stoppageReason }))}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${activityData.isStoppage ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"}`}
+                            >
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${activityData.isStoppage ? "translate-x-6" : "translate-x-1"}`} />
+                            </button>
+                          </div>
+                          {activityData.isStoppage && (
+                            <div className="space-y-1">
+                              <Label htmlFor="stoppageReason" className="text-xs text-amber-700 dark:text-amber-400">Stoppage Reason</Label>
+                              <Input
+                                id="stoppageReason"
+                                value={activityData.stoppageReason}
+                                onChange={(e) => setActivityData(prev => ({ ...prev, stoppageReason: e.target.value }))}
+                                placeholder="Enter reason for stoppage..."
+                                className="w-full border-amber-300 focus:border-amber-500"
+                              />
+                            </div>
+                          )}
+                        </div>
+
                         <div className="flex flex-col sm:flex-row justify-end gap-2 pt-6 border-t border-slate-200 dark:border-slate-700">
                           <Button
                             type="button"
@@ -3354,6 +3437,7 @@ export default function ProjectDetail() {
                     </DialogContent>
                   </Dialog>
                 )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -3396,9 +3480,20 @@ export default function ProjectDetail() {
                     <div key={activity.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div className="space-y-1">
-                          <p className="font-medium text-slate-900 dark:text-slate-100">
-                            {activity.date ? formatDate(activity.date) : "Unknown Date"}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">
+                              {activity.date ? formatDate(activity.date) : "Unknown Date"}
+                            </p>
+                            {(activity as any).isStoppage && (
+                              <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-700 text-xs flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Stoppage Day
+                                {(activity as any).stoppageReason && (
+                                  <span className="font-normal">– {(activity as any).stoppageReason}</span>
+                                )}
+                              </Badge>
+                            )}
+                          </div>
                           {activity.hbmDailyRunningHours && (
                             <div className="flex items-center text-sm text-ocean-600 dark:text-ocean-400 font-medium">
                               <Clock className="h-3.5 w-3.5 mr-1" />
@@ -5497,6 +5592,319 @@ export default function ProjectDetail() {
                 <Camera className="h-16 w-16 text-slate-400" />
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Completion Report Dialog ── */}
+      <Dialog open={isCompletionReportOpen} onOpenChange={setIsCompletionReportOpen}>
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Project Completion Report
+            </DialogTitle>
+            <DialogDescription>
+              Select which sections to include and choose photos for the gallery.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-2">
+            {/* Report Title */}
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Report Title</label>
+              <input
+                type="text"
+                value={completionReportTitle}
+                onChange={e => setCompletionReportTitle(e.target.value)}
+                placeholder={project?.title || "Project Completion Report"}
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-500">Defaults to the project name if left blank.</p>
+            </div>
+
+            {/* Section toggles */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Report Sections</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  { key: "totalDays", label: "Total Days Breakdown Chart" },
+                  { key: "locationBreakdown", label: "Location Breakdown Chart" },
+                  { key: "photoGallery", label: "Photo Gallery" },
+                  { key: "consumables", label: "Consumables List" },
+                ] as const).map(({ key, label }) => (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                      completionReportSections[key]
+                        ? "border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                    onClick={() => setCompletionReportSections(prev => ({ ...prev, [key]: !prev[key] }))}
+                  >
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
+                    <button
+                      type="button"
+                      className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
+                        completionReportSections[key] ? "bg-blue-500" : "bg-slate-300 dark:bg-slate-600"
+                      }`}
+                    >
+                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                        completionReportSections[key] ? "translate-x-5" : "translate-x-1"
+                      }`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Photo picker */}
+            {completionReportSections.photoGallery && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Select Photos
+                    {selectedCompletionPhotoIds.length > 0 && (
+                      <span className="ml-2 text-blue-600 font-normal">({selectedCompletionPhotoIds.length} selected)</span>
+                    )}
+                  </p>
+                  {selectedCompletionPhotoIds.length > 0 && (
+                    <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setSelectedCompletionPhotoIds([])}>
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+
+                {!completionReportPhotoGroups ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">Loading photo groups...</p>
+                ) : completionReportPhotoGroups.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">No photo groups found for this project.</p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {(() => {
+                      // Group by location
+                      const byLocation = new Map<string, any[]>();
+                      for (const g of completionReportPhotoGroups) {
+                        const loc = g.dailyActivity?.location || "__GENERAL__";
+                        if (!byLocation.has(loc)) byLocation.set(loc, []);
+                        byLocation.get(loc)!.push(g);
+                      }
+
+                      // Helper: move a photo earlier or later within its group's selected subset
+                      const movePhotoInGroup = (photoId: number, direction: 'prev' | 'next', groupPhotoIds: number[]) => {
+                        // Get the global indices of selected photos from this group, in selection order
+                        const groupSelectedEntries = selectedCompletionPhotoIds
+                          .map((id, globalIdx) => ({ id, globalIdx }))
+                          .filter(({ id }) => groupPhotoIds.includes(id));
+                        const posInGroup = groupSelectedEntries.findIndex(({ id }) => id === photoId);
+                        const targetPos = direction === 'prev' ? posInGroup - 1 : posInGroup + 1;
+                        if (posInGroup === -1 || targetPos < 0 || targetPos >= groupSelectedEntries.length) return;
+                        const newOrder = [...selectedCompletionPhotoIds];
+                        const idxA = groupSelectedEntries[posInGroup].globalIdx;
+                        const idxB = groupSelectedEntries[targetPos].globalIdx;
+                        [newOrder[idxA], newOrder[idxB]] = [newOrder[idxB], newOrder[idxA]];
+                        setSelectedCompletionPhotoIds(newOrder);
+                      };
+
+                      return Array.from(byLocation.entries()).map(([loc, groups]) => {
+                        const locLabel = loc === "__GENERAL__" ? "General / No Location" : loc;
+                        const isExpanded = expandedLocations.has(loc);
+                        const allPhotoIds = groups.flatMap((g: any) => (g.photos || []).map((p: any) => p.id));
+                        const selectedCount = allPhotoIds.filter((pid: number) => selectedCompletionPhotoIds.includes(pid)).length;
+                        return (
+                          <div key={loc} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                            {/* Location header */}
+                            <div
+                              className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 cursor-pointer"
+                              onClick={() => {
+                                const next = new Set(expandedLocations);
+                                if (isExpanded) next.delete(loc);
+                                else next.add(loc);
+                                setExpandedLocations(next);
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{locLabel}</span>
+                                {selectedCount > 0 && (
+                                  <Badge className="text-xs h-4 px-1.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                                    {selectedCount}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const allSelected = allPhotoIds.every((pid: number) => selectedCompletionPhotoIds.includes(pid));
+                                    if (allSelected) {
+                                      setSelectedCompletionPhotoIds(prev => prev.filter(id => !allPhotoIds.includes(id)));
+                                    } else {
+                                      const toAdd = allPhotoIds.filter((pid: number) => !selectedCompletionPhotoIds.includes(pid));
+                                      setSelectedCompletionPhotoIds(prev => [...prev, ...toAdd]);
+                                    }
+                                  }}
+                                >
+                                  {allPhotoIds.every((pid: number) => selectedCompletionPhotoIds.includes(pid)) ? "Deselect all" : "Select all"}
+                                </button>
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+                              </div>
+                            </div>
+                            {/* Groups */}
+                            {isExpanded && (
+                              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {groups.map((group: any) => {
+                                  const groupPhotoIds = (group.photos || []).map((p: any) => p.id);
+                                  const groupSelectedCount = groupPhotoIds.filter((pid: number) => selectedCompletionPhotoIds.includes(pid)).length;
+                                  // Ordered selected photos within this group
+                                  const groupSelectedInOrder = selectedCompletionPhotoIds.filter(id => groupPhotoIds.includes(id));
+                                  return (
+                                    <div key={group.id} className="p-2">
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <Image className="h-3 w-3 text-slate-400" />
+                                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-36">{group.title}</span>
+                                          {groupSelectedCount > 0 && (
+                                            <span className="text-xs text-blue-600 dark:text-blue-400">({groupSelectedCount}/{groupPhotoIds.length})</span>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                          onClick={() => {
+                                            const allSelected = groupPhotoIds.every((pid: number) => selectedCompletionPhotoIds.includes(pid));
+                                            if (allSelected) {
+                                              setSelectedCompletionPhotoIds(prev => prev.filter(id => !groupPhotoIds.includes(id)));
+                                            } else {
+                                              const toAdd = groupPhotoIds.filter((pid: number) => !selectedCompletionPhotoIds.includes(pid));
+                                              setSelectedCompletionPhotoIds(prev => [...prev, ...toAdd]);
+                                            }
+                                          }}
+                                        >
+                                          {groupPhotoIds.every((pid: number) => selectedCompletionPhotoIds.includes(pid)) ? "Deselect" : "Select all"}
+                                        </button>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
+                                        {(group.photos || []).map((photo: any) => {
+                                          const isSelected = selectedCompletionPhotoIds.includes(photo.id);
+                                          const posInGroup = groupSelectedInOrder.indexOf(photo.id);
+                                          const isFirst = posInGroup === 0;
+                                          const isLast = posInGroup === groupSelectedInOrder.length - 1;
+                                          return (
+                                            <div key={photo.id} className="flex flex-col items-center gap-0.5">
+                                              <div
+                                                className={`relative cursor-pointer rounded overflow-hidden border-2 transition-all ${
+                                                  isSelected
+                                                    ? "border-blue-500 shadow-sm"
+                                                    : "border-transparent opacity-70 hover:opacity-100"
+                                                }`}
+                                                onClick={() => {
+                                                  if (selectedCompletionPhotoIds.includes(photo.id)) {
+                                                    setSelectedCompletionPhotoIds(prev => prev.filter(id => id !== photo.id));
+                                                  } else {
+                                                    setSelectedCompletionPhotoIds(prev => [...prev, photo.id]);
+                                                  }
+                                                }}
+                                              >
+                                                <img
+                                                  src={photo.filePath}
+                                                  alt={photo.originalName}
+                                                  className="w-12 h-12 object-cover"
+                                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                                />
+                                                {isSelected && (
+                                                  <div className="absolute inset-0 bg-blue-500/20 flex items-start justify-end p-0.5">
+                                                    <span className="bg-blue-600 text-white text-[9px] font-bold rounded px-1 leading-tight">
+                                                      {posInGroup + 1}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {isSelected && (
+                                                <div className="flex gap-0.5">
+                                                  <button
+                                                    type="button"
+                                                    disabled={isFirst}
+                                                    className="w-5 h-4 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    title="Move earlier"
+                                                    onClick={(e) => { e.stopPropagation(); movePhotoInGroup(photo.id, 'prev', groupPhotoIds); }}
+                                                  >
+                                                    ‹
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    disabled={isLast}
+                                                    className="w-5 h-4 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    title="Move later"
+                                                    onClick={(e) => { e.stopPropagation(); movePhotoInGroup(photo.id, 'next', groupPhotoIds); }}
+                                                  >
+                                                    ›
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <Button variant="outline" onClick={() => setIsCompletionReportOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={completionReportSubmitting}
+              onClick={async () => {
+                setCompletionReportSubmitting(true);
+                try {
+                  const response = await fetch("/api/print/project-completion", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      projectId: parseInt(id!),
+                      selectedPhotoIds: selectedCompletionPhotoIds,
+                      sections: completionReportSections,
+                      reportTitle: completionReportTitle.trim() || undefined,
+                    }),
+                  });
+                  if (!response.ok) {
+                    const err = await response.json().catch(() => ({ message: "Failed to generate report" }));
+                    throw new Error(err.message);
+                  }
+                  const html = await response.text();
+                  const win = window.open("", "_blank");
+                  if (win) {
+                    win.document.write(html);
+                    win.document.close();
+                  }
+                  setIsCompletionReportOpen(false);
+                } catch (error: any) {
+                  toast({ title: "Error", description: error.message || "Failed to generate completion report", variant: "destructive" });
+                } finally {
+                  setCompletionReportSubmitting(false);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              {completionReportSubmitting ? "Generating..." : "Generate & Print"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

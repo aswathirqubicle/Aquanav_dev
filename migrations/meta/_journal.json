@@ -120,6 +120,20 @@
       "when": 1774415438447,
       "tag": "0016_curious_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1778672737033,
+      "tag": "0017_hot_steve_rogers",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780027916068,
+      "tag": "0018_icy_warbird",
+      "breakpoints": true
     }
   ]
 }

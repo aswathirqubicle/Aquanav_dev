@@ -362,6 +362,8 @@ export const dailyActivities = pgTable("daily_activities", {
   }),
   remarks: text("remarks"),
   photos: json("photos").$type<string[]>().default([]),
+  isStoppage: boolean("is_stoppage").notNull().default(false),
+  stoppageReason: text("stoppage_reason"),
 });
 
 // Project Photo Groups
