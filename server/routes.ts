@@ -1983,7 +1983,6 @@ export function generateCompletionReportHTML(data: any): string {
 
       const cells = rd.photos.map((p: any) => {
         const ar      = typeof p.aspectRatio === "number" && p.aspectRatio > 0 ? p.aspectRatio : 1.5;
-        const caption = val(p.groupTitle || "");
         // Justified rows: flex:ar 0 0 distributes width proportional to AR.
         // Container AR = ar → object-fit:contain fills with zero letterboxing.
         // Last-row (non-justified): fixed natural width so tiles don't over-stretch.
@@ -1994,19 +1993,44 @@ export function generateCompletionReportHTML(data: any): string {
   <div style="background:#fff;border-radius:6px;padding:3px;box-shadow:0 6px 16px rgba(0,0,0,0.18);-webkit-print-color-adjust:exact;print-color-adjust:exact;height:${rowH}mm;box-sizing:border-box;overflow:hidden;">
     <img src="${val(p.filePath)}" style="width:100%;height:100%;object-fit:contain;display:block;border-radius:4px;" onerror="this.closest('div').style.background='#e5e7eb'" />
   </div>
-  ${caption ? `<div style="font-size:7px;color:#555;margin-top:3px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;">${caption}</div>` : ""}
 </div>`;
       }).join("");
 
       const justifyContent = rd.justified ? "" : ";justify-content:flex-start";
-      return `<div style="display:flex;gap:${gapMm}mm;margin-bottom:${isLast ? "0" : `${rowGapMm}mm`};align-items:flex-start${justifyContent}">${cells}</div>`;
+      return `<div style="display:flex;gap:${gapMm}mm;margin-bottom:${isLast ? "0" : `${rowGapMm}mm`};align-items:flex-start${justifyContent};page-break-inside:avoid;break-inside:avoid;">${cells}</div>`;
     }).join("");
 
-    return `<div style="width:100%;page-break-inside:avoid;break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${rowsHTML}</div>`;
+    return `<div style="width:100%;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${rowsHTML}</div>`;
   }
+
+  // ── Section: Common Table Header & Footer ──────────────────────────────────
+  const tableHeaderHTML = `
+    <div class="report-header-space" style="height: 160px;">
+      <div class="print-header">
+        <div class="top-header">
+          <img src="${company.logo || ""}" />
+          <div style="font-size: 14px; font-weight: 600; text-align: right;">${company.address || ""}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const tableFooterHTML = `
+    <div class="report-footer-space" style="height: 60px;">
+      <div class="footer">
+        <div class="footer-content">
+          <span>🌐 ${company.website || ""}</span>
+          <span>✉ ${company.email || ""}</span>
+          <span>☎ ${company.phone || ""}</span>
+        </div>
+      </div>
+    </div>
+  `;
 
   // ── Section: Cover page ─────────────────────────────────────────────────────
   const endDate = project.actualEndDate || project.plannedEndDate;
+  const vesselImgUrl = val(project.vesselImageUrl); // absolute URL pre-computed by endpoint
+
   const coverHTML = `
 <div style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-after:always;">
   ${company.logo ? `<img src="${company.logo}" style="height:70px;margin-bottom:30px;filter:brightness(10);" onerror="this.style.display='none'" />` : ""}
@@ -2015,6 +2039,10 @@ export function generateCompletionReportHTML(data: any): string {
   <div style="width:60px;height:3px;background:#0019A5;margin:0 auto 24px;"></div>
   <div style="color:#ffffff;font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:2px;line-height:1.4;max-width:500px;margin-bottom:40px;">${reportTitle}</div>
   <div style="color:#aabbee;font-size:14px;letter-spacing:3px;text-transform:uppercase;margin-bottom:30px;">PROJECT HIGHLIGHTS</div>
+  ${vesselImgUrl ? `
+  <div style="width:100%;height:90mm;overflow:hidden;margin-bottom:0;">
+    <img src="${vesselImgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display='none'" />
+  </div>` : ""}
   <div style="display:flex;justify-content:space-between;width:100%;max-width:500px;margin-top:auto;padding-top:30px;border-top:1px solid rgba(255,255,255,0.2);">
     <div style="color:#ffffff;font-size:13px;font-weight:600;">${fmtUpper(project.startDate)}</div>
     <div style="color:#ffffff;font-size:13px;font-weight:600;">${fmtUpper(endDate)}</div>
@@ -2046,14 +2074,8 @@ export function generateCompletionReportHTML(data: any): string {
     { label: "Description", value: val(project.description) },
   ].filter(r => r.value);
 
-  const vesselImgUrl = val(project.vesselImageUrl); // absolute URL pre-computed by endpoint
-
   const projectDetailsHTML = `
 <div style="page-break-before:always;padding:0;box-sizing:border-box;">
-  ${vesselImgUrl ? `
-  <div style="width:100%;height:90mm;overflow:hidden;margin-bottom:0;">
-    <img src="${vesselImgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display='none'" />
-  </div>` : ""}
   <div style="background:#1a1a2e;padding:18px 30px 14px;display:flex;align-items:center;justify-content:space-between;">
     <div>
       <div style="color:#aabbee;font-size:10px;letter-spacing:3px;text-transform:uppercase;">Project Details</div>
@@ -2184,32 +2206,65 @@ export function generateCompletionReportHTML(data: any): string {
   // ── Section: Photo gallery ─────────────────────────────────────────────────
   let galleryHTML = "";
   if (sections.photoGallery !== false && photosByLocation.length) {
-    galleryHTML = photosByLocation.map((loc: any) => {
+    const sortedLocations = [...photosByLocation].sort((a: any, b: any) => {
+      const nameA = (a.location || "GENERAL").toUpperCase();
+      const nameB = (b.location || "GENERAL").toUpperCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    galleryHTML = sortedLocations.map((loc: any) => {
       const locationName = (loc.location || "GENERAL").toUpperCase();
 
-      // Pool all photos from all groups in this location into one flat array,
-      // tagging each with its group title for the caption overlay.
-      const allPhotos: any[] = [];
-      for (const group of (loc.groups || [])) {
-        for (const p of (group.photos || [])) {
-          allPhotos.push({ ...p, groupTitle: group.title || "" });
-        }
-      }
-
-      const photoCount = allPhotos.length;
+      // Pool all photos from all groups in this location to get the total count
+      const allPhotosCount = (loc.groups || []).reduce((sum: number, group: any) => sum + (group.photos || []).length, 0);
 
       const dividerPage = `
+        </td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr><td style="border: none !important; padding: 0 !important;">
+        ${tableFooterHTML}
+      </td></tr>
+    </tfoot>
+  </table>
 <div style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-before:always;page-break-after:always;">
   <div style="color:#ffffff;font-size:36px;font-weight:900;letter-spacing:3px;text-transform:uppercase;line-height:1.2;margin-bottom:16px;">${locationName}</div>
   <div style="width:60px;height:3px;background:#0019A5;margin:0 auto 16px;"></div>
   <div style="color:#aabbee;font-size:14px;letter-spacing:2px;text-transform:uppercase;">${reportTitle}</div>
-  <div style="color:#aabbee;font-size:12px;margin-top:12px;">${photoCount} photo${photoCount !== 1 ? "s" : ""}</div>
-</div>`;
+  <div style="color:#aabbee;font-size:12px;margin-top:12px;">${allPhotosCount} photo${allPhotosCount !== 1 ? "s" : ""}</div>
+</div>
+  <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+    <thead>
+      <tr><td style="border: none !important; padding: 0 !important;">
+        ${tableHeaderHTML}
+      </td></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="report-content-cell">
+<div style="padding:8mm 10mm;background:#fff;page-break-before:avoid;">`;
 
-      return dividerPage + `
-<div style="padding:8mm 10mm;background:#fff;page-break-before:avoid;">
-  ${locationStaggeredGrid(allPhotos)}
-</div>`;
+      const sortedGroups = [...(loc.groups || [])].sort((a: any, b: any) => {
+        const titleA = (a.title || "").toUpperCase();
+        const titleB = (b.title || "").toUpperCase();
+        return titleA.localeCompare(titleB);
+      });
+
+      const groupsHTML = sortedGroups.map((group: any) => {
+        const groupPhotos = group.photos || [];
+        if (groupPhotos.length === 0) return "";
+
+        const groupTitle = (group.title || "").toUpperCase();
+
+        return `
+  <div style="margin-bottom: 20px;">
+    <div style="font-size:16px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;text-align:center;page-break-after:avoid;">${groupTitle}</div>
+    ${locationStaggeredGrid(groupPhotos)}
+  </div>`;
+      }).join("");
+
+      return dividerPage + groupsHTML + `</div>`;
     }).join("");
   }
 
@@ -2282,22 +2337,93 @@ body {
   print-color-adjust: exact;
 }
 .page-break { page-break-before: always; padding: 10mm 12mm; background: #fff; }
+/* Layout table for repeating headers/footers */
+.report-wrapper {
+  width: 100%;
+  border-collapse: collapse;
+  border: none !important;
+}
+.report-wrapper > thead > tr > td,
+.report-wrapper > tbody > tr > td,
+.report-wrapper > tfoot > tr > td {
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* ===== HEADER ===== */
+.print-header {
+  height: 160px;
+  background: #ffffff;
+  padding: 10px 20px;
+  width: 100%;
+}
+
+.top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.top-header img {
+  height: 120px;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+  height: 60px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.footer-content {
+  display: flex;
+  gap: 20px;
+  font-weight: bold;
+  color: #0019A5;
+}
+
 @media print {
   body { margin: 0; background: #fff; }
-  .page-break { page-break-before: always; }
+  .page-break { page-break-before: always; margin-top: 140px; }
+
+  @page:first {
+    margin: 0;
+  }
 }
 </style>
 </head>
 <body onload="window.print()">
   ${coverHTML}
-  ${projectDetailsHTML}
-  ${totalDaysHTML}
-  ${locationBreakdownHTML}
-  ${galleryHTML}
-  ${consumablesHTML}
+  <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
+    <thead>
+      <tr><td style="border: none !important; padding: 0 !important;">
+        ${tableHeaderHTML}
+      </td></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="report-content-cell">
+          ${projectDetailsHTML}
+          ${totalDaysHTML}
+          ${locationBreakdownHTML}
+          ${galleryHTML}
+          ${consumablesHTML}
+        </td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr><td style="border: none !important; padding: 0 !important;">
+        ${tableFooterHTML}
+      </td></tr>
+    </tfoot>
+  </table>
 </body>
 </html>`;
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 
