@@ -1372,15 +1372,19 @@ body {
   padding: 0 !important;
 }
 
+.report-content-cell {
+  vertical-align: top;
+}
+
 /* ===== FIXED HEADER ===== */
 .print-header {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 160px;               /* MUST MATCH CONTAINER PADDING */
+  height: 160px;
   background: #ffffff;
-  z-index: 1000;
+  z-index: 10;
   padding: 10px 20px;
 }
 
@@ -1405,6 +1409,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10;
 }
 
 .footer-content {
@@ -1512,7 +1517,6 @@ body {
 /* ===== PAGE BREAK ===== */
 .page-break {
   page-break-before: always;
-  margin-top: 140px;
 }
 
 .highlights-header {
@@ -1553,7 +1557,6 @@ body {
 
   .page-break {
     page-break-before: always;
-    margin-top: 140px;
   }
 
 }
@@ -1903,126 +1906,24 @@ export function generateCompletionReportHTML(data: any): string {
 </div>`;
   }
 
-  // ── Flickr-style justified photo gallery (no cropping) ───────────────────────
-  // Algorithm (greedy justified packing):
-  //   1. Choose targetH (drive packing): photos are added to a row while their
-  //      natural widths at targetH fit within contentW. When a new photo would
-  //      overflow, seal the row and start a new one.
-  //   2. Full rows: justified height = (contentW − gaps) / arSum so images
-  //      fill the exact page width. flex-grow:ar distributes widths by AR.
-  //   3. Last row: if justification would stretch tiles > 1.4× targetH (e.g.
-  //      one lonely portrait at end), render at targetH left-aligned instead.
-  //   4. Global scale-down: if all rows total > maxTotalH, shrink each rowH
-  //      proportionally so the gallery fits on one page.
-  function locationStaggeredGrid(photos: any[]): string {
-    if (!photos.length) return "";
-    const n = photos.length;
-
-    const contentW  = 186;  // mm — usable width (A4 210mm minus 2×12mm padding)
-    const gapMm     = 3;    // mm — horizontal gutter between tiles in a row
-    const rowGapMm  = 4;    // mm — vertical gap between rows
-    const minH      = 25;   // mm — minimum legible tile height
-    const maxTotalH = 240;  // mm — max total gallery height (single-page guarantee)
-
-    // targetH drives packing. Tuned so typical landscape photos (AR≈1.78)
-    // yield 2-4 photos per row at each count tier.
-    let targetH: number;
-    if      (n === 1)  targetH = 180;
-    else if (n <= 3)   targetH = 80;
-    else if (n <= 6)   targetH = 45;
-    else if (n <= 9)   targetH = 38;
-    else if (n <= 12)  targetH = 32;
-    else if (n <= 16)  targetH = 28;
-    else               targetH = 24;
-
-    // ── 1. Greedy packing ────────────────────────────────────────────────────
-    // Add a photo to the current row if its natural width at targetH still fits.
-    // projW = arSum * targetH + (n-1) * gapMm; start a new row when projW > contentW.
-    type RowData = { photos: any[]; arSum: number };
-    const rows: RowData[] = [];
-    let cur: any[] = [];
-    let curAR = 0;
-
-    for (const p of photos) {
-      const ar = typeof p.aspectRatio === "number" && p.aspectRatio > 0 ? p.aspectRatio : 1.5;
-      const projW = (curAR + ar) * targetH + cur.length * gapMm;
-      if (cur.length > 0 && projW > contentW) {
-        rows.push({ photos: cur, arSum: curAR });
-        cur = [p];
-        curAR = ar;
-      } else {
-        cur.push(p);
-        curAR += ar;
-      }
-    }
-    if (cur.length) rows.push({ photos: cur, arSum: curAR });
-
-    // ── 2. Compute row heights ────────────────────────────────────────────────
-    // For each row: justH = (contentW − gaps) / arSum  (fills full width exactly)
-    // Last row: if justH > 1.4 × targetH (over-stretch), use targetH + left-align
-    const rowMeta = rows.map((rd, ri) => {
-      const isLast  = ri === rows.length - 1;
-      const effW    = contentW - (rd.photos.length - 1) * gapMm;
-      const justH   = effW / rd.arSum;
-      const overStr = isLast && justH > targetH * 1.4;
-      const rowH    = overStr ? targetH : Math.max(Math.round(justH), minH);
-      return { ...rd, rowH, justified: !overStr };
-    });
-
-    // ── 3. Scale down if total exceeds page budget ────────────────────────────
-    const gapTotal  = (rowMeta.length - 1) * rowGapMm;
-    const rawTotalH = rowMeta.reduce((s, r) => s + r.rowH, 0);
-    const scale     = rawTotalH + gapTotal > maxTotalH
-      ? (maxTotalH - gapTotal) / rawTotalH
-      : 1;
-
-    // ── 4. Render ─────────────────────────────────────────────────────────────
-    const rowsHTML = rowMeta.map((rd, ri) => {
-      const rowH   = Math.max(Math.round(rd.rowH * scale), minH);
-      const isLast = ri === rowMeta.length - 1;
-
-      const cells = rd.photos.map((p: any) => {
-        const ar      = typeof p.aspectRatio === "number" && p.aspectRatio > 0 ? p.aspectRatio : 1.5;
-        // Justified rows: flex:ar 0 0 distributes width proportional to AR.
-        // Container AR = ar → object-fit:contain fills with zero letterboxing.
-        // Last-row (non-justified): fixed natural width so tiles don't over-stretch.
-        const flexStyle = rd.justified
-          ? `flex:${ar} 0 0`
-          : `flex:0 0 ${(ar * rowH).toFixed(1)}mm`;
-        return `<div style="${flexStyle};min-width:0;">
-  <div style="background:#fff;border-radius:6px;padding:3px;box-shadow:0 6px 16px rgba(0,0,0,0.18);-webkit-print-color-adjust:exact;print-color-adjust:exact;height:${rowH}mm;box-sizing:border-box;overflow:hidden;">
-    <img src="${val(p.filePath)}" style="width:100%;height:100%;object-fit:contain;display:block;border-radius:4px;" onerror="this.closest('div').style.background='#e5e7eb'" />
-  </div>
-</div>`;
-      }).join("");
-
-      const justifyContent = rd.justified ? "" : ";justify-content:flex-start";
-      return `<div style="display:flex;gap:${gapMm}mm;margin-bottom:${isLast ? "0" : `${rowGapMm}mm`};align-items:flex-start${justifyContent};page-break-inside:avoid;break-inside:avoid;">${cells}</div>`;
-    }).join("");
-
-    return `<div style="width:100%;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${rowsHTML}</div>`;
-  }
-
   // ── Section: Common Table Header & Footer ──────────────────────────────────
-  const tableHeaderHTML = `
-    <div class="report-header-space" style="height: 160px;">
-      <div class="print-header">
-        <div class="top-header">
-          <img src="${company.logo || ""}" />
-          <div style="font-size: 14px; font-weight: 600; text-align: right;">${company.address || ""}</div>
-        </div>
+  // These spaces remain in the thead/tfoot to push content down/up natively
+  const tableHeaderSpace = `<div class="report-header-space" style="height: 160px;"></div>`;
+  const tableFooterSpace = `<div class="report-footer-space" style="height: 60px;"></div>`;
+
+  // The actual fixed content overlay
+  const fixedHeaderFooterOverlay = `
+    <div class="print-header">
+      <div class="top-header">
+        <img src="${company.logo || ""}" />
+        <div style="font-size: 14px; font-weight: 600; text-align: right;">${company.address || ""}</div>
       </div>
     </div>
-  `;
-
-  const tableFooterHTML = `
-    <div class="report-footer-space" style="height: 60px;">
-      <div class="footer">
-        <div class="footer-content">
-          <span>🌐 ${company.website || ""}</span>
-          <span>✉ ${company.email || ""}</span>
-          <span>☎ ${company.phone || ""}</span>
-        </div>
+    <div class="footer">
+      <div class="footer-content">
+        <span>🌐 ${company.website || ""}</span>
+        <span>✉ ${company.email || ""}</span>
+        <span>☎ ${company.phone || ""}</span>
       </div>
     </div>
   `;
@@ -2032,7 +1933,7 @@ export function generateCompletionReportHTML(data: any): string {
   const vesselImgUrl = val(project.vesselImageUrl); // absolute URL pre-computed by endpoint
 
   const coverHTML = `
-<div style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-after:always;">
+<div class="cover-page" style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-after:always;position:relative;z-index:20;">
   ${company.logo ? `<img src="${company.logo}" style="height:70px;margin-bottom:30px;filter:brightness(10);" onerror="this.style.display='none'" />` : ""}
   <div style="color:#aabbee;font-size:18px;letter-spacing:4px;text-transform:uppercase;margin-bottom:10px;">VESSEL –</div>
   <div style="color:#ffffff;font-size:42px;font-weight:900;letter-spacing:3px;text-transform:uppercase;line-height:1.1;margin-bottom:24px;">${val(project.vesselName) || val(project.title)}</div>
@@ -2075,7 +1976,7 @@ export function generateCompletionReportHTML(data: any): string {
   ].filter(r => r.value);
 
   const projectDetailsHTML = `
-<div style="page-break-before:always;padding:0;box-sizing:border-box;">
+<div style="padding:0;box-sizing:border-box;">
   <div style="background:#1a1a2e;padding:18px 30px 14px;display:flex;align-items:center;justify-content:space-between;">
     <div>
       <div style="color:#aabbee;font-size:10px;letter-spacing:3px;text-transform:uppercase;">Project Details</div>
@@ -2224,11 +2125,11 @@ export function generateCompletionReportHTML(data: any): string {
     </tbody>
     <tfoot>
       <tr><td style="border: none !important; padding: 0 !important;">
-        ${tableFooterHTML}
+        ${tableFooterSpace}
       </td></tr>
     </tfoot>
   </table>
-<div style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-before:always;page-break-after:always;">
+<div class="divider-page" style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-before:always;page-break-after:always;position:relative;z-index:20;">
   <div style="color:#ffffff;font-size:36px;font-weight:900;letter-spacing:3px;text-transform:uppercase;line-height:1.2;margin-bottom:16px;">${locationName}</div>
   <div style="width:60px;height:3px;background:#0019A5;margin:0 auto 16px;"></div>
   <div style="color:#aabbee;font-size:14px;letter-spacing:2px;text-transform:uppercase;">${reportTitle}</div>
@@ -2237,7 +2138,7 @@ export function generateCompletionReportHTML(data: any): string {
   <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
     <thead>
       <tr><td style="border: none !important; padding: 0 !important;">
-        ${tableHeaderHTML}
+        ${tableHeaderSpace}
       </td></tr>
     </thead>
     <tbody>
@@ -2245,26 +2146,127 @@ export function generateCompletionReportHTML(data: any): string {
         <td class="report-content-cell">
 <div style="padding:8mm 10mm;background:#fff;page-break-before:avoid;">`;
 
+      // 1. Collect all photos from all groups into a single array, preserving their group title
+      const allPhotosInLocation: { photo: any, title: string }[] = [];
       const sortedGroups = [...(loc.groups || [])].sort((a: any, b: any) => {
         const titleA = (a.title || "").toUpperCase();
         const titleB = (b.title || "").toUpperCase();
         return titleA.localeCompare(titleB);
       });
 
-      const groupsHTML = sortedGroups.map((group: any) => {
-        const groupPhotos = group.photos || [];
-        if (groupPhotos.length === 0) return "";
-
+      sortedGroups.forEach((group: any) => {
         const groupTitle = (group.title || "").toUpperCase();
+        (group.photos || []).forEach((photo: any) => {
+          allPhotosInLocation.push({ photo, title: groupTitle });
+        });
+      });
 
-        return `
-  <div style="margin-bottom: 20px;">
-    <div style="font-size:16px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;text-align:center;page-break-after:avoid;">${groupTitle}</div>
-    ${locationStaggeredGrid(groupPhotos)}
-  </div>`;
+      if (allPhotosInLocation.length === 0) {
+        return dividerPage + `</div>`;
+      }
+
+      // 2. Chunk them into pages based on strictly 5 PHOTO ROWS per page (15 photos)
+      const MAX_PHOTO_ROWS = 5;
+      const chunks: { title: string, photos: any[] }[][] = [];
+      let currentChunk: { title: string, photos: any[] }[] = [];
+      let currentPhotoRows = 0;
+
+      // First, group everything by title logically
+      const allGroups: { title: string, photos: any[] }[] = [];
+      let currentTitle = "";
+      let currentGroupPhotos: any[] = [];
+
+      allPhotosInLocation.forEach(item => {
+        if (item.title !== currentTitle) {
+          if (currentGroupPhotos.length > 0) {
+            allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
+          }
+          currentTitle = item.title;
+          currentGroupPhotos = [];
+        }
+        currentGroupPhotos.push(item.photo);
+      });
+      if (currentGroupPhotos.length > 0) {
+        allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
+      }
+
+      // Now pack groups into chunks until we hit the 5-row limit
+      for (const group of allGroups) {
+        let remainingPhotos = [...group.photos];
+
+        while (remainingPhotos.length > 0) {
+          const availableRows = MAX_PHOTO_ROWS - currentPhotoRows;
+
+          if (availableRows <= 0) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+            currentPhotoRows = 0;
+            continue;
+          }
+
+          // Calculate how many photos we can fit in the available rows
+          const maxPhotosToFit = availableRows * 3;
+          const photosToTake = remainingPhotos.splice(0, maxPhotosToFit);
+
+          const rowsUsed = Math.ceil(photosToTake.length / 3);
+          currentPhotoRows += rowsUsed;
+
+          // Add to current chunk
+          if (currentChunk.length > 0 && currentChunk[currentChunk.length - 1].title === group.title) {
+            currentChunk[currentChunk.length - 1].photos.push(...photosToTake);
+          } else {
+            currentChunk.push({ title: group.title, photos: photosToTake });
+          }
+
+          // If we hit or exceed the row limit, seal the chunk
+          if (currentPhotoRows >= MAX_PHOTO_ROWS) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+            currentPhotoRows = 0;
+          }
+        }
+      }
+
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+      }
+
+      // 3. Render chunks
+      const pagesHTML = chunks.map((chunk, chunkIndex) => {
+        const chunkHTML = chunk.map(({ title, photos }) => {
+          const gridItems = photos.map(p => `
+            <div style="background:#fff;border-radius:6px;padding:3px;box-shadow:0 4px 10px rgba(0,0,0,0.15);aspect-ratio: 1.5;overflow:hidden;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+              <img src="${val(p.filePath)}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:4px;" onerror="this.closest('div').style.background='#e5e7eb'" />
+            </div>
+          `).join("");
+
+          return `
+            <div style="margin-bottom: 16px;">
+              <div style="font-size:14px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;text-align:center;">${title}</div>
+              <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;width:100%;">
+                ${gridItems}
+                ${photos.length % 3 === 1 ? '<div style="background:transparent;"></div><div style="background:transparent;"></div>' : photos.length % 3 === 2 ? '<div style="background:transparent;"></div>' : ''}
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        // Only the first chunk gets the black divider page before it.
+        // Subsequent chunks break to a new page naturally.
+        // We add max-width and margin:0 auto to compress the grid so that 5 rows (15 images) natively fit on one A4 page without overflowing.
+        const pageContent = `
+          <div style="background:#fff;page-break-before:${chunkIndex > 0 ? 'always' : 'avoid'};max-width:550px;margin:0 auto;">
+            ${chunkHTML}
+          </div>
+        `;
+
+        if (chunkIndex === 0) {
+          return dividerPage + pageContent;
+        }
+        return pageContent;
       }).join("");
 
-      return dividerPage + groupsHTML + `</div>`;
+      return pagesHTML + `</div>`; // Close the padding wrapper opened before mapping chunks
     }).join("");
   }
 
@@ -2350,12 +2352,21 @@ body {
   padding: 0 !important;
 }
 
+.report-content-cell {
+  vertical-align: top;
+}
+
 /* ===== HEADER ===== */
 .print-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 160px;
   background: #ffffff;
   padding: 10px 20px;
   width: 100%;
+  z-index: 10;
 }
 
 .top-header {
@@ -2370,12 +2381,17 @@ body {
 
 /* ===== FOOTER ===== */
 .footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: 60px;
   background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
+  z-index: 10;
 }
 
 .footer-content {
@@ -2387,7 +2403,7 @@ body {
 
 @media print {
   body { margin: 0; background: #fff; }
-  .page-break { page-break-before: always; margin-top: 140px; }
+  .page-break { page-break-before: always; }
 
   @page:first {
     margin: 0;
@@ -2396,11 +2412,12 @@ body {
 </style>
 </head>
 <body onload="window.print()">
+  ${fixedHeaderFooterOverlay}
   ${coverHTML}
   <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
     <thead>
       <tr><td style="border: none !important; padding: 0 !important;">
-        ${tableHeaderHTML}
+        ${tableHeaderSpace}
       </td></tr>
     </thead>
     <tbody>
@@ -2416,14 +2433,13 @@ body {
     </tbody>
     <tfoot>
       <tr><td style="border: none !important; padding: 0 !important;">
-        ${tableFooterHTML}
+        ${tableFooterSpace}
       </td></tr>
     </tfoot>
   </table>
 </body>
 </html>`;
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 
