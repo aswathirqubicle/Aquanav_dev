@@ -113,8 +113,13 @@ const sanitize = (html: string) => {
     },
     allowedStyles: {
       "*": {
-        "color": [/^#(0x)?[0-9a-f]+$/i, /^rgb\(/, /^rgba\(/, /[a-z]+/],
-        "background-color": [/^#(0x)?[0-9a-f]+$/i, /^rgb\(/, /^rgba\(/, /[a-z]+/],
+        color: [/^#(0x)?[0-9a-f]+$/i, /^rgb\(/, /^rgba\(/, /[a-z]+/],
+        "background-color": [
+          /^#(0x)?[0-9a-f]+$/i,
+          /^rgb\(/,
+          /^rgba\(/,
+          /[a-z]+/,
+        ],
         "text-align": [/^left$/, /^right$/, /^center$/, /^justify$/],
         "font-size": [/^\d+(?:px|em|%|pt)$/],
         "font-weight": [/[a-z0-9]+/],
@@ -128,7 +133,8 @@ function generateQuotationHTML(
   customer: any,
   company: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -145,8 +151,21 @@ function generateQuotationHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -227,7 +246,8 @@ function generateQuotationHTML(
                   ${(quotation.items || [])
                     .map((item: any) => {
                       const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const taxAmount =
+                        lineSubtotal * ((item.taxRate || 0) / 100);
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
@@ -248,12 +268,16 @@ function generateQuotationHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${quotation.bankAccount ? `
+                      ${
+                        quotation.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Our Bank Details:</strong>
                           <div class="rich-text-content">${sanitize(quotation.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -264,7 +288,8 @@ function generateQuotationHTML(
                           )}</td>
                         </tr>
                         ${
-                          quotation.discount && parseFloat(quotation.discount) > 0
+                          quotation.discount &&
+                          parseFloat(quotation.discount) > 0
                             ? `
                         <tr>
                           <td><strong>Discount:</strong></td>
@@ -310,7 +335,8 @@ function generateCreditNoteHTML(
   customer: any,
   company: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -327,8 +353,21 @@ function generateCreditNoteHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -411,7 +450,8 @@ function generateCreditNoteHTML(
                   ${(creditNote.items || [])
                     .map((item: any) => {
                       const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const taxAmount =
+                        lineSubtotal * ((item.taxRate || 0) / 100);
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
@@ -432,12 +472,16 @@ function generateCreditNoteHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${creditNote.bankAccount ? `
+                      ${
+                        creditNote.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Bank Details:</strong>
                           <div class="rich-text-content">${sanitize(creditNote.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -448,7 +492,8 @@ function generateCreditNoteHTML(
                           )}</td>
                         </tr>
                         ${
-                          creditNote.discount && parseFloat(creditNote.discount) > 0
+                          creditNote.discount &&
+                          parseFloat(creditNote.discount) > 0
                             ? `
                         <tr>
                           <td><strong>Discount:</strong></td>
@@ -498,7 +543,8 @@ function generateInvoiceHTML(
   customer: any,
   company: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -515,8 +561,21 @@ function generateInvoiceHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -580,11 +639,15 @@ function generateInvoiceHTML(
               </div>
               ${val(invoice.remarks) ? `<div class="terms" style="margin-bottom: 20px;"><p><strong>Notes:</strong></p><div class="rich-text-content">${sanitize(invoice.remarks)}</div></div>` : ""}
 
-              ${val(invoice.currency) && invoice.currency !== "AED" ? `
+              ${
+                val(invoice.currency) && invoice.currency !== "AED"
+                  ? `
                 <div style="text-align: right; margin-bottom: 10px; font-size: 12px;">
                   <strong>Exchange Rate:</strong> 1 ${invoice.currency} = ${invoice.exchangeRate} AED
                 </div>
-              ` : ""}
+              `
+                  : ""
+              }
               <table>
                 <thead>
                   <tr>
@@ -615,12 +678,16 @@ function generateInvoiceHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${invoice.bankAccount ? `
+                      ${
+                        invoice.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Our Bank Details:</strong>
                           <div class="rich-text-content">${sanitize(invoice.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -651,7 +718,8 @@ function generateInvoiceHTML(
                           )}</td>
                         </tr>
                         ${
-                          invoice.paidAmount && parseFloat(invoice.paidAmount) > 0
+                          invoice.paidAmount &&
+                          parseFloat(invoice.paidAmount) > 0
                             ? `
                         <tr>
                           <td><strong>Paid Amount:</strong></td>
@@ -695,7 +763,8 @@ function generateProformaHTML(
   company: any,
   project: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = customer.currency || "AED";
@@ -712,8 +781,21 @@ function generateProformaHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -789,7 +871,8 @@ function generateProformaHTML(
                   ${(proforma.items || [])
                     .map((item: any) => {
                       const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const taxAmount =
+                        lineSubtotal * ((item.taxRate || 0) / 100);
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
@@ -809,12 +892,16 @@ function generateProformaHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${proforma.bankAccount ? `
+                      ${
+                        proforma.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Bank Account:</strong>
                           <div class="rich-text-content">${sanitize(proforma.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -865,7 +952,8 @@ function generatePurchaseOrderHTML(
   supplier: any,
   company: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = supplier.currency || "AED";
@@ -882,8 +970,21 @@ function generatePurchaseOrderHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -955,7 +1056,8 @@ function generatePurchaseOrderHTML(
                   ${(order.items || [])
                     .map((item: any) => {
                       const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
+                      const taxAmount =
+                        lineSubtotal * ((item.taxRate || 0) / 100);
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
@@ -978,12 +1080,16 @@ function generatePurchaseOrderHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${order.bankAccount ? `
+                      ${
+                        order.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Bank Account Details:</strong>
                           <div class="rich-text-content">${sanitize(order.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -1037,7 +1143,8 @@ function generatePurchaseInvoiceHTML(
   company: any,
   project?: any,
 ): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     const currency = supplier.currency || "AED";
@@ -1054,8 +1161,21 @@ function generatePurchaseInvoiceHTML(
     if (!date) return "";
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -1134,7 +1254,9 @@ function generatePurchaseInvoiceHTML(
                       );
                       const taxRate =
                         item.taxRate ||
-                        (lineSubtotal > 0 ? (taxAmount / lineSubtotal) * 100 : 0);
+                        (lineSubtotal > 0
+                          ? (taxAmount / lineSubtotal) * 100
+                          : 0);
 
                       return `
                     <tr>
@@ -1157,12 +1279,16 @@ function generatePurchaseInvoiceHTML(
                 <table style="width: 100%; border-collapse: collapse; border: none !important;">
                   <tr>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${invoice.bankAccount ? `
+                      ${
+                        invoice.bankAccount
+                          ? `
                         <div style="font-size: 11px; color: #444;">
                           <strong>Bank Account Details:</strong>
                           <div class="rich-text-content">${sanitize(invoice.bankAccount)}</div>
                         </div>
-                      ` : ""}
+                      `
+                          : ""
+                      }
                     </td>
                     <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
                       <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
@@ -1236,13 +1362,27 @@ export function generateProjectPrintHTML(data: any): string {
     });
   };
 
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
 
   const formatDateDDMMMYYYY = (date: string | Date) => {
     if (!date) return "";
     const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -1333,8 +1473,8 @@ export function generateProjectPrintHTML(data: any): string {
     {},
   );
 
-  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some(
-    (i) => data[`additionalField${i}Title`]?.trim(),
+  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some((i) =>
+    data[`additionalField${i}Title`]?.trim(),
   );
 
   return `
@@ -1582,7 +1722,7 @@ body {
           <div class="main-title">
             ${val(data.title)}<br/>
             <span class="highlight">${sanitize(data.description)}</span><br/>
-            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : (data.reportTitle || "WEEKLY REPORT")}</span>
+            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : data.reportTitle || "WEEKLY REPORT"}</span>
           </div>
 
           <!-- IMAGE -->
@@ -1664,14 +1804,22 @@ body {
               : ""
           }
 
-          ${data.reportImage || Object.keys(plannedReports).length > 0 ? `
+          ${
+            data.reportImage || Object.keys(plannedReports).length > 0
+              ? `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">WORK PLAN</h2>
-              ${data.reportImage ? `
+              ${
+                data.reportImage
+                  ? `
               <div class="ship-image">
                 <img src="${data.reportImage}" />
-              </div>` : ""}
-            </div>` : ""}
+              </div>`
+                  : ""
+              }
+            </div>`
+              : ""
+          }
 
           ${Object.entries(weeklyReports)
             .filter(([_, reports]: any) => reports.length > 0)
@@ -1691,7 +1839,9 @@ body {
                   </tr>
                 </thead>
                 <tbody>
-                  ${reports.map((r: any) => `
+                  ${reports
+                    .map(
+                      (r: any) => `
                     <tr>
                       <td>Day ${r.day_num}</td>
                       <td>${val(r.date)}</td>
@@ -1699,10 +1849,14 @@ body {
                       <td>${val(r.activities)}</td>
                       <td>${val(r.remarks)}</td>
                       ${data?.includeHBMHours ? `<td>${val(r.hbmHours)}</td>` : ``}
-                    </tr>`).join("")}
+                    </tr>`,
+                    )
+                    .join("")}
                 </tbody>
               </table>
-            </div>`).join("")}
+            </div>`,
+            )
+            .join("")}
 
           ${gallery
             .filter((g: any) => g.photos && g.photos.length > 0)
@@ -1713,19 +1867,26 @@ body {
               <h2 style="text-align:center;">${val(g.description)}</h2>
               <table class="image-table">
                 <tbody>
-                  ${g.photos.reduce((rows: any[], img: any, idx: number) => {
-                    const columns = 2; // 2 columns for symmetry
-                    if (idx % columns === 0) rows.push([img]);
-                    else rows[rows.length - 1].push(img);
-                    return rows;
-                  }, []).map((row: any[]) => `
+                  ${g.photos
+                    .reduce((rows: any[], img: any, idx: number) => {
+                      const columns = 2; // 2 columns for symmetry
+                      if (idx % columns === 0) rows.push([img]);
+                      else rows[rows.length - 1].push(img);
+                      return rows;
+                    }, [])
+                    .map(
+                      (row: any[]) => `
                     <tr>
-                      ${row.map(img => `<td style="width: 50%;"><img src="${val(img.filePath)}" class="image-table img" /></td>`).join("")}
-                      ${row.length === 1 ? "<td style=\"width: 50%;\"></td>" : ""}
-                    </tr>`).join("")}
+                      ${row.map((img) => `<td style="width: 50%;"><img src="${val(img.filePath)}" class="image-table img" /></td>`).join("")}
+                      ${row.length === 1 ? '<td style="width: 50%;"></td>' : ""}
+                    </tr>`,
+                    )
+                    .join("")}
                 </tbody>
               </table>
-            </div>`).join("")}
+            </div>`,
+            )
+            .join("")}
 
           ${Object.entries(weeklyConsumables)
             .filter(([_, items]: any) => items.length > 0)
@@ -1741,7 +1902,9 @@ body {
                   ${items.map((i: any) => `<tr><td>${val(i.date)}</td><td>${val(i.itemName)}</td><td>${val(i.quantity)}</td></tr>`).join("")}
                 </tbody>
               </table>
-            </div>`).join("")}
+            </div>`,
+            )
+            .join("")}
 
           ${Object.entries(plannedReports)
             .filter(([_, reports]: any) => reports.length > 0)
@@ -1760,19 +1923,27 @@ body {
                   </tr>
                 </thead>
                 <tbody>
-                  ${reports.map((r: any) => `
+                  ${reports
+                    .map(
+                      (r: any) => `
                     <tr>
                       <td>Day ${r.day_num}</td>
                       <td>${val(r.date)}</td>
                       <td>${val(r.location)}</td>
                       <td>${val(r.activities)}</td>
                       <td>${val(r.remarks)}</td>
-                    </tr>`).join("")}
+                    </tr>`,
+                    )
+                    .join("")}
                 </tbody>
               </table>
-            </div>`).join("")}
+            </div>`,
+            )
+            .join("")}
 
-          ${data.workRemainingDays && data.workRemainingDays.length > 0 ? `
+          ${
+            data.workRemainingDays && data.workRemainingDays.length > 0
+              ? `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">Work Remaining Days</h2>
               <table style="width:100%; border-collapse:collapse;" border="1">
@@ -1783,14 +1954,20 @@ body {
                   </tr>
                 </thead>
                 <tbody>
-                  ${data.workRemainingDays.map((item: any) => `
+                  ${data.workRemainingDays
+                    .map(
+                      (item: any) => `
                     <tr>
                       <td style="padding:8px;">${val(item.location) || "-"}</td>
                       <td style="padding:8px;">${val(item.days) || "-"}</td>
-                    </tr>`).join("")}
+                    </tr>`,
+                    )
+                    .join("")}
                 </tbody>
               </table>
-            </div>` : ""}
+            </div>`
+              : ""
+          }
         </div>
       </td>
     </tr>
@@ -1817,13 +1994,27 @@ body {
 // ─── PROJECT COMPLETION REPORT HTML GENERATOR ───────────────────────────────
 
 export function generateCompletionReportHTML(data: any): string {
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
 
   const fmt = (date: string | Date | null | undefined) => {
     if (!date) return "";
     const d = new Date(date);
     const day = String(d.getDate()).padStart(2, "0");
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     return `${day}-${months[d.getMonth()]}-${d.getFullYear()}`;
   };
 
@@ -1831,7 +2022,20 @@ export function generateCompletionReportHTML(data: any): string {
     if (!date) return "";
     const d = new Date(date);
     const day = String(d.getDate()).padStart(2, "0");
-    const months = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
+    const months = [
+      "JANUARY",
+      "FEBRUARY",
+      "MARCH",
+      "APRIL",
+      "MAY",
+      "JUNE",
+      "JULY",
+      "AUGUST",
+      "SEPTEMBER",
+      "OCTOBER",
+      "NOVEMBER",
+      "DECEMBER",
+    ];
     return `${day} ${months[d.getMonth()]} - ${d.getFullYear()}`;
   };
 
@@ -1841,35 +2045,52 @@ export function generateCompletionReportHTML(data: any): string {
   const photosByLocation: any[] = data.photosByLocation || [];
   const consumables: any[] = data.consumables || [];
   const company = data.company || {};
-  const reportTitle: string = data.reportTitle || val(project.title) || "Project Completion Report";
+  const reportTitle: string =
+    data.reportTitle || val(project.title) || "Project Completion Report";
 
   // ── Chart palette ───────────────────────────────────────────────────────────
-  const barColors = ["#0019A5","#1a56db","#e02424","#057a55","#9f580a","#5850ec","#7e3af2"];
+  const barColors = [
+    "#0019A5",
+    "#1a56db",
+    "#e02424",
+    "#057a55",
+    "#9f580a",
+    "#5850ec",
+    "#7e3af2",
+  ];
 
   // ── Horizontal bar chart helper ─────────────────────────────────────────────
   // Adapts sizing and layout to the number of bars:
   //   ≤ 9  bars → single column, 28px bars
   //   10-20 bars → two columns (bars split L/R), 20px bars
   //   21+  bars → two columns, 16px bars
-  function makeBarChart(bars: { label: string; value: number; color?: string }[], title: string, _subtitle: string): string {
+  function makeBarChart(
+    bars: { label: string; value: number; color?: string }[],
+    title: string,
+    _subtitle: string,
+  ): string {
     if (!bars.length) return "";
     const n = bars.length;
-    const maxVal  = Math.max(...bars.map(b => b.value), 1);
+    const maxVal = Math.max(...bars.map((b) => b.value), 1);
     const totalVal = bars.reduce((s, b) => s + b.value, 0);
 
     // Sizing tiers
-    const twoCol   = n >= 10;
-    const barH     = n >= 21 ? 16 : n >= 10 ? 20 : 28;
-    const barMb    = n >= 21 ? 5  : n >= 10 ? 7  : 10;
-    const labelW   = twoCol ? 100 : 140;   // px — label column width
-    const valW     = twoCol ? 36  : 48;    // px — value column width
-    const labelFs  = twoCol ? 8   : 9;     // px — label font size
-    const valFs    = twoCol ? 11  : 13;    // px — value font size
+    const twoCol = n >= 10;
+    const barH = n >= 21 ? 16 : n >= 10 ? 20 : 28;
+    const barMb = n >= 21 ? 5 : n >= 10 ? 7 : 10;
+    const labelW = twoCol ? 100 : 140; // px — label column width
+    const valW = twoCol ? 36 : 48; // px — value column width
+    const labelFs = twoCol ? 8 : 9; // px — label font size
+    const valFs = twoCol ? 11 : 13; // px — value font size
 
-    const renderBar = (b: { label: string; value: number; color?: string }, i: number) => {
-      const color    = b.color || barColors[i % barColors.length];
-      const pct      = Math.round((b.value / maxVal) * 100);
-      const sharePct = totalVal > 0 ? Math.round((b.value / totalVal) * 100) : 0;
+    const renderBar = (
+      b: { label: string; value: number; color?: string },
+      i: number,
+    ) => {
+      const color = b.color || barColors[i % barColors.length];
+      const pct = Math.round((b.value / maxVal) * 100);
+      const sharePct =
+        totalVal > 0 ? Math.round((b.value / totalVal) * 100) : 0;
       return `
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:${barMb}px;">
   <div style="width:${labelW}px;flex-shrink:0;font-size:${labelFs}px;font-weight:700;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.3px;line-height:1.2;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${b.label}">${b.label}</div>
@@ -1884,14 +2105,12 @@ export function generateCompletionReportHTML(data: any): string {
     let barsHTML: string;
     if (twoCol) {
       // Split bars into two equal columns side by side
-      const half  = Math.ceil(n / 2);
-      const left  = bars.slice(0, half);
+      const half = Math.ceil(n / 2);
+      const left = bars.slice(0, half);
       const right = bars.slice(half);
-      const leftHTML  = left.map((b, i) => renderBar(b, i)).join("");
+      const leftHTML = left.map((b, i) => renderBar(b, i)).join("");
       const rightHTML = right.map((b, i) => renderBar(b, half + i)).join("");
-      barsHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">${
-        `<div>${leftHTML}</div><div>${rightHTML}</div>`
-      }</div>`;
+      barsHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">${`<div>${leftHTML}</div><div>${rightHTML}</div>`}</div>`;
     } else {
       barsHTML = bars.map((b, i) => renderBar(b, i)).join("");
     }
@@ -1940,10 +2159,14 @@ export function generateCompletionReportHTML(data: any): string {
   <div style="width:60px;height:3px;background:#0019A5;margin:0 auto 24px;"></div>
   <div style="color:#ffffff;font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:2px;line-height:1.4;max-width:500px;margin-bottom:40px;">${reportTitle}</div>
   <div style="color:#aabbee;font-size:14px;letter-spacing:3px;text-transform:uppercase;margin-bottom:30px;">PROJECT HIGHLIGHTS</div>
-  ${vesselImgUrl ? `
+  ${
+    vesselImgUrl
+      ? `
   <div style="width:100%;height:90mm;overflow:hidden;margin-bottom:0;">
     <img src="${vesselImgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display='none'" />
-  </div>` : ""}
+  </div>`
+      : ""
+  }
   <div style="display:flex;justify-content:space-between;width:100%;max-width:500px;margin-top:auto;padding-top:30px;border-top:1px solid rgba(255,255,255,0.2);">
     <div style="color:#ffffff;font-size:13px;font-weight:600;">${fmtUpper(project.startDate)}</div>
     <div style="color:#ffffff;font-size:13px;font-weight:600;">${fmtUpper(endDate)}</div>
@@ -1952,13 +2175,31 @@ export function generateCompletionReportHTML(data: any): string {
 
   // ── Section: Project Details page (page 2) ──────────────────────────────────
   const additionalFields: { title: string; description: string }[] = [
-    { title: val(project.additionalField1Title), description: val(project.additionalField1Description) },
-    { title: val(project.additionalField2Title), description: val(project.additionalField2Description) },
-    { title: val(project.additionalField3Title), description: val(project.additionalField3Description) },
-    { title: val(project.additionalField4Title), description: val(project.additionalField4Description) },
-    { title: val(project.additionalField5Title), description: val(project.additionalField5Description) },
-    { title: val(project.additionalField6Title), description: val(project.additionalField6Description) },
-  ].filter(f => f.title || f.description);
+    {
+      title: val(project.additionalField1Title),
+      description: val(project.additionalField1Description),
+    },
+    {
+      title: val(project.additionalField2Title),
+      description: val(project.additionalField2Description),
+    },
+    {
+      title: val(project.additionalField3Title),
+      description: val(project.additionalField3Description),
+    },
+    {
+      title: val(project.additionalField4Title),
+      description: val(project.additionalField4Description),
+    },
+    {
+      title: val(project.additionalField5Title),
+      description: val(project.additionalField5Description),
+    },
+    {
+      title: val(project.additionalField6Title),
+      description: val(project.additionalField6Description),
+    },
+  ].filter((f) => f.title || f.description);
 
   const detailRows = [
     { label: "Vessel Name", value: val(project.vesselName) },
@@ -1967,13 +2208,20 @@ export function generateCompletionReportHTML(data: any): string {
     { label: "Customer", value: val(project.customerName) },
     { label: "Start Date", value: fmt(project.startDate) },
     { label: "End Date", value: fmt(endDate) },
-    { label: "Status", value: val(project.status) ? val(project.status).replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "" },
+    {
+      label: "Status",
+      value: val(project.status)
+        ? val(project.status)
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : "",
+    },
     { label: "Mode of Contract", value: val(project.modeOfContract) },
     { label: "Working Hours", value: val(project.workingHours) },
     { label: "Crew Nos", value: val(project.ridgingCrewNos) },
     { label: "PPE Required", value: val(project.ppe) },
     { label: "Description", value: val(project.description) },
-  ].filter(r => r.value);
+  ].filter((r) => r.value);
 
   const projectDetailsHTML = `
 <div style="padding:0;box-sizing:border-box;">
@@ -1989,31 +2237,44 @@ export function generateCompletionReportHTML(data: any): string {
   </div>
 
   <div style="padding:20px 30px;display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid #e5e7eb;">
-    ${detailRows.map((r, i) => `
+    ${detailRows
+      .map(
+        (r, i) => `
     <div style="padding:8px 12px;${i % 2 === 0 ? "background:#f8faff;" : "background:#ffffff;"}border-bottom:1px solid #f0f0f0;">
       <div style="font-size:8px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600;">${r.label}</div>
       <div style="font-size:11px;color:#111827;font-weight:500;margin-top:2px;line-height:1.4;">${r.value}</div>
-    </div>`).join("")}
+    </div>`,
+      )
+      .join("")}
   </div>
 
-  ${additionalFields.length ? `
+  ${
+    additionalFields.length
+      ? `
   <div style="padding:16px 30px 0;">
     <div style="font-size:10px;font-weight:700;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;border-bottom:2px solid #0019A5;padding-bottom:6px;">Additional Project Details</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      ${additionalFields.map(f => `
+      ${additionalFields
+        .map(
+          (f) => `
       <div style="background:#f8faff;border:1px solid #e5e7eb;border-radius:4px;padding:10px 12px;">
         ${f.title ? `<div style="font-size:8px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px;">${f.title}</div>` : ""}
         <div style="font-size:11px;color:#111827;line-height:1.5;">${f.description}</div>
-      </div>`).join("")}
+      </div>`,
+        )
+        .join("")}
     </div>
-  </div>` : ""}
+  </div>`
+      : ""
+  }
 </div>`;
 
   // ── Sections: Both charts on one page (stacked) ────────────────────────────
   let totalDaysHTML = "";
   let locationBreakdownHTML = ""; // kept empty — charts combined below
   const showTotalDays = sections.totalDays !== false;
-  const showLocationBreakdown = sections.locationBreakdown !== false && stats.locationDays?.length;
+  const showLocationBreakdown =
+    sections.locationBreakdown !== false && stats.locationDays?.length;
 
   if (showTotalDays || showLocationBreakdown) {
     const totalDays = stats.totalDays || 0;
@@ -2028,36 +2289,80 @@ export function generateCompletionReportHTML(data: any): string {
       ];
       if (stopDays > 0) {
         const reason = stats.topStoppageReason || "STOPPAGE DAYS";
-        bars.push({ label: `STOPPAGE DAYS DUE TO ${reason.toUpperCase()}`, value: stopDays, color: "#e02424" });
+        bars.push({
+          label: `STOPPAGE DAYS DUE TO ${reason.toUpperCase()}`,
+          value: stopDays,
+          color: "#e02424",
+        });
       }
-      totalDaysChartHTML = makeBarChart(bars, "TOTAL DAYS – BREAKDOWN", `TOTAL PROJECT DAYS – ${totalDays}`);
+      totalDaysChartHTML = makeBarChart(
+        bars,
+        "TOTAL DAYS – BREAKDOWN",
+        `TOTAL PROJECT DAYS – ${totalDays}`,
+      );
     }
 
     let locationChartHTML = "";
     if (showLocationBreakdown) {
-      const locationBars = (stats.locationDays as any[]).map((ld: any, i: number) => ({
-        label: (ld.location || "UNKNOWN").toUpperCase(),
-        value: ld.days,
-        color: barColors[i % barColors.length],
-      }));
+      const locationBars = (stats.locationDays as any[]).map(
+        (ld: any, i: number) => ({
+          label: (ld.location || "UNKNOWN").toUpperCase(),
+          value: ld.days,
+          color: barColors[i % barColors.length],
+        }),
+      );
       if (stopDays > 0) {
-        locationBars.push({ label: "STOPPAGE", value: stopDays, color: "#e02424" });
+        locationBars.push({
+          label: "STOPPAGE",
+          value: stopDays,
+          color: "#e02424",
+        });
       }
-      locationChartHTML = makeBarChart(locationBars, "BREAKDOWN DAYS – WORK LOCATION WISE", `TOTAL PROJECT DAYS – ${totalDays}`);
+      locationChartHTML = makeBarChart(
+        locationBars,
+        "BREAKDOWN DAYS – WORK LOCATION WISE",
+        `TOTAL PROJECT DAYS – ${totalDays}`,
+      );
     }
 
     // ── KPI summary cards ──────────────────────────────────────────────────────
     const kpiCards = [
-      { label: "Total Project Days", value: totalDays, color: "#0019A5", bg: "#eef2ff", icon: "📅" },
-      { label: "Active Work Days",   value: activeDays, color: "#057a55", bg: "#ecfdf5", icon: "✅" },
-      ...(stopDays > 0 ? [{ label: "Stoppage Days", value: stopDays, color: "#e02424", bg: "#fff1f2", icon: "⏸" }] : []),
+      {
+        label: "Total Project Days",
+        value: totalDays,
+        color: "#0019A5",
+        bg: "#eef2ff",
+        icon: "📅",
+      },
+      {
+        label: "Active Work Days",
+        value: activeDays,
+        color: "#057a55",
+        bg: "#ecfdf5",
+        icon: "✅",
+      },
+      ...(stopDays > 0
+        ? [
+            {
+              label: "Stoppage Days",
+              value: stopDays,
+              color: "#e02424",
+              bg: "#fff1f2",
+              icon: "⏸",
+            },
+          ]
+        : []),
     ];
 
-    const kpiHTML = kpiCards.map(k => `
+    const kpiHTML = kpiCards
+      .map(
+        (k) => `
 <div style="flex:1;background:${k.bg};border-top:4px solid ${k.color};border-radius:8px;padding:16px 18px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
   <div style="font-size:32px;font-weight:900;color:${k.color};line-height:1;">${k.value}</div>
   <div style="font-size:8px;color:#555;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-top:6px;line-height:1.3;">${k.label}</div>
-</div>`).join("");
+</div>`,
+      )
+      .join("");
 
     totalDaysHTML = `
 <div class="page-break" style="padding:0;background:#fff;">
@@ -2090,14 +2395,22 @@ export function generateCompletionReportHTML(data: any): string {
 
     <!-- Charts stacked vertically -->
     <div style="display:flex;flex-direction:column;gap:20px;">
-      ${totalDaysChartHTML ? `
+      ${
+        totalDaysChartHTML
+          ? `
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:22px 26px;">
         ${totalDaysChartHTML}
-      </div>` : ""}
-      ${locationChartHTML ? `
+      </div>`
+          : ""
+      }
+      ${
+        locationChartHTML
+          ? `
       <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:22px 26px;">
         ${locationChartHTML}
-      </div>` : ""}
+      </div>`
+          : ""
+      }
     </div>
 
   </div>
@@ -2113,13 +2426,17 @@ export function generateCompletionReportHTML(data: any): string {
       return nameA.localeCompare(nameB);
     });
 
-    galleryHTML = sortedLocations.map((loc: any) => {
-      const locationName = (loc.location || "GENERAL").toUpperCase();
+    galleryHTML = sortedLocations
+      .map((loc: any) => {
+        const locationName = (loc.location || "GENERAL").toUpperCase();
 
-      // Pool all photos from all groups in this location to get the total count
-      const allPhotosCount = (loc.groups || []).reduce((sum: number, group: any) => sum + (group.photos || []).length, 0);
+        // Pool all photos from all groups in this location to get the total count
+        const allPhotosCount = (loc.groups || []).reduce(
+          (sum: number, group: any) => sum + (group.photos || []).length,
+          0,
+        );
 
-      const dividerPage = `
+        const dividerPage = `
         </td>
       </tr>
     </tbody>
@@ -2146,128 +2463,168 @@ export function generateCompletionReportHTML(data: any): string {
         <td class="report-content-cell">
 <div style="padding:10px 30px;background:#fff;page-break-before:avoid;">`;
 
-      // 1. Collect all photos from all groups into a single array, preserving their group title
-      const allPhotosInLocation: { photo: any, title: string }[] = [];
-      const sortedGroups = [...(loc.groups || [])].sort((a: any, b: any) => {
-        const titleA = (a.title || "").toUpperCase();
-        const titleB = (b.title || "").toUpperCase();
-        return titleA.localeCompare(titleB);
-      });
-
-      sortedGroups.forEach((group: any) => {
-        const groupTitle = (group.title || "").toUpperCase();
-        (group.photos || []).forEach((photo: any) => {
-          allPhotosInLocation.push({ photo, title: groupTitle });
+        // 1. Collect all photos from all groups into a single array, preserving their group title
+        const allPhotosInLocation: { photo: any; title: string }[] = [];
+        const sortedGroups = [...(loc.groups || [])].sort((a: any, b: any) => {
+          const titleA = (a.title || "").toUpperCase();
+          const titleB = (b.title || "").toUpperCase();
+          return titleA.localeCompare(titleB);
         });
-      });
 
-      if (allPhotosInLocation.length === 0) {
-        return dividerPage + `</div>`;
-      }
+        sortedGroups.forEach((group: any) => {
+          const groupTitle = (group.title || "").toUpperCase();
+          (group.photos || []).forEach((photo: any) => {
+            allPhotosInLocation.push({ photo, title: groupTitle });
+          });
+        });
 
-      // 2. Chunk them into pages based on strictly 5 PHOTO ROWS per page (15 photos)
-      const MAX_PHOTO_ROWS = 5;
-      const chunks: { title: string, photos: any[] }[][] = [];
-      let currentChunk: { title: string, photos: any[] }[] = [];
-      let currentPhotoRows = 0;
-
-      // First, group everything by title logically
-      const allGroups: { title: string, photos: any[] }[] = [];
-      let currentTitle = "";
-      let currentGroupPhotos: any[] = [];
-
-      allPhotosInLocation.forEach(item => {
-        if (item.title !== currentTitle) {
-          if (currentGroupPhotos.length > 0) {
-            allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
-          }
-          currentTitle = item.title;
-          currentGroupPhotos = [];
+        if (allPhotosInLocation.length === 0) {
+          return dividerPage + `</div>`;
         }
-        currentGroupPhotos.push(item.photo);
-      });
-      if (currentGroupPhotos.length > 0) {
-        allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
-      }
 
-      // Now pack groups into chunks until we hit the 5-row limit
-      for (const group of allGroups) {
-        let remainingPhotos = [...group.photos];
+        // 2. Chunk them into pages based on strictly 5 PHOTO ROWS per page (15 photos)
+        const MAX_PHOTO_ROWS = 5;
+        const chunks: { title: string; photos: any[] }[][] = [];
+        let currentChunk: { title: string; photos: any[] }[] = [];
+        let currentPhotoRows = 0;
 
-        while (remainingPhotos.length > 0) {
-          const availableRows = MAX_PHOTO_ROWS - currentPhotoRows;
+        // First, group everything by title logically
+        const allGroups: { title: string; photos: any[] }[] = [];
+        let currentTitle = "";
+        let currentGroupPhotos: any[] = [];
 
-          if (availableRows <= 0) {
-            chunks.push(currentChunk);
-            currentChunk = [];
-            currentPhotoRows = 0;
-            continue;
+        allPhotosInLocation.forEach((item) => {
+          if (item.title !== currentTitle) {
+            if (currentGroupPhotos.length > 0) {
+              allGroups.push({
+                title: currentTitle,
+                photos: currentGroupPhotos,
+              });
+            }
+            currentTitle = item.title;
+            currentGroupPhotos = [];
           }
+          currentGroupPhotos.push(item.photo);
+        });
+        if (currentGroupPhotos.length > 0) {
+          allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
+        }
 
-          // Calculate how many photos we can fit in the available rows
-          const maxPhotosToFit = availableRows * 3;
-          const photosToTake = remainingPhotos.splice(0, maxPhotosToFit);
+        // Now pack groups into chunks until we hit the 5-row limit
+        for (const group of allGroups) {
+          let remainingPhotos = [...group.photos];
 
-          const rowsUsed = Math.ceil(photosToTake.length / 3);
-          currentPhotoRows += rowsUsed;
+          while (remainingPhotos.length > 0) {
+            const availableRows = MAX_PHOTO_ROWS - currentPhotoRows;
 
-          // Add to current chunk
-          if (currentChunk.length > 0 && currentChunk[currentChunk.length - 1].title === group.title) {
-            currentChunk[currentChunk.length - 1].photos.push(...photosToTake);
-          } else {
-            currentChunk.push({ title: group.title, photos: photosToTake });
-          }
+            if (availableRows <= 0) {
+              chunks.push(currentChunk);
+              currentChunk = [];
+              currentPhotoRows = 0;
+              continue;
+            }
 
-          // If we hit or exceed the row limit, seal the chunk
-          if (currentPhotoRows >= MAX_PHOTO_ROWS) {
-            chunks.push(currentChunk);
-            currentChunk = [];
-            currentPhotoRows = 0;
+            // Calculate how many photos we can fit in the available rows
+            const maxPhotosToFit = availableRows * 3;
+            const photosToTake = remainingPhotos.splice(0, maxPhotosToFit);
+
+            const rowsUsed = Math.ceil(photosToTake.length / 3);
+            currentPhotoRows += rowsUsed;
+
+            // Add to current chunk
+            if (
+              currentChunk.length > 0 &&
+              currentChunk[currentChunk.length - 1].title === group.title
+            ) {
+              currentChunk[currentChunk.length - 1].photos.push(
+                ...photosToTake,
+              );
+            } else {
+              currentChunk.push({ title: group.title, photos: photosToTake });
+            }
+
+            // If we hit or exceed the row limit, seal the chunk
+            if (currentPhotoRows >= MAX_PHOTO_ROWS) {
+              chunks.push(currentChunk);
+              currentChunk = [];
+              currentPhotoRows = 0;
+            }
           }
         }
-      }
 
-      if (currentChunk.length > 0) {
-        chunks.push(currentChunk);
-      }
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk);
+        }
 
-      // 3. Render chunks
-      const pagesHTML = chunks.map((chunk, chunkIndex) => {
-        const chunkHTML = chunk.map(({ title, photos }) => {
-          const gridItems = photos.map(p => `
-            <div style="background:#fff;border-radius:6px;padding:3px;box-shadow:0 4px 10px rgba(0,0,0,0.15);aspect-ratio: 1.5;overflow:hidden;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        // 3. Render chunks
+        const pagesHTML = chunks
+          .map((chunk, chunkIndex) => {
+            // Calculate total rows and total titles in this chunk to determine dynamic image height
+            let totalRowsInChunk = 0;
+            let totalTitlesInChunk = chunk.length;
+            chunk.forEach(({ photos }) => {
+              totalRowsInChunk += Math.ceil(photos.length / 3);
+            });
+
+            // The usable vertical space on an A4 page is roughly 850px.
+            // We subtract space for the location title, margins, and the group titles to find available space.
+            const usableHeight = 820;
+            const estimatedTitleSpace = totalTitlesInChunk * 35; // ~35px per title + margins
+            const gapSpace = totalRowsInChunk * 8; // 8px gap between grid rows
+            const availableSpaceForImages = Math.max(
+              100,
+              usableHeight - estimatedTitleSpace - gapSpace,
+            );
+
+            // Calculate target height per row, bounded to a reasonable range so images don't become massive
+            const calculatedRowHeight = Math.floor(
+              availableSpaceForImages / (totalRowsInChunk || 1),
+            );
+            const rowHeight = Math.min(Math.max(calculatedRowHeight, 100), 400);
+
+            const chunkHTML = chunk
+              .map(({ title, photos }) => {
+                const gridItems = photos
+                  .map(
+                    (p) => `
+            <div style="background:#fff;border-radius:6px;padding:3px;box-shadow:0 4px 10px rgba(0,0,0,0.15);height:${rowHeight}px;overflow:hidden;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
               <img src="${val(p.filePath)}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:4px;" onerror="this.closest('div').style.background='#e5e7eb'" />
             </div>
-          `).join("");
+          `,
+                  )
+                  .join("");
 
-          return `
-            <div style="margin-bottom: 16px;">
-              <div style="font-size:14px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;text-align:center;">${title}</div>
+                return `
+            <div style="margin-bottom: 16px; page-break-inside: avoid;">
+              <div style="font-size:14px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;text-align:center;page-break-after:avoid;">${title}</div>
               <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;width:100%;">
                 ${gridItems}
-                ${photos.length % 3 === 1 ? '<div style="background:transparent;"></div><div style="background:transparent;"></div>' : photos.length % 3 === 2 ? '<div style="background:transparent;"></div>' : ''}
+                ${photos.length % 3 === 1 ? '<div style="background:transparent;"></div><div style="background:transparent;"></div>' : photos.length % 3 === 2 ? '<div style="background:transparent;"></div>' : ""}
               </div>
             </div>
           `;
-        }).join("");
+              })
+              .join("");
 
-        // Only the first chunk gets the black divider page before it.
-        // Subsequent chunks break to a new page naturally.
-        // We use width: 100% so that the images always take the full available width, respecting the 30px side margins set on the parent.
-        const pageContent = `
-          <div style="background:#fff;page-break-before:${chunkIndex > 0 ? 'always' : 'avoid'};width:100%;">
+            // Only the first chunk gets the black divider page before it.
+            // Subsequent chunks break to a new page naturally.
+            // We use width: 100% so that the images always take the full available width, respecting the 30px side margins set on the parent.
+            const pageContent = `
+          <div style="background:#fff;page-break-before:${chunkIndex > 0 ? "always" : "avoid"};width:100%;">
             ${chunkHTML}
           </div>
         `;
 
-        if (chunkIndex === 0) {
-          return dividerPage + pageContent;
-        }
-        return pageContent;
-      }).join("");
+            if (chunkIndex === 0) {
+              return dividerPage + pageContent;
+            }
+            return pageContent;
+          })
+          .join("");
 
-      return pagesHTML + `</div>`; // Close the padding wrapper opened before mapping chunks
-    }).join("");
+        return pagesHTML + `</div>`; // Close the padding wrapper opened before mapping chunks
+      })
+      .join("");
   }
 
   // ── Section: Consumables ───────────────────────────────────────────────────
@@ -2282,9 +2639,10 @@ export function generateCompletionReportHTML(data: any): string {
       { bg: "#f0f9ff", border: "#0369a1", num: "#0369a1" },
     ];
 
-    const cards = consumables.map((item: any, i: number) => {
-      const c = cardColors[i % cardColors.length];
-      return `
+    const cards = consumables
+      .map((item: any, i: number) => {
+        const c = cardColors[i % cardColors.length];
+        return `
 <div style="background:${c.bg};border:1.5px solid ${c.border};border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;page-break-inside:avoid;">
   <div style="display:flex;align-items:flex-start;gap:10px;">
     <div style="min-width:26px;height:26px;background:${c.num};border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -2299,7 +2657,8 @@ export function generateCompletionReportHTML(data: any): string {
     <span style="font-size:10px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">${val(item.itemUnit)}</span>
   </div>
 </div>`;
-    }).join("");
+      })
+      .join("");
 
     consumablesHTML = `
 <div class="page-break">
@@ -2455,13 +2814,27 @@ export function generateConsumablePrintHTML(data: any): string {
     });
   };
 
-  const val = (v: any) => (v === "null" || v === null || v === undefined ? "" : v);
+  const val = (v: any) =>
+    v === "null" || v === null || v === undefined ? "" : v;
 
   const formatDateDDMMMYYYY = (date: string | Date) => {
     if (!date) return "";
     const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, '0');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const month = months[d.getMonth()];
     const year = d.getFullYear();
     return `${day}-${month}-${year}`;
@@ -2507,8 +2880,8 @@ export function generateConsumablePrintHTML(data: any): string {
     {},
   );
 
-  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some(
-    (i) => data[`additionalField${i}Title`]?.trim(),
+  const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some((i) =>
+    data[`additionalField${i}Title`]?.trim(),
   );
 
   return `
@@ -2835,7 +3208,9 @@ body {
               : ""
           }
 
-          ${Object.entries(weeklyConsumables).map(([week, items]: any) => `
+          ${Object.entries(weeklyConsumables)
+            .map(
+              ([week, items]: any) => `
             <div class="page-break">
               <h2 style="text-align:center;color:red;">Consumables Used - ${week}</h2>
               <table class="project-table">
@@ -2846,7 +3221,9 @@ body {
                   ${items.map((i: any) => `<tr><td>${val(i.date)}</td><td>${val(i.itemName)}</td><td>${val(i.quantity)}</td></tr>`).join("")}
                 </tbody>
               </table>
-            </div>`).join("")}
+            </div>`,
+            )
+            .join("")}
         </div>
       </td>
     </tr>
@@ -3133,7 +3510,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req, res) => {
       try {
         const id = parseInt(req.params.id);
-        const history = await storage.getInvoiceEditHistory("purchase_order", id);
+        const history = await storage.getInvoiceEditHistory(
+          "purchase_order",
+          id,
+        );
         res.json(history);
       } catch (error) {
         console.error("Get purchase order edit history error:", error);
@@ -3320,33 +3700,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minStockLevel: item.minStockLevel,
         }));
 
-      const allSalesInvoices = await db.select({
-        id: salesInvoices.id,
-        invoiceDate: salesInvoices.invoiceDate,
-        totalAmount: salesInvoices.totalAmount,
-        status: salesInvoices.status,
-      }).from(salesInvoices);
+      const allSalesInvoices = await db
+        .select({
+          id: salesInvoices.id,
+          invoiceDate: salesInvoices.invoiceDate,
+          totalAmount: salesInvoices.totalAmount,
+          status: salesInvoices.status,
+        })
+        .from(salesInvoices);
 
       const currentMonthInvoices = allSalesInvoices.filter((inv) => {
         if (!inv.invoiceDate) return false;
         const invDate = new Date(inv.invoiceDate);
-        return invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear
-          && inv.status !== "cancelled" && inv.status !== "rejected" && inv.status !== "draft";
+        return (
+          invDate.getMonth() === currentMonth &&
+          invDate.getFullYear() === currentYear &&
+          inv.status !== "cancelled" &&
+          inv.status !== "rejected" &&
+          inv.status !== "draft"
+        );
       });
 
       const previousMonthInvoices = allSalesInvoices.filter((inv) => {
         if (!inv.invoiceDate) return false;
         const invDate = new Date(inv.invoiceDate);
-        return invDate.getMonth() === previousMonth && invDate.getFullYear() === previousYear
-          && inv.status !== "cancelled" && inv.status !== "rejected" && inv.status !== "draft";
+        return (
+          invDate.getMonth() === previousMonth &&
+          invDate.getFullYear() === previousYear &&
+          inv.status !== "cancelled" &&
+          inv.status !== "rejected" &&
+          inv.status !== "draft"
+        );
       });
 
       const currentMonthRevenue = currentMonthInvoices.reduce(
-        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0,
+        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"),
+        0,
       );
 
       const previousMonthRevenue = previousMonthInvoices.reduce(
-        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"), 0,
+        (sum, inv) => sum + parseFloat(inv.totalAmount || "0"),
+        0,
       );
 
       const previousActiveProjects = allProjects.filter((p) => {
@@ -3365,7 +3759,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 previousMonthRevenue) *
                 100,
             )
-          : currentMonthRevenue > 0 ? 100 : 0;
+          : currentMonthRevenue > 0
+            ? 100
+            : 0;
 
       const lowStockItemsChangeLabel =
         lowStockItems > 0 ? "Action needed" : "All items stocked";
@@ -3373,9 +3769,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         activeProjects,
         activeProjectsChange,
-        activeProjectsChangeLabel: activeProjectsChange >= 0
-          ? `+${activeProjectsChange} from last month`
-          : `${activeProjectsChange} from last month`,
+        activeProjectsChangeLabel:
+          activeProjectsChange >= 0
+            ? `+${activeProjectsChange} from last month`
+            : `${activeProjectsChange} from last month`,
         completedProjects: totalCompletedProjects,
         lowStockItems,
         lowStockItemsChange: lowStockItems,
@@ -3383,9 +3780,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lowStockItemsList,
         monthlyRevenue: currentMonthRevenue,
         monthlyRevenueChange: currentMonthRevenue - previousMonthRevenue,
-        monthlyRevenueChangeLabel: monthlyRevenuePercentageChange >= 0
-          ? `+${monthlyRevenuePercentageChange}% from last month`
-          : `${monthlyRevenuePercentageChange}% from last month`,
+        monthlyRevenueChangeLabel:
+          monthlyRevenuePercentageChange >= 0
+            ? `+${monthlyRevenuePercentageChange}% from last month`
+            : `${monthlyRevenuePercentageChange}% from last month`,
         monthlyRevenuePercentageChange,
       });
     } catch (error: any) {
@@ -3487,7 +3885,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   previousMonthRevenue) *
                   100,
               )
-            : currentMonthRevenue > 0 ? 100 : 0;
+            : currentMonthRevenue > 0
+              ? 100
+              : 0;
 
         const currentMonthExpenses = purchaseInvoicesList
           .filter((inv: any) => {
@@ -3522,7 +3922,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   previousMonthExpenses) *
                   100,
               )
-            : currentMonthExpenses > 0 ? 100 : 0;
+            : currentMonthExpenses > 0
+              ? 100
+              : 0;
 
         const pendingApprovalSales = salesInvoices.filter(
           (inv: any) => inv.status === "pending_approval",
@@ -5014,34 +5416,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // ─── Completion report: photo listing ───────────────────────────────────────
-  app.get("/api/projects/:id/completion-report/photos", requireAuth, async (req, res) => {
-    try {
-      const projectId = parseInt(req.params.id);
-      if (isNaN(projectId)) return res.status(400).json({ message: "Invalid project ID" });
-      const userRole = req.session.userRole || "";
-      const userId = req.session.userId!;
-      const hasAccess = await checkProjectAccess(projectId, userId, userRole);
-      if (!hasAccess) return res.status(403).json({ message: "Access denied" });
-      const groups = await storage.getProjectPhotoGroups(projectId);
-      res.json(groups);
-    } catch (error) {
-      console.error("Completion report photos error:", error);
-      res.status(500).json({ message: "Failed to fetch photo groups" });
-    }
-  });
+  app.get(
+    "/api/projects/:id/completion-report/photos",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const projectId = parseInt(req.params.id);
+        if (isNaN(projectId))
+          return res.status(400).json({ message: "Invalid project ID" });
+        const userRole = req.session.userRole || "";
+        const userId = req.session.userId!;
+        const hasAccess = await checkProjectAccess(projectId, userId, userRole);
+        if (!hasAccess)
+          return res.status(403).json({ message: "Access denied" });
+        const groups = await storage.getProjectPhotoGroups(projectId);
+        res.json(groups);
+      } catch (error) {
+        console.error("Completion report photos error:", error);
+        res.status(500).json({ message: "Failed to fetch photo groups" });
+      }
+    },
+  );
 
   // ─── Completion report: generate HTML ───────────────────────────────────────
   app.post("/api/print/project-completion", requireAuth, async (req, res) => {
     try {
-      const { projectId, selectedPhotoIds = [], sections = {}, reportTitle } = req.body;
-      if (!projectId) return res.status(400).json({ message: "projectId required" });
+      const {
+        projectId,
+        selectedPhotoIds = [],
+        sections = {},
+        reportTitle,
+      } = req.body;
+      if (!projectId)
+        return res.status(400).json({ message: "projectId required" });
 
       // Project metadata + access check
       const project = await storage.getProject(parseInt(projectId));
-      if (!project) return res.status(404).json({ message: "Project not found" });
+      if (!project)
+        return res.status(404).json({ message: "Project not found" });
       const userRole = req.session.userRole || "";
       const userId = req.session.userId!;
-      const hasAccess = await checkProjectAccess(parseInt(projectId), userId, userRole);
+      const hasAccess = await checkProjectAccess(
+        parseInt(projectId),
+        userId,
+        userRole,
+      );
       if (!hasAccess) return res.status(403).json({ message: "Access denied" });
 
       // Base URL for absolute photo paths
@@ -5063,11 +5482,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Compute stats
       const startDate = project.startDate ? new Date(project.startDate) : null;
-      const endDate = project.actualEndDate || project.plannedEndDate
-        ? new Date((project.actualEndDate || project.plannedEndDate) as any)
-        : new Date();
+      const endDate =
+        project.actualEndDate || project.plannedEndDate
+          ? new Date((project.actualEndDate || project.plannedEndDate) as any)
+          : new Date();
       const totalDays = startDate
-        ? Math.max(Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1, 0)
+        ? Math.max(
+            Math.round((endDate.getTime() - startDate.getTime()) / 86400000) +
+              1,
+            0,
+          )
         : 0;
 
       const activeDateSet = new Set<string>();
@@ -5083,7 +5507,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           activeDateSet.add(dateStr);
           if (a.location) {
-            if (!locationDayMap.has(a.location)) locationDayMap.set(a.location, new Set());
+            if (!locationDayMap.has(a.location))
+              locationDayMap.set(a.location, new Set());
             locationDayMap.get(a.location)!.add(dateStr);
           }
         }
@@ -5091,27 +5516,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const activeDays = activeDateSet.size;
       const stopDays = stopDateSet.size;
-      const locationDays = Array.from(locationDayMap.entries()).map(([loc, days]) => ({
-        location: loc,
-        days: days.size,
-      })).sort((a, b) => b.days - a.days);
+      const locationDays = Array.from(locationDayMap.entries())
+        .map(([loc, days]) => ({
+          location: loc,
+          days: days.size,
+        }))
+        .sort((a, b) => b.days - a.days);
 
       // Top stoppage reason (most frequent)
       const reasonFreq: Record<string, number> = {};
       for (const r of stoppageReasons) {
         reasonFreq[r] = (reasonFreq[r] || 0) + 1;
       }
-      const topStoppageReason = Object.entries(reasonFreq).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+      const topStoppageReason =
+        Object.entries(reasonFreq).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 
       // Consumables (manual entries only, all dates)
-      const consumableRows = await storage.getProjectConsumables(parseInt(projectId));
-      const consumableAgg = new Map<string, { itemName: string; totalQty: number; itemUnit: string }>();
+      const consumableRows = await storage.getProjectConsumables(
+        parseInt(projectId),
+      );
+      const consumableAgg = new Map<
+        string,
+        { itemName: string; totalQty: number; itemUnit: string }
+      >();
       for (const entry of consumableRows) {
         for (const item of entry.items) {
           if (item.inventoryItemId) continue; // skip inventory-linked
           const key = `${item.itemName}||${item.itemUnit}`;
           if (!consumableAgg.has(key)) {
-            consumableAgg.set(key, { itemName: item.itemName || "", totalQty: 0, itemUnit: item.itemUnit || "" });
+            consumableAgg.set(key, {
+              itemName: item.itemName || "",
+              totalQty: 0,
+              itemUnit: item.itemUnit || "",
+            });
           }
           consumableAgg.get(key)!.totalQty += Number(item.quantity);
         }
@@ -5137,18 +5574,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             activityLocation: dailyActivities.location,
           })
           .from(projectPhotos)
-          .innerJoin(projectPhotoGroups, eq(projectPhotos.groupId, projectPhotoGroups.id))
-          .leftJoin(dailyActivities, eq(projectPhotoGroups.dailyActivityId, dailyActivities.id))
+          .innerJoin(
+            projectPhotoGroups,
+            eq(projectPhotos.groupId, projectPhotoGroups.id),
+          )
+          .leftJoin(
+            dailyActivities,
+            eq(projectPhotoGroups.dailyActivityId, dailyActivities.id),
+          )
           .where(
             and(
               inArray(projectPhotos.id, selectedIds),
               eq(projectPhotoGroups.projectId, parseInt(projectId)),
-            )
+            ),
           );
 
         // Restore user-defined order: sort fetched photos by their position in selectedIds
-        const selectedIdOrder = new Map<number, number>(selectedIds.map((id: number, idx: number) => [id, idx]));
-        photos.sort((a, b) => (selectedIdOrder.get(a.id) ?? 0) - (selectedIdOrder.get(b.id) ?? 0));
+        const selectedIdOrder = new Map<number, number>(
+          selectedIds.map((id: number, idx: number) => [id, idx]),
+        );
+        photos.sort(
+          (a, b) =>
+            (selectedIdOrder.get(a.id) ?? 0) - (selectedIdOrder.get(b.id) ?? 0),
+        );
 
         // Group by location → groups
         const locationMap = new Map<string, Map<number, any>>();
@@ -5170,19 +5618,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const storedPath = p.filePath || "";
           // Build absolute URL for img src
           const absFilePath = storedPath
-            ? (storedPath.startsWith("http") ? storedPath : `${baseUrl}${storedPath.startsWith("/") ? "" : "/"}${storedPath}`)
+            ? storedPath.startsWith("http")
+              ? storedPath
+              : `${baseUrl}${storedPath.startsWith("/") ? "" : "/"}${storedPath}`
             : "";
           // Pre-compute aspect ratio from local filesystem path so the HTML generator
           // never needs to do filesystem I/O.  Stored paths look like "/uploads/..." so
           // we strip the leading slash before joining with cwd.
           let aspectRatio = 1.5; // landscape default
           try {
-            const relPath = storedPath.startsWith("/") ? storedPath.slice(1) : storedPath;
+            const relPath = storedPath.startsWith("/")
+              ? storedPath.slice(1)
+              : storedPath;
             const fullLocalPath = path.join(process.cwd(), relPath);
             const dims = imageSize(fullLocalPath);
-            if (dims.width && dims.height) aspectRatio = dims.width / dims.height;
+            if (dims.width && dims.height)
+              aspectRatio = dims.width / dims.height;
           } catch {}
-          groupMap.get(p.groupId!)!.photos.push({ id: p.id, filePath: absFilePath, aspectRatio, filename: p.filename });
+          groupMap
+            .get(p.groupId!)!
+            .photos.push({
+              id: p.id,
+              filePath: absFilePath,
+              aspectRatio,
+              filename: p.filename,
+            });
         }
 
         // Build ordered array: named locations first (sorted by first seen), then GENERAL
@@ -5198,7 +5658,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         photosByLocation = [
           ...namedLocations,
-          ...(generalGroups.length ? [{ location: null, groups: generalGroups }] : []),
+          ...(generalGroups.length
+            ? [{ location: null, groups: generalGroups }]
+            : []),
         ];
       }
 
@@ -5207,9 +5669,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert vessel image stored path to absolute URL for the HTML generator
       const rawVesselImage = (project as any).vesselImage || "";
       const vesselImageUrl = rawVesselImage
-        ? (rawVesselImage.startsWith("http")
-            ? rawVesselImage
-            : `${baseUrl}${rawVesselImage.startsWith("/") ? "" : "/"}${rawVesselImage}`)
+        ? rawVesselImage.startsWith("http")
+          ? rawVesselImage
+          : `${baseUrl}${rawVesselImage.startsWith("/") ? "" : "/"}${rawVesselImage}`
         : "";
 
       const html = generateCompletionReportHTML({
@@ -5220,7 +5682,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         company,
         sections,
-        stats: { totalDays, activeDays, stopDays, locationDays, topStoppageReason },
+        stats: {
+          totalDays,
+          activeDays,
+          stopDays,
+          locationDays,
+          topStoppageReason,
+        },
         photosByLocation,
         consumables,
         reportTitle: reportTitle || project.title,
@@ -5483,8 +5951,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(result);
       } catch (error) {
         console.error("Team assignment error:", error);
-        const status = (error as any).message?.includes("already assigned") ? 400 : 500;
-        res.status(status).send(error instanceof Error ? error.message : "Unknown error");
+        const status = (error as any).message?.includes("already assigned")
+          ? 400
+          : 500;
+        res
+          .status(status)
+          .send(error instanceof Error ? error.message : "Unknown error");
       }
     },
   );
@@ -6276,8 +6748,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Invalid project ID" });
         }
         const { consumableIds } = req.body;
-        if (!consumableIds || !Array.isArray(consumableIds) || consumableIds.length === 0) {
-          return res.status(400).json({ message: "consumableIds array is required" });
+        if (
+          !consumableIds ||
+          !Array.isArray(consumableIds) ||
+          consumableIds.length === 0
+        ) {
+          return res
+            .status(400)
+            .json({ message: "consumableIds array is required" });
         }
         const result = await storage.createConsumablesGoodsIssue(
           projectId,
@@ -6287,7 +6765,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(result);
       } catch (error) {
         console.error("Error creating consumables goods issue:", error);
-        res.status(500).json({ message: "Failed to create goods issue", error: error.message });
+        res
+          .status(500)
+          .json({
+            message: "Failed to create goods issue",
+            error: error.message,
+          });
       }
     },
   );
@@ -6380,7 +6863,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           date: req.body.date ? new Date(req.body.date) : undefined,
         };
 
-        const activity = await storage.updateDailyActivity(activityId, updateData);
+        const activity = await storage.updateDailyActivity(
+          activityId,
+          updateData,
+        );
         if (!activity) {
           return res.status(404).json({ message: "Daily activity not found" });
         }
@@ -6403,7 +6889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 gte(dailyActivities.date, startOfDay),
                 lte(dailyActivities.date, endOfDay),
                 ne(dailyActivities.id, activityId),
-              )
+              ),
             );
         }
 
@@ -7081,13 +7567,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Date fields should remain as ISO strings (YYYY-MM-DD format)
         // No conversion needed - Drizzle expects strings for date() columns
-        
-        console.log(`Attempting to create sales quotation: ${quotationData.quotationNumber}`);
+
+        console.log(
+          `Attempting to create sales quotation: ${quotationData.quotationNumber}`,
+        );
 
         // Ensure numeric fields are strings for decimal columns
-        const decimalFields = ['subtotal', 'taxAmount', 'discount', 'totalAmount', 'exchangeRate', 'discountPercentage'];
-        decimalFields.forEach(field => {
-          if (quotationData[field] !== undefined && quotationData[field] !== null) {
+        const decimalFields = [
+          "subtotal",
+          "taxAmount",
+          "discount",
+          "totalAmount",
+          "exchangeRate",
+          "discountPercentage",
+        ];
+        decimalFields.forEach((field) => {
+          if (
+            quotationData[field] !== undefined &&
+            quotationData[field] !== null
+          ) {
             quotationData[field] = quotationData[field].toString();
           }
         });
@@ -7096,9 +7594,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(quotation);
       } catch (error: any) {
         console.error("Sales quotation creation error:", error);
-        res.status(500).json({ 
+        res.status(500).json({
           message: "Failed to create sales quotation",
-          details: error?.message || "Unknown error"
+          details: error?.message || "Unknown error",
         });
       }
     },
@@ -8079,7 +8577,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     },
   );
-
 
   // Goods Receipt routes
   app.get(
@@ -9372,7 +9869,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const limit = parseInt(req.query.limit as string) || 10;
         const search = (req.query.search as string) || "";
         const status = (req.query.status as string) || "all";
-        const supplierId = req.query.supplierId ? parseInt(req.query.supplierId as string) : undefined;
+        const supplierId = req.query.supplierId
+          ? parseInt(req.query.supplierId as string)
+          : undefined;
 
         const result = await storage.getPurchaseOrdersPaginated(page, limit, {
           search,
@@ -9382,7 +9881,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(result);
       } catch (error) {
         console.error("Get purchase orders error:", error);
-        res.json({ data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } });
+        res.json({
+          data: [],
+          pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+        });
       }
     },
   );
@@ -9445,17 +9947,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const isAdmin = req.session.userRole === "admin";
-        const editableStatuses = ["draft", "pending_approval", "approved", "rejected"];
+        const editableStatuses = [
+          "draft",
+          "pending_approval",
+          "approved",
+          "rejected",
+        ];
         if (!editableStatuses.includes(existingOrder.status)) {
           return res.status(400).json({
-            message: "This purchase order cannot be edited in its current status",
+            message:
+              "This purchase order cannot be edited in its current status",
           });
         }
 
-        if (existingOrder.status !== "draft" && !isAdmin && req.session.userRole !== "finance") {
+        if (
+          existingOrder.status !== "draft" &&
+          !isAdmin &&
+          req.session.userRole !== "finance"
+        ) {
           return res
             .status(403)
-            .json({ message: "Insufficient permissions to edit this purchase order" });
+            .json({
+              message: "Insufficient permissions to edit this purchase order",
+            });
         }
 
         const { editNote, ...orderDataBody } = req.body;
@@ -9498,12 +10012,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let newVal = orderData[field];
 
           if (field === "orderDate" || field === "expectedDeliveryDate") {
-            const oldDate = oldVal ? new Date(oldVal).toISOString().split('T')[0] : null;
-            const newDate = newVal ? new Date(newVal).toISOString().split('T')[0] : null;
+            const oldDate = oldVal
+              ? new Date(oldVal).toISOString().split("T")[0]
+              : null;
+            const newDate = newVal
+              ? new Date(newVal).toISOString().split("T")[0]
+              : null;
             if (oldDate !== newDate) {
               changes[field] = { old: oldDate, new: newDate };
             }
-          } else if (newVal !== undefined && String(oldVal || "") !== String(newVal || "")) {
+          } else if (
+            newVal !== undefined &&
+            String(oldVal || "") !== String(newVal || "")
+          ) {
             changes[field] = { old: oldVal, new: newVal };
           }
         }
@@ -9769,7 +10290,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     },
   );
-
 
   app.get(
     "/api/purchase-invoices/:id",
