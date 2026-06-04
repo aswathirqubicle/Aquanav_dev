@@ -2144,7 +2144,7 @@ export function generateCompletionReportHTML(data: any): string {
     <tbody>
       <tr>
         <td class="report-content-cell">
-<div style="padding:8mm 10mm;background:#fff;page-break-before:avoid;">`;
+<div style="padding:10px 30px;background:#fff;page-break-before:avoid;">`;
 
       // 1. Collect all photos from all groups into a single array, preserving their group title
       const allPhotosInLocation: { photo: any, title: string }[] = [];
@@ -2253,9 +2253,9 @@ export function generateCompletionReportHTML(data: any): string {
 
         // Only the first chunk gets the black divider page before it.
         // Subsequent chunks break to a new page naturally.
-        // We add max-width and margin:0 auto to compress the grid so that 5 rows (15 images) natively fit on one A4 page without overflowing.
+        // We use width: 100% so that the images always take the full available width, respecting the 30px side margins set on the parent.
         const pageContent = `
-          <div style="background:#fff;page-break-before:${chunkIndex > 0 ? 'always' : 'avoid'};max-width:550px;margin:0 auto;">
+          <div style="background:#fff;page-break-before:${chunkIndex > 0 ? 'always' : 'avoid'};width:100%;">
             ${chunkHTML}
           </div>
         `;
