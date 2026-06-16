@@ -591,53 +591,11 @@ export default function EmployeesIndex() {
     return `EMP${nextNumber.toString().padStart(3, '0')}`;
   };
 
-  const normalizeEmployeeCode = (code: string | null | undefined) => code?.trim().toLowerCase() ?? "";
-
-  const findEmployeeCodeConflict = (code: string | null | undefined, excludeId?: number) => {
-    const normalizedCode = normalizeEmployeeCode(code);
-    if (!normalizedCode) return undefined;
-
-    return employees?.find(
-      (employee) =>
-        employee.id !== excludeId &&
-        normalizeEmployeeCode(employee.employeeCode) === normalizedCode
-    );
-  };
-
-  const validateEmployeeCode = (code: string | null | undefined, excludeId?: number) => {
-    if (!code?.trim()) {
-      toast({
-        title: "Employee Code Required",
-        description: "Please enter an employee code.",
-        variant: "destructive",
-      });
-      setActiveTab("basic");
-      return false;
-    }
-
-    if (findEmployeeCodeConflict(code, excludeId)) {
-      toast({
-        title: "Duplicate Employee Code",
-        description: `Employee code "${code.trim()}" already exists. Please use a unique code.`,
-        variant: "destructive",
-      });
-      setActiveTab("basic");
-      return false;
-    }
-
-    return true;
-  };
-
   // Mutations
   const updateEmployeeMutation = useMutation({
     mutationFn: async (data: { id: number; data: CreateEmployeeData }) => {
-      if (!validateEmployeeCode(data.data.employeeCode, data.id)) {
-        throw new Error("Employee code already exists");
-      }
-
       const processedData = {
         ...data.data,
-        employeeCode: data.data.employeeCode.trim(),
         hireDate: data.data.hireDate ? new Date(data.data.hireDate).toISOString() : null,
         dateOfBirth: data.data.dateOfBirth ? new Date(data.data.dateOfBirth).toISOString() : null,
         salary: data.data.salary || null,
@@ -682,13 +640,8 @@ export default function EmployeesIndex() {
 
   const createEmployeeMutation = useMutation({
     mutationFn: async (data: CreateEmployeeData & { createUserAccount: boolean }) => {
-      if (!validateEmployeeCode(data.employeeCode)) {
-        throw new Error("Employee code already exists");
-      }
-
       const processedData = {
         ...data,
-        employeeCode: data.employeeCode.trim(),
         hireDate: data.hireDate ? new Date(data.hireDate).toISOString() : null,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
         salary: data.salary || null,

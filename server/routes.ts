@@ -4631,7 +4631,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Employee code is required" });
         }
 
-        console.log("Processed employee data:", employeeData);
+        employeeData.employeeCode = employeeData.employeeCode.trim();
+
+        const existingEmployee = (await storage.getEmployees()).find(
+          (employee) =>
+            employee.employeeCode.toLowerCase() ===
+            employeeData.employeeCode.toLowerCase(),
+        );
+        if (existingEmployee) {
+          return res
+            .status(409)
+            .json({ message: "Employee code already exists" });
+        }
 
         const parsedEmployeeData = insertEmployeeSchema.parse(employeeData);
         const employee = await storage.createEmployee(parsedEmployeeData);
