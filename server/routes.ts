@@ -1517,6 +1517,10 @@ body {
   padding: 0 !important;
 }
 
+.report-wrapper > thead > tr > td {
+  background: #ffffff;
+}
+
 .report-content-cell {
   vertical-align: top;
   background: #ffffff;
