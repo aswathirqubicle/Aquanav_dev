@@ -2313,6 +2313,11 @@ export class Storage {
           additionalField5Description: projects.additionalField5Description,
           additionalField6Title: projects.additionalField6Title,
           additionalField6Description: projects.additionalField6Description,
+          surfaceTemperature: projects.surfaceTemperature,
+          airTemperature: projects.airTemperature,
+          relativeHumidity: projects.relativeHumidity,
+          dewPointTemperature: projects.dewPointTemperature,
+          dewPointSurfaceDiff: projects.dewPointSurfaceDiff,
           workRemainingDays: projects.workRemainingDays,
         })
         .from(projects)
@@ -2376,6 +2381,11 @@ export class Storage {
           additionalField5Description: projects.additionalField5Description,
           additionalField6Title: projects.additionalField6Title,
           additionalField6Description: projects.additionalField6Description,
+          surfaceTemperature: projects.surfaceTemperature,
+          airTemperature: projects.airTemperature,
+          relativeHumidity: projects.relativeHumidity,
+          dewPointTemperature: projects.dewPointTemperature,
+          dewPointSurfaceDiff: projects.dewPointSurfaceDiff,
           workRemainingDays: projects.workRemainingDays,
         })
         .from(projects)
@@ -2551,6 +2561,11 @@ export class Storage {
           additionalField5Description: projects.additionalField5Description,
           additionalField6Title: projects.additionalField6Title,
           additionalField6Description: projects.additionalField6Description,
+          surfaceTemperature: projects.surfaceTemperature,
+          airTemperature: projects.airTemperature,
+          relativeHumidity: projects.relativeHumidity,
+          dewPointTemperature: projects.dewPointTemperature,
+          dewPointSurfaceDiff: projects.dewPointSurfaceDiff,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))

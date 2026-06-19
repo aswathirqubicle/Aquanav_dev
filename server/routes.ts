@@ -1491,6 +1491,10 @@ export function generateProjectPrintHTML(data: any): string {
 }
 
 /* ===== BODY ===== */
+html, body {
+  height: 100%;
+  margin: 0;
+}
 body {
   font-family: Inter, sans-serif;
   margin: 0;
@@ -1501,6 +1505,7 @@ body {
 
 /* Layout table for repeating headers/footers */
 .report-wrapper {
+  height: 100%;
   width: 100%;
   border-collapse: collapse;
   border: none !important;
@@ -1514,42 +1519,43 @@ body {
 
 .report-content-cell {
   vertical-align: top;
+  background: #ffffff;
+  height: 250mm;
 }
 
 /* ===== FIXED HEADER ===== */
 .print-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 160px;
   background: #ffffff;
-  z-index: 10;
-  padding: 10px 20px;
+  padding: 5px 20px 10px 20px;
+  margin-bottom: 20px; /* <--- This creates the gap between the header line and content on ALL pages */
+  box-sizing: border-box;
+  border-bottom: 2px solid #0019A5;
+  width: 100%;
 }
 
 .top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 100%;
 }
 
 .top-header img {
-  height: 120px;
+  max-height: 80px;
 }
 
 /* ===== FIXED FOOTER ===== */
 .footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 60px;                /* MUST MATCH CONTAINER PADDING */
   background: #ffffff;
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 10;
+
+  box-sizing: border-box;
+  border-top: 2px solid #0019A5;
+  border-bottom: 2px solid #0019A5;
+  padding: 10px 20px;
+  margin-top: 10px;
+  width: 100%;
 }
 
 .footer-content {
@@ -1557,16 +1563,18 @@ body {
   gap: 20px;
   font-weight: bold;
   color: #0019A5;
+  width: 100%;
+  justify-content: space-between;
 }
 
 /* ===== MAIN CONTAINER ===== */
 .container {
-  background: #fff;
+  background: #ffffff;
   max-width: 900px;
   margin: auto;
-
   padding-left: 10px;
   padding-right: 10px;
+  padding-bottom: 20px;
 }
 
 /* ===== TITLES ===== */
@@ -1575,6 +1583,13 @@ body {
   margin: 20px 0;
   font-size: 20px;
   font-weight: bold;
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.main-title p {
+  margin: 0;
 }
 
 .highlight { color: red; }
@@ -1612,8 +1627,49 @@ body {
   background: #c00000;
   color: white;
   text-align: center;
-  padding: 6px;
-  margin-top: 20px;
+  padding: 4px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+/* ===== AMBIENT CONDITIONS BOX ===== */
+.ambient-box {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: #FAFAC8;
+  padding: 15px;
+  /* margin-top: 30px; */
+  margin-top: 10px;
+  margin-bottom: 30px;
+  border: 1px solid #A9A9A9;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11.2pt;
+  line-height: 1.4;
+  page-break-inside: auto;
+}
+.ambient-box p.ambient-title {
+  font-weight: bold;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+.ambient-box p.ambient-subtitle {
+  color: #0070C0;
+  font-weight: bold;
+  margin-bottom: 8px;
+  margin-top: 0;
+}
+.ambient-box ol {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 25px;
+}
+.ambient-box li {
+  margin-bottom: 3px;
+}
+.ambient-box li:last-child {
+  margin-bottom: 0;
 }
 
 /* ===== STEPS TABLE ===== */
@@ -1645,13 +1701,13 @@ body {
 
 .image-table td {
   border: 1px solid #000;
-  padding: 5px;
+  padding: 10px;
 }
 
 .image-table img {
   width: 100%;
   height: 230px;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 /* ===== PAGE BREAK ===== */
@@ -1666,7 +1722,7 @@ body {
   margin-top: 15px;
   padding: 6px 0;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 14.4pt;
   border-bottom: 2px solid #0019A5;
 }
 
@@ -1685,16 +1741,6 @@ body {
     margin: 0;
   }
 
-  .print-header {
-    position: fixed;
-    top: 0;
-  }
-
-  .footer {
-    position: fixed;
-    bottom: 0;
-  }
-
   .page-break {
     page-break-before: always;
   }
@@ -1707,10 +1753,10 @@ body {
 <body onload="window.print()">
 <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
   <thead>
-    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space" style="height: 160px;"><div class="print-header">
+    <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"><div class="print-header">
             <div class="top-header">
               <img src="${data.company?.logo || ""}" />
-              <div>${data.company?.address || ""}</div>
+              <div style="font-size: 14px; font-weight: 600; text-align: right; white-space: pre-wrap;">${data.company?.address || ""}</div>
             </div>
           </div></div></td></tr>
   </thead>
@@ -1720,8 +1766,8 @@ body {
         <div class="container">
           <!-- TITLE -->
           <div class="main-title">
-            ${val(data.title)}<br/>
-            <span class="highlight">${sanitize(data.description)}</span><br/>
+            <span>${val(data.title)}</span>
+            <span class="highlight">${sanitize(data.description)}</span>
             <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : data.reportTitle || "WEEKLY REPORT"}</span>
           </div>
 
@@ -1777,29 +1823,75 @@ body {
 
           <table class="steps-table">
             <tbody>
-              ${[1, 3, 5]
-                .map((start) => {
-                  const firstTitle = data[`additionalField${start}Title`];
-                  const firstDesc = data[`additionalField${start}Description`];
-                  const secondTitle = data[`additionalField${start + 1}Title`];
-                  const secondDesc =
-                    data[`additionalField${start + 1}Description`];
-                  if (!firstTitle?.trim() && !secondTitle?.trim()) return "";
-                  return `
-                    <tr>
-                      <th style="width:10%;">Step-${start}</th>
-                      <td style="width:40%;">
-                        ${firstTitle?.trim() ? `<strong>${firstTitle}</strong><br/>${sanitize(firstDesc)}` : ""}
-                      </td>
-                      <th style="width:10%;">Step-${start + 1}</th>
-                      <td style="width:40%;">
-                        ${secondTitle?.trim() ? `<strong>${secondTitle}</strong><br/>${sanitize(secondDesc)}` : ""}
-                      </td>
-                    </tr>`;
-                })
-                .join("")}
+              ${(() => {
+                const validFields = [1, 2, 3, 4, 5, 6]
+                  .map((i) => ({
+                    title: data[`additionalField${i}Title`],
+                    desc: data[`additionalField${i}Description`],
+                  }))
+                  .filter((f) => f.title?.trim() && f.desc?.trim());
+
+                const rows = [];
+                for (let i = 0; i < validFields.length; i += 2) {
+                  rows.push([validFields[i], validFields[i + 1]]);
+                }
+
+                return rows
+                  .map(([first, second]) => {
+                    if (first && second) {
+                      return `
+        <tr>
+          <th style="width:10%;">${first.title?.trim() ? first.title : ""}</th>
+          <td style="width:40%;">
+            ${first.desc?.trim() ? sanitize(first.desc) : ""}
+          </td>
+          <th style="width:10%;">${second.title?.trim() ? second.title : ""}</th>
+          <td style="width:40%;">
+            ${second.desc?.trim() ? sanitize(second.desc) : ""}
+          </td>
+        </tr>`;
+                    }
+
+                    if (first && !second) {
+                      return `
+        <tr>
+          <th style="width:10%;">
+            ${first.title?.trim() ? first.title : ""}
+          </th>
+          <td colspan="3">
+            ${first.desc?.trim() ? sanitize(first.desc) : ""}
+          </td>
+        </tr>`;
+                    }
+
+                    return "";
+                  })
+                  .join("");
+              })()}
             </tbody>
           </table>
+          `
+              : ""
+          }
+
+          ${
+            data.surfaceTemperature ||
+            data.airTemperature ||
+            data.relativeHumidity ||
+            data.dewPointTemperature ||
+            data.dewPointSurfaceDiff
+              ? `
+          <div class="ambient-box">
+            <p class="ambient-title">The surface preparation and the coating process should be carried out within the range of ambient conditions recommended by the paint manufacturer.</p>
+            <p class="ambient-subtitle">The five main ambient conditions that should be determined include:</p>
+            <ol>
+              ${data.surfaceTemperature ? `<li><strong>Surface temperature</strong> – ${sanitize(data.surfaceTemperature)}</li>` : ""}
+              ${data.airTemperature ? `<li><strong>Air temperature</strong> – ${sanitize(data.airTemperature)}</li>` : ""}
+              ${data.relativeHumidity ? `<li><strong>Relative humidity (RH)</strong> ${sanitize(data.relativeHumidity)}</li>` : ""}
+              ${data.dewPointTemperature ? `<li><strong>Dew point temperature</strong> – ${sanitize(data.dewPointTemperature)}</li>` : ""}
+              ${data.dewPointSurfaceDiff ? `<li><strong>Difference between the dew point and surface temperatures</strong> – ${sanitize(data.dewPointSurfaceDiff)}</li>` : ""}
+            </ol>
+          </div>
           `
               : ""
           }
@@ -1808,7 +1900,7 @@ body {
             data.reportImage || Object.keys(plannedReports).length > 0
               ? `
             <div class="page-break">
-              <h2 style="text-align:center;color:red;">WORK PLAN</h2>
+              ${Object.keys(plannedReports).length > 0 ? `<h2 style="text-align:center;color:red;">WORK PLAN</h2>` : ""}
               ${
                 data.reportImage
                   ? `
@@ -1823,10 +1915,14 @@ body {
 
           ${Object.entries(weeklyReports)
             .filter(([_, reports]: any) => reports.length > 0)
-            .map(
-              ([week, reports]: any) => `
-            <div class="page-break">
-              <h2 style="text-align:center;color:red;">Work done for the Week - ${week}</h2>
+            .map(([week, reports]: any, index: number) => {
+              const isUnderWorkPlan =
+                index === 0 &&
+                (data.reportImage || Object.keys(plannedReports).length > 0);
+              const isFirstWithoutWorkPlan = index === 0 && !isUnderWorkPlan;
+              return `
+            <div class="${isFirstWithoutWorkPlan ? "page-break" : ""}">
+              <h2 style="text-align:center;color:red; margin-top: ${isFirstWithoutWorkPlan ? "0" : "20px"};">Work done for the Week - ${week}</h2>
               <table class="project-table">
                 <thead>
                   <tr>
@@ -1854,8 +1950,8 @@ body {
                     .join("")}
                 </tbody>
               </table>
-            </div>`,
-            )
+            </div>`;
+            })
             .join("")}
 
           ${gallery
@@ -1878,7 +1974,7 @@ body {
                       (row: any[]) => `
                     <tr>
                       ${row.map((img) => `<td style="width: 50%;"><img src="${val(img.filePath)}" class="image-table img" /></td>`).join("")}
-                      ${row.length === 1 ? '<td style="width: 50%;"></td>' : ""}
+                      ${row.length === 1 ? '<td style="width: 50%; border: none;"></td>' : ""}
                     </tr>`,
                     )
                     .join("")}
@@ -5174,12 +5270,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Clean up empty/nullish string values from FormData
     Object.keys(data).forEach((key) => {
-      if (
-        data[key] === "null" ||
-        data[key] === "undefined" ||
-        data[key] === ""
-      ) {
+      if (data[key] === "null" || data[key] === "undefined") {
         delete data[key];
+      } else if (data[key] === "") {
+        if (!key.startsWith("additionalField")) {
+          delete data[key];
+        }
       }
     });
 
@@ -5646,14 +5742,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (dims.width && dims.height)
               aspectRatio = dims.width / dims.height;
           } catch {}
-          groupMap
-            .get(p.groupId!)!
-            .photos.push({
-              id: p.id,
-              filePath: absFilePath,
-              aspectRatio,
-              filename: p.filename,
-            });
+          groupMap.get(p.groupId!)!.photos.push({
+            id: p.id,
+            filePath: absFilePath,
+            aspectRatio,
+            filename: p.filename,
+          });
         }
 
         // Build ordered array: named locations first (sorted by first seen), then GENERAL
@@ -6776,12 +6870,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(201).json(result);
       } catch (error) {
         console.error("Error creating consumables goods issue:", error);
-        res
-          .status(500)
-          .json({
-            message: "Failed to create goods issue",
-            error: error.message,
-          });
+        res.status(500).json({
+          message: "Failed to create goods issue",
+          error: error.message,
+        });
       }
     },
   );
@@ -6869,14 +6961,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const activityId = parseInt(req.params.activityId);
         const projectId = parseInt(req.params.projectId);
-        const updateData = {
+
+        const activityData = {
           ...req.body,
+          projectId,
           date: req.body.date ? new Date(req.body.date) : undefined,
         };
 
+        const validatedData = insertDailyActivitySchema
+          .partial()
+          .parse(activityData);
+
         const activity = await storage.updateDailyActivity(
           activityId,
-          updateData,
+          validatedData,
         );
         if (!activity) {
           return res.status(404).json({ message: "Daily activity not found" });
@@ -6897,8 +6995,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(
               and(
                 eq(dailyActivities.projectId, projectId),
-                gte(dailyActivities.date, startOfDay),
-                lte(dailyActivities.date, endOfDay),
+                gte(
+                  dailyActivities.date,
+                  sql`${startOfDay.toISOString()}::timestamp`,
+                ),
+                lte(
+                  dailyActivities.date,
+                  sql`${endOfDay.toISOString()}::timestamp`,
+                ),
                 ne(dailyActivities.id, activityId),
               ),
             );
@@ -9976,11 +10080,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           !isAdmin &&
           req.session.userRole !== "finance"
         ) {
-          return res
-            .status(403)
-            .json({
-              message: "Insufficient permissions to edit this purchase order",
-            });
+          return res.status(403).json({
+            message: "Insufficient permissions to edit this purchase order",
+          });
         }
 
         const { editNote, ...orderDataBody } = req.body;

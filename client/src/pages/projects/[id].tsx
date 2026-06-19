@@ -697,6 +697,11 @@ export default function ProjectDetail() {
     additionalField5Description: "",
     additionalField6Title: "",
     additionalField6Description: "",
+    surfaceTemperature: "",
+    airTemperature: "",
+    relativeHumidity: "",
+    dewPointTemperature: "",
+    dewPointSurfaceDiff: "",
     customerId: "",
   });
   const [isCustomContractMode, setIsCustomContractMode] = useState(false);
@@ -897,6 +902,11 @@ export default function ProjectDetail() {
         additionalField5Description: project.additionalField5Description || "",
         additionalField6Title: project.additionalField6Title || "",
         additionalField6Description: project.additionalField6Description || "",
+        surfaceTemperature: project.surfaceTemperature || "",
+        airTemperature: project.airTemperature || "",
+        relativeHumidity: project.relativeHumidity || "",
+        dewPointTemperature: project.dewPointTemperature || "",
+        dewPointSurfaceDiff: project.dewPointSurfaceDiff || "",
         customerId: project.customerId?.toString() || "",
       });
 
@@ -2081,6 +2091,11 @@ export default function ProjectDetail() {
     appendIfExists("additionalField5Description", editProjectData.additionalField5Description);
     appendIfExists("additionalField6Title", editProjectData.additionalField6Title);
     appendIfExists("additionalField6Description", editProjectData.additionalField6Description);
+    appendIfExists("surfaceTemperature", editProjectData.surfaceTemperature);
+    appendIfExists("airTemperature", editProjectData.airTemperature);
+    appendIfExists("relativeHumidity", editProjectData.relativeHumidity);
+    appendIfExists("dewPointTemperature", editProjectData.dewPointTemperature);
+    appendIfExists("dewPointSurfaceDiff", editProjectData.dewPointSurfaceDiff);
     appendIfExists("customerId", editProjectData.customerId);
 
 
@@ -2538,6 +2553,53 @@ export default function ProjectDetail() {
                       </div>
                     </div>
 
+                    {/* Environmental Conditions */}
+                    <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                      <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">Environmental Conditions</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label>Surface Temperature</Label>
+                          <Textarea
+                            value={editProjectData.surfaceTemperature}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, surfaceTemperature: e.target.value }))}
+                            placeholder="Enter surface temperature..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Air Temperature</Label>
+                          <Textarea
+                            value={editProjectData.airTemperature}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, airTemperature: e.target.value }))}
+                            placeholder="Enter air temperature..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Relative Humidity (RH)</Label>
+                          <Textarea
+                            value={editProjectData.relativeHumidity}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, relativeHumidity: e.target.value }))}
+                            placeholder="Enter relative humidity..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Dew Point Temperature</Label>
+                          <Textarea
+                            value={editProjectData.dewPointTemperature}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, dewPointTemperature: e.target.value }))}
+                            placeholder="Enter dew point temperature..."
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Difference (Dew Point & Surface)</Label>
+                          <Textarea
+                            value={editProjectData.dewPointSurfaceDiff}
+                            onChange={(e) => setEditProjectData(prev => ({ ...prev, dewPointSurfaceDiff: e.target.value }))}
+                            placeholder="Enter difference..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Additional Custom Fields */}
                     <div className="space-y-6">
                       <h4 className="text-md font-medium text-slate-900 dark:text-slate-100">Custom Fields</h4>
@@ -2907,6 +2969,45 @@ export default function ProjectDetail() {
                       <div>
                         <p className="text-sm font-medium text-slate-900 dark:text-slate-100">PPE Requirements</p>
                         <p className="text-sm text-slate-600 dark:text-slate-400">{project.ppe}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Environmental Conditions */}
+              {(project.surfaceTemperature || project.airTemperature || project.relativeHumidity || project.dewPointTemperature || project.dewPointSurfaceDiff) && (
+                <div className="mb-6 space-y-4 border-t pt-4">
+                  <h4 className="font-medium text-slate-900 dark:text-slate-100">Environmental Conditions</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {project.surfaceTemperature && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Surface Temperature</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{project.surfaceTemperature}</p>
+                      </div>
+                    )}
+                    {project.airTemperature && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Air Temperature</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{project.airTemperature}</p>
+                      </div>
+                    )}
+                    {project.relativeHumidity && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Relative Humidity (RH)</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{project.relativeHumidity}</p>
+                      </div>
+                    )}
+                    {project.dewPointTemperature && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Dew Point Temperature</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{project.dewPointTemperature}</p>
+                      </div>
+                    )}
+                    {project.dewPointSurfaceDiff && (
+                      <div>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Difference (Dew Point & Surface)</p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{project.dewPointSurfaceDiff}</p>
                       </div>
                     )}
                   </div>

@@ -56,6 +56,11 @@ export default function ProjectCreate() {
     additionalField5Description: "",
     additionalField6Title: "",
     additionalField6Description: "",
+    surfaceTemperature: "",
+    airTemperature: "",
+    relativeHumidity: "",
+    dewPointTemperature: "",
+    dewPointSurfaceDiff: "",
   });
   const [vesselImageFile, setVesselImageFile] = useState<File | null>(null);
 
@@ -120,6 +125,11 @@ export default function ProjectCreate() {
       appendIfExists("additionalField5Description", data.additionalField5Description);
       appendIfExists("additionalField6Title", data.additionalField6Title);
       appendIfExists("additionalField6Description", data.additionalField6Description);
+      appendIfExists("surfaceTemperature", data.surfaceTemperature);
+      appendIfExists("airTemperature", data.airTemperature);
+      appendIfExists("relativeHumidity", data.relativeHumidity);
+      appendIfExists("dewPointTemperature", data.dewPointTemperature);
+      appendIfExists("dewPointSurfaceDiff", data.dewPointSurfaceDiff);
 
       if (vesselImageFile) {
         formData.append("vesselImage", vesselImageFile);
@@ -421,6 +431,58 @@ export default function ProjectCreate() {
                     onChange={(e) => handleChange("ppe", e.target.value)}
                     placeholder="Personal protective equipment requirements..."
                   />
+                </div>
+              </div>
+
+              {/* Environmental Conditions */}
+              <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">Environmental Conditions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="surfaceTemperature">Surface Temperature</Label>
+                    <Textarea
+                      id="surfaceTemperature"
+                      value={formData.surfaceTemperature}
+                      onChange={(e) => handleChange("surfaceTemperature", e.target.value)}
+                      placeholder="Enter surface temperature..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="airTemperature">Air Temperature</Label>
+                    <Textarea
+                      id="airTemperature"
+                      value={formData.airTemperature}
+                      onChange={(e) => handleChange("airTemperature", e.target.value)}
+                      placeholder="Enter air temperature..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="relativeHumidity">Relative Humidity (RH)</Label>
+                    <Textarea
+                      id="relativeHumidity"
+                      value={formData.relativeHumidity}
+                      onChange={(e) => handleChange("relativeHumidity", e.target.value)}
+                      placeholder="Enter relative humidity..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dewPointTemperature">Dew Point Temperature</Label>
+                    <Textarea
+                      id="dewPointTemperature"
+                      value={formData.dewPointTemperature}
+                      onChange={(e) => handleChange("dewPointTemperature", e.target.value)}
+                      placeholder="Enter dew point temperature..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dewPointSurfaceDiff">Difference (Dew Point & Surface)</Label>
+                    <Textarea
+                      id="dewPointSurfaceDiff"
+                      value={formData.dewPointSurfaceDiff}
+                      onChange={(e) => handleChange("dewPointSurfaceDiff", e.target.value)}
+                      placeholder="Enter difference..."
+                    />
+                  </div>
                 </div>
               </div>
 

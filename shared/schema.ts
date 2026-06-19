@@ -228,6 +228,11 @@ export const projects = pgTable("projects", {
   additionalField5Description: text("additional_field_5_description"),
   additionalField6Title: text("additional_field_6_title"),
   additionalField6Description: text("additional_field_6_description"),
+  surfaceTemperature: text("surface_temperature"),
+  airTemperature: text("air_temperature"),
+  relativeHumidity: text("relative_humidity"),
+  dewPointTemperature: text("dew_point_temperature"),
+  dewPointSurfaceDiff: text("dew_point_surface_diff"),
   workRemainingDays: json("work_remaining_days")
     .$type<{ location: string; days: string }[]>()
     .default([]),
@@ -375,7 +380,9 @@ export const projectPhotoGroups = pgTable("project_photo_groups", {
   description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   createdBy: integer("created_by").references(() => users.id),
-  dailyActivityId: integer("daily_activity_id").references(() => dailyActivities.id),
+  dailyActivityId: integer("daily_activity_id").references(
+    () => dailyActivities.id,
+  ),
 });
 
 // Project Photos
@@ -458,7 +465,9 @@ export const salesInvoices = pgTable("sales_invoices", {
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
   currency: text("currency").notNull().default("AED"),
-  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   status: text("status").notNull().default("draft"), // draft, approved, unpaid, partially_paid, paid, overdue
   invoiceDate: timestamp("invoice_date", { mode: "string" }).notNull(),
   dueDate: timestamp("due_date", { mode: "string" }).notNull(),
@@ -572,7 +581,7 @@ export const projectAssetInstanceAssignments = pgTable(
     instanceId: integer("instance_id")
       .references(() => assetInventoryInstances.id)
       .notNull(),
-    barcode: text("barcode"),// selected barcode for this assignment
+    barcode: text("barcode"), // selected barcode for this assignment
     serialNumber: text("serial_number").notNull(), // reference to the instance's serial number
     startDate: timestamp("start_date").notNull(),
     endDate: timestamp("end_date"),
@@ -744,7 +753,9 @@ export const proformaInvoices = pgTable("proforma_invoices", {
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
   currency: text("currency").notNull().default("AED"),
-  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   status: text("status").notNull().default("draft"), // draft, sent, approved, rejected, expired, converted
   createdDate: timestamp("created_date", { mode: "string" })
     .notNull()
@@ -796,7 +807,9 @@ export const creditNotes = pgTable("credit_notes", {
   ),
   customerId: integer("customer_id").references(() => customers.id),
   currency: text("currency").notNull().default("AED"),
-  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 }).notNull().default("1"),
+  exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
+    .notNull()
+    .default("1"),
   status: text("status").notNull().default("draft"), // draft, issued, cancelled
   creditNoteDate: timestamp("credit_note_date", { mode: "string" }).notNull(),
   billingAddress: text("billing_address"),
@@ -1211,11 +1224,15 @@ export const invoiceEditHistory = pgTable("invoice_edit_history", {
 });
 
 // Insert Schemas
-export const insertInvoiceEditHistorySchema = createInsertSchema(invoiceEditHistory).omit({
+export const insertInvoiceEditHistorySchema = createInsertSchema(
+  invoiceEditHistory,
+).omit({
   id: true,
   editedAt: true,
 });
-export type InsertInvoiceEditHistory = z.infer<typeof insertInvoiceEditHistorySchema>;
+export type InsertInvoiceEditHistory = z.infer<
+  typeof insertInvoiceEditHistorySchema
+>;
 export type InvoiceEditHistory = typeof invoiceEditHistory.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -1424,6 +1441,11 @@ export const insertProjectSchema = createInsertSchema(projects)
     additionalField5Description: z.string().optional(),
     additionalField6Title: z.string().optional(),
     additionalField6Description: z.string().optional(),
+    surfaceTemperature: z.string().optional(),
+    airTemperature: z.string().optional(),
+    relativeHumidity: z.string().optional(),
+    dewPointTemperature: z.string().optional(),
+    dewPointSurfaceDiff: z.string().optional(),
     workRemainingDays: z
       .array(
         z.object({
@@ -1845,21 +1867,29 @@ export type InsertReimbursement = z.infer<typeof insertReimbursementSchema>;
 // Employee Feedback
 export const employeeFeedback = pgTable("employee_feedback", {
   id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").notNull().references(() => employees.id),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id),
   projectId: integer("project_id").references(() => projects.id),
   feedback: text("feedback").notNull(),
-  createdById: integer("created_by_id").notNull().references(() => users.id),
+  createdById: integer("created_by_id")
+    .notNull()
+    .references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertEmployeeFeedbackSchema = createInsertSchema(employeeFeedback).omit({
+export const insertEmployeeFeedbackSchema = createInsertSchema(
+  employeeFeedback,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 export type EmployeeFeedback = typeof employeeFeedback.$inferSelect;
-export type InsertEmployeeFeedback = z.infer<typeof insertEmployeeFeedbackSchema>;
+export type InsertEmployeeFeedback = z.infer<
+  typeof insertEmployeeFeedbackSchema
+>;
 
 // Exchange Rate schemas and types
 export const insertExchangeRateSchema = createInsertSchema(exchangeRates).omit({
