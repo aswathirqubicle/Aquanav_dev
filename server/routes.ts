@@ -1516,7 +1516,6 @@ body {
   border: none !important;
   padding: 0 !important;
 }
-
 .report-wrapper > thead > tr > td {
   background: #ffffff;
 }
