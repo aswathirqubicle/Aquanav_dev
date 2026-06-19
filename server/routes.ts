@@ -1388,6 +1388,27 @@ export function generateProjectPrintHTML(data: any): string {
     return `${day}-${month}-${year}`;
   };
 
+  const fmtUpper = (date: string | Date | null | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = [
+      "JANUARY",
+      "FEBRUARY",
+      "MARCH",
+      "APRIL",
+      "MAY",
+      "JUNE",
+      "JULY",
+      "AUGUST",
+      "SEPTEMBER",
+      "OCTOBER",
+      "NOVEMBER",
+      "DECEMBER",
+    ];
+    return `${day} ${months[d.getMonth()]} - ${d.getFullYear()}`;
+  };
+
   const gallery = data.gallery || [];
   // Helper to get week label (example: 10 Feb 2026 - 16 Feb 2026)
   function getWeekRange(date: Date) {
@@ -1476,6 +1497,30 @@ export function generateProjectPrintHTML(data: any): string {
   const hasAdditionalFields = [1, 2, 3, 4, 5, 6].some((i) =>
     data[`additionalField${i}Title`]?.trim(),
   );
+
+  const vesselImgUrl = val(data.vesselImageUrl) || val(data.vesselImage);
+  const company = data.company || {};
+  const reportTitleStr = data.reportTitle === "null" ? "WEEKLY REPORT" : data.reportTitle || "WEEKLY REPORT";
+
+  const coverHTML = `
+<div class="cover-page" style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-after:always;position:relative;z-index:20;">
+  ${company.logo ? `<img src="${company.logo}" style="height:70px;margin-bottom:30px;filter:brightness(10);" onerror="this.style.display='none'" />` : ""}
+  <div style="color:#ffffff;font-size:36px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.2;margin-bottom:12px;">${val(data.title)}</div>
+  <div style="color:#ff4444;font-size:24px;font-weight:700;letter-spacing:1px;line-height:1.3;margin-bottom:24px;">${sanitize(data.description)}</div>
+  <div style="width:60px;height:3px;background:#0019A5;margin:0 auto 24px;"></div>
+  <div style="color:#aabbee;font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:2px;line-height:1.4;max-width:500px;margin-bottom:40px;">${reportTitleStr}</div>
+  ${
+    vesselImgUrl
+      ? `
+  <div style="width:100%;height:90mm;overflow:hidden;margin-bottom:0;">
+    <img src="${vesselImgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.parentElement.style.display='none'" />
+  </div>`
+      : ""
+  }
+  <div style="display:flex;justify-content:center;width:100%;max-width:500px;margin-top:auto;padding-top:30px;border-top:1px solid rgba(255,255,255,0.2);">
+    <div style="color:#ffffff;font-size:13px;font-weight:600;letter-spacing:2px;text-transform:uppercase;">REPORT DATE: ${fmtUpper(data.reportDate)}</div>
+  </div>
+</div>`;
 
   return `
 <!DOCTYPE html>
@@ -1754,6 +1799,7 @@ body {
 </head>
 
 <body onload="window.print()">
+${coverHTML}
 <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
   <thead>
     <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"><div class="print-header">
@@ -1767,20 +1813,8 @@ body {
     <tr>
       <td class="report-content-cell">
         <div class="container">
-          <!-- TITLE -->
-          <div class="main-title">
-            <span>${val(data.title)}</span>
-            <span class="highlight">${sanitize(data.description)}</span>
-            <span class="vessel">${data.reportTitle === "null" ? "WEEKLY REPORT" : data.reportTitle || "WEEKLY REPORT"}</span>
-          </div>
-
-          <!-- IMAGE -->
-          <div class="ship-image">
-            <img src="${val(data.vesselImage)}" />
-          </div>
-
           <!-- PROJECT HIGHLIGHTS HEADER -->
-          <div class="highlights-header">
+          <div class="highlights-header" style="margin-top: 0;">
             <div class="left-title">PROJECT HIGHLIGHTS</div>
             <div class="right-date">
               Report Date: ${formatDateDDMMMYYYY(data.reportDate)}
