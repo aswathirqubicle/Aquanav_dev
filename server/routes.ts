@@ -1422,6 +1422,19 @@ export function generateProjectPrintHTML(data: any): string {
     return `${formatDateDDMMMYYYY(first)} - ${formatDateDDMMMYYYY(last)}`;
   }
 
+  // Calculate relative day
+  const getRelativeDay = (activityDate: string | Date) => {
+    if (!data.startDate) return "-";
+    const start = new Date(data.startDate);
+    start.setHours(0, 0, 0, 0);
+    const current = new Date(activityDate);
+    current.setHours(0, 0, 0, 0);
+    const diffTime = current.getTime() - start.getTime();
+    // Use Math.round to avoid Daylight Saving Time (DST) shift bugs
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays + 1; // +1 because start date itself is Day 1
+  };
+
   // Group by week
   const weeklyReports = data.dailyActivities.reduce(
     (acc: any, activity: any) => {
@@ -1432,7 +1445,7 @@ export function generateProjectPrintHTML(data: any): string {
       }
 
       acc[weekKey].push({
-        day_num: new Date(activity.date).getDay(),
+        day_num: getRelativeDay(activity.date),
         date: formatDateDDMMMYYYY(activity.date),
         location: activity.location,
         activities: activity.tasks,
@@ -1454,11 +1467,10 @@ export function generateProjectPrintHTML(data: any): string {
       }
 
       acc[weekKey].push({
-        day_num: new Date(activity.date).getDay(),
+        day_num: getRelativeDay(activity.date),
         date: formatDateDDMMMYYYY(activity.date),
         location: activity.location,
         activities: activity.tasks,
-        remarks: activity.remarks,
       });
 
       return acc;
@@ -2052,7 +2064,6 @@ ${coverHTML}
                     <th>Date</th>
                     <th>Location</th>
                     <th>Activities</th>
-                    <th>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2064,7 +2075,6 @@ ${coverHTML}
                       <td>${val(r.date)}</td>
                       <td>${val(r.location)}</td>
                       <td>${val(r.activities)}</td>
-                      <td>${val(r.remarks)}</td>
                     </tr>`,
                     )
                     .join("")}
@@ -2098,6 +2108,16 @@ ${coverHTML}
                     .join("")}
                 </tbody>
               </table>
+            </div>`
+              : ""
+          }
+
+          ${
+            data.latestRemark
+              ? `
+            <div style="margin-top:20px;">
+              <h3 style="color:red;margin-bottom:10px;">Remarks</h3>
+              <div style="white-space:pre-wrap;">${val(data.latestRemark)}</div>
             </div>`
               : ""
           }
@@ -5306,11 +5326,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     // Clean up empty/nullish string values from FormData
+    const ambientFields = [
+      "surfaceTemperature",
+      "airTemperature",
+      "relativeHumidity",
+      "dewPointTemperature",
+      "dewPointSurfaceDiff"
+    ];
+
     Object.keys(data).forEach((key) => {
       if (data[key] === "null" || data[key] === "undefined") {
         delete data[key];
       } else if (data[key] === "") {
-        if (!key.startsWith("additionalField")) {
+        if (key.startsWith("additionalField") || ambientFields.includes(key)) {
+          // Explicitly set to null so the database clears the value
+          data[key] = null;
+        } else {
           delete data[key];
         }
       }
@@ -7005,9 +7036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           date: req.body.date ? new Date(req.body.date) : undefined,
         };
 
-        const validatedData = insertDailyActivitySchema
-          .partial()
-          .parse(activityData);
+        const validatedData = insertDailyActivitySchema.partial().parse(activityData);
 
         const activity = await storage.updateDailyActivity(
           activityId,
@@ -7032,14 +7061,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(
               and(
                 eq(dailyActivities.projectId, projectId),
-                gte(
-                  dailyActivities.date,
-                  sql`${startOfDay.toISOString()}::timestamp`,
-                ),
-                lte(
-                  dailyActivities.date,
-                  sql`${endOfDay.toISOString()}::timestamp`,
-                ),
+                gte(dailyActivities.date, sql`${startOfDay.toISOString()}::timestamp`),
+                lte(dailyActivities.date, sql`${endOfDay.toISOString()}::timestamp`),
                 ne(dailyActivities.id, activityId),
               ),
             );

@@ -416,7 +416,8 @@ export class Storage {
       return await db.select().from(locations).orderBy(asc(locations.name));
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getLocations: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getLocations: " + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getLocations",
         severity: "error",
@@ -1574,7 +1575,9 @@ export class Storage {
   }
 
   // Employee Training Records methods
-  async getEmployeeTrainingRecord(id: number): Promise<EmployeeTrainingRecord | undefined> {
+  async getEmployeeTrainingRecord(
+    id: number,
+  ): Promise<EmployeeTrainingRecord | undefined> {
     try {
       const result = await db
         .select()
@@ -1584,7 +1587,9 @@ export class Storage {
       return result[0];
     } catch (error: any) {
       await this.createErrorLog({
-        message: `Error in getEmployeeTrainingRecord (id: ${id}): ` + (error?.message || "Unknown error"),
+        message:
+          `Error in getEmployeeTrainingRecord (id: ${id}): ` +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getEmployeeTrainingRecord",
         severity: "error",
@@ -1834,10 +1839,23 @@ export class Storage {
       const companyName = company?.name || "Aquanav Maritime Services L.L.C";
 
       const now = new Date();
-      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const monthNames = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
       const monthName = monthNames[now.getMonth()];
       const year = now.getFullYear();
-      const formattedDate = `${now.getDate().toString().padStart(2, '0')} ${monthName} ${year}`;
+      const formattedDate = `${now.getDate().toString().padStart(2, "0")} ${monthName} ${year}`;
 
       const referenceNo = `EMPCON/${employee.employeeCode}/${monthName} ${year}`;
 
@@ -2031,7 +2049,7 @@ export class Storage {
                                 
                                 <li>This employment contract will be supplemented by the Seafarers Employment Agreement (SEA) signed between the RPSL Company and yourself, issued for the specific project/vessel, which will be governed as per CBA.</li>
                                 
-                                <li>You will be paid contractual gross salary on monthly basis as remuneration as per Aquanav’s salary matrix basis your employee grade, solely during the period of each project onboard the ship. You will be employed with Aquanav as a <strong>Grade ${employee.grade || "1"}</strong> employee, with a Gross monthly salary of <strong>${employee.contractSalary ? parseFloat(employee.contractSalary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + (employee.contractCurrency || "AED") : (employee.salary ? parseFloat(employee.salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' AED' : "450.00 USD")}</strong>, before deductions.</li>
+                                <li>You will be paid contractual gross salary on monthly basis as remuneration as per Aquanav’s salary matrix basis your employee grade, solely during the period of each project onboard the ship. You will be employed with Aquanav as a <strong>Grade ${employee.grade || "1"}</strong> employee, with a Gross monthly salary of <strong>${employee.contractSalary ? parseFloat(employee.contractSalary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (employee.contractCurrency || "AED") : employee.salary ? parseFloat(employee.salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " AED" : "450.00 USD"}</strong>, before deductions.</li>
                                 
                                 <li>Your present place of work will be onboard the assigned vessel, but during the above assignment you shall be liable to be posted/transferred anywhere to serve any of the Company’s Projects, at the sole discretion of the Management.</li>
                                 
@@ -2393,17 +2411,45 @@ export class Storage {
         .where(eq(projects.id, id))
         .limit(1);
       const res = result[0];
-      const dateConditions: any[] = [];
+      const completedDateConditions: any[] = [];
+      const plannedDateConditions: any[] = [];
+
+      let effectiveToDateStr = toDate;
+      let originalToDateStr = toDate;
+
+      let shouldFetchPlannedActivities = false;
+
+      // If toDate > reportDate, we split the logic like the PHP legacy code
+      if (toDate && reportDate && new Date(toDate) > new Date(reportDate)) {
+        shouldFetchPlannedActivities = true;
+        effectiveToDateStr = reportDate;
+
+        // planned activities from reportDate + 1 day to original toDate
+        const fFromDate = new Date(reportDate);
+        fFromDate.setDate(fFromDate.getDate() + 1);
+        fFromDate.setHours(0, 0, 0, 0);
+
+        const endOfDayPlanned = new Date(originalToDateStr);
+        endOfDayPlanned.setHours(23, 59, 59, 999);
+
+        plannedDateConditions.push(gte(dailyActivities.date, fFromDate));
+        plannedDateConditions.push(lte(dailyActivities.date, endOfDayPlanned));
+      }
 
       if (fromDate) {
-        dateConditions.push(gte(dailyActivities.date, new Date(fromDate)));
+        completedDateConditions.push(
+          gte(dailyActivities.date, new Date(fromDate)),
+        );
       }
 
-      if (toDate) {
-        const endOfDay = new Date(toDate);
-        endOfDay.setHours(23, 59, 59, 999);
-        dateConditions.push(lte(dailyActivities.date, endOfDay));
+      if (effectiveToDateStr) {
+        const endOfDayCompleted = new Date(effectiveToDateStr);
+        endOfDayCompleted.setHours(23, 59, 59, 999);
+        completedDateConditions.push(
+          lte(dailyActivities.date, endOfDayCompleted),
+        );
       }
+
       res.dailyActivities = await db
         .select({
           id: dailyActivities.id,
@@ -2419,29 +2465,43 @@ export class Storage {
             eq(dailyActivities.projectId, id),
             isNotNull(dailyActivities.completedTasks),
             ne(dailyActivities.completedTasks, ""),
-            ...dateConditions,
+            ...completedDateConditions,
           ),
         )
         .orderBy(asc(dailyActivities.date));
 
-      res.plannedActivities = await db
-        .select({
-          id: dailyActivities.id,
-          location: dailyActivities.location,
-          tasks: dailyActivities.plannedTasks,
-          date: dailyActivities.date,
-          remarks: dailyActivities.remarks,
-        })
-        .from(dailyActivities)
-        .where(
-          and(
-            eq(dailyActivities.projectId, id),
-            isNotNull(dailyActivities.plannedTasks),
-            ne(dailyActivities.plannedTasks, ""),
-            ...dateConditions,
-          ),
-        )
-        .orderBy(asc(dailyActivities.date));
+      if (shouldFetchPlannedActivities) {
+        res.plannedActivities = await db
+          .select({
+            id: dailyActivities.id,
+            location: dailyActivities.location,
+            tasks: dailyActivities.plannedTasks,
+            date: dailyActivities.date,
+            remarks: dailyActivities.remarks,
+          })
+          .from(dailyActivities)
+          .where(
+            and(
+              eq(dailyActivities.projectId, id),
+              isNotNull(dailyActivities.plannedTasks),
+              ne(dailyActivities.plannedTasks, ""),
+              ...plannedDateConditions,
+            ),
+          )
+          .orderBy(asc(dailyActivities.date));
+      } else {
+        res.plannedActivities = [];
+      }
+
+      let latestRemark = "";
+      // Use remark from the latest daily (completed) activity
+      if (res.dailyActivities && res.dailyActivities.length > 0) {
+        const lastDaily = res.dailyActivities[res.dailyActivities.length - 1];
+        if (lastDaily && lastDaily.remarks) {
+          latestRemark = lastDaily.remarks;
+        }
+      }
+      res.latestRemark = latestRemark;
 
       const photoDateConditions: any[] = [];
 
@@ -2454,9 +2514,7 @@ export class Storage {
       if (toDate) {
         const endOfDay = new Date(toDate);
         endOfDay.setHours(23, 59, 59, 999);
-        photoDateConditions.push(
-          lte(projectPhotoGroups.date, endOfDay),
-        );
+        photoDateConditions.push(lte(projectPhotoGroups.date, endOfDay));
       }
 
       const groups = await db
@@ -2465,7 +2523,7 @@ export class Storage {
         .where(
           and(eq(projectPhotoGroups.projectId, id), ...photoDateConditions),
         )
-        .orderBy(desc(projectPhotoGroups.createdAt));
+        .orderBy(asc(projectPhotoGroups.createdAt));
 
       const groupIds = groups.map((g) => g.id);
 
@@ -2678,17 +2736,21 @@ export class Storage {
     try {
       // Fetch master locations to use as defaults
       const masterLocations = await this.getLocations();
-      const defaultLocationNames = masterLocations.map(l => l.name);
+      const defaultLocationNames = masterLocations.map((l) => l.name);
 
       // If no locations were provided, use the default master list
       const finalProjectData = {
         ...projectData,
-        locations: (projectData.locations && projectData.locations.length > 0)
-          ? projectData.locations
-          : defaultLocationNames
+        locations:
+          projectData.locations && projectData.locations.length > 0
+            ? projectData.locations
+            : defaultLocationNames,
       };
 
-      const result = await db.insert(projects).values(finalProjectData).returning();
+      const result = await db
+        .insert(projects)
+        .values(finalProjectData)
+        .returning();
       return result[0];
     } catch (error: any) {
       await this.createErrorLog({
@@ -3054,7 +3116,10 @@ export class Storage {
       // Labor costs from approved/paid payroll entries for this project
       // (reimbursement additions baked into totalAmount are subtracted to avoid double-counting)
       const laborPayrollData = await db
-        .select({ id: payrollEntries.id, totalAmount: payrollEntries.totalAmount })
+        .select({
+          id: payrollEntries.id,
+          totalAmount: payrollEntries.totalAmount,
+        })
         .from(payrollEntries)
         .where(
           and(
@@ -3067,7 +3132,7 @@ export class Storage {
         0,
       );
       // Subtract reimbursement additions that are already included in payroll totalAmount
-      const payrollEntryIds = laborPayrollData.map(e => e.id);
+      const payrollEntryIds = laborPayrollData.map((e) => e.id);
       if (payrollEntryIds.length > 0) {
         const reimbAdditions = await db
           .select({ amount: payrollAdditions.amount })
@@ -3084,7 +3149,9 @@ export class Storage {
         );
         totalLaborCost -= reimbInPayroll;
       }
-      console.log(`Project ${projectId}: labor cost from payroll (net of reimbursements) = ${totalLaborCost.toFixed(2)}`);
+      console.log(
+        `Project ${projectId}: labor cost from payroll (net of reimbursements) = ${totalLaborCost.toFixed(2)}`,
+      );
 
       // Calculate inventory/consumables costs
       let totalInventoryCost = 0;
@@ -3156,11 +3223,18 @@ export class Storage {
           exchangeRate: purchaseInvoices.exchangeRate,
         })
         .from(purchaseInvoiceItems)
-        .innerJoin(purchaseInvoices, eq(purchaseInvoiceItems.invoiceId, purchaseInvoices.id))
+        .innerJoin(
+          purchaseInvoices,
+          eq(purchaseInvoiceItems.invoiceId, purchaseInvoices.id),
+        )
         .where(
           and(
             eq(purchaseInvoiceItems.projectId, projectId),
-            inArray(purchaseInvoices.status, ["approved", "partially_paid", "paid"]),
+            inArray(purchaseInvoices.status, [
+              "approved",
+              "partially_paid",
+              "paid",
+            ]),
           ),
         );
       for (const item of purchaseLineItems) {
@@ -3194,7 +3268,9 @@ export class Storage {
       console.log(`- Labor cost (payroll): ${totalLaborCost.toFixed(2)}`);
       console.log(`- Inventory cost: ${totalInventoryCost.toFixed(2)}`);
       console.log(`- Asset rental cost: ${totalAssetRentalCost.toFixed(2)}`);
-      console.log(`- Purchase invoice cost: ${totalPurchaseInvoiceCost.toFixed(2)}`);
+      console.log(
+        `- Purchase invoice cost: ${totalPurchaseInvoiceCost.toFixed(2)}`,
+      );
       console.log(`- Reimbursement cost: ${totalReimbursementCost.toFixed(2)}`);
       console.log(`- Total cost: ${totalProjectCost.toFixed(2)}`);
 
@@ -4873,7 +4949,11 @@ export class Storage {
         .where(
           and(
             eq(purchaseInvoiceItems.projectId, projectId),
-            inArray(purchaseInvoices.status, ["approved", "partially_paid", "paid"]),
+            inArray(purchaseInvoices.status, [
+              "approved",
+              "partially_paid",
+              "paid",
+            ]),
           ),
         )
         .orderBy(desc(purchaseInvoices.invoiceDate));
@@ -4945,7 +5025,9 @@ export class Storage {
         .orderBy(desc(payrollEntries.year), desc(payrollEntries.month));
 
       // Subtract reimbursement additions baked into each payroll entry's totalAmount
-      const laborPayrollEntryIds = laborPayrollRows.map(r => r.id).filter(Boolean);
+      const laborPayrollEntryIds = laborPayrollRows
+        .map((r) => r.id)
+        .filter(Boolean);
       let reimbByEntryId: Record<number, number> = {};
       if (laborPayrollEntryIds.length > 0) {
         const reimbAdditionRows = await db
@@ -4962,25 +5044,46 @@ export class Storage {
           );
         for (const r of reimbAdditionRows) {
           const eid = r.payrollEntryId!;
-          reimbByEntryId[eid] = (reimbByEntryId[eid] || 0) + parseFloat(String(r.amount || "0"));
+          reimbByEntryId[eid] =
+            (reimbByEntryId[eid] || 0) + parseFloat(String(r.amount || "0"));
         }
       }
 
-      const laborItems: { name: string; month: number; year: number; workingDays: number; amount: string }[] = laborPayrollRows.map(row => {
+      const laborItems: {
+        name: string;
+        month: number;
+        year: number;
+        workingDays: number;
+        amount: string;
+      }[] = laborPayrollRows.map((row) => {
         const entryId = row.id;
-        const netAmount = parseFloat(String(row.totalAmount || "0")) - (reimbByEntryId[entryId] || 0);
+        const netAmount =
+          parseFloat(String(row.totalAmount || "0")) -
+          (reimbByEntryId[entryId] || 0);
         return {
-          name: row.firstName && row.lastName ? `${row.firstName} ${row.lastName}` : "Employee",
+          name:
+            row.firstName && row.lastName
+              ? `${row.firstName} ${row.lastName}`
+              : "Employee",
           month: row.month,
           year: row.year,
           workingDays: row.workingDays,
           amount: Math.max(0, netAmount).toFixed(2),
         };
       });
-      let totalLaborCost = laborItems.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+      let totalLaborCost = laborItems.reduce(
+        (sum, item) => sum + parseFloat(item.amount),
+        0,
+      );
 
       // Consumables breakdown
-      const consumableItems: { name: string; quantity: number; unitCost: string; amount: string; date: string | null }[] = [];
+      const consumableItems: {
+        name: string;
+        quantity: number;
+        unitCost: string;
+        amount: string;
+        date: string | null;
+      }[] = [];
       let totalConsumablesCost = 0;
       const consumableRecords = await db
         .select()
@@ -4994,7 +5097,10 @@ export class Storage {
             itemName: inventoryItems.name,
           })
           .from(projectConsumableItems)
-          .leftJoin(inventoryItems, eq(projectConsumableItems.inventoryItemId, inventoryItems.id))
+          .leftJoin(
+            inventoryItems,
+            eq(projectConsumableItems.inventoryItemId, inventoryItems.id),
+          )
           .where(
             and(
               eq(projectConsumableItems.consumableId, record.id),
@@ -5018,9 +5124,16 @@ export class Storage {
       }
 
       // Asset rental breakdown
-      const assetRentalItems: { name: string; startDate: string; endDate: string; monthlyRate: string; amount: string }[] = [];
+      const assetRentalItems: {
+        name: string;
+        startDate: string;
+        endDate: string;
+        monthlyRate: string;
+        amount: string;
+      }[] = [];
       let totalAssetRentalCost = 0;
-      const assetAssignments = await this.getProjectAssetInstanceAssignments(projectId);
+      const assetAssignments =
+        await this.getProjectAssetInstanceAssignments(projectId);
       for (const assignment of assetAssignments) {
         const rentalCost = await this.calculateAssetRentalCost(
           new Date(assignment.startDate),
@@ -5029,7 +5142,8 @@ export class Storage {
         );
         totalAssetRentalCost += rentalCost;
         assetRentalItems.push({
-          name: (assignment as any).assetName || `Asset #${assignment.instanceId}`,
+          name:
+            (assignment as any).assetName || `Asset #${assignment.instanceId}`,
           startDate: String(assignment.startDate),
           endDate: String(assignment.endDate),
           monthlyRate: String(assignment.monthlyRate || "0"),
@@ -5097,7 +5211,13 @@ export class Storage {
       // Revenue is recognised on accrual basis (invoice approval), not cash basis (payment received).
       // Only count invoices that have been formally approved: approved, unpaid, partially_paid, paid, overdue.
       // Excluded: draft (not submitted), pending_approval (awaiting review), cancelled (voided), rejected (denied).
-      const approvedStatuses = ["approved", "unpaid", "partially_paid", "paid", "overdue"];
+      const approvedStatuses = [
+        "approved",
+        "unpaid",
+        "partially_paid",
+        "paid",
+        "overdue",
+      ];
       const activeInvoices = await db
         .select({
           totalAmount: salesInvoices.totalAmount,
@@ -6004,7 +6124,8 @@ export class Storage {
       };
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getSalesStats: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getSalesStats: " + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getSalesStats",
         severity: "error",
@@ -6050,15 +6171,26 @@ export class Storage {
         if (filters.status === "unpaid") {
           queryConditions.push(
             and(
-              notInArray(salesInvoices.status, ["draft", "rejected", "pending_approval", "cancelled"]),
-              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`
+              notInArray(salesInvoices.status, [
+                "draft",
+                "rejected",
+                "pending_approval",
+                "cancelled",
+              ]),
+              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`,
             ),
           );
         } else if (filters.status === "overdue") {
           const now = new Date().toISOString();
           queryConditions.push(
             and(
-              notInArray(salesInvoices.status, ["draft", "rejected", "pending_approval", "cancelled", "paid"]),
+              notInArray(salesInvoices.status, [
+                "draft",
+                "rejected",
+                "pending_approval",
+                "cancelled",
+                "paid",
+              ]),
               sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`,
               sql`${salesInvoices.dueDate} < ${now}`,
             ),
@@ -6466,9 +6598,8 @@ export class Storage {
         params.push(filters.projectId);
       }
 
-      const whereClause = conditions.length > 0
-        ? `WHERE ${conditions.join(" AND ")}`
-        : "";
+      const whereClause =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const query = `
         SELECT
@@ -7391,8 +7522,14 @@ export class Storage {
         })
         .from(inventoryTransactions)
         .leftJoin(users, eq(inventoryTransactions.createdBy, users.id))
-        .leftJoin(inventoryItems, eq(inventoryTransactions.itemId, inventoryItems.id))
-        .leftJoin(purchaseInvoices, sql`${inventoryTransactions.reference} = 'PI-' || ${purchaseInvoices.invoiceNumber}`)
+        .leftJoin(
+          inventoryItems,
+          eq(inventoryTransactions.itemId, inventoryItems.id),
+        )
+        .leftJoin(
+          purchaseInvoices,
+          sql`${inventoryTransactions.reference} = 'PI-' || ${purchaseInvoices.invoiceNumber}`,
+        )
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
         .where(eq(inventoryTransactions.type, "inflow"))
         .orderBy(
@@ -8525,7 +8662,7 @@ export class Storage {
         updateData.projectId = proformaData.projectId || null;
       if (proformaData.quotationId !== undefined)
         updateData.quotationId = proformaData.quotationId || null;
-      if (proformaData.workOrderNumber !== undefined) 
+      if (proformaData.workOrderNumber !== undefined)
         updateData.workOrderNumber = proformaData.workOrderNumber || null;
       if (proformaData.status !== undefined)
         updateData.status = proformaData.status;
@@ -8732,7 +8869,9 @@ export class Storage {
       };
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getPurchaseRequestStats: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getPurchaseRequestStats: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseRequestStats",
         severity: "error",
@@ -8791,11 +8930,15 @@ export class Storage {
       }
 
       if (filters?.startDate) {
-        queryConditions.push(gte(purchaseRequests.requestDate, new Date(filters.startDate)));
+        queryConditions.push(
+          gte(purchaseRequests.requestDate, new Date(filters.startDate)),
+        );
       }
 
       if (filters?.endDate) {
-        queryConditions.push(lte(purchaseRequests.requestDate, new Date(filters.endDate)));
+        queryConditions.push(
+          lte(purchaseRequests.requestDate, new Date(filters.endDate)),
+        );
       }
 
       const finalConditions =
@@ -9155,7 +9298,9 @@ export class Storage {
       };
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getPurchaseOrderStats: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getPurchaseOrderStats: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseOrderStats",
         severity: "error",
@@ -9196,11 +9341,15 @@ export class Storage {
       }
 
       if (filters?.startDate) {
-        queryConditions.push(gte(purchaseOrders.orderDate, new Date(filters.startDate)));
+        queryConditions.push(
+          gte(purchaseOrders.orderDate, new Date(filters.startDate)),
+        );
       }
 
       if (filters?.endDate) {
-        queryConditions.push(lte(purchaseOrders.orderDate, new Date(filters.endDate)));
+        queryConditions.push(
+          lte(purchaseOrders.orderDate, new Date(filters.endDate)),
+        );
       }
 
       const finalConditions =
@@ -9268,7 +9417,8 @@ export class Storage {
     } catch (error: any) {
       await this.createErrorLog({
         message:
-          "Error in getPurchaseOrdersPaginated: " + (error?.message || "Unknown error"),
+          "Error in getPurchaseOrdersPaginated: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseOrdersPaginated",
         severity: "error",
@@ -9434,7 +9584,11 @@ export class Storage {
 
   async createPurchaseOrder(orderData: any): Promise<any> {
     try {
-      const poNumber = await this.generateNextNumber("PO", purchaseOrders, purchaseOrders.poNumber);
+      const poNumber = await this.generateNextNumber(
+        "PO",
+        purchaseOrders,
+        purchaseOrders.poNumber,
+      );
 
       // Create the purchase order
       const [order] = await db
@@ -9845,7 +9999,11 @@ export class Storage {
       }
 
       // Handle file attachments if provided in overrides
-      if (overrides?.files && Array.isArray(overrides.files) && overrides.files.length > 0) {
+      if (
+        overrides?.files &&
+        Array.isArray(overrides.files) &&
+        overrides.files.length > 0
+      ) {
         const filesToInsert = overrides.files.map((file: any) => ({
           invoiceId: invoice.id,
           fileName: file.filename,
@@ -9933,7 +10091,9 @@ export class Storage {
       }
 
       if (filters?.supplierId) {
-        queryConditions.push(eq(purchaseInvoices.supplierId, filters.supplierId));
+        queryConditions.push(
+          eq(purchaseInvoices.supplierId, filters.supplierId),
+        );
       }
 
       if (filters?.status && filters.status !== "all") {
@@ -10072,7 +10232,8 @@ export class Storage {
       };
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in getPurchaseStats: " + (error?.message || "Unknown error"),
+        message:
+          "Error in getPurchaseStats: " + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getPurchaseStats",
         severity: "error",
@@ -10298,7 +10459,11 @@ export class Storage {
 
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
     try {
-      const invoiceNumber = await this.generateNextNumber("PI", purchaseInvoices, purchaseInvoices.invoiceNumber);
+      const invoiceNumber = await this.generateNextNumber(
+        "PI",
+        purchaseInvoices,
+        purchaseInvoices.invoiceNumber,
+      );
 
       const [invoice] = await db
         .insert(purchaseInvoices)
@@ -10346,7 +10511,11 @@ export class Storage {
       }
 
       // Handle file uploads if any
-      if (invoiceData.files && Array.isArray(invoiceData.files) && invoiceData.files.length > 0) {
+      if (
+        invoiceData.files &&
+        Array.isArray(invoiceData.files) &&
+        invoiceData.files.length > 0
+      ) {
         const filesToInsert = invoiceData.files.map((file: any) => ({
           invoiceId: invoice.id,
           fileName: file.filename,
@@ -10373,7 +10542,11 @@ export class Storage {
     }
   }
 
-  async updatePurchaseInvoice(id: number, invoiceData: any, isApprovedEdit: boolean = false): Promise<any> {
+  async updatePurchaseInvoice(
+    id: number,
+    invoiceData: any,
+    isApprovedEdit: boolean = false,
+  ): Promise<any> {
     try {
       const existing = await this.getPurchaseInvoice(id);
       if (!existing) throw new Error("Purchase invoice not found");
@@ -10451,7 +10624,11 @@ export class Storage {
       }
 
       // Handle new file uploads
-      if (invoiceData.files && Array.isArray(invoiceData.files) && invoiceData.files.length > 0) {
+      if (
+        invoiceData.files &&
+        Array.isArray(invoiceData.files) &&
+        invoiceData.files.length > 0
+      ) {
         const filesToInsert = invoiceData.files.map((file: any) => ({
           invoiceId: id,
           fileName: file.filename,
@@ -10489,7 +10666,11 @@ export class Storage {
         throw new Error("Purchase order not found");
       }
 
-      const invoiceNumber = await this.generateNextNumber("PI", purchaseInvoices, purchaseInvoices.invoiceNumber);
+      const invoiceNumber = await this.generateNextNumber(
+        "PI",
+        purchaseInvoices,
+        purchaseInvoices.invoiceNumber,
+      );
 
       // Create the invoice
       const [invoice] = await db
@@ -10659,7 +10840,11 @@ export class Storage {
       }
 
       // Trigger full cost recalculation for all projects affected by this invoice's line items
-      const affectedProjectIds = [...new Set(items.filter(i => i.projectId).map(i => i.projectId as number))];
+      const affectedProjectIds = [
+        ...new Set(
+          items.filter((i) => i.projectId).map((i) => i.projectId as number),
+        ),
+      ];
       for (const pid of affectedProjectIds) {
         await this.recalculateProjectCost(pid);
       }
@@ -10819,7 +11004,11 @@ export class Storage {
       }
 
       // Trigger full cost recalculation for all projects affected by this invoice's line items
-      const cancelAffectedProjectIds = [...new Set(items.filter(i => i.projectId).map(i => i.projectId as number))];
+      const cancelAffectedProjectIds = [
+        ...new Set(
+          items.filter((i) => i.projectId).map((i) => i.projectId as number),
+        ),
+      ];
       for (const pid of cancelAffectedProjectIds) {
         await this.recalculateProjectCost(pid);
       }
@@ -11073,7 +11262,9 @@ export class Storage {
   async getPurchaseInvoicePayments(invoiceId: number): Promise<any[]> {
     try {
       if (!invoiceId || isNaN(invoiceId)) {
-        console.error(`Invalid invoiceId provided to getPurchaseInvoicePayments: ${invoiceId}`);
+        console.error(
+          `Invalid invoiceId provided to getPurchaseInvoicePayments: ${invoiceId}`,
+        );
         return [];
       }
 
@@ -11423,7 +11614,9 @@ export class Storage {
       return { goodsIssueRef, updatedCount: consumableIds.length };
     } catch (error: any) {
       await this.createErrorLog({
-        message: "Error in createConsumablesGoodsIssue: " + (error?.message || "Unknown error"),
+        message:
+          "Error in createConsumablesGoodsIssue: " +
+          (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createConsumablesGoodsIssue",
         severity: "error",
@@ -11918,7 +12111,11 @@ export class Storage {
         let consultantFee = 0;
         let workingDays = this.getCalendarDaysInMonth(month, year);
         let projectId: number | null = null;
-        let projectEarningsList: Array<{ projectId: number, title: string, earnings: number }> = [];
+        let projectEarningsList: Array<{
+          projectId: number;
+          title: string;
+          earnings: number;
+        }> = [];
 
         if (employee.category === "permanent") {
           basicSalary = parseFloat(salaryToUse || "0").toFixed(2);
@@ -11949,8 +12146,18 @@ export class Storage {
           for (const assignment of assignments) {
             if (!assignment.projectId) continue;
 
-            const pStart = assignment.assignmentStartDate ? new Date(assignment.assignmentStartDate) : (assignment.projectStartDate ? new Date(assignment.projectStartDate) : new Date(year, month - 1, 1));
-            const pEnd = assignment.assignmentEndDate ? new Date(assignment.assignmentEndDate) : (assignment.projectActualEndDate ? new Date(assignment.projectActualEndDate) : (assignment.projectPlannedEndDate ? new Date(assignment.projectPlannedEndDate) : new Date(year, month, 0)));
+            const pStart = assignment.assignmentStartDate
+              ? new Date(assignment.assignmentStartDate)
+              : assignment.projectStartDate
+                ? new Date(assignment.projectStartDate)
+                : new Date(year, month - 1, 1);
+            const pEnd = assignment.assignmentEndDate
+              ? new Date(assignment.assignmentEndDate)
+              : assignment.projectActualEndDate
+                ? new Date(assignment.projectActualEndDate)
+                : assignment.projectPlannedEndDate
+                  ? new Date(assignment.projectPlannedEndDate)
+                  : new Date(year, month, 0);
 
             // Calculate working days in the month for this project
             const monthStart = new Date(year, month - 1, 1);
@@ -11965,7 +12172,9 @@ export class Storage {
                 effectiveEnd,
               );
               const salaryToUse = employee.salary;
-              const dailyRate = parseFloat(salaryToUse || "0") / this.getWorkingDaysInMonth(month, year);
+              const dailyRate =
+                parseFloat(salaryToUse || "0") /
+                this.getWorkingDaysInMonth(month, year);
               const earnings = dailyRate * projectWorkingDays;
 
               if (earnings > 0) {
@@ -11974,7 +12183,7 @@ export class Storage {
                 projectEarningsList.push({
                   projectId: assignment.projectId,
                   title: assignment.projectTitle || "Unknown Project",
-                  earnings: earnings
+                  earnings: earnings,
                 });
                 projectId = assignment.projectId; // Keep last for GL tracking as fallback
               }
@@ -13534,7 +13743,7 @@ export class Storage {
     invoiceData: Partial<InsertSalesInvoice>,
   ): Promise<SalesInvoice | undefined> {
     try {
-      console.log("invoiceData",invoiceData);
+      console.log("invoiceData", invoiceData);
       const result = await db
         .update(salesInvoices)
         .set(invoiceData)
@@ -13590,7 +13799,11 @@ export class Storage {
       // Generate permanent invoice number if it was a draft
       const invoiceNumber = invoice.invoiceNumber?.startsWith("INV-AQNV-")
         ? invoice.invoiceNumber
-        : await this.generateNextNumber("INV", salesInvoices, salesInvoices.invoiceNumber);
+        : await this.generateNextNumber(
+            "INV",
+            salesInvoices,
+            salesInvoices.invoiceNumber,
+          );
 
       await db
         .update(salesInvoices)
@@ -13867,9 +14080,14 @@ export class Storage {
     }
   }
 
-  async createInvoiceEditHistory(data: InsertInvoiceEditHistory): Promise<InvoiceEditHistory> {
+  async createInvoiceEditHistory(
+    data: InsertInvoiceEditHistory,
+  ): Promise<InvoiceEditHistory> {
     try {
-      const [entry] = await db.insert(invoiceEditHistory).values(data).returning();
+      const [entry] = await db
+        .insert(invoiceEditHistory)
+        .values(data)
+        .returning();
       return entry;
     } catch (error: any) {
       await this.createErrorLog({
@@ -13882,7 +14100,10 @@ export class Storage {
     }
   }
 
-  async getInvoiceEditHistory(invoiceType: string, invoiceId: number): Promise<InvoiceEditHistory[]> {
+  async getInvoiceEditHistory(
+    invoiceType: string,
+    invoiceId: number,
+  ): Promise<InvoiceEditHistory[]> {
     try {
       return await db
         .select()
@@ -13974,7 +14195,9 @@ export class Storage {
           ),
         );
 
-      console.log(`GL entries updated for sales invoice ${invoiceData.invoiceNumber}`);
+      console.log(
+        `GL entries updated for sales invoice ${invoiceData.invoiceNumber}`,
+      );
     } catch (error: any) {
       await this.createErrorLog({
         message: `Error in updateSalesInvoiceGLEntries (invoiceId: ${invoiceId}): ${error?.message || "Unknown error"}`,
@@ -13989,7 +14212,8 @@ export class Storage {
   async updatePurchaseInvoiceGLEntries(invoiceId: number): Promise<void> {
     try {
       const invoice = await this.getPurchaseInvoice(invoiceId);
-      if (!invoice) throw new Error(`Purchase invoice with ID ${invoiceId} not found`);
+      if (!invoice)
+        throw new Error(`Purchase invoice with ID ${invoiceId} not found`);
 
       let supplierName = "Unknown Supplier";
       if (invoice.supplierId) {
@@ -14059,7 +14283,9 @@ export class Storage {
           ),
         );
 
-      console.log(`GL entries updated for purchase invoice ${invoice.invoiceNumber}`);
+      console.log(
+        `GL entries updated for purchase invoice ${invoice.invoiceNumber}`,
+      );
     } catch (error: any) {
       await this.createErrorLog({
         message: `Error in updatePurchaseInvoiceGLEntries (invoiceId: ${invoiceId}): ${error?.message || "Unknown error"}`,
@@ -14983,8 +15209,25 @@ export interface IStorage {
   updateAllAssetStatuses(): Promise<void>;
 
   // Purchase Request methods
-  getPurchaseRequestStats(): Promise<{ totalRequests: number; pendingApproval: number; approved: number; urgentPriority: number; }>;
-  getPurchaseRequestsPaginated(page: number, limit: number, filters?: { userId?: number; userRole?: string; status?: string; urgency?: string; search?: string; startDate?: string; endDate?: string; }): Promise<PaginatedResponse<any>>;
+  getPurchaseRequestStats(): Promise<{
+    totalRequests: number;
+    pendingApproval: number;
+    approved: number;
+    urgentPriority: number;
+  }>;
+  getPurchaseRequestsPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      userId?: number;
+      userRole?: string;
+      status?: string;
+      urgency?: string;
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<PaginatedResponse<any>>;
   getPurchaseRequests(): Promise<any[]>;
   getPurchaseRequest(id: number): Promise<any>;
   createPurchaseRequest(requestData: any): Promise<any>;
@@ -14992,8 +15235,23 @@ export interface IStorage {
   deletePurchaseRequest(id: number): Promise<boolean>;
 
   // Purchase Order methods
-  getPurchaseOrderStats(): Promise<{ totalOrders: number; approved: number; pendingApproval: number; totalValue: string; }>;
-  getPurchaseOrdersPaginated(page: number, limit: number, filters?: { search?: string; status?: string; supplierId?: number; startDate?: string; endDate?: string; }): Promise<PaginatedResponse<any>>;
+  getPurchaseOrderStats(): Promise<{
+    totalOrders: number;
+    approved: number;
+    pendingApproval: number;
+    totalValue: string;
+  }>;
+  getPurchaseOrdersPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      search?: string;
+      status?: string;
+      supplierId?: number;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<PaginatedResponse<any>>;
   getPurchaseOrders(): Promise<any[]>;
   getPurchaseOrder(id: number): Promise<any>;
   getPurchaseOrderItems(poId: number): Promise<any[]>;
@@ -15012,8 +15270,27 @@ export interface IStorage {
     userId: number,
     overrides: any,
   ): Promise<any>;
-  getPurchaseInvoicesPaginated(page: number, limit: number, filters?: { startDate?: string; endDate?: string; supplierId?: number; status?: string; search?: string; projectId?: number; }): Promise<PaginatedResponse<any>>;
-  getPurchaseStats(): Promise<{ totalInvoices: number; totalAmount: string; paidAmount: string; pendingAmount: string; overdueCount: number; overdueAmount: string; pendingApprovalCount: number; }>;
+  getPurchaseInvoicesPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+      supplierId?: number;
+      status?: string;
+      search?: string;
+      projectId?: number;
+    },
+  ): Promise<PaginatedResponse<any>>;
+  getPurchaseStats(): Promise<{
+    totalInvoices: number;
+    totalAmount: string;
+    paidAmount: string;
+    pendingAmount: string;
+    overdueCount: number;
+    overdueAmount: string;
+    pendingApprovalCount: number;
+  }>;
   getPurchaseInvoices(): Promise<any[]>;
   getPurchaseInvoicePayments(invoiceId: number): Promise<any[]>;
   getPurchasePaymentFile(id: number): Promise<any | undefined>;
