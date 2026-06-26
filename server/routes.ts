@@ -6910,6 +6910,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // UPDATE a manual consumable item
+  app.put(
+    "/api/projects/:projectId/consumables/items/:itemId",
+    requireAuth,
+    requireRole(["admin", "project_manager"]),
+    async (req, res) => {
+      try {
+        const projectId = parseInt(req.params.projectId);
+        const itemId = parseInt(req.params.itemId);
+
+        if (isNaN(projectId) || isNaN(itemId)) {
+          return res.status(400).json({ message: "Invalid ID parameters" });
+        }
+
+        const { itemName, itemUnit, quantity, unitCost } = req.body;
+
+        if (!itemName || !quantity || quantity <= 0) {
+          return res.status(400).json({ message: "Invalid item data provided" });
+        }
+
+        const result = await storage.updateProjectConsumableItem(
+          itemId,
+          projectId,
+          {
+            itemName,
+            itemUnit: itemUnit || "pcs",
+            quantity,
+            unitCost: unitCost || 0,
+          }
+        );
+
+        res.json(result);
+      } catch (error: any) {
+        console.error("Error updating consumable item:", error);
+        res.status(500).json({
+          message: error.message || "Failed to update consumable item"
+        });
+      }
+    }
+  );
+
+
   app.post(
     "/api/projects/:projectId/consumables/goods-issue",
     requireAuth,

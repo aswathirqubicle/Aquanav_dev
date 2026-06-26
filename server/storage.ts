@@ -11588,6 +11588,49 @@ export class Storage {
     }
   }
 
+  async updateProjectConsumableItem(
+    itemId: number,
+    projectId: number,
+    data: {
+      itemName: string;
+      itemUnit: string;
+      quantity: number;
+      unitCost: number | string;
+    }
+  ): Promise<any> {
+    try {
+      // Check if the item is a manual entry (inventoryItemId is null)
+      const existingItem = await db
+        .select()
+        .from(projectConsumableItems)
+        .where(eq(projectConsumableItems.id, itemId))
+        .limit(1);
+
+      if (!existingItem.length || existingItem[0].inventoryItemId !== null) {
+        throw new Error("Only manual consumable items can be edited.");
+      }
+
+      const result = await db
+        .update(projectConsumableItems)
+        .set({
+          itemName: data.itemName,
+          itemUnit: data.itemUnit,
+          quantity: data.quantity,
+          unitCost: data.unitCost.toString(),
+        })
+        .where(eq(projectConsumableItems.id, itemId))
+        .returning();
+
+      // Recalculate project cost after update
+      await this.recalculateProjectCost(projectId);
+
+      return result[0];
+    } catch (error: any) {
+      console.error("Error in updateProjectConsumableItem:", error);
+      throw error;
+    }
+  }
+
   async createConsumablesGoodsIssue(
     projectId: number,
     consumableIds: number[],
@@ -14984,6 +15027,16 @@ export interface IStorage {
     items: CreateProjectConsumableItemInput[],
     userId?: number,
   ): Promise<CreatedProjectConsumable>;
+    updateProjectConsumableItem(
+    itemId: number,
+    projectId: number,
+    data: {
+      itemName: string;
+      itemUnit: string;
+      quantity: number;
+      unitCost: number | string;
+    }
+  ): Promise<any>;
   createConsumablesGoodsIssue(
     projectId: number,
     consumableIds: number[],

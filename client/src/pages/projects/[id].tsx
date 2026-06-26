@@ -26,6 +26,7 @@ import {
   Activity,
   Edit,
   Pencil,
+  Loader2,
   ArrowLeft,
   Plus,
   Upload,
@@ -639,6 +640,13 @@ export default function ProjectDetail() {
   const [isConsumablesDialogOpen, setIsConsumablesDialogOpen] = useState(false);
   const [isReviewConsumablesOpen, setIsReviewConsumablesOpen] = useState(false);
   const [selectedConsumableIds, setSelectedConsumableIds] = useState<number[]>([]);
+  const [editingManualItem, setEditingManualItem] = useState<any>(null);
+  const [editManualItemForm, setEditManualItemForm] = useState({
+    itemName: "",
+    quantity: "",
+    itemUnit: "",
+    unitCost: ""
+  });
   const [consumablesData, setConsumablesData] = useState({
     date: new Date().toISOString().split('T')[0],
   });
@@ -1736,6 +1744,33 @@ export default function ProjectDetail() {
         variant: "destructive",
       });
     },
+  });
+
+  const updateConsumableItemMutation = useMutation({
+    mutationFn: async ({ itemId, data }: { itemId: number; data: any }) => {
+      const response = await apiRequest(`/api/projects/${id}/consumables/items/${itemId}`, {
+        method: "PUT",
+        body: data
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "consumables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setEditingManualItem(null);
+      toast({
+        title: "Item Updated",
+        description: "The manual consumable item has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      console.error("Failed to update consumable item:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    }
   });
 
   const createConsumablesGoodIssueMutation = useMutation({
@@ -5322,6 +5357,84 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <Dialog open={!!editingManualItem} onOpenChange={(open) => !open && setEditingManualItem(null)}>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Edit Manual Consumable Item</DialogTitle>
+                        <DialogDescription>
+                          Update details for this manual entry. Inventory items cannot be edited here.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label>Item Name</Label>
+                          <Input
+                            value={editManualItemForm.itemName}
+                            onChange={(e) => setEditManualItemForm({ ...editManualItemForm, itemName: e.target.value })}
+                            placeholder="e.g. Masking Tape"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Quantity</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editManualItemForm.quantity}
+                              onChange={(e) => setEditManualItemForm({ ...editManualItemForm, quantity: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Unit</Label>
+                            <Input
+                              value={editManualItemForm.itemUnit}
+                              onChange={(e) => setEditManualItemForm({ ...editManualItemForm, itemUnit: e.target.value })}
+                              placeholder="e.g. rolls, pcs"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Unit Cost</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editManualItemForm.unitCost}
+                            onChange={(e) => setEditManualItemForm({ ...editManualItemForm, unitCost: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setEditingManualItem(null)}>Cancel</Button>
+                        <Button
+                          onClick={() => {
+                            if (!editManualItemForm.itemName || !editManualItemForm.quantity || Number(editManualItemForm.quantity) <= 0) {
+                              toast({
+                                title: "Invalid Data",
+                                description: "Please provide a valid name and quantity.",
+                                variant: "destructive"
+                              });
+                              return;
+                            }
+                            updateConsumableItemMutation.mutate({
+                              itemId: editingManualItem.id,
+                              data: {
+                                itemName: editManualItemForm.itemName,
+                                quantity: Number(editManualItemForm.quantity),
+                                itemUnit: editManualItemForm.itemUnit,
+                                unitCost: editManualItemForm.unitCost ? Number(editManualItemForm.unitCost) : 0
+                              }
+                            });
+                          }}
+                          disabled={updateConsumableItemMutation.isPending}
+                        >
+                          {updateConsumableItemMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Save Changes
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
                   {consumablesHistory
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map((record) => (
@@ -5340,13 +5453,34 @@ export default function ProjectDetail() {
                         {record.items && record.items.length > 0 && (
                           <div className="space-y-2">
                             {record.items.map((item: any, index: number) => (
-                              <div key={index} className="flex items-center justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800 rounded">
+                              <div key={index} className="flex items-center justify-between py-2 px-3 bg-slate-50 dark:bg-slate-800 rounded group">
                                 <div className="flex-1 flex items-center gap-2">
                                   <span className="font-medium text-slate-900 dark:text-slate-100">
                                     {item.itemName || `Item #${item.inventoryItemId}`}
                                   </span>
                                   {!item.inventoryItemId && (
-                                    <Badge variant="outline" className="text-xs">Manual</Badge>
+                                    <>
+                                      <Badge variant="outline" className="text-xs">Manual</Badge>
+                                      {(user?.role === "admin" || user?.role === "project_manager") && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => {
+                                            setEditingManualItem(item);
+                                            setEditManualItemForm({
+                                              itemName: item.itemName || "",
+                                              quantity: item.quantity?.toString() || "",
+                                              itemUnit: item.itemUnit || "pcs",
+                                              unitCost: item.unitCost?.toString() || "0"
+                                            });
+                                          }}
+                                          title="Edit Manual Item"
+                                        >
+                                          <Pencil className="h-3 w-3 text-slate-500" />
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                                 <div className="text-sm text-slate-600 dark:text-slate-400">
@@ -5457,11 +5591,32 @@ export default function ProjectDetail() {
                           </div>
                           <div className="mt-2 space-y-1">
                             {(record.items || []).map((item: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between text-sm">
+                              <div key={idx} className="flex items-center justify-between text-sm group">
                                 <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                                   {item.itemName || `Item #${item.inventoryItemId}`}
                                   {!item.inventoryItemId && (
-                                    <Badge variant="outline" className="text-xs py-0">Manual</Badge>
+                                    <>
+                                      <Badge variant="outline" className="text-xs py-0">Manual</Badge>
+                                      {(user?.role === "admin" || user?.role === "project_manager") && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6"
+                                          onClick={() => {
+                                            setEditingManualItem(item);
+                                            setEditManualItemForm({
+                                              itemName: item.itemName || "",
+                                              quantity: item.quantity?.toString() || "",
+                                              itemUnit: item.itemUnit || "pcs",
+                                              unitCost: item.unitCost?.toString() || "0"
+                                            });
+                                          }}
+                                          title="Edit Manual Item"
+                                        >
+                                          <Pencil className="h-3 w-3 text-slate-500" />
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                 </span>
                                 <span className="text-slate-500 dark:text-slate-400 text-xs">
