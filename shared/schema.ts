@@ -1373,6 +1373,8 @@ export const insertEmployeeDocumentSchema = createInsertSchema(
       "stcw_course",
       "sid",
       "ilo_medical",
+      "yellow_fever",
+      "pp_photos",
       "us_visa",
       "schengen_visa",
       "uk_visa",

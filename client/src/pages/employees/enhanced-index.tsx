@@ -37,7 +37,7 @@ const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format (YYYY-MM-DD)");
 
-  export const createTrainingRecordSchema =
+export const createTrainingRecordSchema =
   insertEmployeeTrainingRecordSchema
     .omit({ id: true, employeeId: true })
     .extend({
@@ -300,7 +300,7 @@ function EmployeeFeedbackTab({ employeeId, user }: { employeeId: number; user: a
             />
           </div>
           <div>
-            <Label>Feedback</Label>
+            <Label>Feedback *</Label>
             <Textarea
               value={feedbackText}
               onChange={(e) => setFeedbackText(e.target.value)}
@@ -344,7 +344,7 @@ function EmployeeFeedbackTab({ employeeId, user }: { employeeId: number; user: a
                         />
                       </div>
                       <div>
-                        <Label>Feedback</Label>
+                        <Label>Feedback *</Label>
                         <Textarea
                           value={editFeedbackText}
                           onChange={(e) => setEditFeedbackText(e.target.value)}
@@ -433,7 +433,7 @@ export default function EmployeesIndex() {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -441,11 +441,11 @@ export default function EmployeesIndex() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  
+
   // Tab states
   const [activeTab, setActiveTab] = useState("basic");
   const [detailActiveTab, setDetailActiveTab] = useState("personal");
-  
+
   // Form states
   const [formData, setFormData] = useState<CreateEmployeeData>({
     employeeCode: "",
@@ -577,7 +577,7 @@ export default function EmployeesIndex() {
   // Generate employee code automatically
   const generateEmployeeCode = () => {
     if (!employees) return "EMP001";
-    
+
     const existingCodes = employees
       .map(emp => emp.employeeCode)
       .filter(code => code.startsWith("EMP"))
@@ -586,7 +586,7 @@ export default function EmployeesIndex() {
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter(num => !isNaN(num));
-    
+
     const nextNumber = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
     return `EMP${nextNumber.toString().padStart(3, '0')}`;
   };
@@ -622,7 +622,7 @@ export default function EmployeesIndex() {
       setIsEditDialogOpen(false);
       setEditingEmployee(null);
       resetForm();
-      
+
       toast({
         title: "Employee Updated",
         description: "Employee has been updated successfully.",
@@ -667,10 +667,10 @@ export default function EmployeesIndex() {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       setIsDialogOpen(false);
       resetForm();
-      
+
       toast({
         title: "Employee Created",
-        description: result.generatedCredentials 
+        description: result.generatedCredentials
           ? `Employee and user account created. Username: ${result.generatedCredentials.username}, Password: ${result.generatedCredentials.password}`
           : "Employee has been created successfully.",
       });
@@ -773,8 +773,8 @@ export default function EmployeesIndex() {
       toast({ title: "Success", description: "Next of kin record deleted successfully." });
     },
     onError: (error) => {
-      toast({ 
-        title: "Error", 
+      toast({
+        title: "Error",
         description: error.message || "Failed to delete next of kin record",
         variant: "destructive",
       });
@@ -1074,34 +1074,34 @@ export default function EmployeesIndex() {
   };
 
   const validateDocument = () => {
-  const normalized = {
-    ...documentData,
-    documentNumber: documentData.documentNumber ?? "",
-    dateOfIssue: documentData.dateOfIssue ?? "",
+    const normalized = {
+      ...documentData,
+      documentNumber: documentData.documentNumber ?? "",
+      dateOfIssue: documentData.dateOfIssue ?? "",
+    };
+
+    const parsed = createDocumentSchema.safeParse(normalized);
+
+    if (!parsed.success) {
+      toast({
+        title: "Validation Error",
+        description: parsed.error.errors[0].message,
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    if (!selectedFiles && !editingDocument) {
+      toast({
+        title: "Attachment required",
+        description: "Please upload at least one document file",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    return parsed.data;
   };
-
-  const parsed = createDocumentSchema.safeParse(normalized);
-
-  if (!parsed.success) {
-    toast({
-      title: "Validation Error",
-      description: parsed.error.errors[0].message,
-      variant: "destructive",
-    });
-    return null;
-  }
-
-  if (!selectedFiles && !editingDocument) {
-    toast({
-      title: "Attachment required",
-      description: "Please upload at least one document file",
-      variant: "destructive",
-    });
-    return null;
-  }
-
-  return parsed.data;
-};
 
 
   const resetForm = () => {
@@ -1250,7 +1250,7 @@ export default function EmployeesIndex() {
             <DialogHeader>
               <DialogTitle>Add New Employee</DialogTitle>
             </DialogHeader>
-            
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="flex flex-wrap h-auto gap-1 w-full">
                 <TabsTrigger value="basic" className="text-xs sm:text-sm flex-1 min-w-fit">Basic Info</TabsTrigger>
@@ -1389,7 +1389,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="createUserAccount"
@@ -1523,7 +1523,7 @@ export default function EmployeesIndex() {
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={() => createEmployeeMutation.mutate({ ...formData, createUserAccount })}
                 disabled={createEmployeeMutation.isPending}
               >
@@ -1545,7 +1545,7 @@ export default function EmployeesIndex() {
             <DialogHeader>
               <DialogTitle>Edit Employee - {editingEmployee?.firstName} {editingEmployee?.lastName}</DialogTitle>
             </DialogHeader>
-            
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="flex flex-wrap h-auto gap-1 w-full">
                 <TabsTrigger value="basic" className="text-xs sm:text-sm flex-1 min-w-fit">Basic Info</TabsTrigger>
@@ -1557,7 +1557,7 @@ export default function EmployeesIndex() {
               <TabsContent value="basic" className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="editEmployeeCode">Employee Code</Label>
+                    <Label htmlFor="editEmployeeCode">Employee Code *</Label>
                     <Input
                       id="editEmployeeCode"
                       value={formData.employeeCode}
@@ -1566,7 +1566,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editCategory">Category</Label>
+                    <Label htmlFor="editCategory">Category *</Label>
                     <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value as any }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -1579,7 +1579,7 @@ export default function EmployeesIndex() {
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="editFirstName">First Name</Label>
+                    <Label htmlFor="editFirstName">First Name *</Label>
                     <Input
                       id="editFirstName"
                       value={formData.firstName}
@@ -1588,7 +1588,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editLastName">Last Name</Label>
+                    <Label htmlFor="editLastName">Last Name *</Label>
                     <Input
                       id="editLastName"
                       value={formData.lastName}
@@ -1684,7 +1684,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editIsActive">Status</Label>
+                    <Label htmlFor="editIsActive">Status *</Label>
                     <Select value={formData.isActive ? "active" : "inactive"} onValueChange={(value) => setFormData(prev => ({ ...prev, isActive: value === "active" }))}>
                       <SelectTrigger>
                         <SelectValue />
@@ -1817,7 +1817,7 @@ export default function EmployeesIndex() {
               <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={() => updateEmployeeMutation.mutate({ id: editingEmployee!.id, data: formData })}
                 disabled={updateEmployeeMutation.isPending || !editingEmployee}
               >
@@ -2095,39 +2095,39 @@ export default function EmployeesIndex() {
                 </div>
 
                 {/* {(selectedEmployee.bankName || selectedEmployee.accountNumber) && ( */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Banking Information</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">Bank Name</Label>
-                          <p className="font-semibold">{selectedEmployee.bankName || "Not specified"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">Branch</Label>
-                          <p className="font-semibold">{selectedEmployee.bankBranch || "Not specified"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">Account Number</Label>
-                          <p className="font-semibold">{selectedEmployee.accountNumber || "Not specified"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">Account Holder</Label>
-                          <p className="font-semibold">{selectedEmployee.accountHolderName || "Not specified"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">IFSC Code</Label>
-                          <p className="font-semibold">{selectedEmployee.ifscCode || "Not specified"}</p>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium text-gray-600">SWIFT Code</Label>
-                          <p className="font-semibold">{selectedEmployee.swiftCode || "Not specified"}</p>
-                        </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Banking Information</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Bank Name</Label>
+                        <p className="font-semibold">{selectedEmployee.bankName || "Not specified"}</p>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Branch</Label>
+                        <p className="font-semibold">{selectedEmployee.bankBranch || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Account Number</Label>
+                        <p className="font-semibold">{selectedEmployee.accountNumber || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Account Holder</Label>
+                        <p className="font-semibold">{selectedEmployee.accountHolderName || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">IFSC Code</Label>
+                        <p className="font-semibold">{selectedEmployee.ifscCode || "Not specified"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">SWIFT Code</Label>
+                        <p className="font-semibold">{selectedEmployee.swiftCode || "Not specified"}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
                 {/* )} */}
               </TabsContent>
 
@@ -2222,13 +2222,13 @@ export default function EmployeesIndex() {
                           }
                         >
                           {createNextOfKinMutation.isPending ||
-                          updateNextOfKinMutation.isPending
+                            updateNextOfKinMutation.isPending
                             ? editingNextOfKin
                               ? "Updating..."
                               : "Adding..."
                             : editingNextOfKin
-                            ? "Update Next of Kin"
-                            : "Add Next of Kin"}
+                              ? "Update Next of Kin"
+                              : "Add Next of Kin"}
                         </Button>
 
                       </div>
@@ -2262,61 +2262,61 @@ export default function EmployeesIndex() {
                     </Card>
                   ) : (
                     selectedEmployeeNextOfKin?.map((nok) => (
-                    <Card key={nok.id}>
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Name</Label>
-                              <p className="font-semibold">{nok.name}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Relationship</Label>
-                              <div className="flex items-center space-x-2">
-                                <p className="font-semibold">{nok.relationship}</p>
-                                {nok.isPrimary && <Badge className="bg-blue-100 text-blue-800">Primary</Badge>}
+                      <Card key={nok.id}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Name</Label>
+                                <p className="font-semibold">{nok.name}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Relationship</Label>
+                                <div className="flex items-center space-x-2">
+                                  <p className="font-semibold">{nok.relationship}</p>
+                                  {nok.isPrimary && <Badge className="bg-blue-100 text-blue-800">Primary</Badge>}
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Email</Label>
+                                <p className="font-semibold">{nok.email || "Not provided"}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Phone</Label>
+                                <p className="font-semibold">{nok.phone || "Not provided"}</p>
                               </div>
                             </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Email</Label>
-                              <p className="font-semibold">{nok.email || "Not provided"}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Phone</Label>
-                              <p className="font-semibold">{nok.phone || "Not provided"}</p>
-                            </div>
-                          </div>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setEditingNextOfKin(nok);
-                                setNextOfKinData({
-                                  name: nok.name,
-                                  email: nok.email,
-                                  phone: nok.phone,
-                                  relationship: nok.relationship,
-                                  isPrimary: nok.isPrimary,
-                                });
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingNextOfKin(nok);
+                                  setNextOfKinData({
+                                    name: nok.name,
+                                    email: nok.email,
+                                    phone: nok.phone,
+                                    relationship: nok.relationship,
+                                    isPrimary: nok.isPrimary,
+                                  });
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
 
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => deleteNextOfKinMutation.mutate(nok.id)}
-                              disabled={deleteNextOfKinMutation.isPending}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => deleteNextOfKinMutation.mutate(nok.id)}
+                                disabled={deleteNextOfKinMutation.isPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )))}
+                        </CardContent>
+                      </Card>
+                    )))}
                 </div>
               </TabsContent>
 
@@ -2326,16 +2326,16 @@ export default function EmployeesIndex() {
                   <Button
                     onClick={() => {
                       setEditingTraining(null),
-                      setTrainingData({
-                        trainingName: "",
-                        trainingProvider: "Aquanav",
-                        certificationNumber: null,
-                        trainingDate: "",
-                        expiryDate: null,
-                        status: "active",
-                        notes: null,
-                        attachments: [],
-                      });
+                        setTrainingData({
+                          trainingName: "",
+                          trainingProvider: "Aquanav",
+                          certificationNumber: null,
+                          trainingDate: "",
+                          expiryDate: null,
+                          status: "active",
+                          notes: null,
+                          attachments: [],
+                        });
                     }}
                     size="sm"
                   >
@@ -2360,7 +2360,7 @@ export default function EmployeesIndex() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="trainingProvider">Training Provider</Label>
+                        <Label htmlFor="trainingProvider">Training Provider *</Label>
                         <Input
                           id="trainingProvider"
                           value={trainingData.trainingProvider}
@@ -2395,7 +2395,7 @@ export default function EmployeesIndex() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="trainingStatus">Status</Label>
+                        <Label htmlFor="trainingStatus">Status *</Label>
                         <Select value={trainingData.status} onValueChange={(value) => setTrainingData(prev => ({ ...prev, status: value as any }))}>
                           <SelectTrigger>
                             <SelectValue />
@@ -2471,13 +2471,13 @@ export default function EmployeesIndex() {
                           }
                         >
                           {createTrainingRecordMutation.isPending ||
-                          updateTrainingRecordMutation.isPending
+                            updateTrainingRecordMutation.isPending
                             ? editingTraining
                               ? "Updating..."
                               : "Adding..."
                             : editingTraining
-                            ? "Update Training Record"
-                            : "Add Training Record"}
+                              ? "Update Training Record"
+                              : "Add Training Record"}
                         </Button>
 
                       </div>
@@ -2514,104 +2514,104 @@ export default function EmployeesIndex() {
                     </Card>
                   ) : (
                     selectedEmployeeTrainingRecords?.map((training) => (
-                    <Card key={training.id}>
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Training Name</Label>
-                              <p className="font-semibold">{training.trainingName}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Provider</Label>
-                              <p className="font-semibold">{training.trainingProvider}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Certification #</Label>
-                              <p className="font-semibold">{training.certificationNumber || "Not provided"}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Training Date</Label>
-                              <p className="font-semibold">{formatDate(training.trainingDate)}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
-                              <p className="font-semibold">{formatDate(training.expiryDate)}</p>
-                            </div>
-                            <div>
-                              <Label className="text-sm font-medium text-gray-600">Status</Label>
-                              <Badge className={getStatusBadge(training.status)}>
-                                {training.status}
-                              </Badge>
-                            </div>
-                            {training.notes && (
-                              <div className="col-span-3">
-                                <Label className="text-sm font-medium text-gray-600">Notes</Label>
-                                <p className="text-sm">{training.notes}</p>
+                      <Card key={training.id}>
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Training Name</Label>
+                                <p className="font-semibold">{training.trainingName}</p>
                               </div>
-                            )}
-                            {training.attachments && Array.isArray(training.attachments) && training.attachments.length > 0 && (
-                              <div className="col-span-3">
-                                <Label className="text-sm font-medium text-gray-600">Attachments</Label>
-                                <div className="flex flex-wrap gap-2 mt-1">
-                                  {training.attachments.map((file: any, idx: number) => (
-                                    <a
-                                      key={idx}
-                                      href={`/${file.filePath}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
-                                    >
-                                      <FileText className="h-3 w-3 mr-1" />
-                                      {file.originalName}
-                                    </a>
-                                  ))}
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Provider</Label>
+                                <p className="font-semibold">{training.trainingProvider}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Certification #</Label>
+                                <p className="font-semibold">{training.certificationNumber || "Not provided"}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Training Date</Label>
+                                <p className="font-semibold">{formatDate(training.trainingDate)}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
+                                <p className="font-semibold">{formatDate(training.expiryDate)}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-600">Status</Label>
+                                <Badge className={getStatusBadge(training.status)}>
+                                  {training.status}
+                                </Badge>
+                              </div>
+                              {training.notes && (
+                                <div className="col-span-3">
+                                  <Label className="text-sm font-medium text-gray-600">Notes</Label>
+                                  <p className="text-sm">{training.notes}</p>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setEditingTraining(training);
-                                setTrainingData({
-                                  trainingName: training.trainingName,
-                                  trainingProvider: training.trainingProvider,
-                                  certificationNumber: training.certificationNumber,
-                                  trainingDate: training.trainingDate
-                                    ? new Date(training.trainingDate).toISOString().split("T")[0]
-                                    : "",
-                                  expiryDate: training.expiryDate
-                                    ? new Date(training.expiryDate).toISOString().split("T")[0]
-                                    : null,
-                                  status: training.status,
-                                  notes: training.notes,
-                                  attachments: training.attachments || [],
-                                });
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                              )}
+                              {training.attachments && Array.isArray(training.attachments) && training.attachments.length > 0 && (
+                                <div className="col-span-3">
+                                  <Label className="text-sm font-medium text-gray-600">Attachments</Label>
+                                  <div className="flex flex-wrap gap-2 mt-1">
+                                    {training.attachments.map((file: any, idx: number) => (
+                                      <a
+                                        key={idx}
+                                        href={`/${file.filePath}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
+                                      >
+                                        <FileText className="h-3 w-3 mr-1" />
+                                        {file.originalName}
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingTraining(training);
+                                  setTrainingData({
+                                    trainingName: training.trainingName,
+                                    trainingProvider: training.trainingProvider,
+                                    certificationNumber: training.certificationNumber,
+                                    trainingDate: training.trainingDate
+                                      ? new Date(training.trainingDate).toISOString().split("T")[0]
+                                      : "",
+                                    expiryDate: training.expiryDate
+                                      ? new Date(training.expiryDate).toISOString().split("T")[0]
+                                      : null,
+                                    status: training.status,
+                                    notes: training.notes,
+                                    attachments: training.attachments || [],
+                                  });
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
 
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (confirm("Are you sure you want to delete this training record?")) {
-                                  deleteTrainingRecordMutation.mutate(training.id);
-                                }
-                              }}
-                              disabled={deleteTrainingRecordMutation.isPending}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to delete this training record?")) {
+                                    deleteTrainingRecordMutation.mutate(training.id);
+                                  }
+                                }}
+                                disabled={deleteTrainingRecordMutation.isPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
 
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
                     ))
                   )}
                 </div>
@@ -2651,12 +2651,12 @@ export default function EmployeesIndex() {
                           {editingDocument ? "Edit Visa/Permit" : "Add New Visa/Permit"}
                         </DialogTitle>
                       </DialogHeader>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="documentType">Document Type</Label>
-                          <Select 
-                            value={documentData.documentType} 
+                          <Label htmlFor="documentType">Document Type *</Label>
+                          <Select
+                            value={documentData.documentType}
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, documentType: value as any }))}
                           >
                             <SelectTrigger>
@@ -2677,7 +2677,7 @@ export default function EmployeesIndex() {
                           </Select>
                         </div>
                         <div>
-                          <Label htmlFor="documentNumber">Document Number</Label>
+                          <Label htmlFor="documentNumber">Document Number *</Label>
                           <Input
                             id="documentNumber"
                             value={documentData.documentNumber || ""}
@@ -2693,7 +2693,7 @@ export default function EmployeesIndex() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="dateOfIssue">Date of Issue</Label>
+                          <Label htmlFor="dateOfIssue">Date of Issue *</Label>
                           <Input
                             id="dateOfIssue"
                             type="date"
@@ -2711,9 +2711,9 @@ export default function EmployeesIndex() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="status">Status</Label>
-                          <Select 
-                            value={documentData.status} 
+                          <Label htmlFor="status">Status *</Label>
+                          <Select
+                            value={documentData.status}
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, status: value as any }))}
                           >
                             <SelectTrigger>
@@ -2763,22 +2763,20 @@ export default function EmployeesIndex() {
                                           target="_blank"
                                           rel="noopener noreferrer"
                                         >
+                                          <Eye className="h-4 w-4 mr-1" />
                                           View
                                         </a>
-                                       </Button>
-
-                                      {/*<Button
+                                      </Button>
+                                      <Button
                                         variant="outline"
                                         size="sm"
                                         asChild
                                       >
-                                        <a
-                                          href={fileUrl}
-                                          download
-                                        >
+                                        <a href={fileUrl} download={file.originalName}>
+                                          <Download className="h-4 w-4 mr-1" />
                                           Download
                                         </a>
-                                      </Button> */}
+                                      </Button>
                                     </div>
                                   </div>
                                 );
@@ -2787,7 +2785,7 @@ export default function EmployeesIndex() {
                           </div>
                         )}
                         <div className="col-span-2">
-                          <Label>Attachments</Label>
+                          <Label>Attachments *</Label>
 
                           <Input type="file" multiple onChange={e => setSelectedFiles(e.target.files)} />
                         </div>
@@ -2795,9 +2793,9 @@ export default function EmployeesIndex() {
                           <Button
                             onClick={() => {
                               if (editingDocument) {
-                                updateDocumentMutation.mutate({ 
-                                  id: editingDocument.id, 
-                                  data: documentData 
+                                updateDocumentMutation.mutate({
+                                  id: editingDocument.id,
+                                  data: documentData
                                 });
                               } else {
                                 const validated = validateDocument();
@@ -2809,8 +2807,8 @@ export default function EmployeesIndex() {
                             }}
                             disabled={!documentData.documentType || createDocumentMutation.isPending || updateDocumentMutation.isPending}
                           >
-                            {createDocumentMutation.isPending || updateDocumentMutation.isPending 
-                              ? (editingDocument ? "Updating..." : "Adding...") 
+                            {createDocumentMutation.isPending || updateDocumentMutation.isPending
+                              ? (editingDocument ? "Updating..." : "Adding...")
                               : (editingDocument ? "Update Visa/Permit" : "Add Visa/Permit")
                             }
                           </Button>
@@ -2822,10 +2820,10 @@ export default function EmployeesIndex() {
 
                 <div className="space-y-4">
                   {(() => {
-                    const visaDocuments = selectedEmployeeDocuments?.filter(doc => 
+                    const visaDocuments = selectedEmployeeDocuments?.filter(doc =>
                       ['us_visa', 'schengen_visa', 'uk_visa', 'canada_visa', 'australia_visa', 'uae_visa', 'saudi_visa', 'singapore_visa', 'work_permit', 'residence_permit'].includes(doc.documentType)
                     ) || [];
-                    
+
                     if (visaDocuments.length === 0) {
                       return (
                         <Card>
@@ -2837,115 +2835,135 @@ export default function EmployeesIndex() {
                         </Card>
                       );
                     }
-                    
+
                     return visaDocuments.map((document) => {
-                    const expiryDate = document.expiryDate
-                      ? new Date(document.expiryDate)
-                      : null;
+                      const expiryDate = document.expiryDate
+                        ? new Date(document.expiryDate)
+                        : null;
 
-                    const today = new Date();
-                    const thirtyDaysFromNow = new Date();
-                    thirtyDaysFromNow.setDate(today.getDate() + 30);
+                      const today = new Date();
+                      const thirtyDaysFromNow = new Date();
+                      thirtyDaysFromNow.setDate(today.getDate() + 30);
 
-                    const isExpired = expiryDate && expiryDate < today;
+                      const isExpired = expiryDate && expiryDate < today;
 
-                    const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
-                    
-                    return (
-                      <Card
-                        key={document.id}
-                        className={
-                          isExpired
-                            ? "border-red-600 bg-red-100"
-                            : isExpiringSoon
-                            ? "border-orange-300 bg-orange-50"
-                            : "border-gray-200"
-                        }>
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Document Type</Label>
-                                <p className="font-semibold capitalize">
-                                  {document.documentType.replace(/_/g, ' ')}
-                                </p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Document Number</Label>
-                                <p className="font-semibold">{document.documentNumber || "Not provided"}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Place of Issue</Label>
-                                <p className="font-semibold">{document.placeOfIssue || "Not provided"}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Date of Issue</Label>
-                                <p className="font-semibold">{formatDate(document.dateOfIssue)}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
-                                <p className="font-semibold">{formatDate(document.expiryDate)}</p>
-                                {isExpired && (
-                                  <Badge className="mt-1 bg-red-100 text-red-800">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Expired
-                                  </Badge>
-                                )}
+                      const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
 
-                                {!isExpired && isExpiringSoon && (
-                                  <Badge className="mt-1 bg-orange-100 text-orange-800">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Expiring Soon
-                                  </Badge>
-                                )}
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Status</Label>
-                                <Badge className={getStatusBadge(document.status)}>
-                                  {document.status}
-                                </Badge>
-                              </div>
-                              {document.notes && (
-                                <div className="col-span-3">
-                                  <Label className="text-sm font-medium text-gray-600">Notes</Label>
-                                  <p className="text-sm">{document.notes}</p>
+                      return (
+                        <Card
+                          key={document.id}
+                          className={
+                            isExpired
+                              ? "border-red-600 bg-red-100"
+                              : isExpiringSoon
+                                ? "border-orange-300 bg-orange-50"
+                                : "border-gray-200"
+                          }>
+                          <CardContent className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Document Type</Label>
+                                  <p className="font-semibold capitalize">
+                                    {document.documentType.replace(/_/g, ' ')}
+                                  </p>
                                 </div>
-                              )}
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Document Number</Label>
+                                  <p className="font-semibold">{document.documentNumber || "Not provided"}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Place of Issue</Label>
+                                  <p className="font-semibold">{document.placeOfIssue || "Not provided"}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Date of Issue</Label>
+                                  <p className="font-semibold">{formatDate(document.dateOfIssue)}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Expiry Date</Label>
+                                  <p className="font-semibold">{formatDate(document.expiryDate)}</p>
+                                  {isExpired && (
+                                    <Badge className="mt-1 bg-red-100 text-red-800">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Expired
+                                    </Badge>
+                                  )}
+
+                                  {!isExpired && isExpiringSoon && (
+                                    <Badge className="mt-1 bg-orange-100 text-orange-800">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Expiring Soon
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Status</Label>
+                                  <Badge className={getStatusBadge(document.status)}>
+                                    {document.status}
+                                  </Badge>
+                                </div>
+                                {document.notes && (
+                                  <div className="col-span-3">
+                                    <Label className="text-sm font-medium text-gray-600">Notes</Label>
+                                    <p className="text-sm">{document.notes}</p>
+                                  </div>
+                                )}
+                                {document.attachmentPaths && Array.isArray(document.attachmentPaths) && document.attachmentPaths.length > 0 && (
+                                  <div className="col-span-3">
+                                    <Label className="text-sm font-medium text-gray-600">Attachments</Label>
+                                    <div className="flex flex-wrap gap-2 mt-1">
+                                      {document.attachmentPaths.map((file: any, idx: number) => (
+                                        <div key={idx} className="flex gap-2 items-center">
+                                          <a
+                                            href={`/${file.filePath}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
+                                          >
+                                            <FileText className="h-3 w-3 mr-1" />
+                                            {file.originalName}
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex space-x-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingDocument(document);
+                                    setDocumentData({
+                                      documentType: document.documentType,
+                                      documentNumber: document.documentNumber,
+                                      placeOfIssue: document.placeOfIssue,
+                                      dateOfIssue: document.dateOfIssue ? new Date(document.dateOfIssue).toISOString().split('T')[0] : null,
+                                      expiryDate: document.expiryDate ? new Date(document.expiryDate).toISOString().split('T')[0] : null,
+                                      validTill: document.validTill ? new Date(document.validTill).toISOString().split('T')[0] : null,
+                                      status: document.status,
+                                      notes: document.notes,
+                                      filePath: document.filePath,
+                                    });
+                                    setIsDocumentDialogOpen(true);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => deleteDocumentMutation.mutate(document.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => {
-                                  setEditingDocument(document);
-                                  setDocumentData({
-                                    documentType: document.documentType,
-                                    documentNumber: document.documentNumber,
-                                    placeOfIssue: document.placeOfIssue,
-                                    dateOfIssue: document.dateOfIssue ? new Date(document.dateOfIssue).toISOString().split('T')[0] : null,
-                                    expiryDate: document.expiryDate ? new Date(document.expiryDate).toISOString().split('T')[0] : null,
-                                    validTill: document.validTill ? new Date(document.validTill).toISOString().split('T')[0] : null,
-                                    status: document.status,
-                                    notes: document.notes,
-                                    filePath: document.filePath,
-                                  });
-                                  setIsDocumentDialogOpen(true);
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => deleteDocumentMutation.mutate(document.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
+                          </CardContent>
+                        </Card>
+                      );
                     });
                   })()}
                 </div>
@@ -2986,12 +3004,12 @@ export default function EmployeesIndex() {
                           {editingDocument ? "Edit Maritime Document" : "Add New Maritime Document"}
                         </DialogTitle>
                       </DialogHeader>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="documentType">Document Type</Label>
-                          <Select 
-                            value={documentData.documentType} 
+                          <Label htmlFor="documentType">Document Type *</Label>
+                          <Select
+                            value={documentData.documentType}
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, documentType: value as any }))}
                           >
                             <SelectTrigger>
@@ -3004,11 +3022,13 @@ export default function EmployeesIndex() {
                               <SelectItem value="stcw_course">STCW Course Certificate</SelectItem>
                               <SelectItem value="sid">SID (Seafarer Identity Document)</SelectItem>
                               <SelectItem value="ilo_medical">ILO DG Medical Certificate</SelectItem>
+                              <SelectItem value="yellow_fever">Yellow Fever Document</SelectItem>
+                              <SelectItem value="pp_photos">PP Photos</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div>
-                          <Label htmlFor="documentNumber">Document Number</Label>
+                          <Label htmlFor="documentNumber">Document Number *</Label>
                           <Input
                             id="documentNumber"
                             value={documentData.documentNumber || ""}
@@ -3024,7 +3044,7 @@ export default function EmployeesIndex() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="dateOfIssue">Date of Issue</Label>
+                          <Label htmlFor="dateOfIssue">Date of Issue *</Label>
                           <Input
                             id="dateOfIssue"
                             type="date"
@@ -3042,9 +3062,9 @@ export default function EmployeesIndex() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="status">Status</Label>
-                          <Select 
-                            value={documentData.status} 
+                          <Label htmlFor="status">Status *</Label>
+                          <Select
+                            value={documentData.status}
                             onValueChange={(value) => setDocumentData(prev => ({ ...prev, status: value as any }))}
                           >
                             <SelectTrigger>
@@ -3094,22 +3114,20 @@ export default function EmployeesIndex() {
                                           target="_blank"
                                           rel="noopener noreferrer"
                                         >
+                                          <Eye className="h-4 w-4 mr-1" />
                                           View
                                         </a>
-                                       </Button>
-
-                                      {/*<Button
+                                      </Button>
+                                      <Button
                                         variant="outline"
                                         size="sm"
                                         asChild
                                       >
-                                        <a
-                                          href={fileUrl}
-                                          download
-                                        >
+                                        <a href={fileUrl} download={file.originalName}>
+                                          <Download className="h-4 w-4 mr-1" />
                                           Download
                                         </a>
-                                      </Button> */}
+                                      </Button>
                                     </div>
                                   </div>
                                 );
@@ -3119,7 +3137,7 @@ export default function EmployeesIndex() {
                         )}
 
                         <div className="col-span-2">
-                          <Label>Attachments</Label>
+                          <Label>Attachments *</Label>
 
                           <Input type="file" multiple onChange={e => setSelectedFiles(e.target.files)} />
                         </div>
@@ -3145,8 +3163,8 @@ export default function EmployeesIndex() {
                             }}
                             disabled={!documentData.documentType || createDocumentMutation.isPending || updateDocumentMutation.isPending}
                           >
-                            {createDocumentMutation.isPending || updateDocumentMutation.isPending 
-                              ? (editingDocument ? "Updating..." : "Adding...") 
+                            {createDocumentMutation.isPending || updateDocumentMutation.isPending
+                              ? (editingDocument ? "Updating..." : "Adding...")
                               : (editingDocument ? "Update Document" : "Add Document")
                             }
                           </Button>
@@ -3158,10 +3176,10 @@ export default function EmployeesIndex() {
 
                 <div className="space-y-4">
                   {(() => {
-                    const maritimeDocuments = selectedEmployeeDocuments?.filter(doc => 
-                      ['passport', 'cdc', 'covid_vaccination', 'stcw_course', 'sid', 'ilo_medical'].includes(doc.documentType)
+                    const maritimeDocuments = selectedEmployeeDocuments?.filter(doc =>
+                      ['passport', 'cdc', 'covid_vaccination', 'stcw_course', 'sid', 'ilo_medical', 'yellow_fever', 'pp_photos'].includes(doc.documentType)
                     ) || [];
-                    
+
                     if (maritimeDocuments.length === 0) {
                       return (
                         <Card>
@@ -3173,120 +3191,140 @@ export default function EmployeesIndex() {
                         </Card>
                       );
                     }
-                    
+
                     return maritimeDocuments.map((document) => {
-                    // const isExpiringSoon = document.expiryDate && 
-                    //   new Date(document.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                      // const isExpiringSoon = document.expiryDate && 
+                      //   new Date(document.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-                    const expiryDate = document.expiryDate
-                      ? new Date(document.expiryDate)
-                      : null;
+                      const expiryDate = document.expiryDate
+                        ? new Date(document.expiryDate)
+                        : null;
 
-                    const today = new Date();
-                    const thirtyDaysFromNow = new Date();
-                    thirtyDaysFromNow.setDate(today.getDate() + 30);
+                      const today = new Date();
+                      const thirtyDaysFromNow = new Date();
+                      thirtyDaysFromNow.setDate(today.getDate() + 30);
 
-                    const isExpired = expiryDate && expiryDate < today;
+                      const isExpired = expiryDate && expiryDate < today;
 
-                    const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
-                    
-                    return (
-                      <Card
-                        key={document.id}
-                        className={
-                          isExpired
-                            ? "border-red-600 bg-red-100"
-                            : isExpiringSoon
-                            ? "border-orange-300 bg-orange-50"
-                            : "border-gray-200"
-                        }>
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Document Type</Label>
-                                <p className="font-semibold capitalize">
-                                  {document.documentType.replace(/_/g, ' ')}
-                                </p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Document Number</Label>
-                                <p className="font-semibold">{document.documentNumber || "Not provided"}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Place of Issue</Label>
-                                <p className="font-semibold">{document.placeOfIssue || "Not provided"}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Date of Issue</Label>
-                                <p className="font-semibold">{formatDate(document.dateOfIssue)}</p>
-                              </div>
-                              <div>
-                                <Label
-                                
-                                 className="text-sm font-medium text-gray-600">Expiry Date</Label>
-                                <p className="font-semibold">{formatDate(document.expiryDate)}</p>
-                                {isExpired && (
-                                  <Badge className="mt-1 bg-red-50 text-red-800">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Expired
-                                  </Badge>
-                                )}
+                      const isExpiringSoon = expiryDate && expiryDate >= today && expiryDate <= thirtyDaysFromNow;
 
-                                {!isExpired && isExpiringSoon && (
-                                  <Badge className="mt-1 bg-orange-100 text-orange-800">
-                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                    Expiring Soon
-                                  </Badge>
-                                )}
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-600">Status</Label>
-                                <Badge className={getStatusBadge(document.status)}>
-                                  {document.status}
-                                </Badge>
-                              </div>
-                              {document.notes && (
-                                <div className="col-span-3">
-                                  <Label className="text-sm font-medium text-gray-600">Notes</Label>
-                                  <p className="text-sm">{document.notes}</p>
+                      return (
+                        <Card
+                          key={document.id}
+                          className={
+                            isExpired
+                              ? "border-red-600 bg-red-100"
+                              : isExpiringSoon
+                                ? "border-orange-300 bg-orange-50"
+                                : "border-gray-200"
+                          }>
+                          <CardContent className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Document Type</Label>
+                                  <p className="font-semibold capitalize">
+                                    {document.documentType.replace(/_/g, ' ')}
+                                  </p>
                                 </div>
-                              )}
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Document Number</Label>
+                                  <p className="font-semibold">{document.documentNumber || "Not provided"}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Place of Issue</Label>
+                                  <p className="font-semibold">{document.placeOfIssue || "Not provided"}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Date of Issue</Label>
+                                  <p className="font-semibold">{formatDate(document.dateOfIssue)}</p>
+                                </div>
+                                <div>
+                                  <Label
+
+                                    className="text-sm font-medium text-gray-600">Expiry Date</Label>
+                                  <p className="font-semibold">{formatDate(document.expiryDate)}</p>
+                                  {isExpired && (
+                                    <Badge className="mt-1 bg-red-50 text-red-800">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Expired
+                                    </Badge>
+                                  )}
+
+                                  {!isExpired && isExpiringSoon && (
+                                    <Badge className="mt-1 bg-orange-100 text-orange-800">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Expiring Soon
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-600">Status</Label>
+                                  <Badge className={getStatusBadge(document.status)}>
+                                    {document.status}
+                                  </Badge>
+                                </div>
+                                {document.notes && (
+                                  <div className="col-span-3">
+                                    <Label className="text-sm font-medium text-gray-600">Notes</Label>
+                                    <p className="text-sm">{document.notes}</p>
+                                  </div>
+                                )}
+                                {document.attachmentPaths && Array.isArray(document.attachmentPaths) && document.attachmentPaths.length > 0 && (
+                                  <div className="col-span-3">
+                                    <Label className="text-sm font-medium text-gray-600">Attachments</Label>
+                                    <div className="flex flex-wrap gap-2 mt-1">
+                                      {document.attachmentPaths.map((file: any, idx: number) => (
+                                        <div key={idx} className="flex gap-2 items-center">
+                                          <a
+                                            href={`/${file.filePath}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center text-xs text-blue-600 hover:underline bg-blue-50 px-2 py-1 rounded"
+                                          >
+                                            <FileText className="h-3 w-3 mr-1" />
+                                            {file.originalName}
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex space-x-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingDocument(document);
+                                    setDocumentData({
+                                      documentType: document.documentType,
+                                      documentNumber: document.documentNumber,
+                                      placeOfIssue: document.placeOfIssue,
+                                      dateOfIssue: document.dateOfIssue ? new Date(document.dateOfIssue).toISOString().split('T')[0] : null,
+                                      expiryDate: document.expiryDate ? new Date(document.expiryDate).toISOString().split('T')[0] : null,
+                                      validTill: document.validTill ? new Date(document.validTill).toISOString().split('T')[0] : null,
+                                      status: document.status,
+                                      notes: document.notes,
+                                      filePath: document.filePath,
+                                    });
+                                    setIsDocumentDialogOpen(true);
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => deleteDocumentMutation.mutate(document.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => {
-                                  setEditingDocument(document);
-                                  setDocumentData({
-                                    documentType: document.documentType,
-                                    documentNumber: document.documentNumber,
-                                    placeOfIssue: document.placeOfIssue,
-                                    dateOfIssue: document.dateOfIssue ? new Date(document.dateOfIssue).toISOString().split('T')[0] : null,
-                                    expiryDate: document.expiryDate ? new Date(document.expiryDate).toISOString().split('T')[0] : null,
-                                    validTill: document.validTill ? new Date(document.validTill).toISOString().split('T')[0] : null,
-                                    status: document.status,
-                                    notes: document.notes,
-                                    filePath: document.filePath,
-                                  });
-                                  setIsDocumentDialogOpen(true);
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => deleteDocumentMutation.mutate(document.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
+                          </CardContent>
+                        </Card>
+                      );
                     });
                   })()}
                 </div>

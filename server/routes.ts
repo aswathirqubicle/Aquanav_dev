@@ -5144,7 +5144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "/api/employees/:id/documents",
     requireAuth,
     requireRole(["admin", "project_manager"]),
-    upload.array("files", 1),
+    upload.array("files", 10),
     async (req, res) => {
       try {
         const employeeId = req.params.id;
