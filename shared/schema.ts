@@ -264,8 +264,8 @@ export const inventoryItems = pgTable("inventory_items", {
   description: text("description"),
   category: text("category").notNull(), // consumables, tools, equipment
   unit: text("unit").notNull(),
-  currentStock: integer("current_stock").notNull().default(0),
-  minStockLevel: integer("min_stock_level").notNull().default(0),
+  currentStock: decimal("current_stock", { precision: 10, scale: 2 }).notNull().default("0"),
+  minStockLevel: decimal("min_stock_level", { precision: 10, scale: 2 }).notNull().default("0"),
   avgCost: decimal("avg_cost", { precision: 10, scale: 4 }).default("0"),
 });
 
@@ -274,9 +274,9 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   id: serial("id").primaryKey(),
   itemId: integer("item_id").references(() => inventoryItems.id),
   type: text("type").notNull(), // inflow, outflow
-  quantity: integer("quantity").notNull(),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitCost: decimal("unit_cost", { precision: 10, scale: 4 }),
-  remainingQuantity: integer("remaining_quantity").notNull(),
+  remainingQuantity: decimal("remaining_quantity", { precision: 10, scale: 2 }).notNull(),
   projectId: integer("project_id").references(() => projects.id),
   reference: text("reference"), // PI number, GI number, etc.
   createdBy: integer("created_by").references(() => users.id),
@@ -548,7 +548,7 @@ export const projectConsumableItems = pgTable("project_consumable_items", {
   inventoryItemId: integer("inventory_item_id").references(
     () => inventoryItems.id,
   ),
-  quantity: integer("quantity").notNull(),
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitCost: decimal("unit_cost", { precision: 10, scale: 4 }),
   itemName: text("item_name"),
   itemUnit: text("item_unit"),

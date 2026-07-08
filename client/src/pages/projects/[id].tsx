@@ -5379,7 +5379,7 @@ export default function ProjectDetail() {
                             <Label>Quantity</Label>
                             <Input
                               type="number"
-                              min="1"
+                              min="0.1" step="0.1"
                               value={editManualItemForm.quantity}
                               onChange={(e) => setEditManualItemForm({ ...editManualItemForm, quantity: e.target.value })}
                             />
