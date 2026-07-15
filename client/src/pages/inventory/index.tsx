@@ -108,10 +108,10 @@ export default function InventoryIndex() {
 
   const isEmptyNumber = (v: any) =>
     v === undefined || v === null || Number.isNaN(v);
-  
+
   const isEmptyInput = (v: string) =>
     v === "" || v === undefined || v === null;
-  
+
   const { data: inventoryResponse, isLoading } = useQuery<{
     data: InventoryItem[];
     pagination: {
@@ -375,8 +375,8 @@ export default function InventoryIndex() {
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
-          minStockLevel: parseInt(formData.minStockLevel),
-          currentStock: parseInt(formData.initialQuantity),
+          minStockLevel: formData.minStockLevel.toString(),
+          currentStock: formData.initialQuantity.toString(),
           avgCost: formData.unitPrice,
         };
 
@@ -412,14 +412,14 @@ export default function InventoryIndex() {
             variant: "destructive",
           });
           return;
-        }else if (isEmptyNumber(updateData.currentStock)) {
+        } else if (isEmptyNumber(updateData.currentStock)) {
           toast({
             title: "Error",
             description: "Current Stock is required field",
             variant: "destructive",
           });
           return;
-        }else if (isEmptyNumber(updateData.minStockLevel)) {
+        } else if (isEmptyNumber(updateData.minStockLevel)) {
           toast({
             title: "Error",
             description: "Min Stock Level is required field",
@@ -496,8 +496,8 @@ export default function InventoryIndex() {
           description: formData.description.trim(),
           category: formData.category,
           unit: formData.unit,
-          minStockLevel: parseInt(formData.minStockLevel),
-          initialQuantity: parseInt(formData.initialQuantity),
+          minStockLevel: formData.minStockLevel.toString(),
+          initialQuantity: parseInt(formData.initialQuantity || "0"),
           unitPrice: parseFloat(formData.unitPrice) || 0,
           supplierMappings: supplierMappings.filter((m) => m.supplierId),
         };
@@ -533,14 +533,14 @@ export default function InventoryIndex() {
             variant: "destructive",
           });
           return;
-        }else if (isEmptyInput(formData.initialQuantity)) {
+        } else if (isEmptyInput(formData.initialQuantity)) {
           toast({
             title: "Error",
             description: "Initial Quantity is required field",
             variant: "destructive",
           });
           return;
-        }else if (isEmptyInput(formData.minStockLevel)) {
+        } else if (isEmptyInput(formData.minStockLevel)) {
           toast({
             title: "Error",
             description: "Min Stock Level is required field",
@@ -1114,7 +1114,7 @@ export default function InventoryIndex() {
                           : "N/A"}
                       </p>
                     </div>
-                    
+
                     <div>
                       <Label className="text-sm font-medium text-slate-500 dark:text-slate-400">
                         Unit
@@ -1304,7 +1304,7 @@ export default function InventoryIndex() {
           </CardContent>
         </Card>
 
-        <Card 
+        <Card
           className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
           onClick={() => setIsLowStockDialogOpen(true)}
         >
@@ -1479,9 +1479,9 @@ export default function InventoryIndex() {
         </div>
       )}
 
-      <LowStockAlertsDialog 
-        open={isLowStockDialogOpen} 
-        onOpenChange={setIsLowStockDialogOpen} 
+      <LowStockAlertsDialog
+        open={isLowStockDialogOpen}
+        onOpenChange={setIsLowStockDialogOpen}
       />
     </div>
   );

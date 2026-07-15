@@ -350,7 +350,7 @@ export default function GoodsIssue() {
             <DialogHeader>
               <DialogTitle>Create Goods Issue</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="reference">Reference *</Label>
@@ -429,7 +429,7 @@ export default function GoodsIssue() {
                       className="h-9"
                       type="number"
                       min="1"
-                      max={newItem.availableStock}
+                      max={newItem.inventoryItemId ? newItem.availableStock : undefined}
                       value={newItem.quantity}
                       onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
                     />
@@ -488,7 +488,7 @@ export default function GoodsIssue() {
                   Cancel
                 </Button>
                 <Button
-                  type="submit"
+                  type="button" onClick={handleSubmit}
                   disabled={createIssueMutation.isPending}
                 >
                   {createIssueMutation.isPending
@@ -496,7 +496,7 @@ export default function GoodsIssue() {
                     : "Create Issue"}
                 </Button>
               </div>
-            </form>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
