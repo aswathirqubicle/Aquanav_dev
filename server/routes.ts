@@ -1512,7 +1512,10 @@ export function generateProjectPrintHTML(data: any): string {
 
   const vesselImgUrl = val(data.vesselImageUrl) || val(data.vesselImage);
   const company = data.company || {};
-  const reportTitleStr = data.reportTitle === "null" ? "WEEKLY REPORT" : data.reportTitle || "WEEKLY REPORT";
+  const reportTitleStr =
+    data.reportTitle === "null"
+      ? "WEEKLY REPORT"
+      : data.reportTitle || "WEEKLY REPORT";
 
   const coverHTML = `
 <div class="cover-page" style="width:100%;min-height:240mm;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;box-sizing:border-box;text-align:center;page-break-after:always;position:relative;z-index:20;">
@@ -5331,7 +5334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       "airTemperature",
       "relativeHumidity",
       "dewPointTemperature",
-      "dewPointSurfaceDiff"
+      "dewPointSurfaceDiff",
     ];
 
     Object.keys(data).forEach((key) => {
@@ -6232,11 +6235,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           avgCost: unitPrice?.toString() || "0",
         });
         res.status(201).json(item);
-      } catch (error) {
+      } catch (error: any) {
         if (error instanceof ZodError) {
           return res
             .status(400)
             .json({ message: "Invalid data", errors: error.errors });
+        }
+        if (error.code === "23505") {
+          return res.status(409).json({
+            message: "SKU already exists. Please use a unique SKU",
+          });
         }
         res.status(500).json({ message: "Failed to create inventory item" });
       }
@@ -6258,7 +6266,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         res.json(item);
-      } catch (error) {
+      } catch (error: any) {
+        if (error.code === "23505") {
+          return res
+            .status(409)
+            .json({
+              message: "SKU already exists. Please use a unique SKU",
+            });
+        }
         res.status(500).json({ message: "Failed to update inventory item" });
       }
     },
@@ -6927,7 +6942,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { itemName, itemUnit, quantity, unitCost } = req.body;
 
         if (!itemName || !quantity || quantity <= 0) {
-          return res.status(400).json({ message: "Invalid item data provided" });
+          return res
+            .status(400)
+            .json({ message: "Invalid item data provided" });
         }
 
         const result = await storage.updateProjectConsumableItem(
@@ -6938,19 +6955,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             itemUnit: itemUnit || "pcs",
             quantity,
             unitCost: unitCost || 0,
-          }
+          },
         );
 
         res.json(result);
       } catch (error: any) {
         console.error("Error updating consumable item:", error);
         res.status(500).json({
-          message: error.message || "Failed to update consumable item"
+          message: error.message || "Failed to update consumable item",
         });
       }
-    }
+    },
   );
-
 
   app.post(
     "/api/projects/:projectId/consumables/goods-issue",
@@ -7078,7 +7094,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           date: req.body.date ? new Date(req.body.date) : undefined,
         };
 
-        const validatedData = insertDailyActivitySchema.partial().parse(activityData);
+        const validatedData = insertDailyActivitySchema
+          .partial()
+          .parse(activityData);
 
         const activity = await storage.updateDailyActivity(
           activityId,
@@ -7103,8 +7121,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .where(
               and(
                 eq(dailyActivities.projectId, projectId),
-                gte(dailyActivities.date, sql`${startOfDay.toISOString()}::timestamp`),
-                lte(dailyActivities.date, sql`${endOfDay.toISOString()}::timestamp`),
+                gte(
+                  dailyActivities.date,
+                  sql`${startOfDay.toISOString()}::timestamp`,
+                ),
+                lte(
+                  dailyActivities.date,
+                  sql`${endOfDay.toISOString()}::timestamp`,
+                ),
                 ne(dailyActivities.id, activityId),
               ),
             );
