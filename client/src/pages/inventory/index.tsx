@@ -551,11 +551,11 @@ export default function InventoryIndex() {
 
         createItemMutation.mutate(processedData);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving item:", error);
       toast({
         title: "Error",
-        description: "Failed to save inventory item. Please try again.",
+        description: error?.message || "Failed to save inventory item. Please try again.",
         variant: "destructive",
       });
     }
