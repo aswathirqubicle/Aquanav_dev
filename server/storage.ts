@@ -2493,12 +2493,54 @@ export class Storage {
         res.plannedActivities = [];
       }
 
-      let latestRemark = "";
-      // Use remark from the latest daily (completed) activity
+      // let latestRemark = "";
+      // // Use remark from the latest daily (completed) activity
+      // if (res.dailyActivities && res.dailyActivities.length > 0) {
+      //   const lastDaily = res.dailyActivities[res.dailyActivities.length - 1];
+      //   if (lastDaily && lastDaily.remarks) {
+      //     latestRemark = lastDaily.remarks;
+      //   }
+      // }
+
+      // Group non-empty remarks by date
+      const remarksByDate: Record<string, string> = {};
       if (res.dailyActivities && res.dailyActivities.length > 0) {
-        const lastDaily = res.dailyActivities[res.dailyActivities.length - 1];
-        if (lastDaily && lastDaily.remarks) {
-          latestRemark = lastDaily.remarks;
+        res.dailyActivities.forEach((activity) => {
+          if (activity.date && activity.remarks) {
+            const dateStr = activity.date.toISOString().split("T")[0];
+            if (!remarksByDate[dateStr]) {
+              remarksByDate[dateStr] = activity.remarks;
+            }
+          }
+        });
+
+        // Apply the date's remark to the first activity row for each date,
+        // and clear it from subsequent rows
+        const seenDates = new Set<string>();
+        res.dailyActivities.forEach((activity) => {
+          if (activity.date) {
+            const dateStr = activity.date.toISOString().split("T")[0];
+            if (!seenDates.has(dateStr)) {
+              activity.remarks = remarksByDate[dateStr] || "";
+              seenDates.add(dateStr);
+            } else {
+              activity.remarks = "";
+            }
+          }
+        });
+      }
+
+      let latestRemark = "";
+      // Set latestRemark only if fromDate and toDate are equal (daily report)
+      if (
+        fromDate &&
+        toDate &&
+        new Date(fromDate).toISOString().split("T")[0] ===
+          new Date(toDate).toISOString().split("T")[0]
+      ) {
+        const dateStr = new Date(fromDate).toISOString().split("T")[0];
+        if (remarksByDate[dateStr]) {
+          latestRemark = remarksByDate[dateStr];
         }
       }
       res.latestRemark = latestRemark;
@@ -11596,7 +11638,7 @@ export class Storage {
       itemUnit: string;
       quantity: number;
       unitCost: number | string;
-    }
+    },
   ): Promise<any> {
     try {
       // Check if the item is a manual entry (inventoryItemId is null)
@@ -15027,7 +15069,7 @@ export interface IStorage {
     items: CreateProjectConsumableItemInput[],
     userId?: number,
   ): Promise<CreatedProjectConsumable>;
-    updateProjectConsumableItem(
+  updateProjectConsumableItem(
     itemId: number,
     projectId: number,
     data: {
@@ -15035,7 +15077,7 @@ export interface IStorage {
       itemUnit: string;
       quantity: number;
       unitCost: number | string;
-    }
+    },
   ): Promise<any>;
   createConsumablesGoodsIssue(
     projectId: number,
