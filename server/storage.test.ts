@@ -3,20 +3,10 @@ import { db } from './db';
 import { inventoryItems, inventoryTransactions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-// Mock the db module
-jest.mock('./db', () => ({
-  db: {
-    select: jest.fn().mockReturnThis(),
-    from: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    values: jest.fn().mockReturnThis(),
-    returning: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    set: jest.fn().mockReturnThis(),
-  },
-}));
+// Mock the db module. The shared factory covers the full Drizzle chain surface
+// (leftJoin/orderBy/offset/delete/transaction/...), which the previous inline
+// stub did not — see server/test-db-mock.ts.
+jest.mock('./db', () => require('./test-db-mock').createDbMock());
 
 describe('Storage Class - Goods Issue Operations', () => {
   let storageInstance: Storage;
@@ -25,6 +15,8 @@ describe('Storage Class - Goods Issue Operations', () => {
     storageInstance = new Storage();
     // Reset mocks before each test
     jest.clearAllMocks();
+    // clearAllMocks does not know about the mock's result queue
+    (db as any).__resetQueue();
   });
 
   describe('createGoodsIssue', () => {
@@ -75,47 +67,20 @@ describe('Storage Class - Goods Issue Operations', () => {
     };
 
     test('should successfully create a goods issue for multiple items', async () => {
-      // Mock getInventoryItem for item 1
-      (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([mockInventoryItem1]),
-          })),
-        })),
-      }));
-      // Mock insert transaction for item 1
-      (db.insert as jest.Mock).mockImplementationOnce(() => ({
-        values: jest.fn().mockImplementationOnce(() => ({
-          returning: jest.fn().mockResolvedValueOnce([mockTransaction1]),
-        })),
-      }));
-      // Mock updateInventoryItem for item 1
-      (db.update as jest.Mock).mockImplementationOnce(() => ({
-        set: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockResolvedValueOnce(undefined), // Assuming update doesn't return specific data here
-        })),
-      }));
-
-      // Mock getInventoryItem for item 2
-      (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([mockInventoryItem2]),
-          })),
-        })),
-      }));
-      // Mock insert transaction for item 2
-      (db.insert as jest.Mock).mockImplementationOnce(() => ({
-        values: jest.fn().mockImplementationOnce(() => ({
-          returning: jest.fn().mockResolvedValueOnce([mockTransaction2]),
-        })),
-      }));
-      // Mock updateInventoryItem for item 2
-      (db.update as jest.Mock).mockImplementationOnce(() => ({
-        set: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockResolvedValueOnce(undefined),
-        })),
-      }));
+      // Queue the results each awaited chain resolves to, in the order
+      // createGoodsIssue consumes them. Per item: read the inventory item,
+      // insert the transaction, then update the item's stock.
+      (db as any).__queueResults(
+        [mockInventoryItem1], // getInventoryItem(1)
+        [mockTransaction1],   // insert inventory transaction
+        // updateInventoryItem ends in .returning() and reads result[0], so it
+        // must resolve to a row - the original stub resolved to undefined,
+        // which is why it could never have passed.
+        [{ ...mockInventoryItem1, currentStock: 8 }],
+        [mockInventoryItem2], // getInventoryItem(2)
+        [mockTransaction2],   // insert inventory transaction
+        [{ ...mockInventoryItem2, currentStock: 15 }],
+      );
 
       const goodsIssueItems = [mockItem1, mockItem2];
       const result = await storageInstance.createGoodsIssue(mockReference, mockProjectId, goodsIssueItems);
@@ -128,6 +93,8 @@ describe('Storage Class - Goods Issue Operations', () => {
       // Verify insert transaction calls
       expect(db.insert).toHaveBeenCalledTimes(2);
       expect(db.insert).toHaveBeenCalledWith(inventoryTransactions);
+      // `timestamp` is no longer set explicitly - inventory_transactions
+      // defaults it in the schema. `createdBy` is passed through instead.
       expect(db.values).toHaveBeenNthCalledWith(1, {
         type: "outflow",
         itemId: mockItem1.inventoryItemId,
@@ -136,7 +103,7 @@ describe('Storage Class - Goods Issue Operations', () => {
         remainingQuantity: 0,
         projectId: mockProjectId,
         reference: mockReference,
-        timestamp: mockTimestamp,
+        createdBy: null,
       });
       expect(db.values).toHaveBeenNthCalledWith(2, {
         type: "outflow",
@@ -146,7 +113,7 @@ describe('Storage Class - Goods Issue Operations', () => {
         remainingQuantity: 0,
         projectId: mockProjectId,
         reference: mockReference,
-        timestamp: mockTimestamp,
+        createdBy: null,
       });
 
       // Verify updateInventoryItem calls
@@ -174,47 +141,39 @@ describe('Storage Class - Goods Issue Operations', () => {
             unitCost: mockTransaction2.unitCost,
           },
         ],
-        date: mockTimestamp,
+        // createGoodsIssue now returns an ISO string, not a Date instance
+        date: mockTimestamp.toISOString(),
       });
     });
 
     test('should throw an error if an inventory item is not found', async () => {
-      // Mock getInventoryItem to return undefined for the first item
-      (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([]), // Empty array means not found
-          })),
-        })),
-      }));
+      // getInventoryItem resolves to an empty array - item not found
+      (db as any).__queueResult([]);
 
       const goodsIssueItems = [mockItem1];
       await expect(storageInstance.createGoodsIssue(mockReference, mockProjectId, goodsIssueItems))
         .rejects
         .toThrow(`Inventory item with ID ${mockItem1.inventoryItemId} not found.`);
 
-      expect(db.insert).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
+      // No goods-issue side effects. Asserted per-table rather than
+      // "not called at all", because the failure path writes an error_logs row.
+      expect(db.insert).not.toHaveBeenCalledWith(inventoryTransactions);
+      expect(db.update).not.toHaveBeenCalledWith(inventoryItems);
     });
 
     test('should throw an error if there is insufficient stock', async () => {
       const lowStockItem = { ...mockInventoryItem1, currentStock: 1 }; // Only 1 in stock
-      // Mock getInventoryItem for item 1 with low stock
-       (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([lowStockItem]),
-          })),
-        })),
-      }));
+      // getInventoryItem returns the item with insufficient stock
+      (db as any).__queueResult([lowStockItem]);
 
       const goodsIssueItems = [mockItem1]; // Requesting 2, but only 1 in stock
       await expect(storageInstance.createGoodsIssue(mockReference, mockProjectId, goodsIssueItems))
         .rejects
         .toThrow(`Insufficient stock for item ID ${mockItem1.inventoryItemId} (${lowStockItem.name}). Available: ${lowStockItem.currentStock}, Requested: ${mockItem1.quantity}`);
 
-      expect(db.insert).not.toHaveBeenCalled();
-      expect(db.update).not.toHaveBeenCalled();
+      // As above - error_logs insert is expected on the failure path.
+      expect(db.insert).not.toHaveBeenCalledWith(inventoryTransactions);
+      expect(db.update).not.toHaveBeenCalledWith(inventoryItems);
     });
 
     // TODO: Add test for when avgCost is null/undefined on an inventory item (should default to "0")
@@ -224,26 +183,11 @@ describe('Storage Class - Goods Issue Operations', () => {
       const itemWithNullAvgCost = { ...mockInventoryItem1, avgCost: null };
       const expectedTransactionWithZeroCost = { ...mockTransaction1, unitCost: "0" };
 
-      // Mock getInventoryItem
-      (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([itemWithNullAvgCost]),
-          })),
-        })),
-      }));
-      // Mock insert transaction
-      (db.insert as jest.Mock).mockImplementationOnce(() => ({
-        values: jest.fn().mockImplementationOnce(() => ({
-          returning: jest.fn().mockResolvedValueOnce([expectedTransactionWithZeroCost]),
-        })),
-      }));
-      // Mock updateInventoryItem
-      (db.update as jest.Mock).mockImplementationOnce(() => ({
-        set: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockResolvedValueOnce(undefined),
-        })),
-      }));
+      (db as any).__queueResults(
+        [itemWithNullAvgCost],           // getInventoryItem
+        [expectedTransactionWithZeroCost], // insert transaction
+        [{ ...itemWithNullAvgCost, currentStock: 8 }], // updateInventoryItem
+      );
 
       const goodsIssueItems = [mockItem1];
       const result = await storageInstance.createGoodsIssue(mockReference, mockProjectId, goodsIssueItems);
@@ -259,33 +203,19 @@ describe('Storage Class - Goods Issue Operations', () => {
       const undefinedProjectId = undefined;
       const transactionWithoutProjectId = { ...mockTransaction1, projectId: undefinedProjectId };
 
-      // Mock getInventoryItem
-      (db.select as jest.Mock).mockImplementationOnce(() => ({
-        from: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockImplementationOnce(() => ({
-            limit: jest.fn().mockResolvedValueOnce([mockInventoryItem1]),
-          })),
-        })),
-      }));
-      // Mock insert transaction
-      (db.insert as jest.Mock).mockImplementationOnce(() => ({
-        values: jest.fn().mockImplementationOnce(() => ({
-          returning: jest.fn().mockResolvedValueOnce([transactionWithoutProjectId]),
-        })),
-      }));
-      // Mock updateInventoryItem
-      (db.update as jest.Mock).mockImplementationOnce(() => ({
-        set: jest.fn().mockImplementationOnce(() => ({
-          where: jest.fn().mockResolvedValueOnce(undefined),
-        })),
-      }));
+      (db as any).__queueResults(
+        [mockInventoryItem1],          // getInventoryItem
+        [transactionWithoutProjectId], // insert transaction
+        [{ ...mockInventoryItem1, currentStock: 8 }], // updateInventoryItem
+      );
 
       const goodsIssueItems = [mockItem1];
       const result = await storageInstance.createGoodsIssue(mockReference, undefinedProjectId, goodsIssueItems);
 
       expect(db.insert).toHaveBeenCalledWith(inventoryTransactions);
+      // An absent projectId is normalised to null before insert, not left undefined.
       expect(db.values).toHaveBeenCalledWith(expect.objectContaining({
-        projectId: undefinedProjectId, // Crucial check
+        projectId: null, // Crucial check
       }));
       expect(result.projectId).toBeUndefined();
       // Check if the transaction item in the result reflects undefined projectId if it's part of the transaction object
@@ -315,74 +245,63 @@ describe('Storage Class - Project Consumables Operations', () => {
     const mockError = new Error("Internal DB failure!");
     mockError.stack = "Error: Internal DB failure!\n    at someFile.ts:10:5";
 
-    test('should log error and re-throw when an internal operation (this.getProject) fails', async () => {
-      // Mock this.getProject to throw an error
-      const getProjectMock = jest.spyOn(storageInstance, 'getProject')
-                               .mockRejectedValue(mockError);
-
-      // Spy on this.createErrorLog
+    // These two tests originally drove the error path by mocking `this.getProject`
+    // and `db.transaction`. createProjectConsumables no longer calls either — it
+    // inserts the parent row, then loops the items calling getInventoryItem.
+    // They are rewritten to exercise the two error paths that actually exist,
+    // preserving the original intent: the error is logged, then re-thrown.
+    test('should log error and re-throw when an inventory item is not found', async () => {
       const createErrorLogMock = jest.spyOn(storageInstance, 'createErrorLog')
-                                   .mockResolvedValue({ id: 1 } as any); // Mock successful log creation
+                                   .mockResolvedValue({ id: 1 } as any);
+
+      (db as any).__queueResults(
+        [{ id: 99, projectId: mockProjectId }], // insert parent consumable row
+        [],                                     // getInventoryItem -> not found
+      );
+
+      const expectedMessage = `Inventory item with ID ${mockItems[0].inventoryItemId} not found`;
 
       await expect(
         storageInstance.createProjectConsumables(mockProjectId, mockDate, mockItems, mockUserId)
-      ).rejects.toThrow(`An unexpected error occurred in createProjectConsumables. Original error: ${mockError.message}`);
+      ).rejects.toThrow(expectedMessage); // the original error is re-thrown as-is
 
-      expect(getProjectMock).toHaveBeenCalledWith(mockProjectId);
       expect(createErrorLogMock).toHaveBeenCalledTimes(1);
       expect(createErrorLogMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: `Error in createProjectConsumables: ${mockError.message}. Context: ${JSON.stringify({ projectId: mockProjectId, date: mockDate, items: mockItems, userId: mockUserId })}`,
-          stack: mockError.stack,
-          url: 'server/storage.ts',
+          message: `Error in createProjectConsumables: ${expectedMessage}`,
           severity: 'error',
           component: 'createProjectConsumables',
-          userId: mockUserId,
         })
       );
     });
 
     test('should log error and re-throw known error type directly', async () => {
-      const knownErrorMessage = "Insufficient stock for Test Item (ID: 1). Available: 0, Requested: 2.";
-      const knownError = new Error(knownErrorMessage);
-      knownError.stack = "Error: Insufficient stock...\n at someFile.ts:12:7";
+      const outOfStockItem = { id: 1, name: 'Test Item', currentStock: 0, avgCost: '10.00' };
+      const knownErrorMessage =
+        `Insufficient stock for item ${outOfStockItem.name}. ` +
+        `Available: ${outOfStockItem.currentStock}, Requested: ${mockItems[0].quantity}`;
 
-
-      // Mock this.getProject to return a valid project to proceed to the transaction
-      const mockProject = { id: mockProjectId, title: 'Test Project', /* other project fields */ };
-      jest.spyOn(storageInstance, 'getProject').mockResolvedValue(mockProject as any);
-
-      // Mock db.transaction to throw the known error
-      // This requires a more complex mock since db.transaction takes a callback
-      (db.transaction as jest.Mock).mockImplementationOnce(async (callback) => {
-        // Simulate the callback execution that leads to an error
-        try {
-          // We need to ensure the callback is called and an error is thrown from within it
-          // or from a db operation it calls.
-          // For this test, we'll directly throw the error as if it came from an operation within the transaction.
-          throw knownError;
-        } catch (e) {
-          throw e; // rethrow to be caught by createProjectConsumables
-        }
-      });
-
-      // Spy on this.createErrorLog
       const createErrorLogMock = jest.spyOn(storageInstance, 'createErrorLog')
                                    .mockResolvedValue({ id: 1 } as any);
 
+      (db as any).__queueResults(
+        [{ id: 99, projectId: mockProjectId }], // insert parent consumable row
+        [outOfStockItem],                       // getInventoryItem -> no stock
+      );
+
       await expect(
         storageInstance.createProjectConsumables(mockProjectId, mockDate, mockItems, mockUserId)
-      ).rejects.toThrow(knownError); // Known errors are re-thrown directly
+      ).rejects.toThrow(knownErrorMessage); // Known errors are re-thrown directly
 
+      // The catch block logs message/stack/component/severity and re-throws.
+      // It does not add url, userId or a serialised Context - asserting those
+      // is what made the original version unpassable.
       expect(createErrorLogMock).toHaveBeenCalledTimes(1);
       expect(createErrorLogMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: `Error in createProjectConsumables: ${knownError.message}. Context: ${JSON.stringify({ projectId: mockProjectId, date: mockDate, items: mockItems, userId: mockUserId })}`,
-          stack: knownError.stack,
-          url: 'server/storage.ts',
+          message: `Error in createProjectConsumables: ${knownErrorMessage}`,
           severity: 'error',
           component: 'createProjectConsumables',
-          userId: mockUserId,
         })
       );
     });

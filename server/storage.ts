@@ -441,15 +441,19 @@ export interface IStorage {
     payrollData: Partial<InsertPayrollEntry>,
     userId?: number,
   ): Promise<PayrollEntry | undefined>;
-  clearAllPayrollEntries(): Promise<number>;
+  clearAllPayrollEntries(userId?: number): Promise<number>;
   clearPayrollEntriesByPeriod(month: number, year: number): Promise<number>;
   clearPayrollPeriod(
     month: number,
     year: number,
+    userId?: number,
   ): Promise<{
     deletedPayrollEntries: number;
     deletedGeneralLedgerEntries: number;
   }>;
+  getProvidentFundBalances(): Promise<
+    Array<{ entityId: number; entityName: string; balance: string }>
+  >;
 
   // Payroll Additions methods
   getPayrollAdditions(payrollEntryId: number): Promise<PayrollAddition[]>;
@@ -731,7 +735,6 @@ export interface IStorage {
   createPurchasePaymentFile(fileData: any): Promise<any>;
   getPurchaseInvoice(id: number): Promise<any>;
   updatePurchaseInvoice(id: number, invoiceData: any): Promise<any>;
-  createPurchaseInvoiceFromPO(poId: number, invoiceData: any): Promise<any>;
 
   // Error Logs methods
   createErrorLog(errorData: {

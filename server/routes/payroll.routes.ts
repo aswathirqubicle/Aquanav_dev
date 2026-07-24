@@ -68,6 +68,25 @@ payrollRoutes.get("/api/my-payslips/:id/deductions", requireAuth, async (req, re
   }
 });
 
+// Per-employee Provident Fund balances from the ledger (D14). Registered before
+// the "/api/payroll/:id" routes so the literal path is not captured by ":id".
+payrollRoutes.get(
+  "/api/payroll/pf-balances",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const balances = await storage.getProvidentFundBalances();
+      res.json(balances);
+    } catch (error) {
+      console.error("Get PF balances error:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to get provident fund balances" });
+    }
+  },
+);
+
 // Payroll routes
 payrollRoutes.get(
   "/api/payroll",
@@ -149,7 +168,11 @@ payrollRoutes.delete(
           .json({ message: "Month must be between 1 and 12" });
       }
 
-      const result = await storage.clearPayrollPeriod(month, year);
+      const result = await storage.clearPayrollPeriod(
+        month,
+        year,
+        req.session.userId,
+      );
       res.json(result);
     } catch (error) {
       console.error("Clear payroll period error:", error);
@@ -175,8 +198,13 @@ payrollRoutes.put(
         return res.status(404).json({ message: "Payroll entry not found" });
       }
 
-      // Update the payroll entry
-      const entry = await storage.updatePayrollEntry(payrollId, updateData);
+      // Update the payroll entry (accrual/payment GL posts here on the status
+      // transition, attributed to the acting user).
+      const entry = await storage.updatePayrollEntry(
+        payrollId,
+        updateData,
+        req.session.userId,
+      );
       if (!entry) {
         return res.status(404).json({ message: "Payroll entry not found" });
       }
@@ -252,7 +280,10 @@ payrollRoutes.post(
 
       const deduction = await storage.createPayrollDeduction(deductionData);
       res.status(201).json(deduction);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "PF_PROTECTED") {
+        return res.status(400).json({ message: error.message });
+      }
       console.error("Create payroll deduction error:", error);
       res.status(500).json({ message: "Failed to create payroll deduction" });
     }
@@ -353,7 +384,9 @@ payrollRoutes.delete(
   requireRole(["admin"]),
   async (req, res) => {
     try {
-      const deletedCount = await storage.clearAllPayrollEntries();
+      const deletedCount = await storage.clearAllPayrollEntries(
+        req.session.userId,
+      );
       res.json({
         message: "All payroll entries cleared successfully",
         deletedCount,
@@ -572,7 +605,10 @@ payrollRoutes.put(
       }
 
       res.json(updatedDeduction);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "PF_PROTECTED") {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to update payroll deduction" });
     }
   },
@@ -606,7 +642,10 @@ payrollRoutes.delete(
           .status(500)
           .json({ message: "Failed to delete payroll deduction" });
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "PF_PROTECTED") {
+        return res.status(400).json({ message: error.message });
+      }
       console.error("Delete payroll deduction error:", error);
       res.status(500).json({
         message: "Failed to delete payroll deduction",

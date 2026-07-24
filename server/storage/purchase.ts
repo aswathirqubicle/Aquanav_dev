@@ -136,7 +136,7 @@ export class PurchaseStorage extends SalesStorage {
       const result = await db
         .delete(supplierInventoryItems)
         .where(eq(supplierInventoryItems.inventoryItemId, inventoryItemId));
-      return true; // Original method did not check result.rowCount, so preserving that behavior.
+      return true; // Original method did not check the affected-row count, so preserving that behavior.
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -179,7 +179,7 @@ export class PurchaseStorage extends SalesStorage {
       const result = await db
         .delete(supplierInventoryItems)
         .where(eq(supplierInventoryItems.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -1153,7 +1153,7 @@ export class PurchaseStorage extends SalesStorage {
         .delete(purchaseOrders)
         .where(eq(purchaseOrders.id, id));
 
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -2025,115 +2025,6 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
-  async createPurchaseInvoiceFromPO(
-    poId: number,
-    invoiceData: any,
-  ): Promise<any> {
-    try {
-      // Get the purchase order
-      const po = await this.getPurchaseOrder(poId);
-      if (!po) {
-        throw new Error("Purchase order not found");
-      }
-
-      const invoiceNumber = await this.generateNextNumber(
-        "PI",
-        purchaseInvoices,
-        purchaseInvoices.invoiceNumber,
-      );
-
-      // Create the invoice
-      const [invoice] = await db
-        .insert(purchaseInvoices)
-        .values({
-          invoiceNumber,
-          supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
-          supplierId: po.supplierId,
-          poId: poId,
-          status: "draft",
-          invoiceDate: new Date(invoiceData.invoiceDate),
-          dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
-          paymentTerms: po.paymentTerms || null,
-          bankAccount: po.bankAccount || null,
-          subtotal: po.subtotal,
-          taxAmount: po.taxAmount,
-          totalAmount: po.totalAmount,
-          paidAmount: "0",
-          currency: invoiceData.currency || po.currency || "AED",
-          exchangeRate: invoiceData.exchangeRate || po.exchangeRate || "1",
-          notes: invoiceData.notes || null,
-          createdBy: invoiceData.createdBy,
-        })
-        .returning();
-
-      // Create purchase invoice items from PO items
-      if (po.items && po.items.length > 0) {
-        const invoiceItemsToInsert = po.items.map((item: any) => ({
-          invoiceId: invoice.id,
-          itemType: item.itemType || "product",
-          inventoryItemId: item.inventoryItemId || null,
-          description: item.description || null,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          taxRate: item.taxRate || "0",
-          taxAmount: item.taxAmount || "0",
-          lineTotal: item.lineTotal,
-        }));
-
-        await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
-
-        // Update inventory for received items (only for products)
-        for (const item of po.items) {
-          if (
-            item.inventoryItemId &&
-            (item.itemType === "product" || !item.itemType)
-          ) {
-            // Update inventory stock
-            const currentItem = await db
-              .select()
-              .from(inventoryItems)
-              .where(eq(inventoryItems.id, item.inventoryItemId))
-              .limit(1);
-
-            if (currentItem.length > 0) {
-              const newStock = currentItem[0].currentStock + item.quantity;
-              await db
-                .update(inventoryItems)
-                .set({ currentStock: newStock })
-                .where(eq(inventoryItems.id, item.inventoryItemId));
-
-              // Create inventory transaction
-              await db.insert(inventoryTransactions).values({
-                inventoryItemId: item.inventoryItemId,
-                transactionType: "in",
-                quantity: item.quantity,
-                unitCost: item.unitPrice,
-                totalCost: parseFloat(item.lineTotal),
-                reference: `Purchase Invoice: ${invoice.invoiceNumber}`,
-                createdBy: invoiceData.createdBy,
-              });
-            }
-          }
-        }
-      }
-
-      // Update purchase order status
-      await this.updatePurchaseOrder(poId, { status: "completed" });
-
-      return this.getPurchaseInvoice(invoice.id);
-    } catch (error: any) {
-      await this.createErrorLog({
-        message:
-          `Error in createPurchaseInvoiceFromPO (poId: ${poId}): ` +
-          (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "createPurchaseInvoiceFromPO",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
-
   async submitPurchaseInvoiceForApproval(
     id: number,
     userId: number,
@@ -2260,16 +2151,13 @@ export class PurchaseStorage extends SalesStorage {
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
-      console.log("invoiceExchangeRate111", invoiceExchangeRate);
-      // Create payable entry (Credit Accounts Payable) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "purchase_invoice",
+      // Both sides in ONE transaction (L14). Two independent inserts could
+      // leave a credit to Accounts Payable with no matching expense debit.
+      const approvalShared = {
+        entryType: "payable" as const,
+        referenceType: "purchase_invoice" as const,
         referenceId: id,
-        accountName: "Accounts Payable",
         description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: "0",
-        creditAmount: aedAmount,
         entityId: invoice.supplierId,
         entityName: supplierName,
         projectId: invoice.projectId || null,
@@ -2280,29 +2168,25 @@ export class PurchaseStorage extends SalesStorage {
         dueDate: invoice.dueDate
           ? new Date(invoice.dueDate).toISOString()
           : null,
-        status: "pending",
-      });
-      console.log("invoiceExchangeRate", invoiceExchangeRate);
-      // Create expense entry (Debit Purchase Expense) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "purchase_invoice",
-        referenceId: id,
-        accountName: "Purchase Expense",
-        description: `Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: aedAmount,
-        creditAmount: "0",
-        entityId: invoice.supplierId,
-        entityName: supplierName,
-        projectId: invoice.projectId || null,
-        invoiceNumber: invoice.invoiceNumber,
-        transactionDate: invoice.invoiceDate
-          ? new Date(invoice.invoiceDate).toISOString()
-          : new Date().toISOString(),
-        dueDate: invoice.dueDate
-          ? new Date(invoice.dueDate).toISOString()
-          : null,
-        status: "pending",
+        status: "pending" as const,
+      };
+
+      await db.transaction(async (tx) => {
+        // Credit Accounts Payable, in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...approvalShared,
+          accountName: "Accounts Payable",
+          debitAmount: "0",
+          creditAmount: aedAmount,
+        });
+
+        // Debit Purchase Expense, in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...approvalShared,
+          accountName: "Purchase Expense",
+          debitAmount: aedAmount,
+          creditAmount: "0",
+        });
       });
 
       console.log(
@@ -2438,36 +2322,38 @@ export class PurchaseStorage extends SalesStorage {
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // Reverse: Debit Accounts Payable
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "purchase_invoice",
+      // Both reversal rows in ONE transaction (L14).
+      // NOTE: projectId is deliberately absent here, matching the original —
+      // that omission is finding L11 and is fixed in P6, not here. P1 changes
+      // no ledger amounts or attributes.
+      const cancelShared = {
+        entryType: "payable" as const,
+        referenceType: "purchase_invoice" as const,
         referenceId: id,
-        accountName: "Accounts Payable",
         description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: aedAmount,
-        creditAmount: "0",
         entityId: invoice.supplierId,
         entityName: supplierName,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: new Date().toISOString(),
-        status: "cancelled",
-      });
+        status: "cancelled" as const,
+      };
 
-      // Reverse: Credit Purchase Expense
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "purchase_invoice",
-        referenceId: id,
-        accountName: "Purchase Expense",
-        description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: "0",
-        creditAmount: aedAmount,
-        entityId: invoice.supplierId,
-        entityName: supplierName,
-        invoiceNumber: invoice.invoiceNumber,
-        transactionDate: new Date().toISOString(),
-        status: "cancelled",
+      await db.transaction(async (tx) => {
+        // Reverse: Debit Accounts Payable
+        await tx.insert(generalLedgerEntries).values({
+          ...cancelShared,
+          accountName: "Accounts Payable",
+          debitAmount: aedAmount,
+          creditAmount: "0",
+        });
+
+        // Reverse: Credit Purchase Expense
+        await tx.insert(generalLedgerEntries).values({
+          ...cancelShared,
+          accountName: "Purchase Expense",
+          debitAmount: "0",
+          creditAmount: aedAmount,
+        });
       });
 
       return this.getPurchaseInvoice(id);
@@ -2579,36 +2465,37 @@ export class PurchaseStorage extends SalesStorage {
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // 1. Debit: Accounts Payable (reduce liability - we owe less) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "payment",
+      // Both sides in ONE transaction (L14).
+      // NOTE: projectId is absent here, matching the original — that is
+      // finding L11, fixed in P6. P1 changes no ledger amounts or attributes.
+      const paymentShared = {
+        entryType: "payable" as const,
+        referenceType: "payment" as const,
         referenceId: payment.id,
-        accountName: "Accounts Payable",
         description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: aedAmount,
-        creditAmount: "0",
         entityId: invoice.supplierId,
         entityName: supplierName,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: paymentData.paymentDate,
-        status: "paid",
-      });
+        status: "paid" as const,
+      };
 
-      // 2. Credit: Cash/Bank (reduce asset - cash outflow) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "payable",
-        referenceType: "payment",
-        referenceId: payment.id,
-        accountName: "Cash/Bank",
-        description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
-        debitAmount: "0",
-        creditAmount: aedAmount,
-        entityId: invoice.supplierId,
-        entityName: supplierName,
-        invoiceNumber: invoice.invoiceNumber,
-        transactionDate: paymentData.paymentDate,
-        status: "paid",
+      await db.transaction(async (tx) => {
+        // 1. Debit: Accounts Payable (reduce liability - we owe less) in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...paymentShared,
+          accountName: "Accounts Payable",
+          debitAmount: aedAmount,
+          creditAmount: "0",
+        });
+
+        // 2. Credit: Cash/Bank (reduce asset - cash outflow) in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...paymentShared,
+          accountName: "Cash/Bank",
+          debitAmount: "0",
+          creditAmount: aedAmount,
+        });
       });
 
       console.log(
@@ -2951,7 +2838,7 @@ export class PurchaseStorage extends SalesStorage {
       const result = await db
         .delete(purchaseCreditNotes)
         .where(eq(purchaseCreditNotes.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       // console.error("Error deleting purchase credit note:", error); // Original console.error commented out
       await this.createErrorLog({

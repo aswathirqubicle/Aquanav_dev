@@ -35,6 +35,7 @@ export class ReimbursementStorage extends PayrollStorage {
           projectName: projects.title,
           amount: reimbursements.amount,
           description: reimbursements.description,
+          category: reimbursements.category,
           originalExpenseDate: reimbursements.originalExpenseDate,
           submissionTimestamp: reimbursements.submissionTimestamp,
           status: reimbursements.status,
@@ -105,6 +106,7 @@ export class ReimbursementStorage extends PayrollStorage {
           projectId: reimbursements.projectId,
           amount: reimbursements.amount,
           description: reimbursements.description,
+          category: reimbursements.category,
           originalExpenseDate: reimbursements.originalExpenseDate,
           submissionTimestamp: reimbursements.submissionTimestamp,
           status: reimbursements.status,
@@ -315,7 +317,7 @@ export class ReimbursementStorage extends PayrollStorage {
       const result = await db
         .delete(reimbursements)
         .where(eq(reimbursements.id, id));
-      return (result.rowCount ?? 0) > 0;
+      return (result.count ?? 0) > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:

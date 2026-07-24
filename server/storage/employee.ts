@@ -188,7 +188,7 @@ export class EmployeeStorage extends SupplierStorage {
       const result = await db
         .delete(employeeNextOfKin)
         .where(eq(employeeNextOfKin.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -324,7 +324,7 @@ export class EmployeeStorage extends SupplierStorage {
       const result = await db
         .delete(employeeTrainingRecords)
         .where(eq(employeeTrainingRecords.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -835,7 +835,7 @@ export class EmployeeStorage extends SupplierStorage {
       const result = await db
         .delete(employeeDocuments)
         .where(eq(employeeDocuments.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:

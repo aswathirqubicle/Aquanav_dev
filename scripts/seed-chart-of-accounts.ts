@@ -2,15 +2,32 @@ import { db } from "../server/db";
 import { chartOfAccounts } from "../shared/schema";
 import { sql } from "drizzle-orm";
 
-const accounts = [
+// The chart of accounts is FIXED - there are no per-entity accounts for
+// customers, suppliers or employees. Accounts marked `isActive: false` are
+// retained so existing references stay valid, but are hidden from the account
+// picker (getChartOfAccounts filters on is_active).
+// Kept in step with migrations/0062_fix_chart_of_accounts.sql.
+type SeedAccount = {
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  accountCategory: string;
+  description: string;
+  isActive?: boolean;
+};
+
+const accounts: SeedAccount[] = [
   // Assets (1xxx)
-  { accountCode: "1000", accountName: "Cash and Cash Equivalents", accountType: "asset", accountCategory: "current_assets", description: "Cash on hand and in banks" },
-  { accountCode: "1010", accountName: "Petty Cash", accountType: "asset", accountCategory: "current_assets", description: "Small cash fund for minor expenses" },
-  { accountCode: "1020", accountName: "Bank Accounts", accountType: "asset", accountCategory: "current_assets", description: "Main operating bank accounts" },
+  // 1000/1010/1020 superseded by 1030 Cash/Bank
+  { accountCode: "1000", accountName: "Cash and Cash Equivalents", accountType: "asset", accountCategory: "current_assets", description: "Cash on hand and in banks", isActive: false },
+  { accountCode: "1010", accountName: "Petty Cash", accountType: "asset", accountCategory: "current_assets", description: "Small cash fund for minor expenses", isActive: false },
+  { accountCode: "1020", accountName: "Bank Accounts", accountType: "asset", accountCategory: "current_assets", description: "Main operating bank accounts", isActive: false },
+  { accountCode: "1030", accountName: "Cash/Bank", accountType: "asset", accountCategory: "current_assets", description: "Combined cash and bank account used by all cash postings" },
   { accountCode: "1100", accountName: "Accounts Receivable", accountType: "asset", accountCategory: "current_assets", description: "Amounts owed by customers" },
-  { accountCode: "1100-C", accountName: "Customer Receivables Template", accountType: "asset", accountCategory: "current_assets", description: "Template for customer-specific receivables" },
-  { accountCode: "1110", accountName: "Customer Receivables", accountType: "asset", accountCategory: "current_assets", description: "Amounts owed by customers" },
+  // 1110 duplicates 1100 Accounts Receivable
+  { accountCode: "1110", accountName: "Customer Receivables", accountType: "asset", accountCategory: "current_assets", description: "Amounts owed by customers", isActive: false },
   { accountCode: "1120", accountName: "Employee Advances", accountType: "asset", accountCategory: "current_assets", description: "Advances paid to employees" },
+  { accountCode: "1130", accountName: "VAT Recoverable", accountType: "asset", accountCategory: "current_assets", description: "Input VAT recoverable from the Federal Tax Authority" },
   { accountCode: "1200", accountName: "Inventory", accountType: "asset", accountCategory: "current_assets", description: "Stock of goods for sale or use" },
   { accountCode: "1210", accountName: "Raw Materials", accountType: "asset", accountCategory: "current_assets", description: "Materials for production" },
   { accountCode: "1220", accountName: "Spare Parts", accountType: "asset", accountCategory: "current_assets", description: "Replacement parts inventory" },
@@ -32,12 +49,12 @@ const accounts = [
 
   // Liabilities (2xxx)
   { accountCode: "2000", accountName: "Accounts Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Amounts owed to suppliers" },
-  { accountCode: "2000-S", accountName: "Supplier Payables Template", accountType: "liability", accountCategory: "current_liabilities", description: "Template for supplier-specific payables" },
-  { accountCode: "2010", accountName: "Supplier Payables", accountType: "liability", accountCategory: "current_liabilities", description: "Amounts owed to suppliers" },
+  // 2010 duplicates 2000 Accounts Payable
+  { accountCode: "2010", accountName: "Supplier Payables", accountType: "liability", accountCategory: "current_liabilities", description: "Amounts owed to suppliers", isActive: false },
   { accountCode: "2020", accountName: "Accrued Expenses", accountType: "liability", accountCategory: "current_liabilities", description: "Expenses incurred but not yet paid" },
   { accountCode: "2100", accountName: "Payroll Liabilities", accountType: "liability", accountCategory: "current_liabilities", description: "Employee-related payables" },
   { accountCode: "2110", accountName: "Salary Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Salaries owed to employees" },
-  { accountCode: "2120", accountName: "Provident Fund Contribution", accountType: "liability", accountCategory: "current_liabilities", description: "Withholding taxes to be remitted" },
+  { accountCode: "2120", accountName: "Provident Fund Contribution", accountType: "liability", accountCategory: "current_liabilities", description: "Employee provident fund contributions withheld, held until the employee leaves" },
   { accountCode: "2130", accountName: "Employee Benefits Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Benefits owed to employees" },
   { accountCode: "2200", accountName: "Tax Liabilities", accountType: "liability", accountCategory: "current_liabilities", description: "Taxes owed to government" },
   { accountCode: "2210", accountName: "Income Tax Payable", accountType: "liability", accountCategory: "current_liabilities", description: "Corporate income tax owed" },
@@ -58,7 +75,6 @@ const accounts = [
 
   // Revenue (4xxx)
   { accountCode: "4000", accountName: "Operating Revenue", accountType: "revenue", accountCategory: "operating_revenue", description: "Main business revenue" },
-  { accountCode: "4000-P", accountName: "Project Revenue Template", accountType: "revenue", accountCategory: "operating_revenue", description: "Template for project-specific revenue" },
   { accountCode: "4010", accountName: "Marine Services Revenue", accountType: "revenue", accountCategory: "operating_revenue", description: "Revenue from marine services" },
   { accountCode: "4020", accountName: "Project Revenue", accountType: "revenue", accountCategory: "operating_revenue", description: "Revenue from specific projects" },
   { accountCode: "4030", accountName: "Consulting Revenue", accountType: "revenue", accountCategory: "operating_revenue", description: "Revenue from consulting services" },
@@ -73,7 +89,6 @@ const accounts = [
 
   // Expenses - Cost of Goods Sold (5xxx)
   { accountCode: "5000", accountName: "Cost of Goods Sold", accountType: "expense", accountCategory: "cost_of_sales", description: "Direct costs of goods sold" },
-  { accountCode: "5000-P", accountName: "Project Costs Template", accountType: "expense", accountCategory: "cost_of_sales", description: "Template for project-specific costs" },
   { accountCode: "5010", accountName: "Materials Cost", accountType: "expense", accountCategory: "cost_of_sales", description: "Cost of materials used" },
   { accountCode: "5020", accountName: "Direct Labor Cost", accountType: "expense", accountCategory: "cost_of_sales", description: "Direct labor costs" },
   { accountCode: "5030", accountName: "Subcontractor Costs", accountType: "expense", accountCategory: "cost_of_sales", description: "Payments to subcontractors" },
@@ -93,6 +108,7 @@ const accounts = [
   { accountCode: "6100", accountName: "Professional Services", accountType: "expense", accountCategory: "operating_expenses", description: "Legal, accounting, consulting fees" },
   { accountCode: "6110", accountName: "Marketing and Advertising", accountType: "expense", accountCategory: "operating_expenses", description: "Marketing and advertising costs" },
   { accountCode: "6120", accountName: "Travel and Entertainment", accountType: "expense", accountCategory: "operating_expenses", description: "Travel and entertainment expenses" },
+  { accountCode: "6125", accountName: "Accommodation", accountType: "expense", accountCategory: "operating_expenses", description: "Employee accommodation costs" },
   { accountCode: "6130", accountName: "Training and Development", accountType: "expense", accountCategory: "operating_expenses", description: "Employee training costs" },
   { accountCode: "6140", accountName: "Bank Charges", accountType: "expense", accountCategory: "operating_expenses", description: "Bank fees and charges" },
   { accountCode: "6150", accountName: "Equipment Rental", accountType: "expense", accountCategory: "operating_expenses", description: "Expenses for renting equipment" },
@@ -127,7 +143,7 @@ async function seedChartOfAccounts() {
         .insert(chartOfAccounts)
         .values({
           ...account,
-          isActive: true,
+          isActive: account.isActive ?? true,
         })
         .onConflictDoNothing();
     } catch (error: any) {

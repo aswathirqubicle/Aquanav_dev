@@ -121,7 +121,7 @@ export class SalesStorage extends LedgerStorage {
       const result = await db
         .delete(paymentFiles)
         .where(eq(paymentFiles.id, fileId));
-      return result.rowCount && result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -553,7 +553,12 @@ export class SalesStorage extends LedgerStorage {
           }
         } catch (glError) {
           console.error("Error creating GL entries for credit note:", glError);
-          // Don't fail the entire request if GL entry creation fails
+          // Re-throw. Previously this was swallowed, so a credit note could
+          // transition draft -> issued and report success while its ledger
+          // postings had failed - the document said the customer was credited
+          // and the ledger never recorded it. createCreditNote already
+          // re-throws on the same failure; the two paths now agree.
+          throw glError;
         }
       }
 
@@ -1458,7 +1463,7 @@ export class SalesStorage extends LedgerStorage {
     // This is for sales credit notes
     try {
       const result = await db.delete(creditNotes).where(eq(creditNotes.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:

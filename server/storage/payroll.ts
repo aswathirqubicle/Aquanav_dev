@@ -8,6 +8,7 @@ import {
   PayrollDeduction,
   PayrollEntry,
   Project,
+  chartOfAccounts,
   employees,
   generalLedgerEntries,
   payrollAdditions,
@@ -21,13 +22,8 @@ import {
   PayrollEntryEmployeeDetails,
   PayrollEntryWithEmployeeDetails,
 } from "./types";
-import {
-  and,
-  desc,
-  eq,
-  or,
-  sql,
-} from "drizzle-orm";
+import { accountCodeForCategory } from "@shared/payroll-types";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db } from "../db";
 
 export class PayrollStorage extends PurchaseStorage {
@@ -245,6 +241,11 @@ export class PayrollStorage extends PurchaseStorage {
         const salaryToUse = employee.salary;
         let basicSalary = "0";
         let consultantFee = 0;
+        // Feeds payroll_entries.working_days. Despite the column name this now
+        // holds CALENDAR days, for both permanent staff (whole month) and
+        // consultants (days assigned) — payroll pro-rates on calendar days.
+        // The column and the payslip's "Working Days" label are left alone
+        // here; renaming them is a migration plus a UI change.
         let workingDays = this.getCalendarDaysInMonth(month, year);
         let projectId: number | null = null;
         let projectEarningsList: Array<{
@@ -259,79 +260,22 @@ export class PayrollStorage extends PurchaseStorage {
           employee.category === "consultant" ||
           employee.category === "contract"
         ) {
-          // For consultants/contractors, check project assignments
-          let totalEarnings = 0;
-          let totalActualWorkingDays = 0;
+          // Consultants/contractors earn per project, split by real time worked.
           basicSalary = "0";
-
-          // Query assignments for this employee
-          const assignments = await db
-            .select({
-              projectId: projectEmployees.projectId,
-              assignmentStartDate: projectEmployees.startDate,
-              assignmentEndDate: projectEmployees.endDate,
-              projectTitle: projects.title,
-              projectStartDate: projects.startDate,
-              projectPlannedEndDate: projects.plannedEndDate,
-              projectActualEndDate: projects.actualEndDate,
-            })
-            .from(projectEmployees)
-            .leftJoin(projects, eq(projectEmployees.projectId, projects.id))
-            .where(eq(projectEmployees.employeeId, employee.id));
-
-          for (const assignment of assignments) {
-            if (!assignment.projectId) continue;
-
-            const pStart = assignment.assignmentStartDate
-              ? new Date(assignment.assignmentStartDate)
-              : assignment.projectStartDate
-                ? new Date(assignment.projectStartDate)
-                : new Date(year, month - 1, 1);
-            const pEnd = assignment.assignmentEndDate
-              ? new Date(assignment.assignmentEndDate)
-              : assignment.projectActualEndDate
-                ? new Date(assignment.projectActualEndDate)
-                : assignment.projectPlannedEndDate
-                  ? new Date(assignment.projectPlannedEndDate)
-                  : new Date(year, month, 0);
-
-            // Calculate working days in the month for this project
-            const monthStart = new Date(year, month - 1, 1);
-            const monthEnd = new Date(year, month, 0);
-
-            const effectiveStart = pStart > monthStart ? pStart : monthStart;
-            const effectiveEnd = pEnd < monthEnd ? pEnd : monthEnd;
-
-            if (effectiveStart <= effectiveEnd) {
-              const projectWorkingDays = this.calculateWorkingDays(
-                effectiveStart,
-                effectiveEnd,
-              );
-              const salaryToUse = employee.salary;
-              const dailyRate =
-                parseFloat(salaryToUse || "0") /
-                this.getWorkingDaysInMonth(month, year);
-              const earnings = dailyRate * projectWorkingDays;
-
-              if (earnings > 0) {
-                totalEarnings += earnings;
-                totalActualWorkingDays += projectWorkingDays;
-                projectEarningsList.push({
-                  projectId: assignment.projectId,
-                  title: assignment.projectTitle || "Unknown Project",
-                  earnings: earnings,
-                });
-                projectId = assignment.projectId; // Keep last for GL tracking as fallback
-              }
-            }
-          }
-
-          consultantFee = totalEarnings;
-          // Store actual working days (not calendar days) for contract/consultant employees
-          workingDays = totalActualWorkingDays;
+          const split = await this.computeProjectEarnings(employee, month, year);
+          projectEarningsList = split.projectEarningsList;
+          consultantFee = split.totalEarnings;
+          // Store the calendar days actually assigned, so the payslip's day
+          // count matches the basis the money was calculated on.
+          workingDays = split.totalWorkingDays;
+          // Keep the last project as the entry's projectId fallback.
+          projectId =
+            projectEarningsList.length > 0
+              ? projectEarningsList[projectEarningsList.length - 1].projectId
+              : null;
         }
 
-        // Calculate deductions (5% TDS)
+        // PF base at generation = basic + consultant project fees (D2).
         const calculatedTotalEarnings = parseFloat(basicSalary) + consultantFee;
 
         // Skip employees with zero total earnings (e.g. consultants with no active project assignments)
@@ -342,8 +286,14 @@ export class PayrollStorage extends PurchaseStorage {
           continue;
         }
 
-        const tdsAmount = calculatedTotalEarnings * 0.05;
-        const netAmount = calculatedTotalEarnings - tdsAmount;
+        // Manual additions and reimbursements do not exist yet at generation,
+        // so the base here is basic + consultant project fees. It is recomputed
+        // by updatePayrollEntryTotals when additions change (2.3).
+        const pfAmount = this.computePfAmount(
+          parseFloat(basicSalary),
+          consultantFee,
+        );
+        const netAmount = calculatedTotalEarnings - pfAmount;
 
         // Create payroll entry
         const [payrollEntry] = await db
@@ -355,20 +305,21 @@ export class PayrollStorage extends PurchaseStorage {
             workingDays: workingDays,
             basicSalary: basicSalary,
             totalAdditions: consultantFee.toFixed(2),
-            totalDeductions: tdsAmount.toFixed(2),
+            totalDeductions: pfAmount.toFixed(2),
             totalAmount: netAmount.toFixed(2),
             status: "generated",
             projectId: projectId,
           })
           .returning();
 
-        // Create automatic TDS deduction
-        if (tdsAmount > 0) {
+        // Create the system-generated Provident Fund deduction row.
+        if (pfAmount > 0) {
           await db.insert(payrollDeductions).values({
             payrollEntryId: payrollEntry.id,
+            type: "provident_fund",
             description: "Provident Fund Contribution",
-            amount: tdsAmount.toFixed(2),
-            note: "5% of total earnings",
+            amount: pfAmount.toFixed(2),
+            note: "5% of PF base (basic + additions excluding reimbursements)",
           });
         }
 
@@ -381,6 +332,7 @@ export class PayrollStorage extends PurchaseStorage {
           for (const projectEarning of projectEarningsList) {
             await db.insert(payrollAdditions).values({
               payrollEntryId: payrollEntry.id,
+              type: "project_fee",
               description: `Project Fee: ${projectEarning.title}`,
               amount: projectEarning.earnings.toFixed(2),
               note: `Earnings for project during ${this.getMonthName(month)} ${year}`,
@@ -407,6 +359,10 @@ export class PayrollStorage extends PurchaseStorage {
           if (reimbursementAmount > 0) {
             await db.insert(payrollAdditions).values({
               payrollEntryId: payrollEntry.id,
+              // Not an earning — repays the employee's own outlay. Typed so the
+              // provident-fund base and Salary Expense can exclude it without
+              // matching on the "Reimbursement: " description prefix.
+              type: "reimbursement",
               description: `Reimbursement: ${reimbursement.description?.substring(0, 50) || "Expense claim"}`,
               amount: reimbursementAmount.toFixed(2),
               note: `Original expense date: ${reimbursement.originalExpenseDate}`,
@@ -447,95 +403,9 @@ export class PayrollStorage extends PurchaseStorage {
           }
         }
 
-        // Create double-entry GL records for salary expense only if amount > 0
-        if (calculatedTotalEarnings > 0) {
-          const transactionDate = `${year}-${month.toString().padStart(2, "0")}-01`;
-
-          let glEmployeeFirstName = employee.firstName;
-          let glEmployeeLastName = employee.lastName;
-
-          if (!glEmployeeFirstName && !glEmployeeLastName) {
-            console.warn(
-              `Employee ID ${employee.id} has null first and last names. Using defaults for GL employee name.`,
-            );
-            glEmployeeFirstName = "Unknown";
-            glEmployeeLastName = "Employee";
-          } else if (!glEmployeeFirstName) {
-            glEmployeeFirstName = "Unknown";
-          } else if (!glEmployeeLastName) {
-            glEmployeeLastName = "Employee";
-          }
-          const employeeName = `${glEmployeeFirstName} ${glEmployeeLastName}`;
-          const monthName = this.getMonthName(month);
-
-          console.log(
-            `Creating GL entries for ${employeeName} - ${monthName} ${year} - Amount: ${calculatedTotalEarnings.toFixed(2)}`,
-          );
-
-          // 1. Debit: Salary Expense (increase expense)
-          if (projectEarningsList.length > 0) {
-            // Multiple GL entries for per-project allocation
-            for (const projectEarning of projectEarningsList) {
-              await this.createGeneralLedgerEntry({
-                entryType: "payable",
-                referenceType: "manual",
-                referenceId: payrollEntry.id,
-                accountName: "Salary Expense",
-                description: `Salary for ${employeeName} - Project: ${projectEarning.title} - ${monthName} ${year}`,
-                debitAmount: projectEarning.earnings.toFixed(2),
-                creditAmount: "0",
-                entityId: employee.id,
-                entityName: employeeName,
-                projectId: projectEarning.projectId,
-                transactionDate: transactionDate,
-                status: "pending",
-                createdBy: userId,
-              });
-            }
-          } else {
-            // Single GL entry for permanent employees or if no projects (though calculatedTotalEarnings > 0 implies one)
-            await this.createGeneralLedgerEntry({
-              entryType: "payable",
-              referenceType: "manual",
-              referenceId: payrollEntry.id,
-              accountName: "Salary Expense",
-              description: `Salary for ${employeeName} - ${monthName} ${year}`,
-              debitAmount: calculatedTotalEarnings.toFixed(2),
-              creditAmount: "0",
-              entityId: employee.id,
-              entityName: employeeName,
-              projectId: projectId || undefined,
-              transactionDate: transactionDate,
-              status: "pending",
-              createdBy: userId,
-            });
-          }
-
-          // 2. Credit: Salary Payable (increase liability - what we owe the employee)
-          await this.createGeneralLedgerEntry({
-            entryType: "payable",
-            referenceType: "manual",
-            referenceId: payrollEntry.id,
-            accountName: "Salary Payable",
-            description: `Salary payable to ${employeeName} - ${monthName} ${year}`,
-            debitAmount: "0",
-            creditAmount: calculatedTotalEarnings.toFixed(2),
-            entityId: employee.id,
-            entityName: employeeName,
-            projectId: projectId || undefined,
-            transactionDate: transactionDate,
-            status: "pending",
-            createdBy: userId,
-          });
-
-          console.log(
-            `Successfully created payroll entry and GL records for ${employeeName}`,
-          );
-        } else {
-          console.log(
-            `Skipping GL entries for employee ${employee.firstName} ${employee.lastName} - no earnings for ${this.getMonthName(month)} ${year}`,
-          );
-        }
+        // No GL at generation (D7). The accrual posts when the entry is
+        // APPROVED — see postPayrollAccrual — so a generated entry carries no
+        // ledger rows and drafts never touch the books.
 
         generatedPayroll.push({
           // Map to PayrollEntryWithEmployeeDetails
@@ -545,8 +415,6 @@ export class PayrollStorage extends PurchaseStorage {
           year: payrollEntry.year,
           workingDays: payrollEntry.workingDays,
           basicSalary: payrollEntry.basicSalary,
-          additions: payrollEntry.additions,
-          deductions: payrollEntry.deductions,
           totalAdditions: payrollEntry.totalAdditions,
           totalDeductions: payrollEntry.totalDeductions,
           totalAmount: payrollEntry.totalAmount,
@@ -581,6 +449,304 @@ export class PayrollStorage extends PurchaseStorage {
     }
   }
 
+  /**
+   * referenceType for the payroll accrual, kept distinct from "manual"
+   * (journals) and "payroll_payment" so a period clear can target payroll rows
+   * without touching a genuine journal that shares a reference id (L8).
+   */
+  private readonly PAYROLL_ACCRUAL_REF = "payroll";
+
+  /**
+   * Post the payroll accrual for one entry, at APPROVAL (D7). Idempotent — if the
+   * accrual is already in the ledger it does nothing, so approving twice, or a
+   * direct generated→paid jump that posts it on the way, is safe.
+   *
+   *   Dr Salary Expense      earnings (basic + additions excl. reimbursements),
+   *                          split per project by real time worked (L15/L12)
+   *   Dr <category account>  each reimbursement, by category, carrying projectId (D16)
+   *      Cr Provident Fund 2120  the PF withheld
+   *      Cr Salary Payable       earnings − PF + reimbursements (D18)
+   *
+   * Advances (non-PF deductions) get no line — they stay inside Salary Payable
+   * and are recognised only when it is paid (D18). ΣDr = ΣCr by construction.
+   */
+  async postPayrollAccrual(entryId: number, userId?: number): Promise<void> {
+    const entry = await this.getPayrollEntry(entryId);
+    if (!entry) return;
+
+    // Idempotent: skip if this entry already has accrual rows.
+    const already = await db
+      .select({ id: generalLedgerEntries.id })
+      .from(generalLedgerEntries)
+      .where(
+        and(
+          eq(generalLedgerEntries.referenceType, this.PAYROLL_ACCRUAL_REF),
+          eq(generalLedgerEntries.referenceId, entryId),
+        ),
+      )
+      .limit(1);
+    if (already.length > 0) return;
+
+    const employeeId = entry.employeeId ?? undefined;
+    if (employeeId === undefined) return;
+
+    const [employee] = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+    if (!employee) return;
+
+    const additions = await this.getPayrollAdditions(entryId);
+    const deductions = await this.getPayrollDeductions(entryId);
+    const reimbRecords = await db
+      .select()
+      .from(reimbursements)
+      .where(
+        and(
+          eq(reimbursements.employeeId, employeeId),
+          eq(reimbursements.payrollMonth, entry.month),
+          eq(reimbursements.payrollYear, entry.year),
+          eq(reimbursements.status, "approved"),
+        ),
+      );
+
+    const basic = parseFloat(entry.basicSalary || "0");
+    const earnings =
+      basic +
+      additions
+        .filter((a) => a.type !== "reimbursement")
+        .reduce((s, a) => s + parseFloat(a.amount || "0"), 0);
+    const pf = deductions
+      .filter((d) => d.type === "provident_fund")
+      .reduce((s, d) => s + parseFloat(d.amount || "0"), 0);
+    const reimbTotal = reimbRecords.reduce(
+      (s, r) => s + parseFloat(r.amount || "0"),
+      0,
+    );
+    const payable = earnings - pf + reimbTotal;
+
+    if (earnings <= 0 && reimbTotal <= 0) return; // nothing to post (T4.18)
+
+    const employeeName =
+      `${employee.firstName || "Unknown"} ${employee.lastName || "Employee"}`.trim();
+    const monthName = this.getMonthName(entry.month);
+    // Month worked, not the approval date (D7).
+    const transactionDate = `${entry.year}-${entry.month
+      .toString()
+      .padStart(2, "0")}-01`;
+
+    const line = (over: {
+      accountName: string;
+      description: string;
+      debitAmount?: string;
+      creditAmount?: string;
+      projectId?: number;
+    }) => ({
+      entryType: "payable",
+      referenceType: this.PAYROLL_ACCRUAL_REF,
+      referenceId: entryId,
+      entityId: employee.id,
+      entityName: employeeName,
+      transactionDate,
+      status: "pending",
+      createdBy: userId,
+      debitAmount: "0",
+      creditAmount: "0",
+      ...over,
+    });
+
+    // Dr Salary Expense — split per project by real time worked.
+    if (earnings > 0) {
+      const split = await this.computeProjectEarnings(
+        employee,
+        entry.month,
+        entry.year,
+      );
+      if (split.projectEarningsList.length > 0) {
+        const debits = this.splitAmountAcrossRows(
+          split.projectEarningsList.map((p) => p.earnings),
+          earnings,
+        );
+        for (let i = 0; i < split.projectEarningsList.length; i++) {
+          await this.createGeneralLedgerEntry(
+            line({
+              accountName: "Salary Expense",
+              description: `Salary for ${employeeName} - Project: ${split.projectEarningsList[i].title} - ${monthName} ${entry.year}`,
+              debitAmount: debits[i].toFixed(2),
+              projectId: split.projectEarningsList[i].projectId,
+            }),
+          );
+        }
+      } else {
+        await this.createGeneralLedgerEntry(
+          line({
+            accountName: "Salary Expense",
+            description: `Salary for ${employeeName} - ${monthName} ${entry.year}`,
+            debitAmount: earnings.toFixed(2),
+            projectId: entry.projectId || undefined,
+          }),
+        );
+      }
+    }
+
+    // Dr each reimbursement to its category account (D16); the liability rides
+    // Salary Payable (routed through salary — no separate reimbursement payable).
+    for (const r of reimbRecords) {
+      const amt = parseFloat(r.amount || "0");
+      if (amt <= 0) continue;
+      const code = accountCodeForCategory(r.category);
+      const [acct] = await db
+        .select({ name: chartOfAccounts.accountName })
+        .from(chartOfAccounts)
+        .where(eq(chartOfAccounts.accountCode, code))
+        .limit(1);
+      await this.createGeneralLedgerEntry(
+        line({
+          accountName: acct?.name || "Employee Reimbursement",
+          description: `Reimbursement (${r.category}) for ${employeeName} - ${monthName} ${entry.year}`,
+          debitAmount: amt.toFixed(2),
+          projectId: r.projectId || undefined,
+        }),
+      );
+    }
+
+    // Cr Provident Fund Contribution (2120).
+    if (pf > 0) {
+      await this.createGeneralLedgerEntry(
+        line({
+          accountName: "Provident Fund Contribution",
+          description: `Provident Fund for ${employeeName} - ${monthName} ${entry.year}`,
+          creditAmount: pf.toFixed(2),
+        }),
+      );
+    }
+
+    // Cr Salary Payable — earnings − PF + reimbursements (D18).
+    await this.createGeneralLedgerEntry(
+      line({
+        accountName: "Salary Payable",
+        description: `Salary payable to ${employeeName} - ${monthName} ${entry.year}`,
+        creditAmount: payable.toFixed(2),
+        projectId: entry.projectId || undefined,
+      }),
+    );
+  }
+
+  /**
+   * Post the salary payment for one entry, at mark-paid ("Generate Payslip").
+   * Debits Salary Payable by the exact figure the accrual credited it — read
+   * back from the ledger — so the payable clears to zero with no drift (D18/L2).
+   *   Dr Salary Payable (accrual credit) / Cr Cash/Bank (same)
+   */
+  async postPayrollPayment(entryId: number, userId?: number): Promise<void> {
+    const [payableRow] = await db
+      .select({ creditAmount: generalLedgerEntries.creditAmount })
+      .from(generalLedgerEntries)
+      .where(
+        and(
+          eq(generalLedgerEntries.referenceType, this.PAYROLL_ACCRUAL_REF),
+          eq(generalLedgerEntries.referenceId, entryId),
+          eq(generalLedgerEntries.accountName, "Salary Payable"),
+        ),
+      )
+      .limit(1);
+    const amount = payableRow ? parseFloat(payableRow.creditAmount || "0") : 0;
+    if (amount <= 0) return;
+
+    const entry = await this.getPayrollEntry(entryId);
+    if (!entry) return;
+    const employeeId = entry.employeeId ?? undefined;
+    if (employeeId === undefined) return;
+    const [employee] = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.id, employeeId))
+      .limit(1);
+    const employeeName = employee
+      ? `${employee.firstName || "Unknown"} ${employee.lastName || "Employee"}`.trim()
+      : "Unknown Employee";
+    const monthName = this.getMonthName(entry.month);
+    const transactionDate = new Date().toISOString().split("T")[0];
+
+    await this.createGeneralLedgerEntry({
+      entryType: "payable",
+      referenceType: "payroll_payment",
+      referenceId: entryId,
+      accountName: "Salary Payable",
+      description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
+      debitAmount: amount.toFixed(2),
+      creditAmount: "0",
+      entityId: employeeId,
+      entityName: employeeName,
+      projectId: entry.projectId || undefined,
+      transactionDate,
+      status: "paid",
+      createdBy: userId,
+    });
+    await this.createGeneralLedgerEntry({
+      entryType: "payable",
+      referenceType: "payroll_payment",
+      referenceId: entryId,
+      accountName: "Cash/Bank",
+      description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
+      debitAmount: "0",
+      creditAmount: amount.toFixed(2),
+      entityId: employeeId,
+      entityName: employeeName,
+      projectId: entry.projectId || undefined,
+      transactionDate,
+      status: "paid",
+      createdBy: userId,
+    });
+  }
+
+  /**
+   * Reverse every payroll GL row for an entry — the accrual ("payroll") and the
+   * payment ("payroll_payment") — by posting a mirror row with debit/credit
+   * swapped (L3/L24). Originals are kept so the audit trail survives; each pair
+   * nets to zero. Reversals carry "payroll_reversal" so a later clear cannot
+   * re-reverse them. Returns the number of reversal rows posted.
+   */
+  private async reversePayrollGLForEntry(
+    entryId: number,
+    userId?: number,
+  ): Promise<number> {
+    const rows = await db
+      .select()
+      .from(generalLedgerEntries)
+      .where(
+        and(
+          eq(generalLedgerEntries.referenceId, entryId),
+          or(
+            eq(generalLedgerEntries.referenceType, this.PAYROLL_ACCRUAL_REF),
+            eq(generalLedgerEntries.referenceType, "payroll_payment"),
+          ),
+        ),
+      );
+    const transactionDate = new Date().toISOString().split("T")[0];
+    let count = 0;
+    for (const r of rows) {
+      await this.createGeneralLedgerEntry({
+        entryType: r.entryType,
+        referenceType: "payroll_reversal",
+        referenceId: entryId,
+        accountName: r.accountName,
+        description: `Reversal: ${r.description ?? ""}`,
+        debitAmount: r.creditAmount ?? "0", // swap
+        creditAmount: r.debitAmount ?? "0", // swap
+        entityId: r.entityId ?? undefined,
+        entityName: r.entityName ?? undefined,
+        projectId: r.projectId ?? undefined,
+        transactionDate,
+        status: r.status ?? "pending",
+        createdBy: userId,
+      });
+      count++;
+    }
+    return count;
+  }
+
   async updatePayrollEntry(
     id: number,
     data: Partial<InsertPayrollEntry>,
@@ -606,79 +772,20 @@ export class PayrollStorage extends PurchaseStorage {
         // Update totals after any changes
         await this.updatePayrollEntryTotals(id);
 
-        // Check if status changed to "paid"
-        if (data.status === "paid" && oldStatus !== "paid" && updatedEntry) {
-          const employeeDetails = await db
-            .select()
-            .from(employees)
-            .where(eq(employees.id, updatedEntry.employeeId))
-            .limit(1);
-
-          if (employeeDetails.length > 0) {
-            const employee = employeeDetails[0];
-            let glEmployeeFirstName = employee.firstName || "Unknown";
-            let glEmployeeLastName = employee.lastName || "Employee";
-            if (employee.firstName === null && employee.lastName === null) {
-              // Already handled by initialization, but explicit log for clarity if both were null
-              console.warn(
-                `Employee ID ${employee.id} has null first and last names. Using defaults "Unknown Employee" for GL payment entries.`,
-              );
-            } else if (employee.firstName === null) {
-              glEmployeeFirstName = "Unknown";
-            } else if (employee.lastName === null) {
-              glEmployeeLastName = "Employee";
-            }
-            const employeeName = `${glEmployeeFirstName} ${glEmployeeLastName}`;
-            const monthName = this.getMonthName(updatedEntry.month);
-            const transactionDate = new Date().toISOString().split("T")[0];
-            const totalAmountStr = updatedEntry.totalAmount
-              ? parseFloat(updatedEntry.totalAmount).toFixed(2)
-              : "0.00";
-
-            console.log(
-              `Processing 'paid' status update for payroll entry ID ${updatedEntry.id}. Employee: ${employeeName}, Amount: ${totalAmountStr}`,
-            );
-
-            // 1. Debit: Salary Payable (decrease liability)
-            await this.createGeneralLedgerEntry({
-              entryType: "payable",
-              referenceType: "payroll_payment",
-              referenceId: updatedEntry.id,
-              accountName: "Salary Payable",
-              description: `Paid salary to ${employeeName} - ${monthName} ${updatedEntry.year}`,
-              debitAmount: totalAmountStr,
-              creditAmount: "0",
-              entityId: updatedEntry.employeeId,
-              entityName: employeeName,
-              projectId: updatedEntry.projectId || undefined,
-              transactionDate: transactionDate,
-              status: "paid",
-              createdBy: userId,
-            });
-
-            // 2. Credit: Cash/Bank (decrease asset)
-            await this.createGeneralLedgerEntry({
-              entryType: "payable", // Or "asset" if treating Cash/Bank as asset reduction. "payable" aligns with other payment GLs.
-              referenceType: "payroll_payment",
-              referenceId: updatedEntry.id,
-              accountName: "Cash/Bank",
-              description: `Paid salary to ${employeeName} - ${monthName} ${updatedEntry.year}`,
-              debitAmount: "0",
-              creditAmount: totalAmountStr,
-              entityId: updatedEntry.employeeId,
-              entityName: employeeName,
-              projectId: updatedEntry.projectId || undefined,
-              transactionDate: transactionDate,
-              status: "paid",
-              createdBy: userId,
-            });
-            console.log(
-              `Created GL payment entries for payroll ID ${updatedEntry.id}`,
-            );
-          } else {
-            console.error(
-              `Failed to retrieve employee details for employee ID ${updatedEntry.employeeId} during GL payment entry creation.`,
-            );
+        // Post GL on the status transitions (D7/D18/G4).
+        if (updatedEntry) {
+          // The accrual posts when the entry becomes approved — and also on a
+          // direct generated→paid jump, so a payment never lacks its accrual.
+          // postPayrollAccrual is idempotent, so approved→paid won't double it.
+          if (
+            (data.status === "approved" && oldStatus !== "approved") ||
+            (data.status === "paid" && oldStatus !== "paid")
+          ) {
+            await this.postPayrollAccrual(id, userId);
+          }
+          // The payment posts when the entry becomes paid.
+          if (data.status === "paid" && oldStatus !== "paid") {
+            await this.postPayrollPayment(id, userId);
           }
         }
         return updatedEntry; // Return the updated entry from the result array
@@ -698,20 +805,157 @@ export class PayrollStorage extends PurchaseStorage {
     }
   }
 
+  private readonly PF_RATE = 0.05;
+
+  /**
+   * Sum of additions that count toward the Provident Fund base. Everything an
+   * employee earns counts EXCEPT reimbursements, which are the employee's own
+   * money being returned, not pay (D2). Reimbursements are identified by their
+   * `type`, never by a description prefix.
+   */
+  private pfEligibleAdditionsSum(
+    additions: { type?: string | null; amount?: string | null }[],
+  ): number {
+    return additions
+      .filter((a) => a.type !== "reimbursement")
+      .reduce((sum, a) => sum + parseFloat(a.amount || "0"), 0);
+  }
+
+  /**
+   * Provident Fund amount = 5% of the PF base. The base is earnings only —
+   * basic salary plus PF-eligible additions — and is NEVER reduced by
+   * deductions (D2): deductions are recoveries of money already advanced, so
+   * letting them shrink the base would give two identical earners different PF.
+   */
+  private computePfAmount(
+    basicSalary: number,
+    pfEligibleAdditions: number,
+  ): number {
+    return (basicSalary + pfEligibleAdditions) * this.PF_RATE;
+  }
+
+  /**
+   * Split `total` across N rows in proportion to their current weights, each
+   * rounded to 2dp, with the rounding remainder placed on the largest row so
+   * the parts sum to `total` to the cent (L12). One row takes the whole total;
+   * all-zero weights fall back to an even split.
+   */
+  private splitAmountAcrossRows(weights: number[], total: number): number[] {
+    const n = weights.length;
+    if (n === 0) return [];
+    if (n === 1) return [total];
+
+    const positive = weights.some((w) => w > 0);
+    const effective = positive ? weights : weights.map(() => 1);
+    const weightSum = effective.reduce((s, w) => s + w, 0);
+
+    const rounded = effective.map(
+      (w) => Math.round(((total * w) / weightSum) * 100) / 100,
+    );
+    const remainder =
+      Math.round((total - rounded.reduce((s, v) => s + v, 0)) * 100) / 100;
+    if (remainder !== 0) {
+      let largest = 0;
+      for (let i = 1; i < rounded.length; i++) {
+        if (rounded[i] > rounded[largest]) largest = i;
+      }
+      rounded[largest] = Math.round((rounded[largest] + remainder) * 100) / 100;
+    }
+    return rounded;
+  }
+
+  /**
+   * Per-project earnings for a consultant/contract employee in a month, split by
+   * the CALENDAR days each assignment overlaps the month (the same basis as the
+   * payslip). Contract assignments do not overlap, so their days sum cleanly to
+   * at most the month; consultants may hold overlapping assignments and are paid
+   * per project, so their days — and pay — can exceed a single month. Used at
+   * generation AND when posting the accrual at approval, so the Salary Expense
+   * split always reflects real time worked (4.6). Permanent staff have no
+   * project earnings here (their pay is basic salary, one row, no project).
+   */
+  private async computeProjectEarnings(
+    employee: { id: number; salary: string | null },
+    month: number,
+    year: number,
+  ): Promise<{
+    projectEarningsList: Array<{
+      projectId: number;
+      title: string;
+      earnings: number;
+    }>;
+    totalEarnings: number;
+    totalWorkingDays: number;
+  }> {
+    const projectEarningsList: Array<{
+      projectId: number;
+      title: string;
+      earnings: number;
+    }> = [];
+    let totalEarnings = 0;
+    let totalWorkingDays = 0;
+
+    const assignments = await db
+      .select({
+        projectId: projectEmployees.projectId,
+        assignmentStartDate: projectEmployees.startDate,
+        assignmentEndDate: projectEmployees.endDate,
+        projectTitle: projects.title,
+        projectStartDate: projects.startDate,
+        projectPlannedEndDate: projects.plannedEndDate,
+        projectActualEndDate: projects.actualEndDate,
+      })
+      .from(projectEmployees)
+      .leftJoin(projects, eq(projectEmployees.projectId, projects.id))
+      .where(eq(projectEmployees.employeeId, employee.id));
+
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const dailyRate =
+      parseFloat(employee.salary || "0") /
+      this.getCalendarDaysInMonth(month, year);
+
+    for (const assignment of assignments) {
+      if (!assignment.projectId) continue;
+
+      const pStart = assignment.assignmentStartDate
+        ? new Date(assignment.assignmentStartDate)
+        : assignment.projectStartDate
+          ? new Date(assignment.projectStartDate)
+          : monthStart;
+      const pEnd = assignment.assignmentEndDate
+        ? new Date(assignment.assignmentEndDate)
+        : assignment.projectActualEndDate
+          ? new Date(assignment.projectActualEndDate)
+          : assignment.projectPlannedEndDate
+            ? new Date(assignment.projectPlannedEndDate)
+            : monthEnd;
+
+      const effectiveStart = pStart > monthStart ? pStart : monthStart;
+      const effectiveEnd = pEnd < monthEnd ? pEnd : monthEnd;
+      if (effectiveStart > effectiveEnd) continue;
+
+      const days = this.calculateCalendarDays(effectiveStart, effectiveEnd);
+      const earnings = dailyRate * days;
+      if (earnings > 0) {
+        totalEarnings += earnings;
+        totalWorkingDays += days;
+        projectEarningsList.push({
+          projectId: assignment.projectId,
+          title: assignment.projectTitle || "Unknown Project",
+          earnings,
+        });
+      }
+    }
+
+    return { projectEarningsList, totalEarnings, totalWorkingDays };
+  }
+
   async updatePayrollEntryTotals(payrollEntryId: number): Promise<void> {
     try {
       // Get all additions and deductions for this payroll entry
       const additions = await this.getPayrollAdditions(payrollEntryId);
       const deductions = await this.getPayrollDeductions(payrollEntryId);
-
-      const totalAdditions = additions.reduce(
-        (sum, addition) => sum + parseFloat(addition.amount || "0"),
-        0,
-      );
-      const totalDeductions = deductions.reduce(
-        (sum, deduction) => sum + parseFloat(deduction.amount || "0"),
-        0,
-      );
 
       // Get the basic salary
       const payrollEntry = await db
@@ -725,6 +969,51 @@ export class PayrollStorage extends PurchaseStorage {
       }
 
       const basicSalary = parseFloat(payrollEntry[0].basicSalary || "0");
+
+      // Recompute Provident Fund before summing deductions (2.3). PF tracks the
+      // additions (a bonus raises it); it does not track deductions, so this is
+      // a no-op when only a deduction changed. The system-generated PF row is
+      // updated in place to the new figure so it flows into totalDeductions and
+      // net below; it is identified by type, and is not hand-editable (2.4).
+      const pfAmount = this.computePfAmount(
+        basicSalary,
+        this.pfEligibleAdditionsSum(additions),
+      );
+      const newPf = pfAmount.toFixed(2);
+      const pfRow = deductions.find((d) => d.type === "provident_fund");
+      if (pfRow) {
+        if (pfRow.amount !== newPf) {
+          await db
+            .update(payrollDeductions)
+            .set({ amount: newPf })
+            .where(eq(payrollDeductions.id, pfRow.id));
+          pfRow.amount = newPf;
+        }
+      } else if (pfAmount > 0) {
+        // No PF row yet — e.g. an entry generated with zero earnings that has
+        // since received an addition. Create it so PF stays consistent.
+        const [created] = await db
+          .insert(payrollDeductions)
+          .values({
+            payrollEntryId: payrollEntryId,
+            type: "provident_fund",
+            description: "Provident Fund Contribution",
+            amount: newPf,
+            note: "5% of PF base (basic + additions excluding reimbursements)",
+          })
+          .returning();
+        deductions.push(created);
+      }
+
+      const totalAdditions = additions.reduce(
+        (sum, addition) => sum + parseFloat(addition.amount || "0"),
+        0,
+      );
+      const totalDeductions = deductions.reduce(
+        (sum, deduction) => sum + parseFloat(deduction.amount || "0"),
+        0,
+      );
+
       const totalEarnings = basicSalary + totalAdditions;
       const totalAmount = totalEarnings - totalDeductions;
 
@@ -738,39 +1027,11 @@ export class PayrollStorage extends PurchaseStorage {
         })
         .where(eq(payrollEntries.id, payrollEntryId));
 
-      // Update corresponding general ledger entries
-      const employee = await db
-        .select()
-        .from(employees)
-        .where(eq(employees.id, payrollEntry[0].employeeId))
-        .limit(1);
-
-      if (employee.length > 0) {
-        const employeeName = `${employee[0].firstName} ${employee[0].lastName}`;
-        const monthName = this.getMonthName(payrollEntry[0].month);
-
-        // Update GL entries with new amounts
-        const salaryDescription = `Salary for ${employeeName} - ${monthName} ${payrollEntry[0].year}`;
-        const payableDescription = `Salary payable to ${employeeName} - ${monthName} ${payrollEntry[0].year}`;
-
-        await db.execute(sql`
-          UPDATE general_ledger_entries 
-          SET debit_amount = ${totalEarnings.toFixed(2)},
-              description = ${salaryDescription}
-          WHERE reference_type = 'manual' 
-            AND reference_id = ${payrollEntryId} 
-            AND account_name = 'Salary Expense'
-        `);
-
-        await db.execute(sql`
-          UPDATE general_ledger_entries 
-          SET credit_amount = ${totalEarnings.toFixed(2)},
-              description = ${payableDescription}
-          WHERE reference_type = 'manual' 
-            AND reference_id = ${payrollEntryId} 
-            AND account_name = 'Salary Payable'
-        `);
-      }
+      // No GL here anymore. Since P4 the accrual posts at approval
+      // (postPayrollAccrual), and additions/deductions are locked once approved,
+      // so recomputing totals never has an accrual to update — the split now
+      // lives in postPayrollAccrual. This method only maintains the stored
+      // totals and the system PF row (2.3).
 
       console.log(
         `Updated payroll entry ${payrollEntryId} totals: additions=${totalAdditions.toFixed(
@@ -796,6 +1057,7 @@ export class PayrollStorage extends PurchaseStorage {
   async clearPayrollPeriod(
     month: number,
     year: number,
+    userId?: number,
   ): Promise<{
     deletedPayrollEntries: number;
     deletedGeneralLedgerEntries: number;
@@ -810,22 +1072,13 @@ export class PayrollStorage extends PurchaseStorage {
 
       const payrollIds = payrollEntriesToDelete.map((entry) => entry.id);
 
-      // Delete related general ledger entries by iterating through each payroll ID
+      // Reverse each entry's payroll GL — accrual AND payment — instead of the
+      // old incomplete "manual" hard-delete that left PF, reimbursement, Cash
+      // and payment rows orphaned (L3). Originals stay; the reversals net them
+      // to zero. Then the entries themselves are removed below.
       let deletedGLCount = 0;
       for (const payrollId of payrollIds) {
-        const result = await db
-          .delete(generalLedgerEntries)
-          .where(
-            and(
-              eq(generalLedgerEntries.referenceType, "manual"),
-              eq(generalLedgerEntries.referenceId, payrollId.toString()),
-              or(
-                eq(generalLedgerEntries.accountName, "Salary Expense"),
-                eq(generalLedgerEntries.accountName, "Salary Payable"),
-              ),
-            ),
-          );
-        deletedGLCount += result.rowCount || 0;
+        deletedGLCount += await this.reversePayrollGLForEntry(payrollId, userId);
       }
 
       // Delete payroll entries (this will cascade to delete additions and deductions)
@@ -862,7 +1115,7 @@ export class PayrollStorage extends PurchaseStorage {
         .where(
           and(eq(payrollEntries.month, month), eq(payrollEntries.year, year)),
         );
-      return result.rowCount || 0;
+      return result.count ?? 0;
     } catch (error: any) {
       console.error("Original error in clearPayrollEntriesByPeriod:", error); // Keep original console.error
       await this.createErrorLog({
@@ -877,10 +1130,18 @@ export class PayrollStorage extends PurchaseStorage {
     }
   }
 
-  async clearAllPayrollEntries(): Promise<number> {
+  async clearAllPayrollEntries(userId?: number): Promise<number> {
     try {
+      // Reverse the payroll GL for every entry first (L24 — it previously wiped
+      // entries with no ledger handling at all), then delete the entries.
+      const allEntries = await db
+        .select({ id: payrollEntries.id })
+        .from(payrollEntries);
+      for (const e of allEntries) {
+        await this.reversePayrollGLForEntry(e.id, userId);
+      }
       const result = await db.delete(payrollEntries);
-      return result.rowCount || 0;
+      return result.count ?? 0;
     } catch (error: any) {
       console.error("Original error in clearAllPayrollEntries:", error); // Keep original console.error
       await this.createErrorLog({
@@ -893,6 +1154,49 @@ export class PayrollStorage extends PurchaseStorage {
       });
       throw error;
     }
+  }
+
+  /**
+   * Per-employee Provident Fund balance from the ledger (D14). PF accrues as a
+   * credit to "Provident Fund Contribution" (2120) each month and is cleared by
+   * a debit (manual journal) when paid out on exit, so the balance is
+   * Σcredit − Σdebit per employee (entityId). Reversal debits net cleared
+   * payroll back out automatically.
+   */
+  async getProvidentFundBalances(): Promise<
+    Array<{ entityId: number; entityName: string; balance: string }>
+  > {
+    const rows = await db
+      .select({
+        entityId: generalLedgerEntries.entityId,
+        entityName: generalLedgerEntries.entityName,
+        debitAmount: generalLedgerEntries.debitAmount,
+        creditAmount: generalLedgerEntries.creditAmount,
+      })
+      .from(generalLedgerEntries)
+      .where(
+        eq(generalLedgerEntries.accountName, "Provident Fund Contribution"),
+      );
+
+    const byEmployee = new Map<number, { entityName: string; balance: number }>();
+    for (const r of rows) {
+      if (r.entityId == null) continue;
+      const delta =
+        parseFloat(String(r.creditAmount || "0")) -
+        parseFloat(String(r.debitAmount || "0"));
+      const cur = byEmployee.get(r.entityId) ?? {
+        entityName: r.entityName || "Unknown",
+        balance: 0,
+      };
+      cur.balance += delta;
+      byEmployee.set(r.entityId, cur);
+    }
+
+    return Array.from(byEmployee.entries()).map(([entityId, v]) => ({
+      entityId,
+      entityName: v.entityName,
+      balance: v.balance.toFixed(2),
+    }));
   }
 
   // Payroll Additions methods
@@ -946,7 +1250,16 @@ export class PayrollStorage extends PurchaseStorage {
     try {
       const [addition] = await db
         .insert(payrollAdditions)
-        .values(additionData)
+        // `type` is NOT NULL. Fall back to 'bonus' when a caller omits it, so
+        // a client that has not yet been updated cannot fail outright.
+        // 'bonus' is the conservative choice: it is an earning, so it attracts
+        // provident fund and posts to Salary Expense like any other addition.
+        // Applied AFTER the spread — placing it before leaves it dead, since
+        // an explicit undefined from req.body would still overwrite it.
+        .values({
+          ...additionData,
+          type: additionData.type ?? "bonus",
+        })
         .returning();
 
       // Update payroll entry totals
@@ -1079,13 +1392,42 @@ export class PayrollStorage extends PurchaseStorage {
     }
   }
 
+  /**
+   * The Provident Fund deduction is system-generated and kept in step with the
+   * PF base by updatePayrollEntryTotals (2.3). It must never be created,
+   * edited or removed by hand — the recompute assumes exactly one PF row and
+   * owns its amount. The system's own writes use direct db calls, not these
+   * public methods, so guarding here blocks only the manual (route) path.
+   * Carries `code = "PF_PROTECTED"` so the routes can answer 400, not 500.
+   */
+  private providentFundProtectedError(
+    action: "added" | "edited" | "removed",
+  ): Error {
+    const err: any = new Error(
+      `The Provident Fund deduction is calculated automatically and cannot be ${action} manually.`,
+    );
+    err.code = "PF_PROTECTED";
+    return err;
+  }
+
   async createPayrollDeduction(
     deductionData: InsertPayrollDeduction,
   ): Promise<PayrollDeduction> {
+    if (deductionData.type === "provident_fund") {
+      throw this.providentFundProtectedError("added");
+    }
     try {
       const [deduction] = await db
         .insert(payrollDeductions)
-        .values(deductionData)
+        // `type` is NOT NULL. Fall back to 'advance_recovery': the team
+        // confirmed manual deductions are recoveries of money already paid.
+        // It is also the safer default — it settles an asset rather than
+        // creating a liability the company would then owe onward.
+        // Applied AFTER the spread, for the reason noted in createPayrollAddition.
+        .values({
+          ...deductionData,
+          type: deductionData.type ?? "advance_recovery",
+        })
         .returning();
 
       // Update payroll entry totals
@@ -1110,6 +1452,10 @@ export class PayrollStorage extends PurchaseStorage {
     id: number,
     data: Partial<InsertPayrollDeduction>,
   ): Promise<PayrollDeduction | undefined> {
+    const existing = await this.getPayrollDeduction(id);
+    if (existing?.type === "provident_fund") {
+      throw this.providentFundProtectedError("edited");
+    }
     try {
       const result = await db
         .update(payrollDeductions)
@@ -1141,13 +1487,16 @@ export class PayrollStorage extends PurchaseStorage {
   }
 
   async deletePayrollDeduction(id: number): Promise<boolean> {
+    // Fetch first — for the PF guard and for the payroll entry ID. Kept out of
+    // the try so the guard throw is not swallowed and logged as an error.
+    const deduction = await this.getPayrollDeduction(id);
+    if (!deduction) {
+      return false;
+    }
+    if (deduction.type === "provident_fund") {
+      throw this.providentFundProtectedError("removed");
+    }
     try {
-      // Get the deduction first to get payroll entry ID
-      const deduction = await this.getPayrollDeduction(id);
-      if (!deduction) {
-        return false;
-      }
-
       const result = await db
         .delete(payrollDeductions)
         .where(eq(payrollDeductions.id, id));

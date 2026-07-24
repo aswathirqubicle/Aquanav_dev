@@ -253,7 +253,7 @@ export class CustomerStorage extends UserStorage {
   async deleteCustomer(id: number): Promise<boolean> {
     try {
       const result = await db.delete(customers).where(eq(customers.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:

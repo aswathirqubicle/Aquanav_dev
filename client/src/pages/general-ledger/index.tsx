@@ -378,7 +378,8 @@ export default function GeneralLedger() {
 
   const exportToCSV = () => {
     const headers = [
-      "Date",
+      "Created",
+      "Value Date",
       "Type",
       "Account",
       "Description",
@@ -392,6 +393,7 @@ export default function GeneralLedger() {
     ];
 
     const csvData = entries.map(entry => [
+      formatDisplayDate(entry.createdAt),
       formatDisplayDate(entry.transactionDate),
       entry.entryType,
       entry.accountName,
@@ -718,7 +720,8 @@ export default function GeneralLedger() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Value Date</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Account</TableHead>
                       <TableHead>Description</TableHead>
@@ -732,14 +735,17 @@ export default function GeneralLedger() {
                   <TableBody>
                     {entries.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                           No entries found.
                         </TableCell>
                       </TableRow>
                     ) : (
                       entries.map((entry) => (
                         <TableRow key={entry.id}>
-                          <TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatDisplayDate(entry.createdAt)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
                             {formatDisplayDate(entry.transactionDate)}
                           </TableCell>
                           <TableCell>
