@@ -93,6 +93,13 @@ import { generatePurchaseInvoiceHTML } from "./documents/purchase-invoice-html";
 import { generateProjectPrintHTML } from "./documents/project-print-html";
 import { generateCompletionReportHTML } from "./documents/completion-report-html";
 import { generateConsumablePrintHTML } from "./documents/consumable-print-html";
+import { upload } from "./middleware/upload";
+import {
+  requireAuth,
+  requireRole,
+  checkProjectAccess,
+} from "./middleware/auth";
+import { parseProjectDataFromFormData } from "./lib/parse-project-form";
 
 
 declare module "express-session" {
@@ -101,88 +108,6 @@ declare module "express-session" {
     userRole?: string;
   }
 }
-
-// Configure multer for file uploads
-const storage_multer = multer.diskStorage({
-  destination: function (req, file, cb) {
-    // Determine directory based on route
-    let uploadDir = "uploads/payment-files";
-    if (req.originalUrl?.includes("/api/customers")) {
-      uploadDir = "uploads/customer-documents";
-    } else if (req.originalUrl?.includes("/api/suppliers")) {
-      uploadDir = "uploads/supplier-documents";
-    } else if (req.originalUrl?.includes("/photo-groups")) {
-      uploadDir = "uploads/projects/photogroups";
-    } else if (req.originalUrl?.includes("/api/projects")) {
-      uploadDir = "uploads/projects/vesselimage";
-    } else if (req.originalUrl?.includes("/api/employees")) {
-      uploadDir = "uploads/employee-documents";
-    } else if (req.originalUrl?.includes("/api/company")) {
-      uploadDir = "uploads/company";
-    } else if (req.originalUrl?.includes("/api/purchase-orders")) {
-      uploadDir = "uploads/purchase-order";
-    } else if (req.originalUrl?.includes("/api/purchase-invoices")) {
-      uploadDir = "uploads/purchase-invoice";
-    } else if (req.originalUrl?.includes("reimbursements")) {
-      uploadDir = "uploads/reimbursements";
-    } else if (req.originalUrl?.includes("/api/print")) {
-      uploadDir = "uploads/report";
-    }
-
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
-    );
-  },
-});
-
-const upload = multer({
-  storage: storage_multer,
-  limits: {
-    fileSize: 25 * 1024 * 1024, // 25MB limit
-  },
-  fileFilter: function (req, file, cb) {
-    // Check if the route is for photo group uploads, which should be stricter
-    if (req.originalUrl.includes("/photo-groups")) {
-      const allowedImageTypes = /jpeg|jpg|png|gif/;
-      const isImage =
-        allowedImageTypes.test(path.extname(file.originalname).toLowerCase()) &&
-        allowedImageTypes.test(file.mimetype);
-      if (isImage) {
-        cb(null, true);
-      } else {
-        cb(
-          new Error(
-            "Only image files (jpeg, jpg, png, gif) are allowed for photo groups.",
-          ),
-        );
-      }
-    } else {
-      // For other routes, allow documents as well
-      const allowedGeneralTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx/;
-      const isAllowed =
-        allowedGeneralTypes.test(
-          path.extname(file.originalname).toLowerCase(),
-        ) && allowedGeneralTypes.test(file.mimetype);
-      if (isAllowed) {
-        cb(null, true);
-      } else {
-        cb(
-          new Error(
-            "Invalid file type. Allowed types include images and common documents.",
-          ),
-        );
-      }
-    }
-  },
-});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(
@@ -207,23 +132,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       },
     }),
   );
-
-  // Auth middleware
-  const requireAuth = (req: any, res: any, next: any) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    next();
-  };
-
-  const requireRole = (roles: string[]) => {
-    return (req: any, res: any, next: any) => {
-      if (!req.session.userRole || !roles.includes(req.session.userRole)) {
-        return res.status(403).json({ message: "Insufficient permissions" });
-      }
-      next();
-    };
-  };
 
   // Authentication routes
   app.post("/api/auth/login", async (req, res) => {
@@ -1982,69 +1890,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  // Helper function to parse and clean project data from multipart/form-data
-  const parseProjectDataFromFormData = (body: any) => {
-    const data = { ...body };
-
-    // Handle date strings from FormData
-    ["startDate", "plannedEndDate", "actualEndDate"].forEach((dateKey) => {
-      if (data[dateKey] && typeof data[dateKey] === "string") {
-        const date = new Date(data[dateKey]);
-        if (!isNaN(date.getTime())) {
-          data[dateKey] = date;
-        } else {
-          delete data[dateKey];
-        }
-      }
-    });
-
-    // Handle potential number strings
-    if (data.customerId && typeof data.customerId === "string") {
-      const num = parseInt(data.customerId, 10);
-      if (!isNaN(num)) data.customerId = num;
-    }
-
-    if (data.locations && typeof data.locations === "string") {
-      try {
-        data.locations = JSON.parse(data.locations);
-      } catch (e) {
-        data.locations = [data.locations];
-      }
-    }
-
-    if (data.workRemainingDays && typeof data.workRemainingDays === "string") {
-      try {
-        data.workRemainingDays = JSON.parse(data.workRemainingDays);
-      } catch (e) {
-        data.workRemainingDays = [];
-      }
-    }
-
-    // Clean up empty/nullish string values from FormData
-    const ambientFields = [
-      "surfaceTemperature",
-      "airTemperature",
-      "relativeHumidity",
-      "dewPointTemperature",
-      "dewPointSurfaceDiff",
-    ];
-
-    Object.keys(data).forEach((key) => {
-      if (data[key] === "null" || data[key] === "undefined") {
-        delete data[key];
-      } else if (data[key] === "") {
-        if (key.startsWith("additionalField") || ambientFields.includes(key)) {
-          // Explicitly set to null so the database clears the value
-          data[key] = null;
-        } else {
-          delete data[key];
-        }
-      }
-    });
-
-    return data;
-  };
-
   // Project routes
   app.get("/api/projects", requireAuth, async (req, res) => {
     try {
@@ -2252,38 +2097,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to generate report" });
     }
   });
-
-  // ─── Completion report: project-level access check helper ───────────────────
-  async function checkProjectAccess(
-    projectId: number,
-    userId: number,
-    userRole: string,
-  ): Promise<boolean> {
-    if (["admin", "finance", "project_manager"].includes(userRole)) return true;
-    // Check if user is the project creator
-    const proj = await storage.getProject(projectId);
-    if (proj && (proj as any).createdBy === userId) return true;
-    // Resolve userId → employees.id (employees.userId = users.id)
-    const empRows = await db
-      .select({ id: employees.id })
-      .from(employees)
-      .where(eq(employees.userId, userId))
-      .limit(1);
-    if (empRows.length === 0) return false;
-    const employeeId = empRows[0].id;
-    // Verify that employee is assigned to this project
-    const assignments = await db
-      .select({ id: projectEmployees.id })
-      .from(projectEmployees)
-      .where(
-        and(
-          eq(projectEmployees.projectId, projectId),
-          eq(projectEmployees.employeeId, employeeId),
-        ),
-      )
-      .limit(1);
-    return assignments.length > 0;
-  }
 
   // ─── Completion report: photo listing ───────────────────────────────────────
   app.get(
