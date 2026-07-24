@@ -1458,7 +1458,7 @@ export default function PurchaseOrdersIndex() {
                   className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 <p className="text-sm text-gray-500">
-                  You can attach multiple files (PDF, DOC, images, etc.). Max 10MB per file.
+                  You can attach multiple files (PDF, DOC, images, etc.). Max 25MB per file.
                 </p>
                 {selectedFiles && selectedFiles.length > 0 && (
                   <div className="mt-2">

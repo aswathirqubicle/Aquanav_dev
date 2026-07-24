@@ -653,7 +653,7 @@ export default function ReimbursementsIndex() {
                       Tap to upload receipts
                     </span>
                     <span className="text-xs text-muted-foreground hidden sm:block">
-                      PDF, Images, Word, Excel (max 10MB each)
+                      PDF, Images, Word, Excel (max 25MB each)
                     </span>
                   </div>
                 </label>

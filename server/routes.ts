@@ -213,22 +213,7 @@ function generateQuotationHTML(
                   <p><strong>${val(customer.name)}</strong></p>
                   ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
                   <p style="white-space: pre-wrap;">${val(quotation.billingAddress) || val(customer.address) || ""}</p>
-                  ${val(customer.phone) ? `<p>Phone: ${val(customer.phone)}</p>` : ""}
-                  ${val(customer.email) ? `<p>Email: ${val(customer.email)}</p>` : ""}
-                  ${val(customer.vatNumber) ? `<p><strong>TRN:</strong> ${val(customer.vatNumber)}</p>` : ""}
                 </div>
-              </div>
-
-              <div class="terms" style="margin-bottom: 20px;">
-                <h3>Terms and Conditions:</h3>
-                <p>This quotation is valid until ${
-                  val(quotation.validUntil)
-                    ? formatDate(quotation.validUntil)
-                    : "further notice"
-                }.</p>
-                ${val(quotation.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(quotation.paymentTerms)}</p>` : "<p>Payment terms: Net 30 days</p>"}
-                ${val(quotation.termsAndConditions) ? `<h3>Additional Terms:</h3><div class="rich-text-content">${sanitize(quotation.termsAndConditions)}</div>` : ""}
-                ${val(quotation.remarks) ? `<h3>Notes:</h3><div class="rich-text-content">${sanitize(quotation.remarks)}</div>` : ""}
               </div>
 
               <table>
@@ -314,6 +299,17 @@ function generateQuotationHTML(
                     </td>
                   </tr>
                 </table>
+              </div>
+              <div class="terms" style="margin-bottom: 20px;">
+                <h3>Terms and Conditions:</h3>
+                <p>This quotation is valid until ${
+                  val(quotation.validUntil)
+                    ? formatDate(quotation.validUntil)
+                    : "further notice"
+                }.</p>
+                ${val(quotation.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(quotation.paymentTerms)}</p>` : "<p>Payment terms: Net 30 days</p>"}
+                ${val(quotation.termsAndConditions) ? `<h3>Additional Terms:</h3><div class="rich-text-content">${sanitize(quotation.termsAndConditions)}</div>` : ""}
+                ${val(quotation.remarks) ? `<h3>Notes:</h3><div class="rich-text-content">${sanitize(quotation.remarks)}</div>` : ""}
               </div>
             </td>
           </tr>
@@ -3454,7 +3450,7 @@ const storage_multer = multer.diskStorage({
 const upload = multer({
   storage: storage_multer,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 25 * 1024 * 1024, // 25MB limit
   },
   fileFilter: function (req, file, cb) {
     // Check if the route is for photo group uploads, which should be stricter

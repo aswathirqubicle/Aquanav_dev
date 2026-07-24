@@ -5109,7 +5109,7 @@ export default function SalesIndex() {
                 />
                 <p className="text-sm text-gray-500">
                   You can attach multiple files (PDF, DOC, images, etc.). Max
-                  10MB per file.
+                  25MB per file.
                 </p>
                 {selectedPaymentFiles && selectedPaymentFiles.length > 0 && (
                   <div className="mt-2">

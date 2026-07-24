@@ -964,7 +964,10 @@ export default function EmployeesIndex() {
         method: "POST",
         body: fd, //formdata
       });
-      if (!response.ok) throw new Error("Failed to create document");
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err?.message || "Failed to create document");
+      }
       return response.json();
     },
     onSuccess: () => {
@@ -972,6 +975,13 @@ export default function EmployeesIndex() {
       resetDocumentForm();
       setIsDocumentDialogOpen(false);
       toast({ title: "Success", description: "Document created successfully." });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to create document",
+        variant: "destructive",
+      });
     },
   });
 
