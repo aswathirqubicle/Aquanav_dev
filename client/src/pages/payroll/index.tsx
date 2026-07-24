@@ -1,4 +1,13 @@
 import { formatDisplayDate } from "@/lib/utils";
+import {
+  SELECTABLE_ADDITION_TYPES,
+  SELECTABLE_DEDUCTION_TYPES,
+  DEFAULT_ADDITION_TYPE,
+  DEFAULT_DEDUCTION_TYPE,
+  ADDITION_TYPES,
+  DEDUCTION_TYPES,
+  labelForType,
+} from "@shared/payroll-types";
 import { useEffect, useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -98,6 +107,8 @@ interface PayrollDeduction {
   description: string;
   amount: string;
   note?: string;
+  // Classifies the deduction; "provident_fund" marks the system-managed row.
+  type?: string;
 }
 
 
@@ -4553,11 +4564,13 @@ function PayrollDetailsDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("additions");
   const [additionForm, setAdditionForm] = useState({
+    type: DEFAULT_ADDITION_TYPE as string,
     description: "",
     amount: "",
     note: "",
   });
   const [deductionForm, setDeductionForm] = useState({
+    type: DEFAULT_DEDUCTION_TYPE as string,
     description: "",
     amount: "",
     note: "",
@@ -4601,8 +4614,13 @@ function PayrollDetailsDialog({
       queryClient.invalidateQueries({
         queryKey: [`/api/payroll/${payrollEntry.id}/additions`],
       });
+      // An addition recomputes the PF deduction (2.3), so the deductions query
+      // must refresh too — otherwise an open payslip keeps the stale PF.
+      queryClient.invalidateQueries({
+        queryKey: [`/api/payroll/${payrollEntry.id}/deductions`],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
-      setAdditionForm({ description: "", amount: "", note: "" });
+      setAdditionForm({ type: DEFAULT_ADDITION_TYPE, description: "", amount: "", note: "" });
       setEditingAddition(null);
       toast({
         title: "Success",
@@ -4643,7 +4661,7 @@ function PayrollDetailsDialog({
         queryKey: [`/api/payroll/${payrollEntry.id}/deductions`],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
-      setDeductionForm({ description: "", amount: "", note: "" });
+      setDeductionForm({ type: DEFAULT_DEDUCTION_TYPE, description: "", amount: "", note: "" });
       setEditingDeduction(null);
       toast({
         title: "Success",
@@ -4670,6 +4688,10 @@ function PayrollDetailsDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [`/api/payroll/${payrollEntry.id}/additions`],
+      });
+      // Deleting an addition recomputes the PF deduction (2.3) — refresh it too.
+      queryClient.invalidateQueries({
+        queryKey: [`/api/payroll/${payrollEntry.id}/deductions`],
       });
       queryClient.invalidateQueries({ queryKey: ["/api/payroll"] });
       toast({
@@ -4745,6 +4767,7 @@ function PayrollDetailsDialog({
   const startEditAddition = (addition: PayrollAddition) => {
     setEditingAddition(addition);
     setAdditionForm({
+      type: (addition as any).type || DEFAULT_ADDITION_TYPE,
       description: addition.description,
       amount: addition.amount,
       note: addition.note || "",
@@ -4754,6 +4777,7 @@ function PayrollDetailsDialog({
   const startEditDeduction = (deduction: PayrollDeduction) => {
     setEditingDeduction(deduction);
     setDeductionForm({
+      type: (deduction as any).type || DEFAULT_DEDUCTION_TYPE,
       description: deduction.description,
       amount: deduction.amount,
       note: deduction.note || "",
@@ -4763,8 +4787,8 @@ function PayrollDetailsDialog({
   const cancelEdit = () => {
     setEditingAddition(null);
     setEditingDeduction(null);
-    setAdditionForm({ description: "", amount: "", note: "" });
-    setDeductionForm({ description: "", amount: "", note: "" });
+    setAdditionForm({ type: DEFAULT_ADDITION_TYPE, description: "", amount: "", note: "" });
+    setDeductionForm({ type: DEFAULT_DEDUCTION_TYPE, description: "", amount: "", note: "" });
   };
 
   return (
@@ -4852,6 +4876,48 @@ function PayrollDetailsDialog({
                         className="space-y-4"
                       >
                         <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="addition-type">Type*</Label>
+                            <Select
+                              value={additionForm.type}
+                              onValueChange={(value) =>
+                                setAdditionForm((prev) => ({
+                                  ...prev,
+                                  type: value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger id="addition-type">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {/* Project Fee and Reimbursement are omitted:
+                                    the payroll engine maintains those. */}
+                                {SELECTABLE_ADDITION_TYPES.map((t) => (
+                                  <SelectItem key={t.value} value={t.value}>
+                                    {t.label}
+                                  </SelectItem>
+                                ))}
+                                {/* Keep a system-generated value visible when
+                                    editing such a row, without offering it as
+                                    a new choice. */}
+                                {editingAddition &&
+                                  !SELECTABLE_ADDITION_TYPES.some(
+                                    (t) => t.value === additionForm.type,
+                                  ) && (
+                                    <SelectItem
+                                      key={additionForm.type}
+                                      value={additionForm.type}
+                                    >
+                                      {labelForType(
+                                        ADDITION_TYPES,
+                                        additionForm.type,
+                                      )}
+                                    </SelectItem>
+                                  )}
+                              </SelectContent>
+                            </Select>
+                          </div>
                           <div>
                             <Label htmlFor="addition-description">
                               Description*
@@ -5015,6 +5081,46 @@ function PayrollDetailsDialog({
                       >
                         <div className="grid grid-cols-2 gap-4">
                           <div>
+                            <Label htmlFor="deduction-type">Type*</Label>
+                            <Select
+                              value={deductionForm.type}
+                              onValueChange={(value) =>
+                                setDeductionForm((prev) => ({
+                                  ...prev,
+                                  type: value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger id="deduction-type">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {/* Provident Fund is omitted: the payroll
+                                    engine maintains that row, and a second one
+                                    would make the 5% recalculation ambiguous. */}
+                                {SELECTABLE_DEDUCTION_TYPES.map((t) => (
+                                  <SelectItem key={t.value} value={t.value}>
+                                    {t.label}
+                                  </SelectItem>
+                                ))}
+                                {editingDeduction &&
+                                  !SELECTABLE_DEDUCTION_TYPES.some(
+                                    (t) => t.value === deductionForm.type,
+                                  ) && (
+                                    <SelectItem
+                                      key={deductionForm.type}
+                                      value={deductionForm.type}
+                                    >
+                                      {labelForType(
+                                        DEDUCTION_TYPES,
+                                        deductionForm.type,
+                                      )}
+                                    </SelectItem>
+                                  )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
                             <Label htmlFor="deduction-description">
                               Description*
                             </Label>
@@ -5027,7 +5133,7 @@ function PayrollDetailsDialog({
                                   description: e.target.value,
                                 }))
                               }
-                              placeholder="e.g., Tax, Insurance, Loan"
+                              placeholder="e.g., Salary advance, Loan recovery"
                               required
                             />
                           </div>
@@ -5125,33 +5231,41 @@ function PayrollDetailsDialog({
                               </div>
                             </div>
                           </div>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => startEditDeduction(deduction)}
-                              disabled={
-                                payrollEntry.status === "approved" ||
-                                payrollEntry.status === "paid"
-                              }
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                deleteDeductionMutation.mutate(deduction.id)
-                              }
-                              disabled={
-                                deleteDeductionMutation.isPending ||
-                                payrollEntry.status === "approved" ||
-                                payrollEntry.status === "paid"
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          {deduction.type === "provident_fund" ? (
+                            // System-managed: recomputed automatically (2.4), so
+                            // no manual edit/delete controls for this row.
+                            <span className="text-xs italic text-slate-500 dark:text-slate-400 px-2">
+                              Auto-calculated
+                            </span>
+                          ) : (
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEditDeduction(deduction)}
+                                disabled={
+                                  payrollEntry.status === "approved" ||
+                                  payrollEntry.status === "paid"
+                                }
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  deleteDeductionMutation.mutate(deduction.id)
+                                }
+                                disabled={
+                                  deleteDeductionMutation.isPending ||
+                                  payrollEntry.status === "approved" ||
+                                  payrollEntry.status === "paid"
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

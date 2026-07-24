@@ -249,7 +249,7 @@ export class StorageBase {
   async clearErrorLogs(): Promise<number> {
     try {
       const result = await db.delete(errorLogs);
-      return result.rowCount || 0;
+      return result.count ?? 0;
     } catch (error) {
       console.error("Error clearing error logs:", error);
       throw error;
@@ -261,7 +261,7 @@ export class StorageBase {
       const result = await db
         .delete(errorLogs)
         .where(eq(errorLogs.resolved, true));
-      return result.rowCount || 0;
+      return result.count ?? 0;
     } catch (error) {
       console.error("Error clearing resolved error logs:", error);
       throw error;
@@ -295,5 +295,32 @@ export class StorageBase {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
     return this.calculateWorkingDays(startDate, endDate);
+  }
+
+  /**
+   * Inclusive count of CALENDAR days between two dates.
+   *
+   * Payroll pro-rates on calendar days, not working days: the client reported
+   * that excluding weekends was wrong. `calculateWorkingDays` above skips
+   * Saturday and Sunday and is retained only because other code may reference
+   * it — payroll no longer does.
+   */
+  protected calculateCalendarDays(startDate: Date, endDate: Date): number {
+    if (!startDate || !endDate) return 0;
+    if (endDate < startDate) return 0;
+
+    // Compare at day granularity so a time component cannot drop a day.
+    const start = Date.UTC(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      startDate.getDate(),
+    );
+    const end = Date.UTC(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+    );
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    return Math.round((end - start) / MS_PER_DAY) + 1; // inclusive of both ends
   }
 }

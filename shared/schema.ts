@@ -687,12 +687,9 @@ export const payrollEntries = pgTable("payroll_entries", {
   basicSalary: decimal("basic_salary", { precision: 10, scale: 2 }),
   totalAdditions: decimal("total_additions", { precision: 10, scale: 2 }),
   totalDeductions: decimal("total_deductions", { precision: 10, scale: 2 }),
-  additions: json("additions")
-    .$type<{ description: string; amount: number; note?: string }[]>()
-    .default([]),
-  deductions: json("deductions")
-    .$type<{ description: string; amount: number; note?: string }[]>()
-    .default([]),
+  // Note: line items live in the payroll_additions / payroll_deductions child
+  // tables. The former `additions` / `deductions` JSON columns here were dead
+  // (never written) and were dropped in migration 0064 (plan item 2.8).
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
   status: text("status").notNull().default("draft"), // draft, approved, paid
   generatedDate: timestamp("generated_date").notNull().defaultNow(),
@@ -706,6 +703,11 @@ export const payrollAdditions = pgTable("payroll_additions", {
     { onDelete: "cascade" },
   ),
   description: text("description").notNull(),
+  // project_fee | overtime | bonus | reimbursement | other
+  // `reimbursement` is NOT an earning — it repays the employee's own outlay,
+  // so it is excluded from the provident-fund base and posts to its own
+  // expense account rather than Salary Expense.
+  type: text("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   note: text("note"),
 });
@@ -718,6 +720,12 @@ export const payrollDeductions = pgTable("payroll_deductions", {
     { onDelete: "cascade" },
   ),
   description: text("description").notNull(),
+  // provident_fund | advance_recovery | other
+  // These behave differently in the ledger: provident_fund creates a liability
+  // the company owes onward, advance_recovery settles money already paid to
+  // the employee. Treating them alike is why deductions currently vanish into
+  // a Salary Payable residue that never clears.
+  type: text("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   note: text("note"),
 });
@@ -734,6 +742,12 @@ export const reimbursements = pgTable("reimbursements", {
   projectId: integer("project_id").references(() => projects.id), // Optional project association
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description").notNull(),
+  // travel | accommodation | fuel_transport | office_supplies | communication
+  // | training | other — determines which expense account the reimbursement
+  // debits. 'other' posts to 6160 Employee Reimbursement, its own account, so
+  // an unclassified claim stays visible and reclassifiable rather than
+  // dissolving into general Operating Expenses.
+  category: text("category").notNull().default("other"),
   originalExpenseDate: date("original_expense_date").notNull(),
   submissionTimestamp: timestamp("submission_timestamp").notNull().defaultNow(),
   status: text("status").notNull().default("pending"), // pending, approved, rejected
@@ -1518,28 +1532,10 @@ export const insertProjectConsumableItemSchema = createInsertSchema(
   projectConsumableItems,
 ).omit({ id: true });
 
-export const insertPayrollEntrySchema = createInsertSchema(payrollEntries)
-  .omit({ id: true, generatedDate: true })
-  .extend({
-    additions: z
-      .array(
-        z.object({
-          description: z.string(),
-          amount: z.number(),
-          note: z.string().optional(),
-        }),
-      )
-      .default([]),
-    deductions: z
-      .array(
-        z.object({
-          description: z.string(),
-          amount: z.number(),
-          note: z.string().optional(),
-        }),
-      )
-      .default([]),
-  });
+export const insertPayrollEntrySchema = createInsertSchema(payrollEntries).omit({
+  id: true,
+  generatedDate: true,
+});
 export const insertPayrollAdditionSchema = createInsertSchema(
   payrollAdditions,
 ).omit({ id: true });

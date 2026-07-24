@@ -1,3 +1,7 @@
+import {
+  REIMBURSEMENT_CATEGORIES,
+  DEFAULT_REIMBURSEMENT_CATEGORY,
+} from "@shared/payroll-types";
 import { formatDisplayDate } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -15,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -57,6 +62,8 @@ import {
   X,
   Pencil,
   Download,
+  Tag,
+  UserCog,
 } from "lucide-react";
 
 export default function ReimbursementsIndex() {
@@ -73,6 +80,7 @@ export default function ReimbursementsIndex() {
   const [editFormData, setEditFormData] = useState({
     amount: "",
     description: "",
+    category: DEFAULT_REIMBURSEMENT_CATEGORY as string,
     originalExpenseDate: "",
     projectId: "",
   });
@@ -82,6 +90,7 @@ export default function ReimbursementsIndex() {
   const [formData, setFormData] = useState({
     amount: "",
     description: "",
+    category: DEFAULT_REIMBURSEMENT_CATEGORY as string,
     originalExpenseDate: "",
     projectId: "",
     employeeId: "",
@@ -132,7 +141,7 @@ export default function ReimbursementsIndex() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reimbursements"] });
       setIsCreateDialogOpen(false);
-      setFormData({ amount: "", description: "", originalExpenseDate: "", projectId: "", employeeId: "" });
+      setFormData({ amount: "", description: "", category: DEFAULT_REIMBURSEMENT_CATEGORY, originalExpenseDate: "", projectId: "", employeeId: "" });
       setSelectedFiles([]);
       toast({ title: "Success", description: "Reimbursement request submitted" });
     },
@@ -216,6 +225,7 @@ export default function ReimbursementsIndex() {
     setEditFormData({
       amount: reimbursement.amount?.toString() || "",
       description: reimbursement.description || "",
+      category: reimbursement.category || DEFAULT_REIMBURSEMENT_CATEGORY,
       originalExpenseDate: reimbursement.originalExpenseDate?.split('T')[0] || "",
       projectId: reimbursement.projectId?.toString() || "",
     });
@@ -235,6 +245,7 @@ export default function ReimbursementsIndex() {
     const formDataToSend = new FormData();
     formDataToSend.append("amount", editFormData.amount);
     formDataToSend.append("description", editFormData.description);
+    formDataToSend.append("category", editFormData.category);
     formDataToSend.append("originalExpenseDate", editFormData.originalExpenseDate);
     formDataToSend.append("projectId", editFormData.projectId || "");
 
@@ -262,6 +273,7 @@ export default function ReimbursementsIndex() {
     const formDataToSend = new FormData();
     formDataToSend.append("amount", formData.amount);
     formDataToSend.append("description", formData.description);
+    formDataToSend.append("category", formData.category);
     formDataToSend.append("originalExpenseDate", formData.originalExpenseDate);
     if (formData.projectId) {
       formDataToSend.append("projectId", formData.projectId);
@@ -554,14 +566,21 @@ export default function ReimbursementsIndex() {
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg sm:max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Receipt className="w-4 h-4 sm:w-5 sm:h-5" />
-              New Reimbursement Request
-            </DialogTitle>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="space-y-0 border-b pb-4">
+            <div className="flex items-center gap-3 text-left">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-sky-500 text-white shadow-sm shadow-blue-500/30">
+                <Receipt className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-base sm:text-lg">New Reimbursement Request</DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm">
+                  Submit an expense for approval
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {canCreateForOthers && (
               <div className="space-y-2">
                 <Label htmlFor="employee">Employee</Label>
@@ -585,59 +604,90 @@ export default function ReimbursementsIndex() {
                 </p>
               </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="amount">Amount (AED) *</Label>
-              <Input
-                id="amount"
-                type="number"
-                step="any"
-                placeholder="Enter amount"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                required
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount *</Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
+                    AED
+                  </span>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    className="pl-12"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REIMBURSEMENT_CATEGORIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description *</Label>
               <Textarea
                 id="description"
                 placeholder="Describe the expense (e.g., Travel expenses for client meeting)"
+                className="min-h-[80px] resize-none"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="expenseDate">Original Expense Date *</Label>
-              <Input
-                id="expenseDate"
-                type="date"
-                value={formData.originalExpenseDate}
-                onChange={(e) => setFormData({ ...formData, originalExpenseDate: e.target.value })}
-                required
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="expenseDate">Expense Date *</Label>
+                <Input
+                  id="expenseDate"
+                  type="date"
+                  value={formData.originalExpenseDate}
+                  onChange={(e) => setFormData({ ...formData, originalExpenseDate: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="project">Project (Optional)</Label>
+                <Select
+                  value={formData.projectId}
+                  onValueChange={(value) => setFormData({ ...formData, projectId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project: any) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="project">Project (Optional)</Label>
-              <Select
-                value={formData.projectId}
-                onValueChange={(value) => setFormData({ ...formData, projectId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project: any) => (
-                    <SelectItem key={project.id} value={project.id.toString()}>
-                      {project.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm">Attachments (Optional, max 5 files)</Label>
-              <div className="border-2 border-dashed rounded-lg p-3 sm:p-4 text-center">
+              <Label className="text-sm">
+                Attachments <span className="font-normal text-muted-foreground">(optional, max 5 files)</span>
+              </Label>
+              <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/50 dark:hover:border-blue-500 dark:hover:bg-blue-950/20">
                 <input
                   type="file"
                   id="fileUpload"
@@ -646,26 +696,24 @@ export default function ReimbursementsIndex() {
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <label htmlFor="fileUpload" className="cursor-pointer">
-                  <div className="flex flex-col items-center gap-1 sm:gap-2">
-                    <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-muted-foreground" />
-                    <span className="text-xs sm:text-sm text-muted-foreground">
-                      Tap to upload receipts
-                    </span>
-                    <span className="text-xs text-muted-foreground hidden sm:block">
-                      PDF, Images, Word, Excel (max 25MB each)
-                    </span>
-                  </div>
+                <label htmlFor="fileUpload" className="flex cursor-pointer flex-col items-center gap-1.5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                    <Upload className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-medium">Tap to upload receipts</span>
+                  <span className="text-xs text-muted-foreground">
+                    PDF, Images, Word, Excel (max 25MB each)
+                  </span>
                 </label>
               </div>
               {selectedFiles.length > 0 && (
-                <div className="space-y-1 sm:space-y-2 mt-2">
+                <div className="space-y-2">
                   {selectedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between bg-muted/50 rounded px-2 sm:px-3 py-1.5 sm:py-2">
-                      <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
-                        <Paperclip className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground flex-shrink-0" />
-                        <span className="text-xs sm:text-sm truncate">{file.name}</span>
-                        <span className="text-xs text-muted-foreground flex-shrink-0 hidden sm:inline">
+                    <div key={index} className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-sm">{file.name}</span>
+                        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                           ({(file.size / 1024).toFixed(1)} KB)
                         </span>
                       </div>
@@ -673,17 +721,17 @@ export default function ReimbursementsIndex() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 sm:h-8 sm:w-8 p-0"
+                        className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
                         onClick={() => removeFile(index)}
                       >
-                        <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end sm:gap-2">
               <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="w-full sm:w-auto">
                 Cancel
               </Button>
@@ -697,90 +745,142 @@ export default function ReimbursementsIndex() {
       </Dialog>
 
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-              Reimbursement Details
-            </DialogTitle>
+        <DialogContent className="w-[95vw] max-w-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="space-y-0 border-b pb-4">
+            <div className="flex items-center gap-3 text-left">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-sky-500 text-white shadow-sm shadow-blue-500/30">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-base sm:text-lg">Reimbursement Details</DialogTitle>
+                <DialogDescription className="truncate text-xs sm:text-sm">
+                  {selectedReimbursement ? `Submitted by ${selectedReimbursement.employeeName}` : "View request information"}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           {selectedReimbursement && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Employee</Label>
-                  <p className="font-medium text-sm sm:text-base">{selectedReimbursement.employeeName}</p>
+            <div className="space-y-5">
+              <div className="flex items-start justify-between gap-3 rounded-xl border bg-gradient-to-br from-blue-50 to-sky-50 p-4 dark:border-blue-950/50 dark:from-blue-950/30 dark:to-sky-950/20">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Total Amount</p>
+                  <p className="text-2xl font-bold sm:text-3xl">AED {parseFloat(selectedReimbursement.amount).toLocaleString()}</p>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Created By</Label>
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                    <p className="font-medium text-sm sm:text-base">{selectedReimbursement.userName}</p>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {getStatusBadge(selectedReimbursement.status)}
+                  <Badge variant="outline" className="gap-1 bg-background/60">
+                    <Tag className="h-3 w-3" />
+                    {REIMBURSEMENT_CATEGORIES.find((c) => c.value === selectedReimbursement.category)?.label || selectedReimbursement.category}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Employee</p>
+                    <p className="truncate text-sm font-medium sm:text-base">{selectedReimbursement.employeeName}</p>
                   </div>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selectedReimbursement.status)}</div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <UserCog className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Created By</p>
+                    <p className="truncate text-sm font-medium sm:text-base">{selectedReimbursement.userName}</p>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Amount</Label>
-                  <p className="font-medium text-base sm:text-lg">AED {parseFloat(selectedReimbursement.amount).toLocaleString()}</p>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Expense Date</p>
+                    <p className="truncate text-sm font-medium sm:text-base">{formatDisplayDate(selectedReimbursement.originalExpenseDate)}</p>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Expense Date</Label>
-                  <p className="font-medium text-sm sm:text-base">{formatDisplayDate(selectedReimbursement.originalExpenseDate)}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground text-xs sm:text-sm">Submitted</Label>
-                  <p className="font-medium text-sm sm:text-base">{new Date(selectedReimbursement.submissionTimestamp).toLocaleString()}</p>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Submitted</p>
+                    <p className="truncate text-sm font-medium sm:text-base">{new Date(selectedReimbursement.submissionTimestamp).toLocaleString()}</p>
+                  </div>
                 </div>
                 {selectedReimbursement.payrollMonth && (
-                  <div>
-                    <Label className="text-muted-foreground text-xs sm:text-sm">Payroll Period</Label>
-                    <p className="font-medium text-sm sm:text-base">{getPayrollPeriod(selectedReimbursement.payrollMonth, selectedReimbursement.payrollYear)}</p>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Payroll Period</p>
+                      <p className="truncate text-sm font-medium sm:text-base">{getPayrollPeriod(selectedReimbursement.payrollMonth, selectedReimbursement.payrollYear)}</p>
+                    </div>
+                  </div>
+                )}
+                {selectedReimbursement.projectName && (
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                      <FolderOpen className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">Project</p>
+                      <p className="truncate text-sm font-medium sm:text-base">{selectedReimbursement.projectName}</p>
+                    </div>
+                  </div>
+                )}
+                {selectedReimbursement.approvedByName && (
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <CheckCircle className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">
+                        {selectedReimbursement.status === "approved" ? "Approved By" : "Processed By"}
+                      </p>
+                      <p className="truncate text-sm font-medium sm:text-base">{selectedReimbursement.approvedByName}</p>
+                    </div>
                   </div>
                 )}
               </div>
+
               <div>
-                <Label className="text-muted-foreground">Description</Label>
-                <p className="mt-1">{selectedReimbursement.description}</p>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Description</p>
+                <p className="rounded-lg bg-muted/50 p-3 text-sm leading-relaxed">{selectedReimbursement.description}</p>
               </div>
+
               {selectedReimbursement.rejectionReason && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                  <Label className="text-red-600 dark:text-red-400">Rejection Reason</Label>
-                  <p className="mt-1 text-red-700 dark:text-red-300">{selectedReimbursement.rejectionReason}</p>
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+                    <XCircle className="h-3.5 w-3.5" />
+                    Rejection Reason
+                  </p>
+                  <p className="text-sm text-destructive/90">{selectedReimbursement.rejectionReason}</p>
                 </div>
               )}
-              {selectedReimbursement.approvedByName && (
-                <div>
-                  <Label className="text-muted-foreground">
-                    {selectedReimbursement.status === "approved" ? "Approved By" : "Processed By"}
-                  </Label>
-                  <p className="font-medium">{selectedReimbursement.approvedByName}</p>
-                </div>
-              )}
-              {selectedReimbursement.projectName && (
-                <div>
-                  <Label className="text-muted-foreground">Project</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <FolderOpen className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium">{selectedReimbursement.projectName}</span>
-                  </div>
-                </div>
-              )}
+
               {selectedReimbursement.attachments && selectedReimbursement.attachments.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Attachments</Label>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Attachments ({selectedReimbursement.attachments.length})
+                  </p>
+                  <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {selectedReimbursement.attachments.map((attachment: string, index: number) => (
                       <li
                         key={index}
-                        className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow transition-shadow"
+                        className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 transition-shadow hover:shadow-sm"
                       >
-                        <div className="flex items-center gap-2 overflow-hidden mr-2">
-                          <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                            <Paperclip className="h-3.5 w-3.5" />
+                          </span>
                           <span
-                            className="text-sm truncate font-medium text-slate-700 dark:text-slate-300"
+                            className="truncate text-sm font-medium text-slate-700 dark:text-slate-300"
                             title={attachment.split('/').pop()}
                           >
                             {attachment.split('/').pop()}
@@ -790,14 +890,15 @@ export default function ReimbursementsIndex() {
                           variant="ghost"
                           size="sm"
                           asChild
-                          className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                          className="h-8 shrink-0 gap-1 text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-900/20"
                         >
                           <a
                             href={`/${attachment}`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            Download
+                            <Download className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Download</span>
                           </a>
                         </Button>
                       </li>
@@ -807,49 +908,50 @@ export default function ReimbursementsIndex() {
               )}
 
               {selectedReimbursement.status === "pending" && (
-                selectedReimbursement.userId === user?.id || isAdmin
+                (selectedReimbursement.userId === user?.id || isAdmin) ||
+                (canApprove && (isAdmin || (isFinance && selectedReimbursement.userRole !== "finance")))
               ) && (
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={() => openEditDialog(selectedReimbursement)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
+                <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-end">
+                  {(selectedReimbursement.userId === user?.id || isAdmin) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => openEditDialog(selectedReimbursement)}
+                      className="w-full sm:mr-auto sm:w-auto"
+                    >
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                  )}
+                  {canApprove && (isAdmin || (isFinance && selectedReimbursement.userRole !== "finance")) && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsRejectDialogOpen(true);
+                        }}
+                        className="w-full text-destructive hover:text-destructive sm:w-auto"
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        Reject
+                      </Button>
+                      <Button
+                        onClick={() => approveMutation.mutate(selectedReimbursement.id)}
+                        disabled={approveMutation.isPending}
+                        className="w-full sm:w-auto"
+                      >
+                        {approveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Approve
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
 
-              {selectedReimbursement.status === "pending" && canApprove && (
-                isAdmin || (isFinance && selectedReimbursement.userRole !== "finance")
-              ) && (
-                <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsRejectDialogOpen(true);
-                    }}
-                    className="text-red-600 w-full sm:w-auto"
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Reject
-                  </Button>
-                  <Button
-                    onClick={() => approveMutation.mutate(selectedReimbursement.id)}
-                    disabled={approveMutation.isPending}
-                    className="w-full sm:w-auto"
-                  >
-                    {approveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Approve
-                  </Button>
-                </DialogFooter>
-              )}
-
               {selectedReimbursement.status === "pending" && isFinance && selectedReimbursement.userRole === "finance" && (
-                <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-yellow-700 dark:text-yellow-300 text-sm">
-                  Finance users cannot approve reimbursements created by finance users. An Admin must approve this request.
+                <div className="flex items-start gap-2 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-900/50 dark:bg-yellow-950/30 dark:text-yellow-300">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Finance users cannot approve reimbursements created by finance users. An Admin must approve this request.</span>
                 </div>
               )}
             </div>
@@ -894,94 +996,130 @@ export default function ReimbursementsIndex() {
       </Dialog>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg sm:max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Pencil className="w-4 h-4 sm:w-5 sm:h-5" />
-              Edit Reimbursement Request
-            </DialogTitle>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="space-y-0 border-b pb-4">
+            <div className="flex items-center gap-3 text-left">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-sky-500 text-white shadow-sm shadow-blue-500/30">
+                <Pencil className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-base sm:text-lg">Edit Reimbursement Request</DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm">
+                  Update the details before approval
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <form onSubmit={handleEditSubmit} className="space-y-3 sm:space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="editAmount">Amount (AED) *</Label>
-              <Input
-                id="editAmount"
-                type="number"
-                step="any"
-                placeholder="Enter amount"
-                value={editFormData.amount}
-                onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
-                required
-              />
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="editAmount">Amount *</Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">
+                    AED
+                  </span>
+                  <Input
+                    id="editAmount"
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    className="pl-12"
+                    value={editFormData.amount}
+                    onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editCategory">Category *</Label>
+                <Select
+                  value={editFormData.category}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, category: value })}
+                >
+                  <SelectTrigger id="editCategory">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REIMBURSEMENT_CATEGORIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="editDescription">Description *</Label>
               <Textarea
                 id="editDescription"
                 placeholder="Describe the expense"
+                className="min-h-[80px] resize-none"
                 value={editFormData.description}
                 onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="editExpenseDate">Original Expense Date *</Label>
-              <Input
-                id="editExpenseDate"
-                type="date"
-                value={editFormData.originalExpenseDate}
-                onChange={(e) => setEditFormData({ ...editFormData, originalExpenseDate: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="editProject">Project (Optional)</Label>
-              <Select
-                value={editFormData.projectId}
-                onValueChange={(value) => setEditFormData({ ...editFormData, projectId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project: any) => (
-                    <SelectItem key={project.id} value={project.id.toString()}>
-                      {project.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="editExpenseDate">Expense Date *</Label>
+                <Input
+                  id="editExpenseDate"
+                  type="date"
+                  value={editFormData.originalExpenseDate}
+                  onChange={(e) => setEditFormData({ ...editFormData, originalExpenseDate: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editProject">Project (Optional)</Label>
+                <Select
+                  value={editFormData.projectId}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, projectId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project: any) => (
+                      <SelectItem key={project.id} value={project.id.toString()}>
+                        {project.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm">Attachments (Optional)</Label>
+              <Label className="text-sm">
+                Attachments <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
 
-              {/* Existing Attachments */}
               {editExistingAttachments.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  <p className="text-xs font-medium text-muted-foreground">Current files:</p>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Current files</p>
                   {editExistingAttachments.map((att, index) => (
-                    <div key={index} className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded px-3 py-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Paperclip className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                        <span className="text-sm truncate">{att.split('/').pop()}</span>
+                    <div key={index} className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900/50 dark:bg-blue-950/30">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Paperclip className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                        <span className="truncate text-sm">{att.split('/').pop()}</span>
                       </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 text-red-600"
+                        className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
                         onClick={() => setEditExistingAttachments(editExistingAttachments.filter((_, i) => i !== index))}
                       >
-                        <X className="w-4 h-4" />
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Upload New Files */}
-              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+              <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-4 text-center transition-colors hover:border-blue-400 hover:bg-blue-50/50 dark:hover:border-blue-500 dark:hover:bg-blue-950/20">
                 <input
                   type="file"
                   id="editFileUpload"
@@ -994,33 +1132,31 @@ export default function ReimbursementsIndex() {
                   }}
                   className="hidden"
                 />
-                <label htmlFor="editFileUpload" className="cursor-pointer">
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-8 h-8 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Click to upload new receipts
-                    </span>
-                  </div>
+                <label htmlFor="editFileUpload" className="flex cursor-pointer flex-col items-center gap-1.5">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+                    <Upload className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-medium">Click to upload new receipts</span>
                 </label>
               </div>
 
               {editNewFiles.length > 0 && (
-                <div className="space-y-2 mt-2">
-                  <p className="text-xs font-medium text-muted-foreground">New files to upload:</p>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">New files to upload</p>
                   {editNewFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 rounded px-3 py-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Paperclip className="w-4 h-4 text-green-600 flex-shrink-0" />
-                        <span className="text-sm truncate">{file.name}</span>
+                    <div key={index} className="flex items-center justify-between gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-900/50 dark:bg-green-950/30">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Paperclip className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                        <span className="truncate text-sm">{file.name}</span>
                       </div>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0"
+                        className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
                         onClick={() => setEditNewFiles(editNewFiles.filter((_, i) => i !== index))}
                       >
-                        <X className="w-4 h-4" />
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
@@ -1028,7 +1164,7 @@ export default function ReimbursementsIndex() {
               )}
             </div>
 
-            <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end sm:gap-2">
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)} className="w-full sm:w-auto">
                 Cancel
               </Button>

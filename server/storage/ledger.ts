@@ -169,8 +169,8 @@ export class LedgerStorage extends ProjectAssetStorage {
         .leftJoin(projects, eq(generalLedgerEntries.projectId, projects.id)) // Join with projects
         .where(finalConditions)
         .orderBy(
-          desc(generalLedgerEntries.transactionDate),
           desc(generalLedgerEntries.createdAt),
+          desc(generalLedgerEntries.id),
         );
       // .limit(limit) // Limit and offset will be applied by _getPaginatedResults
       // .offset(offset);
@@ -693,38 +693,36 @@ export class LedgerStorage extends ProjectAssetStorage {
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      await db.insert(generalLedgerEntries).values({
-        entryType: "receivable",
-        referenceType: "sales_invoice",
+      // Both reversal rows in ONE transaction (L14) — a half-written reversal
+      // is worse than none, since it silently unbalances the ledger.
+      const cancelShared = {
+        entryType: "receivable" as const,
+        referenceType: "sales_invoice" as const,
         referenceId: invoiceId,
-        accountName: "Accounts Receivable",
         description: `CANCELLED - Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
-        debitAmount: "0",
-        creditAmount: aedAmount,
         entityId: invoiceData.customerId,
         entityName: customerData?.name || null,
         projectId: invoiceData.projectId,
         invoiceNumber: invoiceData.invoiceNumber,
         transactionDate: new Date().toISOString(),
         dueDate: invoiceData.dueDate,
-        status: "cancelled",
-      });
+        status: "cancelled" as const,
+      };
 
-      await db.insert(generalLedgerEntries).values({
-        entryType: "receivable",
-        referenceType: "sales_invoice",
-        referenceId: invoiceId,
-        accountName: "Sales Revenue",
-        description: `CANCELLED - Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
-        debitAmount: aedAmount,
-        creditAmount: "0",
-        entityId: invoiceData.customerId,
-        entityName: customerData?.name || null,
-        projectId: invoiceData.projectId,
-        invoiceNumber: invoiceData.invoiceNumber,
-        transactionDate: new Date().toISOString(),
-        dueDate: invoiceData.dueDate,
-        status: "cancelled",
+      await db.transaction(async (tx) => {
+        await tx.insert(generalLedgerEntries).values({
+          ...cancelShared,
+          accountName: "Accounts Receivable",
+          debitAmount: "0",
+          creditAmount: aedAmount,
+        });
+
+        await tx.insert(generalLedgerEntries).values({
+          ...cancelShared,
+          accountName: "Sales Revenue",
+          debitAmount: aedAmount,
+          creditAmount: "0",
+        });
       });
 
       console.log(
@@ -769,40 +767,41 @@ export class LedgerStorage extends ProjectAssetStorage {
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // Create receivable entry (Debit Accounts Receivable) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "receivable",
-        referenceType: "sales_invoice",
+      // Both sides are written in ONE transaction (L14). Previously these were
+      // two independent inserts: a failure between them left the ledger
+      // permanently one-sided, with a debit and no matching credit. This
+      // matters more from P5 onward, where VAT and discount lines turn the
+      // pair into a 3-4 row posting.
+      const shared = {
+        entryType: "receivable" as const,
+        referenceType: "sales_invoice" as const,
         referenceId: invoiceId,
-        accountName: "Accounts Receivable",
         description: `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
-        debitAmount: aedAmount,
-        creditAmount: "0",
         entityId: invoiceData.customerId,
         entityName: customerData?.name || null,
         projectId: invoiceData.projectId,
         invoiceNumber: invoiceData.invoiceNumber,
         transactionDate: invoiceData.invoiceDate,
         dueDate: invoiceData.dueDate,
-        status: "pending",
-      });
+        status: "pending" as const,
+      };
 
-      // Create revenue entry (Credit Sales Revenue) in AED
-      await db.insert(generalLedgerEntries).values({
-        entryType: "receivable",
-        referenceType: "sales_invoice",
-        referenceId: invoiceId,
-        accountName: "Sales Revenue",
-        description: `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`,
-        debitAmount: "0",
-        creditAmount: aedAmount,
-        entityId: invoiceData.customerId,
-        entityName: customerData?.name || null,
-        projectId: invoiceData.projectId,
-        invoiceNumber: invoiceData.invoiceNumber,
-        transactionDate: invoiceData.invoiceDate,
-        dueDate: invoiceData.dueDate,
-        status: "pending",
+      await db.transaction(async (tx) => {
+        // Debit Accounts Receivable, in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Accounts Receivable",
+          debitAmount: aedAmount,
+          creditAmount: "0",
+        });
+
+        // Credit Sales Revenue, in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Sales Revenue",
+          debitAmount: "0",
+          creditAmount: aedAmount,
+        });
       });
 
       console.log(

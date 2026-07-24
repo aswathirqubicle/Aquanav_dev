@@ -11,23 +11,10 @@ import {
 } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 
-// Mock the db module
-jest.mock('./db', () => ({
-  db: {
-    select: jest.fn().mockReturnThis(),
-    from: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    values: jest.fn().mockReturnThis(),
-    returning: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    set: jest.fn().mockReturnThis(),
-    delete: jest.fn().mockReturnThis(),
-    execute: jest.fn(),
-    transaction: jest.fn(),
-  },
-}));
+// Mock the db module. The shared factory covers the full Drizzle chain surface
+// (leftJoin/orderBy/offset/...) and makes db.transaction actually invoke its
+// callback, which the previous inline stub did not — see server/test-db-mock.ts.
+jest.mock('./db', () => require('./test-db-mock').createDbMock());
 
 describe('Storage Class - Payroll System', () => {
   let storageInstance: Storage;

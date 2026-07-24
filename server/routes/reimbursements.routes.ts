@@ -134,6 +134,7 @@ reimbursementsRoutes.post(
       const {
         amount,
         description,
+        category,
         originalExpenseDate,
         projectId,
         employeeId: requestedEmployeeId,
@@ -210,6 +211,11 @@ reimbursementsRoutes.post(
         projectId: projectId ? parseInt(projectId) : null,
         amount: parseFloat(amount).toFixed(2),
         description: description.trim(),
+        // Determines which expense account the claim debits. The column
+        // defaults to 'other' (-> 6160 Employee Reimbursement), so an older
+        // client that omits this still produces a categorised, postable claim
+        // rather than a rejected or unroutable one.
+        category: category || "other",
         originalExpenseDate,
         status: "pending",
         attachments,

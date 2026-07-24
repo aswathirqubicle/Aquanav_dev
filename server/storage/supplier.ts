@@ -381,7 +381,7 @@ export class SupplierStorage extends CustomerStorage {
   async deleteSupplier(id: number): Promise<boolean> {
     try {
       const result = await db.delete(suppliers).where(eq(suppliers.id, id));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:

@@ -32,6 +32,7 @@ import {
   employees,
   insertAssetInventoryMaintenanceRecords,
   inventoryItems,
+  generalLedgerEntries,
   inventoryTransactions,
   invoicePayments,
   locations,
@@ -972,44 +973,33 @@ export class ProjectAssetStorage extends InventoryStorage {
         return;
       }
 
-      // Labor costs from approved/paid payroll entries for this project
-      // (reimbursement additions baked into totalAmount are subtracted to avoid double-counting)
-      const laborPayrollData = await db
+      // Labour = the per-project Salary Expense GL rows for this project, netted
+      // against any reversals (L31). The accrual is split per project by real
+      // time worked, so each project sees only its own share — no more single
+      // fallback projectId taking 100%. No status gate (the accrual exists only
+      // once approved) and no reimbursement subtraction (reimbursements post to
+      // their own category accounts now, never to Salary Expense).
+      const laborRows = await db
         .select({
-          id: payrollEntries.id,
-          totalAmount: payrollEntries.totalAmount,
+          debitAmount: generalLedgerEntries.debitAmount,
+          creditAmount: generalLedgerEntries.creditAmount,
         })
-        .from(payrollEntries)
+        .from(generalLedgerEntries)
         .where(
           and(
-            eq(payrollEntries.projectId, projectId),
-            inArray(payrollEntries.status, ["approved", "paid"]),
+            eq(generalLedgerEntries.accountName, "Salary Expense"),
+            eq(generalLedgerEntries.projectId, projectId),
           ),
         );
-      let totalLaborCost = laborPayrollData.reduce(
-        (sum, e) => sum + parseFloat(String(e.totalAmount || "0")),
+      const totalLaborCost = laborRows.reduce(
+        (sum, r) =>
+          sum +
+          parseFloat(String(r.debitAmount || "0")) -
+          parseFloat(String(r.creditAmount || "0")),
         0,
       );
-      // Subtract reimbursement additions that are already included in payroll totalAmount
-      const payrollEntryIds = laborPayrollData.map((e) => e.id);
-      if (payrollEntryIds.length > 0) {
-        const reimbAdditions = await db
-          .select({ amount: payrollAdditions.amount })
-          .from(payrollAdditions)
-          .where(
-            and(
-              inArray(payrollAdditions.payrollEntryId, payrollEntryIds),
-              like(payrollAdditions.description, "Reimbursement:%"),
-            ),
-          );
-        const reimbInPayroll = reimbAdditions.reduce(
-          (sum, a) => sum + parseFloat(String(a.amount || "0")),
-          0,
-        );
-        totalLaborCost -= reimbInPayroll;
-      }
       console.log(
-        `Project ${projectId}: labor cost from payroll (net of reimbursements) = ${totalLaborCost.toFixed(2)}`,
+        `Project ${projectId}: labor cost from GL Salary Expense (net of reversals) = ${totalLaborCost.toFixed(2)}`,
       );
 
       // Calculate inventory/consumables costs
@@ -3702,7 +3692,7 @@ export class ProjectAssetStorage extends InventoryStorage {
       const result = await db
         .delete(projectPhotos)
         .where(eq(projectPhotos.id, photoId));
-      return result.rowCount > 0;
+      return result.count > 0;
     } catch (error: any) {
       await this.createErrorLog({
         message:
