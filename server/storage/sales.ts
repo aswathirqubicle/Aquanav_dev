@@ -1,0 +1,1980 @@
+import { LedgerStorage } from "./ledger";
+import {
+  CreatePaymentFileData,
+  CreditNoteWithDetails,
+  PaginatedResponse,
+  SalesQuotationWithCustomerName,
+} from "./types";
+import {
+  CreditNote,
+  InsertCreditNote,
+  InsertInvoiceEditHistory,
+  InsertInvoicePayment,
+  InsertSalesInvoice,
+  InsertSalesQuotation,
+  InvoiceEditHistory,
+  InvoicePayment,
+  PaymentFile,
+  SalesInvoice,
+  SalesQuotation,
+  creditNotes,
+  customers,
+  generalLedgerEntries,
+  invoiceEditHistory,
+  invoicePayments,
+  paymentFiles,
+  proformaInvoices,
+  projects,
+  salesInvoices,
+  salesQuotations,
+} from "@shared/schema";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import { db } from "../db";
+
+export class SalesStorage extends LedgerStorage {
+  // Payment file methods
+  async createPaymentFile(
+    fileData: CreatePaymentFileData,
+  ): Promise<PaymentFile> {
+    try {
+      const result = await db
+        .insert(paymentFiles)
+        .values({
+          paymentId: fileData.paymentId,
+          fileName: fileData.fileName,
+          originalName: fileData.originalName,
+          filePath: fileData.filePath,
+          fileSize: fileData.fileSize || null,
+          mimeType: fileData.mimeType || null,
+        })
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in createPaymentFile: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createPaymentFile",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPaymentFiles(paymentId: number): Promise<PaymentFile[]> {
+    try {
+      const files: PaymentFile[] = await db
+        .select()
+        .from(paymentFiles)
+        .where(eq(paymentFiles.paymentId, paymentId))
+        .orderBy(desc(paymentFiles.uploadedAt));
+
+      return files;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getPaymentFiles (paymentId: ${paymentId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPaymentFiles",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getPaymentFile(id: number): Promise<PaymentFile | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(paymentFiles)
+        .where(eq(paymentFiles.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getPaymentFile (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getPaymentFile",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deletePaymentFile(fileId: number): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(paymentFiles)
+        .where(eq(paymentFiles.id, fileId));
+      return result.rowCount && result.rowCount > 0;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in deletePaymentFile (fileId: ${fileId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deletePaymentFile",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateInvoicePaidAmount(invoiceId: number): Promise<void> {
+    try {
+      // Get all payments for this invoice
+      const payments = await db
+        .select({
+          amount: invoicePayments.amount,
+        })
+        .from(invoicePayments)
+        .where(eq(invoicePayments.invoiceId, invoiceId));
+
+      // Calculate total paid amount
+      const totalPaid = payments.reduce((sum, payment) => {
+        return sum + parseFloat(payment.amount || "0");
+      }, 0);
+
+      // Get invoice details
+      const invoice = await db
+        .select()
+        .from(salesInvoices)
+        .where(eq(salesInvoices.id, invoiceId))
+        .limit(1);
+
+      if (invoice.length === 0) {
+        throw new Error(`Invoice with ID ${invoiceId} not found`);
+      }
+
+      const invoiceData = invoice[0];
+      const totalAmount = parseFloat(invoiceData.totalAmount || "0");
+
+      // Determine status based on payment amounts and due date
+      let status = "unpaid";
+      if (totalPaid >= totalAmount) {
+        status = "paid";
+      } else if (totalPaid > 0) {
+        status = "partially_paid";
+      }
+
+      // Check if invoice is overdue (only if not fully paid and not draft)
+      if (invoiceData.status !== "draft" && status !== "paid") {
+        const currentDate = new Date();
+        const dueDate = new Date(invoiceData.dueDate);
+        if (currentDate > dueDate) {
+          status = "overdue";
+        }
+      }
+
+      // Update invoice
+      await db
+        .update(salesInvoices)
+        .set({
+          paidAmount: totalPaid.toFixed(2),
+          status,
+        })
+        .where(eq(salesInvoices.id, invoiceId));
+
+      console.log(
+        `Updated invoice ${invoiceId} paid amount to ${totalPaid.toFixed(
+          2,
+        )} with status ${status}`,
+      );
+    } catch (error: any) {
+      console.error("Original error in updateInvoicePaidAmount:", error); // Keep original console.error
+      await this.createErrorLog({
+        message:
+          `Error in updateInvoicePaidAmount (invoiceId: ${invoiceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateInvoicePaidAmount",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getCreditNote(id: number): Promise<CreditNote | undefined> {
+    try {
+      const result: CreditNote[] = await db
+        .select()
+        .from(creditNotes)
+        .where(eq(creditNotes.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getCreditNote (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createCreditNote(
+    creditNoteData: InsertCreditNote,
+  ): Promise<CreditNote> {
+    try {
+      console.log("Creating credit note with data:", creditNoteData);
+
+      // Generate credit note number
+      const creditNoteNumber = await this.generateNextNumber(
+        "CN",
+        creditNotes,
+        creditNotes.creditNoteNumber,
+      );
+
+      // The InsertCreditNote type from schema.ts should be used.
+      // If creditNoteData might contain fields not in InsertCreditNote (like projectId), they should be handled.
+      const { projectId, ...validCreditNoteData } = creditNoteData as any; // Cast if necessary
+
+      const insertData = {
+        ...validCreditNoteData,
+        creditNoteNumber, // Generated above
+        // Ensure date fields are correctly formatted if they are part of InsertCreditNote and are strings
+        creditNoteDate: validCreditNoteData.creditNoteDate
+          ? new Date(validCreditNoteData.creditNoteDate)
+              .toISOString()
+              .split("T")[0]
+          : new Date().toISOString().split("T")[0],
+        // items should be handled by the schema type (e.g. JSON stringified if needed by Drizzle)
+        items: validCreditNoteData.items
+          ? typeof validCreditNoteData.items === "string"
+            ? validCreditNoteData.items
+            : JSON.stringify(validCreditNoteData.items)
+          : JSON.stringify([]),
+      };
+
+      const result: CreditNote[] = await db
+        .insert(creditNotes)
+        .values(insertData)
+        .returning();
+
+      const createdCreditNote = result[0];
+      console.log("Credit note created:", createdCreditNote);
+
+      if (!createdCreditNote || !createdCreditNote.id) {
+        throw new Error(
+          "Failed to create credit note - no credit note record returned",
+        );
+      }
+
+      // Get related invoice and customer information for GL entries
+      // Ensure salesInvoiceId and customerId are numbers if they are not null/undefined
+      const invoice = await this.getSalesInvoice(
+        createdCreditNote.salesInvoiceId as number,
+      );
+      const customer = await this.getCustomer(
+        createdCreditNote.customerId as number,
+      );
+
+      console.log("Retrieved invoice:", invoice);
+      console.log("Retrieved customer:", customer);
+
+      // Only create GL entries if status is "issued"
+      if (createdCreditNote.status === "issued") {
+        console.log(
+          `Creating double-entry GL records for credit note ${
+            createdCreditNote.id
+          } - ${createdCreditNote.creditNoteNumber || "N/A"} - Amount: ${
+            createdCreditNote.totalAmount
+          }`,
+        );
+
+        const cnCurrency = createdCreditNote.currency || "AED";
+        const cnExchangeRate = parseFloat(
+          createdCreditNote.exchangeRate || "1",
+        );
+        const cnOriginalAmount = parseFloat(
+          (createdCreditNote.totalAmount as string) || "0",
+        );
+        const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+        const cnCurrencyNote =
+          cnCurrency !== "AED"
+            ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
+            : "";
+
+        // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
+        try {
+          const debitEntry = await this.createGeneralLedgerEntry({
+            entryType: "receivable",
+            referenceType: "credit_note",
+            referenceId: createdCreditNote.id,
+            accountName: "Sales Returns and Allowances",
+            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+            debitAmount: cnAedAmount,
+            creditAmount: "0",
+            entityId: createdCreditNote.customerId as number,
+            entityName: customer?.name || "Unknown Customer",
+            projectId: invoice?.projectId || undefined,
+            invoiceNumber: invoice?.invoiceNumber || undefined,
+            transactionDate:
+              createdCreditNote.creditNoteDate ||
+              new Date().toISOString().split("T")[0],
+            status: "issued",
+          });
+
+          console.log(
+            `Successfully created debit entry (Sales Returns and Allowances):`,
+            debitEntry,
+          );
+        } catch (debitError) {
+          console.error("Error creating debit GL entry:", debitError);
+          throw new Error(
+            `Failed to create debit GL entry: ${
+              debitError instanceof Error
+                ? debitError.message
+                : String(debitError)
+            }`,
+          );
+        }
+
+        // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
+        try {
+          const creditEntry = await this.createGeneralLedgerEntry({
+            entryType: "receivable",
+            referenceType: "credit_note",
+            referenceId: createdCreditNote.id,
+            accountName: "Accounts Receivable",
+            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+            debitAmount: "0",
+            creditAmount: cnAedAmount,
+            entityId: createdCreditNote.customerId as number,
+            entityName: customer?.name || "Unknown Customer",
+            projectId: invoice?.projectId || undefined,
+            invoiceNumber: invoice?.invoiceNumber || undefined,
+            transactionDate:
+              createdCreditNote.creditNoteDate ||
+              new Date().toISOString().split("T")[0],
+            status: "issued",
+          });
+
+          console.log(
+            `Successfully created credit entry (Accounts Receivable):`,
+            creditEntry,
+          );
+        } catch (creditError) {
+          console.error("Error creating credit GL entry:", creditError);
+          throw new Error(
+            `Failed to create credit GL entry: ${
+              creditError instanceof Error
+                ? creditError.message
+                : String(creditError)
+            }`,
+          );
+        }
+
+        console.log(
+          `Successfully created 2 GL entries for credit note ${createdCreditNote.id}`,
+        );
+
+        // Update the related sales invoice
+        if (invoice) {
+          await this.updateSalesInvoiceFromCreditNote(
+            invoice.id,
+            parseFloat(createdCreditNote.totalAmount as string),
+          );
+
+          // Create an invoice payment entry to show credit note application in payment history
+          await this.createInvoicePaymentForCreditNote(
+            invoice.id,
+            createdCreditNote,
+          );
+        }
+      }
+
+      return createdCreditNote;
+    } catch (error: any) {
+      // Preserve existing console.error and specific error logging structure
+      console.error("Error creating credit note:", error);
+      if (!error.isLogged) {
+        // Avoid double logging if error is already from createErrorLog
+        await this.createErrorLog({
+          message: `Error in createCreditNote: ${
+            error?.message || String(error)
+          }. Context: ${JSON.stringify(creditNoteData)}`,
+          stack: error?.stack,
+          url: "server/storage.ts",
+          severity: "error",
+          component: "createCreditNote",
+        });
+      }
+      throw error;
+    }
+  }
+
+  async updateCreditNote(
+    id: number,
+    creditNoteData: Partial<InsertCreditNote>,
+  ): Promise<CreditNote | undefined> {
+    try {
+      // Get the current credit note before update
+      const currentCreditNote = await this.getCreditNote(id);
+      if (!currentCreditNote) {
+        throw new Error(`Credit note ${id} not found`);
+      }
+
+      // Remove projectId from the data if present, as it's not in creditNotes table
+      const { projectId, ...validCreditNoteData } = creditNoteData as any;
+
+      const updateData: Partial<InsertCreditNote> = { ...validCreditNoteData };
+
+      // Ensure date fields are correctly formatted
+      if (validCreditNoteData.creditNoteDate) {
+        updateData.creditNoteDate = new Date(validCreditNoteData.creditNoteDate)
+          .toISOString()
+          .split("T")[0];
+      }
+      // Handle items: stringify if it's an object and the field expects a string
+      if (
+        validCreditNoteData.items &&
+        typeof validCreditNoteData.items !== "string"
+      ) {
+        updateData.items = JSON.stringify(validCreditNoteData.items);
+      }
+
+      const result: CreditNote[] = await db
+        .update(creditNotes)
+        .set(updateData)
+        .where(eq(creditNotes.id, id))
+        .returning();
+
+      const updatedCreditNote = result[0];
+
+      // If status changed to 'issued' and wasn't already issued, create double-entry GL records
+      if (
+        validCreditNoteData.status === "issued" &&
+        currentCreditNote.status !== "issued" &&
+        updatedCreditNote
+      ) {
+        try {
+          // Get related invoice and customer information
+          const invoice = await this.getSalesInvoice(
+            updatedCreditNote.salesInvoiceId as number,
+          );
+          const customer = await this.getCustomer(
+            updatedCreditNote.customerId as number,
+          );
+
+          if (customer) {
+            const transactionDate =
+              updatedCreditNote.creditNoteDate || // Already a string
+              new Date().toISOString().split("T")[0];
+
+            const cnCurrency = updatedCreditNote.currency || "AED";
+            const cnExchangeRate = parseFloat(
+              updatedCreditNote.exchangeRate || "1",
+            );
+            const cnOriginalAmount = parseFloat(
+              (updatedCreditNote.totalAmount as string) || "0",
+            );
+            const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+            const cnCurrencyNote =
+              cnCurrency !== "AED"
+                ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
+                : "";
+
+            // Create double-entry GL records for credit note
+
+            // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
+            await this.createGeneralLedgerEntry({
+              entryType: "receivable",
+              referenceType: "credit_note",
+              referenceId: updatedCreditNote.id,
+              accountName: "Sales Returns and Allowances",
+              description: `Credit Note: ${
+                updatedCreditNote.creditNoteNumber || "N/A"
+              } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+              debitAmount: cnAedAmount,
+              creditAmount: "0",
+              entityId: customer.id,
+              entityName: customer.name,
+              projectId: invoice?.projectId || undefined,
+              invoiceNumber: invoice?.invoiceNumber || undefined,
+              transactionDate: transactionDate,
+              status: "issued",
+            });
+
+            // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
+            await this.createGeneralLedgerEntry({
+              entryType: "receivable",
+              referenceType: "credit_note",
+              referenceId: updatedCreditNote.id,
+              accountName: "Accounts Receivable",
+              description: `Credit Note: ${
+                updatedCreditNote.creditNoteNumber || "N/A"
+              } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+              debitAmount: "0",
+              creditAmount: cnAedAmount,
+              entityId: customer.id,
+              entityName: customer.name,
+              projectId: invoice?.projectId || undefined,
+              invoiceNumber: invoice?.invoiceNumber || undefined,
+              transactionDate: transactionDate,
+              status: "issued",
+            });
+
+            console.log(
+              `Created double-entry GL records for credit note ${updatedCreditNote.id}`,
+            );
+
+            // Update the related sales invoice
+            if (invoice) {
+              await this.updateSalesInvoiceFromCreditNote(
+                invoice.id,
+                parseFloat(updatedCreditNote.totalAmount as string),
+              );
+
+              // Create an invoice payment entry to show credit note application in payment history
+              await this.createInvoicePaymentForCreditNote(
+                invoice.id,
+                updatedCreditNote,
+              );
+            }
+          }
+        } catch (glError) {
+          console.error("Error creating GL entries for credit note:", glError);
+          // Don't fail the entire request if GL entry creation fails
+        }
+      }
+
+      return updatedCreditNote;
+    } catch (error: any) {
+      console.error("Original error in updateCreditNote:", error); // Keep original console.error
+      await this.createErrorLog({
+        message:
+          `Error in updateCreditNote (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getCreditNotes(): Promise<CreditNoteWithDetails[]> {
+    try {
+      const result: CreditNoteWithDetails[] = await db
+        .select({
+          // All fields from CreditNote schema
+          id: creditNotes.id,
+          creditNoteNumber: creditNotes.creditNoteNumber,
+          salesInvoiceId: creditNotes.salesInvoiceId,
+          customerId: creditNotes.customerId,
+          status: creditNotes.status,
+          creditNoteDate: creditNotes.creditNoteDate,
+          reason: creditNotes.reason,
+          items: creditNotes.items,
+          subtotal: creditNotes.subtotal,
+          taxAmount: creditNotes.taxAmount,
+          discountPercentage: creditNotes.discountPercentage,
+          discount: creditNotes.discount,
+          totalAmount: creditNotes.totalAmount,
+          createdAt: creditNotes.createdAt,
+          // Joined fields
+          customerName: customers.name,
+          invoiceNumber: salesInvoices.invoiceNumber,
+        })
+        .from(creditNotes)
+        .leftJoin(customers, eq(creditNotes.customerId, customers.id))
+        .leftJoin(
+          salesInvoices,
+          eq(creditNotes.salesInvoiceId, salesInvoices.id),
+        )
+        .orderBy(desc(creditNotes.createdAt));
+
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getCreditNotes: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getCreditNotes",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getInvoicePayments(invoiceId: number): Promise<InvoicePayment[]> {
+    try {
+      const result = await db
+        .select()
+        .from(invoicePayments)
+        .where(eq(invoicePayments.invoiceId, invoiceId))
+        .orderBy(desc(invoicePayments.paymentDate));
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getInvoicePayments (invoiceId: ${invoiceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getInvoicePayments",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createInvoicePayment(
+    paymentData: InsertInvoicePayment,
+  ): Promise<InvoicePayment> {
+    try {
+      console.log("Creating invoice payment with data:", paymentData);
+
+      const result = await db
+        .insert(invoicePayments)
+        .values(paymentData)
+        .returning();
+
+      const payment = result[0];
+      console.log("Payment created:", payment);
+
+      if (!payment || !payment.id) {
+        throw new Error(
+          "Failed to create payment - no payment record returned",
+        );
+      }
+
+      // Get invoice and customer information
+      const invoice = await this.getSalesInvoice(paymentData.invoiceId);
+      console.log("Retrieved invoice:", invoice);
+
+      if (!invoice) {
+        throw new Error(`Invoice with ID ${paymentData.invoiceId} not found`);
+      }
+
+      const customer = await this.getCustomer(invoice.customerId);
+      console.log("Retrieved customer:", customer);
+
+      console.log(
+        `Creating double-entry GL records for payment ${
+          payment.id
+        } - Invoice: ${invoice.invoiceNumber || "N/A"} - Amount: ${
+          payment.amount
+        }`,
+      );
+
+      const invoiceCurrency = invoice.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
+      const originalAmount = parseFloat(payment.amount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      // Create double-entry accounting records for payment
+
+      // 1. Debit: Cash/Bank (increase asset - cash received) in AED
+      try {
+        const debitEntry = await this.createGeneralLedgerEntry({
+          entryType: "receivable",
+          referenceType: "payment",
+          referenceId: payment.id,
+          accountName: "Cash/Bank",
+          description: `Payment received for Invoice: ${
+            invoice.invoiceNumber || "N/A"
+          }${currencyNote}`,
+          debitAmount: aedAmount,
+          creditAmount: "0",
+          entityId: invoice.customerId,
+          entityName: customer?.name || "Unknown Customer",
+          projectId: invoice.projectId || undefined,
+          invoiceNumber: invoice.invoiceNumber,
+          transactionDate:
+            payment.paymentDate || new Date().toISOString().split("T")[0],
+          status: "paid",
+        });
+
+        console.log(
+          `Successfully created debit entry (Cash/Bank):`,
+          debitEntry,
+        );
+      } catch (debitError) {
+        console.error("Error creating debit GL entry:", debitError);
+        throw new Error(
+          `Failed to create debit GL entry: ${
+            debitError instanceof Error
+              ? debitError.message
+              : String(debitError)
+          }`,
+        );
+      }
+
+      // 2. Credit: Accounts Receivable (reduce asset - customer no longer owes this amount) in AED
+      try {
+        const creditEntry = await this.createGeneralLedgerEntry({
+          entryType: "receivable",
+          referenceType: "payment",
+          referenceId: payment.id,
+          accountName: "Accounts Receivable",
+          description: `Payment received for Invoice: ${
+            invoice.invoiceNumber || "N/A"
+          }${currencyNote}`,
+          debitAmount: "0",
+          creditAmount: aedAmount,
+          entityId: invoice.customerId,
+          entityName: customer?.name || "Unknown Customer",
+          projectId: invoice.projectId || undefined,
+          invoiceNumber: invoice.invoiceNumber,
+          transactionDate:
+            payment.paymentDate || new Date().toISOString().split("T")[0],
+          status: "paid",
+        });
+
+        console.log(
+          `Successfully created credit entry (Accounts Receivable):`,
+          creditEntry,
+        );
+      } catch (creditError) {
+        console.error("Error creating credit GL entry:", creditError);
+        throw new Error(
+          `Failed to create credit GL entry: ${
+            creditError instanceof Error
+              ? creditError.message
+              : String(creditError)
+          }`,
+        );
+      }
+
+      console.log(
+        `Successfully created 2 GL entries for payment ${payment.id}`,
+      );
+
+      // Update invoice paid amount and project revenue
+      await this.updateInvoicePaidAmount(paymentData.invoiceId);
+
+      return payment;
+    } catch (error: any) {
+      // Preserve existing console.error and specific error logging structure
+      console.error("Error creating invoice payment:", error);
+      if (!error.isLogged) {
+        // Avoid double logging
+        await this.createErrorLog({
+          message: `Error in createInvoicePayment: ${
+            error?.message || String(error)
+          }. Context: ${JSON.stringify(paymentData)}`,
+          stack: error?.stack,
+          url: "server/storage.ts",
+          severity: "error",
+          component: "createInvoicePayment",
+        });
+      }
+      throw error;
+    }
+  }
+
+  // Sales Quotations pagination method
+  async getSalesQuotationsPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      search?: string;
+      status?: string;
+      customerId?: number;
+      archived?: boolean;
+      startDate?: string;
+      endDate?: string;
+    },
+  ): Promise<PaginatedResponse<SalesQuotationWithCustomerName>> {
+    try {
+      const queryConditions = [];
+      // Search filter
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(salesQuotations.quotationNumber, `%${filters.search}%`),
+            ilike(customers.name, `%${filters.search}%`),
+          ),
+        );
+      }
+      // Customer filter
+      if (filters?.customerId) {
+        queryConditions.push(
+          eq(salesQuotations.customerId, filters.customerId),
+        );
+      }
+      // Date range filters
+      if (filters?.startDate) {
+        queryConditions.push(
+          gte(salesQuotations.createdDate, new Date(filters.startDate)),
+        );
+      }
+      if (filters?.endDate) {
+        const endDate = new Date(filters.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        queryConditions.push(lte(salesQuotations.createdDate, endDate));
+      }
+      // Status filter
+      if (filters?.status && filters.status !== "all") {
+        queryConditions.push(eq(salesQuotations.status, filters.status));
+      }
+      // Archive filter
+      if (filters?.archived !== undefined) {
+        queryConditions.push(eq(salesQuotations.isArchived, filters.archived));
+      }
+
+      const finalConditions =
+        queryConditions.length > 0 ? and(...queryConditions) : undefined;
+
+      const dataQueryBuilder = db
+        .select({
+          id: salesQuotations.id,
+          quotationNumber: salesQuotations.quotationNumber,
+          customerId: salesQuotations.customerId,
+          customerName: customers.name,
+          status: salesQuotations.status,
+          validUntil: salesQuotations.validUntil,
+          paymentTerms: salesQuotations.paymentTerms,
+          bankAccount: salesQuotations.bankAccount,
+          billingAddress: salesQuotations.billingAddress,
+          termsAndConditions: salesQuotations.termsAndConditions,
+          remarks: salesQuotations.remarks,
+          items: salesQuotations.items,
+          subtotal: salesQuotations.subtotal,
+          taxAmount: salesQuotations.taxAmount,
+          discountPercentage: salesQuotations.discountPercentage,
+          discount: salesQuotations.discount,
+          totalAmount: salesQuotations.totalAmount,
+          currency: salesQuotations.currency,
+          exchangeRate: salesQuotations.exchangeRate,
+          isArchived: salesQuotations.isArchived,
+          createdDate: salesQuotations.createdDate,
+        })
+        .from(salesQuotations)
+        .leftJoin(customers, eq(salesQuotations.customerId, customers.id))
+        .where(finalConditions)
+        .orderBy(desc(salesQuotations.createdDate));
+
+      const countQueryBuilder = db
+        .select({ count: sql<number>`count(*)` })
+        .from(salesQuotations)
+        .leftJoin(customers, eq(salesQuotations.customerId, customers.id))
+        .where(finalConditions);
+
+      return this._getPaginatedResults<SalesQuotationWithCustomerName>(
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit,
+      );
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getSalesQuotationsPaginated: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesQuotationsPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // Sales Invoices pagination method
+  async getSalesInvoicesPaginated(
+    page: number,
+    limit: number,
+    filters?: {
+      search?: string;
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      customerId?: number;
+      projectId?: number;
+    },
+  ): Promise<{
+    data: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    try {
+      const queryConditions = [];
+
+      if (filters?.search && filters.search.trim()) {
+        queryConditions.push(
+          or(
+            ilike(salesInvoices.invoiceNumber, `%${filters.search}%`),
+            ilike(customers.name, `%${filters.search}%`),
+          ),
+        );
+      }
+
+      if (filters?.status && filters.status !== "all") {
+        if (filters.status === "unpaid") {
+          queryConditions.push(
+            and(
+              notInArray(salesInvoices.status, [
+                "draft",
+                "rejected",
+                "pending_approval",
+                "cancelled",
+              ]),
+              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`,
+            ),
+          );
+        } else if (filters.status === "overdue") {
+          const now = new Date().toISOString();
+          queryConditions.push(
+            and(
+              notInArray(salesInvoices.status, [
+                "draft",
+                "rejected",
+                "pending_approval",
+                "cancelled",
+                "paid",
+              ]),
+              sql`CAST(COALESCE(${salesInvoices.totalAmount}, '0') AS DECIMAL) > CAST(COALESCE(${salesInvoices.paidAmount}, '0') AS DECIMAL)`,
+              sql`${salesInvoices.dueDate} < ${now}`,
+            ),
+          );
+        } else {
+          queryConditions.push(eq(salesInvoices.status, filters.status));
+        }
+      }
+      if (filters?.startDate) {
+        queryConditions.push(gte(salesInvoices.invoiceDate, filters.startDate));
+      }
+      if (filters?.endDate) {
+        queryConditions.push(lte(salesInvoices.invoiceDate, filters.endDate));
+      }
+      if (filters?.customerId) {
+        queryConditions.push(eq(salesInvoices.customerId, filters.customerId));
+      }
+      if (filters?.projectId) {
+        if (filters.projectId === -1) {
+          queryConditions.push(isNull(salesInvoices.projectId));
+        } else {
+          queryConditions.push(eq(salesInvoices.projectId, filters.projectId));
+        }
+      }
+
+      const finalConditions =
+        queryConditions.length > 0 ? and(...queryConditions) : undefined;
+
+      const dataQueryBuilder = db
+        .select({
+          id: salesInvoices.id,
+          invoiceNumber: salesInvoices.invoiceNumber,
+          customerId: salesInvoices.customerId,
+          customerName: customers.name,
+          projectId: salesInvoices.projectId,
+          workOrderNumber: salesInvoices.workOrderNumber,
+          projectTitle: projects.title,
+          quotationId: salesInvoices.quotationId,
+          status: salesInvoices.status,
+          invoiceDate: salesInvoices.invoiceDate,
+          dueDate: salesInvoices.dueDate,
+          paymentTerms: salesInvoices.paymentTerms,
+          bankAccount: salesInvoices.bankAccount,
+          billingAddress: salesInvoices.billingAddress,
+          termsAndConditions: salesInvoices.termsAndConditions,
+          remarks: salesInvoices.remarks,
+          items: salesInvoices.items,
+          subtotal: salesInvoices.subtotal,
+          taxAmount: salesInvoices.taxAmount,
+          discountPercentage: salesInvoices.discountPercentage,
+          discount: salesInvoices.discount,
+          totalAmount: salesInvoices.totalAmount,
+          paidAmount: salesInvoices.paidAmount,
+          currency: salesInvoices.currency,
+          exchangeRate: salesInvoices.exchangeRate,
+        })
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .leftJoin(projects, eq(salesInvoices.projectId, projects.id))
+        .where(finalConditions)
+        .orderBy(desc(salesInvoices.id));
+
+      const countQueryBuilder = db
+        .select({ count: sql<number>`count(*)` })
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .leftJoin(projects, eq(salesInvoices.projectId, projects.id))
+        .where(finalConditions);
+
+      return this._getPaginatedResults<any>( // Using any for TData due to custom select shape
+        dataQueryBuilder,
+        countQueryBuilder,
+        page,
+        limit,
+      );
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getSalesInvoicesPaginated: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesInvoicesPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // Sales Quotation methods
+  async getSalesQuotation(id: number): Promise<SalesQuotation | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(salesQuotations)
+        .where(eq(salesQuotations.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createSalesQuotation(
+    quotationData: InsertSalesQuotation,
+  ): Promise<SalesQuotation> {
+    try {
+      const result = await db
+        .insert(salesQuotations)
+        .values(quotationData)
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in createSalesQuotation: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateSalesQuotation(
+    id: number,
+    quotationData: Partial<InsertSalesQuotation>,
+  ): Promise<SalesQuotation | undefined> {
+    try {
+      const result = await db
+        .update(salesQuotations)
+        .set(quotationData)
+        .where(eq(salesQuotations.id, id))
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async submitSalesQuotationForApproval(
+    id: number,
+    userId: number,
+  ): Promise<any> {
+    try {
+      await db
+        .update(salesQuotations)
+        .set({
+          status: "pending_approval",
+          submittedById: userId,
+          submittedAt: new Date(),
+        })
+        .where(eq(salesQuotations.id, id));
+
+      return this.getSalesQuotation(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in submitSalesQuotationForApproval (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "submitSalesQuotationForApproval",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async approveSalesQuotation(id: number, userId: number): Promise<void> {
+    try {
+      await db
+        .update(salesQuotations)
+        .set({
+          status: "approved",
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesQuotations.id, id));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in approveSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "approveSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async rejectSalesQuotation(
+    id: number,
+    userId: number,
+    reason?: string,
+  ): Promise<any> {
+    try {
+      await db
+        .update(salesQuotations)
+        .set({
+          status: "rejected",
+          rejectionReason: reason || null,
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesQuotations.id, id));
+
+      return this.getSalesQuotation(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in rejectSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "rejectSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // Proforma Invoice methods
+  async getProformaInvoices(): Promise<any[]> {
+    try {
+      const result = await db
+        .select({
+          id: proformaInvoices.id,
+          proformaNumber: proformaInvoices.proformaNumber,
+          customerId: proformaInvoices.customerId,
+          customerName: customers.name,
+          projectId: proformaInvoices.projectId,
+          workOrderNumber: proformaInvoices.workOrderNumber,
+          status: proformaInvoices.status,
+          createdDate: proformaInvoices.createdDate,
+          invoiceDate: proformaInvoices.invoiceDate,
+          validUntil: proformaInvoices.validUntil,
+          paymentTerms: proformaInvoices.paymentTerms,
+          deliveryTerms: proformaInvoices.deliveryTerms,
+          billingAddress: proformaInvoices.billingAddress,
+          bankAccount: proformaInvoices.bankAccount,
+          termsAndConditions: proformaInvoices.termsAndConditions,
+          remarks: proformaInvoices.remarks,
+          items: proformaInvoices.items,
+          subtotal: proformaInvoices.subtotal,
+          taxAmount: proformaInvoices.taxAmount,
+          discountPercentage: proformaInvoices.discountPercentage,
+          discount: proformaInvoices.discount,
+          totalAmount: proformaInvoices.totalAmount,
+          currency: proformaInvoices.currency,
+          exchangeRate: proformaInvoices.exchangeRate,
+          isArchived: proformaInvoices.isArchived,
+        })
+        .from(proformaInvoices)
+        .leftJoin(customers, eq(proformaInvoices.customerId, customers.id))
+        .orderBy(desc(proformaInvoices.createdDate));
+
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in getProformaInvoices: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProformaInvoices",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getProformaInvoice(id: number): Promise<any | undefined> {
+    try {
+      const result = await db
+        .select({
+          id: proformaInvoices.id,
+          proformaNumber: proformaInvoices.proformaNumber,
+          customerId: proformaInvoices.customerId,
+          customerName: customers.name,
+          projectId: proformaInvoices.projectId,
+          workOrderNumber: proformaInvoices.workOrderNumber,
+          status: proformaInvoices.status,
+          createdDate: proformaInvoices.createdDate,
+          validUntil: proformaInvoices.validUntil,
+          paymentTerms: proformaInvoices.paymentTerms,
+          deliveryTerms: proformaInvoices.deliveryTerms,
+          billingAddress: proformaInvoices.billingAddress,
+          bankAccount: proformaInvoices.bankAccount,
+          termsAndConditions: proformaInvoices.termsAndConditions,
+          remarks: proformaInvoices.remarks,
+          items: proformaInvoices.items,
+          subtotal: proformaInvoices.subtotal,
+          taxAmount: proformaInvoices.taxAmount,
+          discountPercentage: proformaInvoices.discountPercentage,
+          discount: proformaInvoices.discount,
+          totalAmount: proformaInvoices.totalAmount,
+          currency: proformaInvoices.currency,
+          exchangeRate: proformaInvoices.exchangeRate,
+          isArchived: proformaInvoices.isArchived,
+        })
+        .from(proformaInvoices)
+        .leftJoin(customers, eq(proformaInvoices.customerId, customers.id))
+        .where(eq(proformaInvoices.id, id))
+        .limit(1);
+
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getProformaInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProformaInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createProformaInvoice(proformaData: any): Promise<any> {
+    try {
+      console.log(
+        "Storage: Creating proforma invoice with data:",
+        proformaData,
+      );
+
+      // Generate proforma number
+      const proformaNumber = await this.generateNextNumber(
+        "PRF",
+        proformaInvoices,
+        proformaInvoices.proformaNumber,
+      );
+
+      // Prepare the data
+      const insertData = {
+        proformaNumber,
+        customerId: proformaData.customerId,
+        projectId: proformaData.projectId || null,
+        quotationId: proformaData.quotationId || null,
+        workOrderNumber: proformaData.workOrderNumber || null,
+        currency: proformaData.currency || "AED",
+        exchangeRate: proformaData.exchangeRate || "1",
+        status: proformaData.status || "draft",
+        validUntil: proformaData.validUntil
+          ? new Date(proformaData.validUntil).toISOString()
+          : null,
+        billingAddress: proformaData.billingAddress,
+        paymentTerms: proformaData.paymentTerms || null,
+        deliveryTerms: proformaData.deliveryTerms || null,
+        bankAccount: proformaData.bankAccount || null,
+        termsAndConditions: proformaData.termsAndConditions || null,
+        remarks: proformaData.remarks || null,
+        items: JSON.stringify(proformaData.items || []),
+        subtotal: proformaData.subtotal || null,
+        taxAmount: proformaData.taxAmount || null,
+        discount: proformaData.discount || "0",
+        discountPercentage: proformaData.discountPercentage || "0",
+        totalAmount: proformaData.totalAmount || null,
+        isArchived: false,
+      };
+
+      console.log("Storage: Insert data:", insertData);
+
+      const result = await db
+        .insert(proformaInvoices)
+        .values(insertData)
+        .returning();
+
+      console.log("Storage: Created proforma invoice:", result[0]);
+      return result[0];
+    } catch (error: any) {
+      console.error("Original error in createProformaInvoice:", error); // Keep original console.error
+      await this.createErrorLog({
+        message:
+          "Error in createProformaInvoice: " +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createProformaInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateProformaInvoice(
+    id: number,
+    proformaData: any,
+  ): Promise<any | undefined> {
+    try {
+      console.log(
+        "Storage: Updating proforma invoice",
+        id,
+        "with data:",
+        proformaData,
+      );
+
+      // Get existing proforma to preserve data that's not being updated
+      const existing = await this.getProformaInvoice(id);
+      if (!existing) {
+        throw new Error(`Proforma invoice with ID ${id} not found`);
+      }
+
+      // Prepare the update data, only updating fields that are provided
+      const updateData: any = {};
+
+      if (proformaData.customerId !== undefined)
+        updateData.customerId = proformaData.customerId;
+      if (proformaData.projectId !== undefined)
+        updateData.projectId = proformaData.projectId || null;
+      if (proformaData.quotationId !== undefined)
+        updateData.quotationId = proformaData.quotationId || null;
+      if (proformaData.workOrderNumber !== undefined)
+        updateData.workOrderNumber = proformaData.workOrderNumber || null;
+      if (proformaData.status !== undefined)
+        updateData.status = proformaData.status;
+      if (proformaData.invoiceDate !== undefined)
+        updateData.invoiceDate = proformaData.invoiceDate
+          ? new Date(proformaData.invoiceDate).toISOString()
+          : null;
+      if (proformaData.billingAddress !== undefined)
+        updateData.billingAddress = proformaData.billingAddress || null;
+      if (proformaData.validUntil !== undefined)
+        updateData.validUntil = proformaData.validUntil
+          ? new Date(proformaData.validUntil).toISOString()
+          : null;
+      if (proformaData.paymentTerms !== undefined)
+        updateData.paymentTerms = proformaData.paymentTerms || null;
+      if (proformaData.deliveryTerms !== undefined)
+        updateData.deliveryTerms = proformaData.deliveryTerms || null;
+      if (proformaData.bankAccount !== undefined)
+        updateData.bankAccount = proformaData.bankAccount || null;
+      if (proformaData.remarks !== undefined)
+        updateData.remarks = proformaData.remarks || null;
+      if (proformaData.termsAndConditions !== undefined)
+        updateData.termsAndConditions = proformaData.termsAndConditions || null;
+      if (proformaData.items !== undefined)
+        updateData.items = JSON.stringify(proformaData.items || []);
+      if (proformaData.subtotal !== undefined)
+        updateData.subtotal = proformaData.subtotal || null;
+      if (proformaData.taxAmount !== undefined) updateData.taxAmount || null;
+      if (proformaData.discount !== undefined)
+        updateData.discount = proformaData.discount || "0";
+      if (proformaData.discountPercentage !== undefined)
+        updateData.discountPercentage = proformaData.discountPercentage;
+      if (proformaData.totalAmount !== undefined)
+        updateData.totalAmount = proformaData.totalAmount || null;
+      if (proformaData.currency !== undefined)
+        updateData.currency = proformaData.currency;
+      if (proformaData.exchangeRate !== undefined)
+        updateData.exchangeRate = proformaData.exchangeRate;
+      if (proformaData.isArchived !== undefined)
+        updateData.isArchived = proformaData.isArchived || false;
+
+      const result = await db
+        .update(proformaInvoices)
+        .set(updateData)
+        .where(eq(proformaInvoices.id, id))
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      console.error("Original error in updateProformaInvoice:", error); // Keep original console.error
+      await this.createErrorLog({
+        message:
+          `Error in updateProformaInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateProformaInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteProformaInvoice(id: number): Promise<void> {
+    try {
+      await db.delete(proformaInvoices).where(eq(proformaInvoices.id, id));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in deleteProformaInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteProformaInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteCreditNote(id: number): Promise<boolean> {
+    // This is for sales credit notes
+    try {
+      const result = await db.delete(creditNotes).where(eq(creditNotes.id, id));
+      return result.rowCount > 0;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in deleteCreditNote (sales, id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getCreditNotesByInvoice(invoiceId: number): Promise<any[]> {
+    try {
+      const result = await db
+        .select()
+        .from(creditNotes)
+        .where(eq(creditNotes.salesInvoiceId, invoiceId))
+        .orderBy(desc(creditNotes.createdAt));
+
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getCreditNotesByInvoice (invoiceId: ${invoiceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getCreditNotesByInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createInvoicePaymentForCreditNote(
+    invoiceId: number,
+    creditNote: CreditNote,
+  ): Promise<InvoicePayment> {
+    try {
+      const paymentData: InsertInvoicePayment = {
+        invoiceId: invoiceId,
+        amount: creditNote.totalAmount as string,
+        paymentDate: creditNote.creditNoteDate,
+        paymentMethod: "Credit Note",
+        referenceNumber: creditNote.creditNoteNumber,
+        notes: `Credit note applied: ${creditNote.reason || "N/A"}`,
+        paymentType: "credit_note",
+        creditNoteId: creditNote.id,
+        // recordedBy is optional in InsertInvoicePayment based on schema (nullable, no default)
+      };
+
+      // Ensure createInvoicePayment is awaited as it's an async function
+      const payment = await this.createInvoicePayment(paymentData);
+      return payment;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in createInvoicePaymentForCreditNote (invoiceId: ${invoiceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createInvoicePaymentForCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateSalesInvoiceFromCreditNote(
+    invoiceId: number,
+    creditNoteAmount: number,
+  ): Promise<SalesInvoice | undefined> {
+    try {
+      const invoice = await this.getSalesInvoice(invoiceId);
+      if (!invoice) {
+        throw new Error(`Sales invoice ${invoiceId} not found`);
+      }
+
+      const currentPaidAmount = parseFloat(invoice.paidAmount || "0");
+      const newPaidAmount = currentPaidAmount + creditNoteAmount; // Credit note effectively "pays" this amount
+
+      // Update invoice paid amount and status
+      await this.updateInvoicePaidAmount(invoiceId); // This will recalculate status
+
+      // Return the updated invoice
+      return this.getSalesInvoice(invoiceId);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateSalesInvoiceFromCreditNote (invoiceId: ${invoiceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateSalesInvoiceFromCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getSalesQuotations(): Promise<SalesQuotation[]> {
+    try {
+      return await db.select().from(salesQuotations);
+    } catch (error: any) {
+      // console.error("Error getting sales quotations:", error); // Original console.error commented out
+      await this.createErrorLog({
+        message:
+          "Error in getSalesQuotations: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesQuotations",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteSalesQuotation(id: number): Promise<void> {
+    try {
+      await db.delete(salesQuotations).where(eq(salesQuotations.id, id));
+    } catch (error: any) {
+      // console.error("Error deleting sales quotation:", error); // Original console.error commented out
+      await this.createErrorLog({
+        message:
+          `Error in deleteSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getSalesInvoices(): Promise<SalesInvoice[]> {
+    try {
+      return await db.select().from(salesInvoices);
+    } catch (error: any) {
+      // console.error("Error getting sales invoices:", error); // Original console.error commented out
+      await this.createErrorLog({
+        message:
+          "Error in getSalesInvoices: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesInvoices",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getSalesInvoice(id: number): Promise<SalesInvoice | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(salesInvoices)
+        .where(eq(salesInvoices.id, id))
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createSalesInvoice(
+    invoiceData: InsertSalesInvoice,
+  ): Promise<SalesInvoice> {
+    try {
+      // Generate a temporary invoice number if not provided, ensuring it fits in 20 chars
+      // INV-DRAFT- + 10 digits (from timestamp) = 20 chars
+      const timestamp = Date.now().toString().slice(-10);
+      const invoiceNumber =
+        invoiceData.invoiceNumber || `INV-DRFT-${timestamp}`;
+      const [invoice] = await db
+        .insert(salesInvoices)
+        .values({
+          ...invoiceData,
+          invoiceNumber,
+          status: invoiceData.status || "draft",
+          paidAmount: "0",
+        })
+        .returning();
+      return invoice;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          "Error in createSalesInvoice: " + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "createSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateSalesInvoice(
+    id: number,
+    invoiceData: Partial<InsertSalesInvoice>,
+  ): Promise<SalesInvoice | undefined> {
+    try {
+      console.log("invoiceData", invoiceData);
+      const result = await db
+        .update(salesInvoices)
+        .set(invoiceData)
+        .where(eq(salesInvoices.id, id))
+        .returning();
+      return result[0];
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async submitSalesInvoiceForApproval(
+    id: number,
+    userId: number,
+  ): Promise<any> {
+    try {
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "pending_approval",
+          submittedById: userId,
+          submittedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+
+      return this.getSalesInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in submitSalesInvoiceForApproval (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "submitSalesInvoiceForApproval",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async approveSalesInvoice(id: number, userId: number): Promise<void> {
+    try {
+      const invoice = await this.getSalesInvoice(id);
+      if (!invoice) throw new Error("Invoice not found");
+
+      // Generate permanent invoice number if it was a draft
+      const invoiceNumber = invoice.invoiceNumber?.startsWith("INV-AQNV-")
+        ? invoice.invoiceNumber
+        : await this.generateNextNumber(
+            "INV",
+            salesInvoices,
+            salesInvoices.invoiceNumber,
+          );
+
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "approved",
+          invoiceNumber,
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+
+      // Create GL entries
+      await this.createInvoiceGLEntries(id);
+
+      // If invoice is linked to a project, update project total revenue (accrual basis)
+      if (invoice.projectId) {
+        await this.updateProjectRevenue(invoice.projectId);
+      }
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in approveSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "approveSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async rejectSalesInvoice(
+    id: number,
+    userId: number,
+    reason?: string,
+  ): Promise<any> {
+    try {
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "rejected",
+          rejectionReason: reason || null,
+          approvedById: userId,
+          approvedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+
+      return this.getSalesInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in rejectSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "rejectSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async deleteSalesInvoice(id: number): Promise<void> {
+    try {
+      await db.delete(salesInvoices).where(eq(salesInvoices.id, id));
+    } catch (error: any) {
+      // console.error("Error deleting sales invoice:", error); // Original console.error commented out
+      await this.createErrorLog({
+        message:
+          `Error in deleteSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async cancelSalesInvoice(id: number, userId: number): Promise<any> {
+    try {
+      const invoice = await this.getSalesInvoice(id);
+      if (!invoice) throw new Error("Invoice not found");
+
+      const cancellableStatuses = ["approved", "unpaid", "overdue"];
+      if (!cancellableStatuses.includes(invoice.status)) {
+        throw new Error("Only approved or unpaid invoices can be cancelled");
+      }
+
+      const payments = await this.getInvoicePayments(id);
+      if (payments && payments.length > 0) {
+        throw new Error("Cannot cancel invoice with payments received");
+      }
+
+      const creditNotesList = await this.getCreditNotesByInvoice(id);
+      if (creditNotesList && creditNotesList.length > 0) {
+        throw new Error("Cannot cancel invoice with credit notes issued");
+      }
+
+      await db
+        .update(salesInvoices)
+        .set({ status: "cancelled" })
+        .where(eq(salesInvoices.id, id));
+
+      await this.createCancellationGLEntries(id);
+
+      // If invoice was linked to a project, reverse the revenue contribution
+      if (invoice.projectId) {
+        await this.updateProjectRevenue(invoice.projectId);
+      }
+
+      return this.getSalesInvoice(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in cancelSalesInvoice (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "cancelSalesInvoice",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async createInvoiceEditHistory(
+    data: InsertInvoiceEditHistory,
+  ): Promise<InvoiceEditHistory> {
+    try {
+      const [entry] = await db
+        .insert(invoiceEditHistory)
+        .values(data)
+        .returning();
+      return entry;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in createInvoiceEditHistory: ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "createInvoiceEditHistory",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getInvoiceEditHistory(
+    invoiceType: string,
+    invoiceId: number,
+  ): Promise<InvoiceEditHistory[]> {
+    try {
+      return await db
+        .select()
+        .from(invoiceEditHistory)
+        .where(
+          and(
+            eq(invoiceEditHistory.invoiceType, invoiceType),
+            eq(invoiceEditHistory.invoiceId, invoiceId),
+          ),
+        )
+        .orderBy(desc(invoiceEditHistory.editedAt));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in getInvoiceEditHistory: ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "getInvoiceEditHistory",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async updateSalesInvoiceGLEntries(invoiceId: number): Promise<void> {
+    try {
+      const invoice = await db
+        .select()
+        .from(salesInvoices)
+        .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
+        .where(eq(salesInvoices.id, invoiceId))
+        .limit(1);
+
+      if (!invoice[0]) {
+        throw new Error(`Invoice with ID ${invoiceId} not found`);
+      }
+
+      const invoiceData = invoice[0].sales_invoices;
+      const customerData = invoice[0].customers;
+
+      const invoiceCurrency = invoiceData.currency || "AED";
+      const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
+      const originalAmount = parseFloat(invoiceData.totalAmount || "0");
+      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      const currencyNote =
+        invoiceCurrency !== "AED"
+          ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
+          : "";
+
+      const description = `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`;
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: aedAmount,
+          creditAmount: "0",
+          description,
+          entityId: invoiceData.customerId,
+          entityName: customerData?.name || null,
+          projectId: invoiceData.projectId,
+          transactionDate: invoiceData.invoiceDate,
+          dueDate: invoiceData.dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "sales_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Accounts Receivable"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      await db
+        .update(generalLedgerEntries)
+        .set({
+          debitAmount: "0",
+          creditAmount: aedAmount,
+          description,
+          entityId: invoiceData.customerId,
+          entityName: customerData?.name || null,
+          projectId: invoiceData.projectId,
+          transactionDate: invoiceData.invoiceDate,
+          dueDate: invoiceData.dueDate,
+        })
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "sales_invoice"),
+            eq(generalLedgerEntries.referenceId, invoiceId),
+            eq(generalLedgerEntries.accountName, "Sales Revenue"),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      console.log(
+        `GL entries updated for sales invoice ${invoiceData.invoiceNumber}`,
+      );
+    } catch (error: any) {
+      await this.createErrorLog({
+        message: `Error in updateSalesInvoiceGLEntries (invoiceId: ${invoiceId}): ${error?.message || "Unknown error"}`,
+        stack: error?.stack,
+        component: "updateSalesInvoiceGLEntries",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+}
