@@ -1993,8 +1993,9 @@ export class PurchaseStorage extends SalesStorage {
       invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
       const subtotal = parseFloat(invoiceData.subtotal || "0");
       const taxAmount = parseFloat(invoiceData.taxAmount || "0");
-      const discountAmt = parseFloat(invoiceData.discountAmount || "0");
-      const totalAmount = subtotal + taxAmount - discountAmt;
+      // Use the engine's total (nets both line and header discounts). Do NOT
+      // recompute as subtotal + tax - headerDiscount, which ignores line discounts.
+      const totalAmount = parseFloat(invoiceData.totalAmount || "0");
 
       await db
         .update(purchaseInvoices)
