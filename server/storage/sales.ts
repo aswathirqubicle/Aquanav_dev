@@ -1991,7 +1991,11 @@ export class SalesStorage extends LedgerStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Recompute the standard 3-row split from the EDITED figures.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -1999,47 +2003,83 @@ export class SalesStorage extends LedgerStorage {
 
       const description = `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`;
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: aedAmount,
-          creditAmount: "0",
-          description,
-          entityId: invoiceData.customerId,
-          entityName: customerData?.name || null,
-          projectId: invoiceData.projectId,
-          transactionDate: invoiceData.invoiceDate,
-          dueDate: invoiceData.dueDate,
-        })
+      const shared = {
+        entryType: "receivable" as const,
+        referenceType: "sales_invoice" as const,
+        referenceId: invoiceId,
+        description,
+        entityId: invoiceData.customerId,
+        entityName: customerData?.name || null,
+        projectId: invoiceData.projectId,
+        invoiceNumber: invoiceData.invoiceNumber,
+        transactionDate: invoiceData.invoiceDate,
+        dueDate: invoiceData.dueDate,
+        status: "pending" as const,
+      };
+
+      // Reverse-and-re-post (H2): a fixed in-place UPDATE can neither create a VAT
+      // row that didn't exist nor delete one that should no longer exist (e.g. an
+      // edit that makes the customer zero-rated). Instead, reverse the current
+      // active posting and post the new split — atomically, and leaving the
+      // reversal visible for audit (T5.21/T5.22).
+      const activeRows = await db
+        .select()
+        .from(generalLedgerEntries)
         .where(
           and(
             eq(generalLedgerEntries.referenceType, "sales_invoice"),
             eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Accounts Receivable"),
-            ne(generalLedgerEntries.status, "cancelled"),
+            eq(generalLedgerEntries.status, "pending"),
           ),
         );
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
+      await db.transaction(async (tx) => {
+        for (const row of activeRows) {
+          // Post a reversal (debit/credit swapped) and retire the original row.
+          await tx.insert(generalLedgerEntries).values({
+            entryType: row.entryType,
+            referenceType: "sales_invoice",
+            referenceId: invoiceId,
+            accountName: row.accountName,
+            description: `REVERSAL (edit) - ${row.description}`,
+            debitAmount: row.creditAmount,
+            creditAmount: row.debitAmount,
+            entityId: row.entityId,
+            entityName: row.entityName,
+            projectId: row.projectId,
+            invoiceNumber: row.invoiceNumber,
+            transactionDate: row.transactionDate,
+            dueDate: row.dueDate,
+            status: "reversed",
+          });
+          await tx
+            .update(generalLedgerEntries)
+            .set({ status: "reversed" })
+            .where(eq(generalLedgerEntries.id, row.id));
+        }
+
+        // Re-post the new 3-row split (VAT line omitted when zero).
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Accounts Receivable",
+          debitAmount: aedTotal.toFixed(2),
+          creditAmount: "0",
+        });
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Sales Revenue",
           debitAmount: "0",
-          creditAmount: aedAmount,
-          description,
-          entityId: invoiceData.customerId,
-          entityName: customerData?.name || null,
-          projectId: invoiceData.projectId,
-          transactionDate: invoiceData.invoiceDate,
-          dueDate: invoiceData.dueDate,
-        })
-        .where(
-          and(
-            eq(generalLedgerEntries.referenceType, "sales_invoice"),
-            eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Sales Revenue"),
-            ne(generalLedgerEntries.status, "cancelled"),
-          ),
-        );
+          creditAmount: aedRevenue.toFixed(2),
+        });
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT/GST Payable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
+      });
 
       console.log(
         `GL entries updated for sales invoice ${invoiceData.invoiceNumber}`,

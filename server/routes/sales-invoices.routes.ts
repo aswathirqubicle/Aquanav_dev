@@ -82,10 +82,28 @@ salesInvoicesRoutes.put(
         return res.status(404).json({ message: "Invoice not found" });
       }
       const isAdmin = req.session.userRole === "admin";
-      const editableStatuses = ["draft", "approved", "partial", "paid"];
+      // Editable only in the pre-payment part of the lifecycle. partially_paid /
+      // paid are excluded because a payment has been recorded (see the
+      // paidAmount guard below); cancelled / rejected are terminal.
+      const editableStatuses = [
+        "draft",
+        "pending_approval",
+        "approved",
+        "unpaid",
+        "overdue",
+      ];
       if (!editableStatuses.includes(existingInvoice.status)) {
         return res.status(400).json({
           message: "This invoice cannot be edited in its current status",
+        });
+      }
+      // Known bug fix: once ANY payment is recorded against the invoice it must
+      // not be editable. Status alone isn't enough (an overdue invoice can carry
+      // a partial payment), so gate on the recorded amount.
+      if (parseFloat(existingInvoice.paidAmount || "0") > 0) {
+        return res.status(400).json({
+          message:
+            "This invoice has recorded payments and can no longer be edited",
         });
       }
       if (existingInvoice.status !== "draft" && !isAdmin) {
@@ -164,12 +182,12 @@ salesInvoicesRoutes.put(
           if (paidAmount >= newTotal) {
             newStatus = "paid";
           } else {
-            newStatus = "partial";
+            newStatus = "partially_paid";
           }
         } else if (
           paidAmount === 0 &&
           (existingInvoice.status === "paid" ||
-            existingInvoice.status === "partial")
+            existingInvoice.status === "partially_paid")
         ) {
           newStatus = "approved";
         }
