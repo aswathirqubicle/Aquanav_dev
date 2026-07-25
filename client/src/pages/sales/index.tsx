@@ -1,5 +1,6 @@
 import { useEffect, useState, startTransition } from "react";
 import { useLocation } from "wouter";
+import { computeDocumentTotals } from "@shared/document-totals";
 import {
   useQuery,
   useMutation,
@@ -131,6 +132,8 @@ interface QuotationItem {
   unitPrice: number;
   taxRate?: number;
   taxAmount?: number;
+  discount?: number;
+  discountType?: "amount" | "percentage";
 }
 
 export default function SalesIndex() {
@@ -263,12 +266,16 @@ export default function SalesIndex() {
     unitPrice: number | "";
     taxRate: number | "";
     taxAmount: number;
+    discount: number | "";
+    discountType: "amount" | "percentage";
   }>({
     description: "",
     quantity: 1,
     unitPrice: 0,
     taxRate: 0,
     taxAmount: 0,
+    discount: 0,
+    discountType: "amount",
   });
 
   const [paymentFormData, setPaymentFormData] = useState<CreatePaymentData>({
@@ -1110,6 +1117,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: 0,     // will be fixed by useEffect
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
 
     setIsEditingQuotation(false);
@@ -1143,6 +1152,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: 0,
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -1296,9 +1307,15 @@ export default function SalesIndex() {
     const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
     const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
-    const calculatedTaxAmount = lineSubtotal * (taxRate / 100);
+    const lineDiscount =
+      discountType === "percentage"
+        ? lineSubtotal * (discount / 100)
+        : Math.min(discount, lineSubtotal);
+    const calculatedTaxAmount = (lineSubtotal - lineDiscount) * (taxRate / 100);
 
     const item = {
       description: newItem.description,
@@ -1306,6 +1323,8 @@ export default function SalesIndex() {
       unitPrice,
       taxRate,
       taxAmount: calculatedTaxAmount,
+      discount,
+      discountType,
     };
 
     setFormData(prev => ({
@@ -1319,6 +1338,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -1342,9 +1363,15 @@ export default function SalesIndex() {
     const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
     const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
-    const taxAmount = lineSubtotal * (taxRate / 100);
+    const lineDiscount =
+      discountType === "percentage"
+        ? lineSubtotal * (discount / 100)
+        : Math.min(discount, lineSubtotal);
+    const taxAmount = (lineSubtotal - lineDiscount) * (taxRate / 100);
 
     const item = {
       description: newItem.description,
@@ -1352,6 +1379,8 @@ export default function SalesIndex() {
       unitPrice,
       taxRate,
       taxAmount,
+      discount,
+      discountType,
     };
 
     setInvoiceFormData(prev => ({
@@ -1365,6 +1394,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -2165,6 +2196,43 @@ export default function SalesIndex() {
                               }
                             />
                           </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">
+                              Discount
+                            </Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="0"
+                                value={newItem.discount}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discount:
+                                      e.target.value === ""
+                                        ? ""
+                                        : parseFloat(e.target.value),
+                                  }))
+                                }
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background"
+                                value={newItem.discountType}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discountType: e.target.value as
+                                      | "amount"
+                                      | "percentage",
+                                  }))
+                                }
+                              >
+                                <option value="amount">AED</option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                         <Button
                           type="button"
@@ -2760,6 +2828,43 @@ export default function SalesIndex() {
                                 }))
                               }
                             />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">
+                              Discount
+                            </Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="0"
+                                value={newItem.discount}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discount:
+                                      e.target.value === ""
+                                        ? ""
+                                        : parseFloat(e.target.value),
+                                  }))
+                                }
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background"
+                                value={newItem.discountType}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discountType: e.target.value as
+                                      | "amount"
+                                      | "percentage",
+                                  }))
+                                }
+                              >
+                                <option value="amount">AED</option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
                           </div>
                         </div>
                         <Button
