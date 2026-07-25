@@ -247,7 +247,15 @@ purchaseInvoicesRoutes.put(
       }
 
       if (existingInvoice.status !== "draft") {
-        await storage.updatePurchaseInvoiceGLEntries(id);
+        // GL is posted on approval. An invoice still awaiting approval has no
+        // posting to reverse, so re-posting here would create ledger entries for
+        // an unapproved document — and approval would then post the same split a
+        // second time, silently doubling expense, input VAT and payable (the
+        // doubled set still balances, so no ΣDr=ΣCr check catches it). Only an
+        // already-approved invoice gets the reverse-and-re-post.
+        if (existingInvoice.status !== "pending_approval") {
+          await storage.updatePurchaseInvoiceGLEntries(id);
+        }
 
         const paidAmount = parseFloat(invoice.paidAmount || "0");
         const newTotal = parseFloat(invoice.totalAmount || "0");
