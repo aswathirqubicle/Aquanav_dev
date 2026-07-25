@@ -1917,7 +1917,11 @@ export class PurchaseStorage extends SalesStorage {
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
             invoiceData.assetInventoryInstanceId || null,
-          status: invoiceData.status || "draft",
+          // L28: always create as draft. A caller-supplied status (e.g.
+          // "approved") must NOT be honored — approval is the only path that
+          // posts GL, goods receipts and project cost, so accepting it here
+          // would let a create skip the entire approval workflow.
+          status: "draft",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: invoiceData.paymentTerms || null,
