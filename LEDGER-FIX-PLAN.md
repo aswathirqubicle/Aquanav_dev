@@ -1077,18 +1077,26 @@ new server-side recompute, since the server now overrides client totals):
   otherwise it logs phantom changes (e.g. "Tax Amount 4.28 → 5.00") for the
   pre-recompute figures the client sent but the server never stored.
 
-**Progress (2026-07-25):**
+**Progress (updated 2026-07-25):**
 
-- ✅ **Done:** shared engine + tests · sales invoices & quotations (line-discount
-  inputs, engine-driven summaries, details discount + tax columns) · header-discount
-  storage fix + derive-for-display across all sales details views and the four
-  sales print generators · edit-history persisted-row fix (sales invoices,
-  purchase invoices, purchase orders) · purchase storage recompute + schema wired.
-- ⏳ **Remaining:** line-discount inputs + display on **proforma**, **credit
-  notes**, **purchase invoices**, **purchase orders** · the purchase
-  header-discount storage fix (`applyPurchaseDocumentTotals` → store header) and
-  purchase print derive (`purchase-invoice-html.ts`, `purchase-order-html.ts`) ·
-  the existing-document recalculation report (4b.6 / T4b.10).
+- ✅ **Line-item discounts + VAT-on-discounted-base across every in-scope
+  document** — verified end to end: shared engine + tests · sales invoices &
+  quotations · proforma (PRF-003) · credit notes (CN-002) · purchase invoices,
+  create/edit/duplicate (PI-005) · purchase orders (PO-004) · PO→invoice
+  conversion routed through the engine (PI-007).
+- ✅ **Supporting fixes:** header-discount storage fix (store header, derive the
+  total for display) on both sales and purchase, across all details views and
+  print generators · edit-history persisted-row diff (sales/purchase invoices,
+  purchase orders) · purchase-invoice edit total overwrite · duplicate now
+  carries line discounts · PO edit-load `taxRate` hardcode.
+- ✅ **Recalculation tool** (4b.6 / T4b.10): `scripts/recalc-vat-discounts.ts`
+  recomputes existing discounted documents through the engine — **dry-run report
+  by default**, `--apply` to write. Safe to re-run (already-correct documents show
+  no change). Verified against UAT-local data.
+- ⏳ **Remaining:** the team reviews the dry-run report, then runs
+  `scripts/recalc-vat-discounts.ts --apply` against UAT/production, **before** the
+  P11 ledger rebuild re-posts from those documents. (Caution: `server/db.ts:4`
+  logs `DATABASE_URL` on startup — scrub it from any shared console/log output.)
 
 ---
 
