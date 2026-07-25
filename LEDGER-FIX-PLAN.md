@@ -1005,7 +1005,7 @@ fixed before go-live.
 | 4b.5 | **Zero-rated / exempt customers** | `customer.vatTreatment` already drives a 0% rate. Confirm the discount logic behaves when the rate is 0 (**G2** — no VAT line is posted at all) |
 | 4b.6 | **Existing documents** | Invoices already recorded with a discount hold the wrong `taxAmount`. Since **D15** wipes and re-posts the ledger from those documents, the **documents must be recalculated first** or the rebuild faithfully re-posts the wrong VAT |
 | 4b.7 | **Rounding rule** *(H3)* | VAT is computed and rounded **per line**, so the sum of line taxes can differ by a cent from 5% of the invoice total. Fix the rule: the VAT posted = **sum of the rounded line taxes**, and the AR debit is derived as `revenue + VAT − discount` from those same rounded figures — so the entry balances by construction, not by luck |
-| 4b.8 | **Forward compatibility — line-level discounts** | The team plans a coming enhancement adding a discount **per line item**. Structure the apportionment accordingly: line discount (when it exists) applies first, and any header discount apportions over the already-line-discounted amounts. Do not hardcode header-only assumptions that would force a rewrite |
+| 4b.8 | **Line-level discounts** | **Now in P4b scope (added 2026-07-25) — see *Scope expansion* below.** A discount **per line item** (percentage or fixed amount). The apportionment order: line discount applies first, then any header discount apportions over the already-line-discounted amounts. VAT is then charged per line on that discounted base |
 
 ### Test cases
 
@@ -1029,6 +1029,66 @@ fixed before go-live.
 discounted UAT documents are recalculated to the lawful VAT base, with a report
 of every document whose `taxAmount`/`totalAmount` changed, before the P11
 rebuild re-posts from them.
+
+### Scope expansion — line-item discounts (added 2026-07-25)
+
+Item 4b.8 was originally a *forward-compatibility* note. The team has since
+brought that enhancement **into P4b scope**: line-item discounts are now built as
+part of this phase, alongside the VAT-base correction (they share the same
+apportionment engine).
+
+**Decisions (confirmed by the user):**
+
+- **Per line:** support **both** a percentage and a fixed amount (`discount` +
+  `discountType` on each item).
+- **Documents:** **all except purchase requests** — sales invoices, quotations,
+  proforma, credit notes; purchase invoices, purchase orders.
+- **Interaction:** line discount applies **first**; the header discount then
+  apportions pro-rata over the already-line-discounted amounts; VAT is charged
+  per line on the discounted base (UAE law, 4b.1/4b.2).
+
+**Implementation:**
+
+- **Shared engine** `shared/document-totals.ts` (`computeDocumentTotals`),
+  importable by both client (Vite `@shared`) and server (tsx/esbuild). The server
+  recomputes authoritatively and **overrides** the client's totals (4b.3).
+  Covered by `server/document-totals.calc.test.ts` (T4b.1–T4b.11 + line/header
+  combinations).
+- **Schema/migration:** `discount` + `discount_type` added to
+  `purchase_invoice_items` and `purchase_order_items`
+  (`migrations/0065_add_line_item_discounts.sql`, applied locally). Sales line
+  items live in the JSON `items` column, so no migration.
+- **Storage helpers** `applySalesDocumentTotals` / `applyPurchaseDocumentTotals`
+  run the engine on create/update for every in-scope document.
+
+**Two corrections that emerged during implementation** (both regressions from the
+new server-side recompute, since the server now overrides client totals):
+
+- **Header-discount column semantics.** The header-discount column
+  (`discount` on sales, `discountAmount` on purchase) must store **only the
+  header** discount — its pre-P4b meaning — because the edit/duplicate/convert
+  forms reload that column into the header-discount input. Storing the *combined*
+  (header + line) total there made the discount **inflate on every edit**. The
+  combined total shown on details views and printed documents is instead
+  **derived** as `subtotal + taxAmount − totalAmount` (an exact identity given
+  the engine's definitions — no rounding drift).
+- **Edit-history diffs.** The invoice/order edit-history diff must compare the old
+  row against the **persisted (recomputed)** row, not the raw client payload —
+  otherwise it logs phantom changes (e.g. "Tax Amount 4.28 → 5.00") for the
+  pre-recompute figures the client sent but the server never stored.
+
+**Progress (2026-07-25):**
+
+- ✅ **Done:** shared engine + tests · sales invoices & quotations (line-discount
+  inputs, engine-driven summaries, details discount + tax columns) · header-discount
+  storage fix + derive-for-display across all sales details views and the four
+  sales print generators · edit-history persisted-row fix (sales invoices,
+  purchase invoices, purchase orders) · purchase storage recompute + schema wired.
+- ⏳ **Remaining:** line-discount inputs + display on **proforma**, **credit
+  notes**, **purchase invoices**, **purchase orders** · the purchase
+  header-discount storage fix (`applyPurchaseDocumentTotals` → store header) and
+  purchase print derive (`purchase-invoice-html.ts`, `purchase-order-html.ts`) ·
+  the existing-document recalculation report (4b.6 / T4b.10).
 
 ---
 
