@@ -2224,13 +2224,19 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Standard VAT posting (D5): AP is the gross owed to the supplier; Purchase
+      // Expense is net of discount and EXCLUDING VAT; the input VAT is recoverable
+      // (an asset). Rounded so Dr Expense + Dr VAT == Cr AP to the cent.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
-      // Both sides in ONE transaction (L14). Two independent inserts could
-      // leave a credit to Accounts Payable with no matching expense debit.
+      // All rows in ONE transaction (L14). Independent inserts could leave a
+      // credit to Accounts Payable with no matching expense/VAT debit.
       const approvalShared = {
         entryType: "payable" as const,
         referenceType: "purchase_invoice" as const,
@@ -2250,20 +2256,30 @@ export class PurchaseStorage extends SalesStorage {
       };
 
       await db.transaction(async (tx) => {
-        // Credit Accounts Payable, in AED
+        // Debit Purchase Expense (net of discount, excl. VAT), in AED
+        await tx.insert(generalLedgerEntries).values({
+          ...approvalShared,
+          accountName: "Purchase Expense",
+          debitAmount: aedExpense.toFixed(2),
+          creditAmount: "0",
+        });
+
+        // Debit VAT Recoverable (input VAT, recoverable) — omitted when zero (G2)
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...approvalShared,
+            accountName: "VAT Recoverable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+
+        // Credit Accounts Payable (gross, incl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...approvalShared,
           accountName: "Accounts Payable",
           debitAmount: "0",
-          creditAmount: aedAmount,
-        });
-
-        // Debit Purchase Expense, in AED
-        await tx.insert(generalLedgerEntries).values({
-          ...approvalShared,
-          accountName: "Purchase Expense",
-          debitAmount: aedAmount,
-          creditAmount: "0",
+          creditAmount: aedTotal.toFixed(2),
         });
       });
 
@@ -3040,7 +3056,11 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Recompute the 3-row split from the EDITED figures.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -3054,47 +3074,80 @@ export class PurchaseStorage extends SalesStorage {
         ? new Date(invoice.dueDate).toISOString()
         : null;
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: "0",
-          creditAmount: aedAmount,
-          description,
-          entityId: invoice.supplierId,
-          entityName: supplierName,
-          projectId: invoice.projectId || null,
-          transactionDate,
-          dueDate,
-        })
+      const shared = {
+        entryType: "payable" as const,
+        referenceType: "purchase_invoice" as const,
+        referenceId: invoiceId,
+        description,
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate,
+        dueDate,
+        status: "pending" as const,
+      };
+
+      // Reverse-and-re-post (H2): a fixed 2-row UPDATE can neither add a VAT row
+      // nor remove one when an edit changes the tax. Reverse the current active
+      // posting and post the new split — atomically, keeping the reversal visible.
+      const activeRows = await db
+        .select()
+        .from(generalLedgerEntries)
         .where(
           and(
             eq(generalLedgerEntries.referenceType, "purchase_invoice"),
             eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Accounts Payable"),
-            ne(generalLedgerEntries.status, "cancelled"),
+            eq(generalLedgerEntries.status, "pending"),
           ),
         );
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: aedAmount,
+      await db.transaction(async (tx) => {
+        for (const row of activeRows) {
+          await tx.insert(generalLedgerEntries).values({
+            entryType: row.entryType,
+            referenceType: "purchase_invoice",
+            referenceId: invoiceId,
+            accountName: row.accountName,
+            description: `REVERSAL (edit) - ${row.description}`,
+            debitAmount: row.creditAmount,
+            creditAmount: row.debitAmount,
+            entityId: row.entityId,
+            entityName: row.entityName,
+            projectId: row.projectId,
+            invoiceNumber: row.invoiceNumber,
+            transactionDate: row.transactionDate,
+            dueDate: row.dueDate,
+            status: "reversed",
+          });
+          await tx
+            .update(generalLedgerEntries)
+            .set({ status: "reversed" })
+            .where(eq(generalLedgerEntries.id, row.id));
+        }
+
+        // Re-post the new 3-row split (VAT line omitted when zero).
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Purchase Expense",
+          debitAmount: aedExpense.toFixed(2),
           creditAmount: "0",
-          description,
-          entityId: invoice.supplierId,
-          entityName: supplierName,
-          projectId: invoice.projectId || null,
-          transactionDate,
-          dueDate,
-        })
-        .where(
-          and(
-            eq(generalLedgerEntries.referenceType, "purchase_invoice"),
-            eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Purchase Expense"),
-            ne(generalLedgerEntries.status, "cancelled"),
-          ),
-        );
+        });
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT Recoverable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Accounts Payable",
+          debitAmount: "0",
+          creditAmount: aedTotal.toFixed(2),
+        });
+      });
 
       console.log(
         `GL entries updated for purchase invoice ${invoice.invoiceNumber}`,
