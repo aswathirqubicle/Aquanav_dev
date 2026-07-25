@@ -2926,7 +2926,7 @@ export class PurchaseStorage extends SalesStorage {
         await db.insert(purchaseInvoicePayments).values({
           invoiceId: creditNote.purchaseInvoiceId,
           amount: creditNote.totalAmount,
-          paymentDate: creditNote.creditNoteDate,
+          paymentDate: new Date(creditNote.creditNoteDate),
           paymentMethod: "Credit Note",
           referenceNumber: creditNote.creditNoteNumber,
           notes: `Credit note applied: ${creditNote.reason || "N/A"}`,
@@ -2993,7 +2993,7 @@ export class PurchaseStorage extends SalesStorage {
         await db.insert(purchaseInvoicePayments).values({
           invoiceId: updatedCreditNote.purchaseInvoiceId,
           amount: updatedCreditNote.totalAmount,
-          paymentDate: updatedCreditNote.creditNoteDate,
+          paymentDate: new Date(updatedCreditNote.creditNoteDate),
           paymentMethod: "Credit Note",
           referenceNumber: updatedCreditNote.creditNoteNumber,
           notes: `Credit note applied: ${updatedCreditNote.reason || "N/A"}`,
