@@ -1064,11 +1064,17 @@ export class ProjectAssetStorage extends InventoryStorage {
         `Total asset rental cost: ${totalAssetRentalCost.toFixed(2)}`,
       );
 
-      // Purchase invoice line item costs (approved invoices allocated to this project)
+      // Purchase invoice line item costs (approved invoices allocated to this
+      // project). Allocate the net-of-discount amount EXCLUDING VAT: lineTotal is
+      // stored tax-inclusive (taxable + taxAmount), and taxable is already net of
+      // the line and apportioned header discount, so lineTotal - taxAmount is the
+      // discounted, ex-VAT cost. This makes Σ project cost reconcile to the GL
+      // Purchase Expense, which is posted net of VAT (P6.2). (6.3 / T6.13)
       let totalPurchaseInvoiceCost = 0;
       const purchaseLineItems = await db
         .select({
           lineTotal: purchaseInvoiceItems.lineTotal,
+          taxAmount: purchaseInvoiceItems.taxAmount,
           exchangeRate: purchaseInvoices.exchangeRate,
         })
         .from(purchaseInvoiceItems)
@@ -1087,8 +1093,10 @@ export class ProjectAssetStorage extends InventoryStorage {
           ),
         );
       for (const item of purchaseLineItems) {
+        const netExVat =
+          parseFloat(item.lineTotal) - parseFloat(item.taxAmount || "0");
         totalPurchaseInvoiceCost +=
-          parseFloat(item.lineTotal) * parseFloat(item.exchangeRate || "1");
+          netExVat * parseFloat(item.exchangeRate || "1");
       }
 
       // Approved reimbursements linked to this project
@@ -2148,9 +2156,13 @@ export class ProjectAssetStorage extends InventoryStorage {
         .orderBy(desc(purchaseInvoices.invoiceDate));
 
       const purchaseItems = purchaseItemsData.map((item) => {
+        // Net of VAT (lineTotal is stored tax-inclusive; strip taxAmount) so the
+        // displayed purchase-expense breakdown reconciles to actualCost and the
+        // GL Purchase Expense, both net of VAT. (6.3)
         const lineTotal = parseFloat(String(item.lineTotal || "0"));
+        const taxAmount = parseFloat(String(item.taxAmount || "0"));
         const exRate = parseFloat(String(item.exchangeRate || "1"));
-        const totalAmountAED = lineTotal * exRate;
+        const totalAmountAED = (lineTotal - taxAmount) * exRate;
         return {
           description: item.description || "Unknown item",
           amount: totalAmountAED.toFixed(2),
