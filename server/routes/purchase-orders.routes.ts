@@ -167,6 +167,18 @@ purchaseOrdersRoutes.put(
         files: req.files,
       };
 
+      // Fetch existing items BEFORE the update so the items diff sees the old set.
+      const existingItems = await storage.getPurchaseOrderItems(id);
+
+      const order = await storage.updatePurchaseOrder(id, orderData);
+      if (!order) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+
+      // Diff against the PERSISTED row, not the client payload: the server
+      // recomputes subtotal/discountAmount/taxAmount/totalAmount (VAT on the
+      // discounted base), so orderData holds pre-recompute values that were
+      // never stored. Comparing to the stored row keeps edit history accurate.
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
         "supplierId",
@@ -187,7 +199,7 @@ purchaseOrdersRoutes.put(
 
       for (const field of fieldsToTrack) {
         const oldVal = (existingOrder as any)[field];
-        let newVal = orderData[field];
+        let newVal = (order as any)[field];
 
         if (field === "orderDate" || field === "expectedDeliveryDate") {
           const oldDate = oldVal
@@ -199,25 +211,16 @@ purchaseOrdersRoutes.put(
           if (oldDate !== newDate) {
             changes[field] = { old: oldDate, new: newDate };
           }
-        } else if (
-          newVal !== undefined &&
-          String(oldVal || "") !== String(newVal || "")
-        ) {
+        } else if (String(oldVal || "") !== String(newVal || "")) {
           changes[field] = { old: oldVal, new: newVal };
         }
       }
 
-      const existingItems = await storage.getPurchaseOrderItems(id);
       if (JSON.stringify(existingItems) !== JSON.stringify(orderItems)) {
         changes["items"] = {
           old: existingItems,
           new: orderItems,
         };
-      }
-
-      const order = await storage.updatePurchaseOrder(id, orderData);
-      if (!order) {
-        return res.status(404).json({ message: "Purchase order not found" });
       }
 
       const user = await storage.getUser(req.session.userId!);

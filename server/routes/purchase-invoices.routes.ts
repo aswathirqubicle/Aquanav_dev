@@ -181,6 +181,27 @@ purchaseInvoicesRoutes.put(
         });
       }
 
+      const isApprovedEdit = existingInvoice.status !== "draft";
+
+      const updatedInvoiceData = {
+        ...invoiceData,
+        items: JSON.parse(invoiceData.items || "[]"),
+        existingFiles: req.body.existingFiles
+          ? JSON.parse(req.body.existingFiles)
+          : undefined,
+        files: req.files,
+      };
+
+      const invoice = await storage.updatePurchaseInvoice(
+        id,
+        updatedInvoiceData,
+        isApprovedEdit,
+      );
+
+      // Diff against the PERSISTED row, not the client payload: the server
+      // recomputes subtotal/discountAmount/taxAmount/totalAmount (VAT on the
+      // discounted base), so req.body holds pre-recompute values that were
+      // never stored. Comparing to the stored row keeps edit history accurate.
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
         "supplierId",
@@ -199,11 +220,8 @@ purchaseInvoicesRoutes.put(
       ];
       for (const field of fieldsToTrack) {
         const oldVal = (existingInvoice as any)[field];
-        const newVal = invoiceData[field];
-        if (
-          newVal !== undefined &&
-          String(oldVal || "") !== String(newVal || "")
-        ) {
+        const newVal = (invoice as any)[field];
+        if (String(oldVal || "") !== String(newVal || "")) {
           changes[field] = { old: oldVal, new: newVal };
         }
       }
@@ -216,23 +234,6 @@ purchaseInvoicesRoutes.put(
           new: invoiceData.items,
         };
       }
-
-      const isApprovedEdit = existingInvoice.status !== "draft";
-
-      const updatedInvoiceData = {
-        ...invoiceData,
-        items: JSON.parse(invoiceData.items || "[]"),
-        existingFiles: req.body.existingFiles
-          ? JSON.parse(req.body.existingFiles)
-          : undefined,
-        files: req.files,
-      };
-
-      const invoice = await storage.updatePurchaseInvoice(
-        id,
-        updatedInvoiceData,
-        isApprovedEdit,
-      );
 
       if (existingInvoice.status !== "draft") {
         await storage.updatePurchaseInvoiceGLEntries(id);

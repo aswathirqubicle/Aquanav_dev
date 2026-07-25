@@ -126,6 +126,19 @@ salesInvoicesRoutes.put(
         });
       }
 
+      const invoice = await storage.updateSalesInvoice(
+        invoiceId,
+        invoiceData,
+      );
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      // Diff against the PERSISTED row, not the client payload: the server
+      // recomputes subtotal/discount/taxAmount/totalAmount (VAT on the
+      // discounted base), so req.body holds pre-recompute values that were
+      // never stored. Comparing to the stored row keeps edit history accurate.
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
         "customerId",
@@ -147,31 +160,19 @@ salesInvoicesRoutes.put(
       ];
       for (const field of fieldsToTrack) {
         const oldVal = (existingInvoice as any)[field];
-        const newVal = invoiceData[field];
-        if (
-          newVal !== undefined &&
-          String(oldVal || "") !== String(newVal || "")
-        ) {
+        const newVal = (invoice as any)[field];
+        if (String(oldVal || "") !== String(newVal || "")) {
           changes[field] = { old: oldVal, new: newVal };
         }
       }
       if (
         JSON.stringify(existingInvoice.items) !==
-        JSON.stringify(invoiceData.items)
+        JSON.stringify(invoice.items)
       ) {
         changes["items"] = {
           old: existingInvoice.items,
-          new: invoiceData.items,
+          new: invoice.items,
         };
-      }
-
-      const invoice = await storage.updateSalesInvoice(
-        invoiceId,
-        invoiceData,
-      );
-
-      if (!invoice) {
-        return res.status(404).json({ message: "Invoice not found" });
       }
 
       if (existingInvoice.status !== "draft") {
