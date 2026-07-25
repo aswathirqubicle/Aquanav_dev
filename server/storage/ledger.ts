@@ -687,7 +687,13 @@ export class LedgerStorage extends ProjectAssetStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Reverse the exact 3-row approval posting (T5.6): Cr AR (gross) /
+      // Dr Sales Revenue (net) / Dr VAT/GST Payable (tax). VAT line omitted when
+      // zero. Rounded so the reversal balances to the cent.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -710,19 +716,31 @@ export class LedgerStorage extends ProjectAssetStorage {
       };
 
       await db.transaction(async (tx) => {
+        // Reverse Dr AR: credit Accounts Receivable (gross)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Accounts Receivable",
           debitAmount: "0",
-          creditAmount: aedAmount,
+          creditAmount: aedTotal.toFixed(2),
         });
 
+        // Reverse Cr Revenue: debit Sales Revenue (net of discount, excl. VAT)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Sales Revenue",
-          debitAmount: aedAmount,
+          debitAmount: aedRevenue.toFixed(2),
           creditAmount: "0",
         });
+
+        // Reverse Cr VAT: debit VAT/GST Payable (output VAT) — omitted when zero
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            accountName: "VAT/GST Payable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
       });
 
       console.log(
