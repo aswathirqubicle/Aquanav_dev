@@ -323,6 +323,38 @@ export default function SalesIndex() {
   const quotationSubtotal = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
   const invoiceSubtotalValue = invoiceFormData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
 
+  // Authoritative document totals (VAT on the discounted base, line + header
+  // discounts) via the shared engine — matches exactly what the server stores.
+  const docTotals = (
+    items: any[],
+    discountPercentage?: string,
+    discountAmount?: string,
+  ) => {
+    const pct = parseFloat(discountPercentage || "0") || 0;
+    return computeDocumentTotals(
+      (items || []).map((it) => ({
+        quantity: Number(it.quantity) || 0,
+        unitPrice: Number(it.unitPrice) || 0,
+        taxRate: Number(it.taxRate) || 0,
+        discount: Number(it.discount) || 0,
+        discountType: it.discountType === "percentage" ? "percentage" : "amount",
+      })),
+      pct > 0
+        ? { discount: pct, discountType: "percentage" }
+        : { discount: parseFloat(discountAmount || "0") || 0, discountType: "amount" },
+    );
+  };
+  const quotationTotals = docTotals(
+    formData.items,
+    formData.discountPercentage,
+    formData.discount,
+  );
+  const invoiceTotals = docTotals(
+    invoiceFormData.items,
+    invoiceFormData.discountPercentage,
+    invoiceFormData.discount,
+  );
+
   // Recalculate quotation discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
@@ -2405,29 +2437,22 @@ export default function SalesIndex() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Subtotal:</span>
-                          <span className="font-medium">{formatCurrency(quotationSubtotal, formData.currency)}</span>
+                          <span className="font-medium">{formatCurrency(quotationTotals.gross, formData.currency)}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax Amount:</span>
-                          <span className="font-medium">{formatCurrency(formData.items.reduce((sum, item) => {
-                            const itemTotal = item.quantity * item.unitPrice;
-                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                          }, 0), formData.currency)}</span>
-                        </div>
-                        {parseFloat(formData.discount || "0") > 0 && (
+                        {quotationTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-sm text-red-600">
-                            <span>Discount ({formData.discountPercentage}%):</span>
-                            <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span className="font-medium">- {formatCurrency(quotationTotals.discountTotal, formData.currency)}</span>
                           </div>
                         )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(quotationTotals.taxTotal, formData.currency)}</span>
+                        </div>
                         <div className="border-t pt-2">
                           <div className="flex justify-between text-lg font-bold">
                             <span>Total Amount:</span>
-                            <span className="text-blue-600">{formatCurrency((formData.items.reduce((sum, item) => {
-                              const itemTotal = item.quantity * item.unitPrice;
-                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
-                              return sum + itemTotal + itemTax;
-                            }, 0) - (parseFloat(formData.discount || "0"))), formData.currency)}</span>
+                            <span className="text-blue-600">{formatCurrency(quotationTotals.total, formData.currency)}</span>
                           </div>
                           {formData.currency !== "AED" && (
                             <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -3057,29 +3082,22 @@ export default function SalesIndex() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Subtotal:</span>
-                          <span className="font-medium">{formatCurrency(invoiceSubtotalValue, invoiceFormData.currency)}</span>
+                          <span className="font-medium">{formatCurrency(invoiceTotals.gross, invoiceFormData.currency)}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax Amount:</span>
-                          <span className="font-medium">{formatCurrency(invoiceFormData.items.reduce((sum, item) => {
-                            const itemTotal = item.quantity * item.unitPrice;
-                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                          }, 0), invoiceFormData.currency)}</span>
-                        </div>
-                        {parseFloat(invoiceFormData.discount || "0") > 0 && (
+                        {invoiceTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-sm text-red-600">
-                            <span>Discount ({invoiceFormData.discountPercentage}%):</span>
-                            <span className="font-medium">- {formatCurrency(invoiceFormData.discount || "0", invoiceFormData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span className="font-medium">- {formatCurrency(invoiceTotals.discountTotal, invoiceFormData.currency)}</span>
                           </div>
                         )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(invoiceTotals.taxTotal, invoiceFormData.currency)}</span>
+                        </div>
                         <div className="border-t pt-2">
                           <div className="flex justify-between text-lg font-bold">
                             <span>Total Amount:</span>
-                            <span className="text-blue-600">{formatCurrency((invoiceFormData.items.reduce((sum, item) => {
-                              const itemTotal = item.quantity * item.unitPrice;
-                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
-                              return sum + itemTotal + itemTax;
-                            }, 0) - (parseFloat(invoiceFormData.discount || "0"))), invoiceFormData.currency)}</span>
+                            <span className="text-blue-600">{formatCurrency(invoiceTotals.total, invoiceFormData.currency)}</span>
                           </div>
                           {invoiceFormData.currency !== "AED" && (
                             <div className="text-xs text-muted-foreground mt-2 text-right">
