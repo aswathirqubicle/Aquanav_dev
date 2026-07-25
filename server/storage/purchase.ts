@@ -24,6 +24,7 @@ import {
   users,
 } from "@shared/schema";
 import {
+  apportion,
   computeDocumentTotals,
   type HeaderDiscountInput,
   type LineItemInput,
@@ -1904,6 +1905,55 @@ export class PurchaseStorage extends SalesStorage {
     };
   }
 
+  /**
+   * Split a purchase invoice's expense amount across the projects its LINE ITEMS
+   * are allocated to. Purchase projects are per line, so one invoice can carry
+   * cost for several projects; posting a single Purchase Expense row with the
+   * invoice-level projectId (usually null) leaves the ledger unattributable to
+   * any project.
+   *
+   * Weights are each line's net-of-discount, ex-VAT amount (`lineTotal -
+   * taxAmount`) — the same basis as the project-cost rollup. `amount` is
+   * apportioned across the groups so the parts sum to it EXACTLY, keeping the
+   * posting balanced to the cent under any exchange rate. Lines with no project
+   * group under a null projectId. Zero-value groups are dropped (G2), and an
+   * invoice with no usable line weights falls back to one unallocated row.
+   */
+  private async allocatePurchaseExpense(
+    invoiceId: number,
+    amount: number,
+    fallbackProjectId: number | null,
+  ): Promise<Array<{ projectId: number | null; amount: number }>> {
+    const items = await db
+      .select({
+        projectId: purchaseInvoiceItems.projectId,
+        lineTotal: purchaseInvoiceItems.lineTotal,
+        taxAmount: purchaseInvoiceItems.taxAmount,
+      })
+      .from(purchaseInvoiceItems)
+      .where(eq(purchaseInvoiceItems.invoiceId, invoiceId));
+
+    const groups = new Map<number | null, number>();
+    for (const item of items) {
+      const net =
+        parseFloat(item.lineTotal || "0") - parseFloat(item.taxAmount || "0");
+      const key = item.projectId ?? null;
+      groups.set(key, (groups.get(key) || 0) + net);
+    }
+
+    const keys = Array.from(groups.keys());
+    const weights = keys.map((k) => groups.get(k) as number);
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    if (keys.length === 0 || totalWeight <= 0) {
+      return [{ projectId: fallbackProjectId, amount }];
+    }
+
+    const parts = apportion(weights, amount);
+    return keys
+      .map((k, i) => ({ projectId: k, amount: parts[i] }))
+      .filter((p) => Math.abs(p.amount) > 0.005);
+  }
+
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
     invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
     try {
@@ -2270,14 +2320,27 @@ export class PurchaseStorage extends SalesStorage {
         status: "pending" as const,
       };
 
+      // One Purchase Expense row per project the line items are allocated to, so
+      // the ledger is attributable to a project. VAT Recoverable and Accounts
+      // Payable stay whole: input VAT is reclaimed from the tax authority and the
+      // payable is owed to the supplier — neither is a project cost.
+      const expenseAllocation = await this.allocatePurchaseExpense(
+        id,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
       await db.transaction(async (tx) => {
         // Debit Purchase Expense (net of discount, excl. VAT), in AED
-        await tx.insert(generalLedgerEntries).values({
-          ...approvalShared,
-          accountName: "Purchase Expense",
-          debitAmount: aedExpense.toFixed(2),
-          creditAmount: "0",
-        });
+        for (const alloc of expenseAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...approvalShared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: alloc.amount.toFixed(2),
+            creditAmount: "0",
+          });
+        }
 
         // Debit VAT Recoverable (input VAT, recoverable) — omitted when zero (G2)
         if (aedTax > 0.005) {
@@ -2450,6 +2513,12 @@ export class PurchaseStorage extends SalesStorage {
         status: "cancelled" as const,
       };
 
+      const cancelAllocation = await this.allocatePurchaseExpense(
+        id,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
       await db.transaction(async (tx) => {
         // Reverse Cr AP: debit Accounts Payable (gross)
         await tx.insert(generalLedgerEntries).values({
@@ -2459,13 +2528,18 @@ export class PurchaseStorage extends SalesStorage {
           creditAmount: "0",
         });
 
-        // Reverse Dr Expense: credit Purchase Expense (net of discount, excl. VAT)
-        await tx.insert(generalLedgerEntries).values({
-          ...cancelShared,
-          accountName: "Purchase Expense",
-          debitAmount: "0",
-          creditAmount: aedExpense.toFixed(2),
-        });
+        // Reverse Dr Expense: credit Purchase Expense (net of discount, excl.
+        // VAT), mirroring the per-project rows the approval posted so each
+        // project's ledger returns to zero.
+        for (const alloc of cancelAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: "0",
+            creditAmount: alloc.amount.toFixed(2),
+          });
+        }
 
         // Reverse Dr VAT: credit VAT Recoverable (input VAT) — omitted when zero
         if (aedTax > 0.005) {
@@ -2881,6 +2955,15 @@ export class PurchaseStorage extends SalesStorage {
       status: "issued" as const,
     };
 
+    // A purchase credit note carries no project of its own — the only link is the
+    // invoice — so credit each project in proportion to its share of that
+    // invoice's net cost, the same weights the original expense was posted on.
+    const creditAllocation = await this.allocatePurchaseExpense(
+      creditNote.purchaseInvoiceId,
+      aedNet,
+      invoice?.projectId || null,
+    );
+
     await db.transaction(async (tx) => {
       await tx.insert(generalLedgerEntries).values({
         ...shared,
@@ -2888,12 +2971,15 @@ export class PurchaseStorage extends SalesStorage {
         debitAmount: aedTotal.toFixed(2),
         creditAmount: "0",
       });
-      await tx.insert(generalLedgerEntries).values({
-        ...shared,
-        accountName: "Purchase Expense",
-        debitAmount: "0",
-        creditAmount: aedNet.toFixed(2),
-      });
+      for (const alloc of creditAllocation) {
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          projectId: alloc.projectId,
+          accountName: "Purchase Expense",
+          debitAmount: "0",
+          creditAmount: alloc.amount.toFixed(2),
+        });
+      }
       if (aedTax > 0.005) {
         await tx.insert(generalLedgerEntries).values({
           ...shared,
@@ -3214,6 +3300,12 @@ export class PurchaseStorage extends SalesStorage {
           ),
         );
 
+      const repostAllocation = await this.allocatePurchaseExpense(
+        invoiceId,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
       await db.transaction(async (tx) => {
         for (const row of activeRows) {
           await tx.insert(generalLedgerEntries).values({
@@ -3238,13 +3330,18 @@ export class PurchaseStorage extends SalesStorage {
             .where(eq(generalLedgerEntries.id, row.id));
         }
 
-        // Re-post the new 3-row split (VAT line omitted when zero).
-        await tx.insert(generalLedgerEntries).values({
-          ...shared,
-          accountName: "Purchase Expense",
-          debitAmount: aedExpense.toFixed(2),
-          creditAmount: "0",
-        });
+        // Re-post the new split from the edited figures (VAT line omitted when
+        // zero), one Purchase Expense row per project the edited lines allocate
+        // to — the edit may have moved a line to a different project.
+        for (const alloc of repostAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: alloc.amount.toFixed(2),
+            creditAmount: "0",
+          });
+        }
         if (aedTax > 0.005) {
           await tx.insert(generalLedgerEntries).values({
             ...shared,
