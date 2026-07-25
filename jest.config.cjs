@@ -26,6 +26,7 @@ module.exports = {
   testMatch: [
     '<rootDir>/server/storage.test.ts',
     '<rootDir>/server/storage.payroll.calc.test.ts',
+    '<rootDir>/server/document-totals.calc.test.ts',
   ],
 
   transform: {

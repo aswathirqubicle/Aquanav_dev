@@ -166,17 +166,22 @@ export function generateCreditNoteHTML(
                             creditNote.subtotal || 0,
                           )}</td>
                         </tr>
-                        ${
-                          creditNote.discount &&
-                          parseFloat(creditNote.discount) > 0
+                        ${(() => {
+                          // Total discount (header + line) derived from stored
+                          // fields; the `discount` column holds only the header.
+                          const totalDiscount =
+                            parseFloat(creditNote.subtotal || "0") +
+                            parseFloat(creditNote.taxAmount || "0") -
+                            parseFloat(creditNote.totalAmount || "0");
+                          return totalDiscount > 0.005
                             ? `
                         <tr>
                           <td><strong>Discount:</strong></td>
-                          <td class="text-right">-${formatCurrency(creditNote.discount)}</td>
+                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
                         </tr>
                         `
-                            : ""
-                        }
+                            : "";
+                        })()}
                         <tr>
                           <td><strong>Tax Amount:</strong></td>
                           <td class="text-right">${formatCurrency(

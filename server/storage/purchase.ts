@@ -23,6 +23,11 @@ import {
   suppliers,
   users,
 } from "@shared/schema";
+import {
+  computeDocumentTotals,
+  type HeaderDiscountInput,
+  type LineItemInput,
+} from "@shared/document-totals";
 import { PaginatedResponse } from "./types";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -927,6 +932,8 @@ export class PurchaseStorage extends SalesStorage {
           description: purchaseOrderItems.description,
           quantity: purchaseOrderItems.quantity,
           unitPrice: purchaseOrderItems.unitPrice,
+          discount: purchaseOrderItems.discount,
+          discountType: purchaseOrderItems.discountType,
           taxRate: purchaseOrderItems.taxRate,
           taxAmount: purchaseOrderItems.taxAmount,
           lineTotal: purchaseOrderItems.lineTotal,
@@ -954,6 +961,7 @@ export class PurchaseStorage extends SalesStorage {
 
   async createPurchaseOrder(orderData: any): Promise<any> {
     try {
+      orderData = this.applyPurchaseDocumentTotals(orderData);
       const poNumber = await this.generateNextNumber(
         "PO",
         purchaseOrders,
@@ -996,12 +1004,11 @@ export class PurchaseStorage extends SalesStorage {
           description: item.description || null,
           quantity: item.quantity,
           unitPrice: item.unitPrice.toFixed(2),
+          discount: (item.discount ?? 0).toString(),
+          discountType: item.discountType || "amount",
           taxRate: item.taxRate ? item.taxRate.toFixed(2) : "0.00",
           taxAmount: item.taxAmount ? item.taxAmount.toFixed(2) : "0.00",
-          lineTotal: (
-            item.quantity * parseFloat(item.unitPrice) +
-            (item.taxAmount || 0)
-          ).toFixed(2),
+          lineTotal: (item.lineTotal ?? 0).toString(),
         }));
 
         await db.insert(purchaseOrderItems).values(itemsToInsert);
@@ -1036,6 +1043,7 @@ export class PurchaseStorage extends SalesStorage {
 
   async updatePurchaseOrder(id: number, data: any): Promise<any> {
     try {
+      data = this.applyPurchaseDocumentTotals(data);
       const updateData: any = {};
 
       if (data.supplierId !== undefined)
@@ -1094,6 +1102,8 @@ export class PurchaseStorage extends SalesStorage {
               typeof item.unitPrice === "number"
                 ? item.unitPrice.toFixed(2)
                 : item.unitPrice,
+            discount: (item.discount ?? 0).toString(),
+            discountType: item.discountType || "amount",
             taxRate: item.taxRate
               ? typeof item.taxRate === "number"
                 ? item.taxRate.toFixed(2)
@@ -1104,10 +1114,7 @@ export class PurchaseStorage extends SalesStorage {
                 ? item.taxAmount.toFixed(2)
                 : item.taxAmount
               : "0.00",
-            lineTotal: (
-              item.quantity * parseFloat(item.unitPrice) +
-              (item.taxAmount || 0)
-            ).toFixed(2),
+            lineTotal: (item.lineTotal ?? 0).toString(),
           }));
 
           await db.insert(purchaseOrderItems).values(itemsToInsert);
@@ -1301,20 +1308,28 @@ export class PurchaseStorage extends SalesStorage {
           ? overrides.items
           : po.items || [];
 
-      const computedSubtotal = itemsToUse.reduce(
-        (sum: number, item: any) =>
-          sum + parseFloat(item.quantity) * parseFloat(item.unitPrice),
-        0,
-      );
-      const computedTax = itemsToUse.reduce(
-        (sum: number, item: any) => sum + parseFloat(item.taxAmount || "0"),
-        0,
-      );
+      const convertDiscountPercentage =
+        overrides?.discountPercentage ?? po.discountPercentage ?? "0";
+      const convertDiscountAmountInput =
+        overrides?.discountAmount ?? po.discountAmount ?? "0";
 
-      const discountAmount = parseFloat(
-        overrides?.discountAmount ?? po.discountAmount ?? "0",
-      );
-      const computedTotal = computedSubtotal + computedTax - discountAmount;
+      // Recompute through the shared engine (VAT on the discounted base; line
+      // discount first, then header apportioned) — the same path every other
+      // purchase document uses. Replaces the old gross + tax - headerDiscount
+      // formula, which ignored line discounts.
+      const convertComputed: any = this.applyPurchaseDocumentTotals({
+        items: itemsToUse.map((item: any) => ({
+          quantity: parseFloat(item.quantity) || 0,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          taxRate: parseFloat(item.taxRate || "0") || 0,
+          discount: parseFloat(item.discount ?? "0") || 0,
+          discountType:
+            item.discountType === "percentage" ? "percentage" : "amount",
+        })),
+        discountPercentage: convertDiscountPercentage,
+        discountAmount: convertDiscountAmountInput,
+      });
+      const convertItems = convertComputed.items;
 
       // Create the invoice
       const [invoice] = await db
@@ -1336,12 +1351,11 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: overrides?.paymentTerms ?? po.paymentTerms ?? null,
           bankAccount: po.bankAccount ?? null,
           notes: overrides?.notes ?? po.notes ?? null,
-          subtotal: computedSubtotal.toFixed(2),
-          discountPercentage:
-            overrides?.discountPercentage ?? po.discountPercentage ?? "0",
-          discountAmount: discountAmount.toFixed(2),
-          taxAmount: computedTax.toFixed(2),
-          totalAmount: computedTotal.toFixed(2),
+          subtotal: convertComputed.subtotal,
+          discountPercentage: convertDiscountPercentage,
+          discountAmount: convertComputed.discountAmount,
+          taxAmount: convertComputed.taxAmount,
+          totalAmount: convertComputed.totalAmount,
           paidAmount: "0",
           currency: overrides?.currency ?? po.currency ?? "AED",
           exchangeRate: overrides?.exchangeRate ?? po.exchangeRate ?? "1",
@@ -1351,7 +1365,7 @@ export class PurchaseStorage extends SalesStorage {
 
       // Insert line items (user-edited or copied from PO)
       if (itemsToUse.length > 0) {
-        const invoiceItemsToInsert = itemsToUse.map((item: any) => ({
+        const invoiceItemsToInsert = itemsToUse.map((item: any, i: number) => ({
           invoiceId: invoice.id,
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
@@ -1359,10 +1373,11 @@ export class PurchaseStorage extends SalesStorage {
           quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unitPrice).toFixed(2),
           taxRate: parseFloat(item.taxRate || "0").toFixed(2),
-          taxAmount: parseFloat(item.taxAmount || "0").toFixed(2),
-          lineTotal: (
-            parseFloat(item.quantity) * parseFloat(item.unitPrice)
-          ).toFixed(2),
+          discount: (parseFloat(item.discount ?? "0") || 0).toString(),
+          discountType:
+            item.discountType === "percentage" ? "percentage" : "amount",
+          taxAmount: Number(convertItems[i].taxAmount).toFixed(2),
+          lineTotal: Number(convertItems[i].lineTotal).toFixed(2),
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
@@ -1795,6 +1810,8 @@ export class PurchaseStorage extends SalesStorage {
           description: purchaseInvoiceItems.description,
           quantity: purchaseInvoiceItems.quantity,
           unitPrice: purchaseInvoiceItems.unitPrice,
+          discount: purchaseInvoiceItems.discount,
+          discountType: purchaseInvoiceItems.discountType,
           taxRate: purchaseInvoiceItems.taxRate,
           taxAmount: purchaseInvoiceItems.taxAmount,
           lineTotal: purchaseInvoiceItems.lineTotal,
@@ -1827,7 +1844,62 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
+  /**
+   * Recompute a purchase document's totals authoritatively from its line items
+   * and discounts (P4b), so VAT is charged on the discounted base and the server
+   * never trusts a client-supplied `taxAmount`. Header discount is
+   * `discountPercentage` (%) or, when that is zero, the fixed `discountAmount`.
+   * Returns `data` with each item's `taxAmount`/`lineTotal` and the document
+   * `subtotal`/`discountAmount` (line + header total)/`taxAmount`/`totalAmount`
+   * corrected. A document with no items array is returned unchanged.
+   */
+  private applyPurchaseDocumentTotals<T extends Record<string, any>>(data: T): T {
+    const items = Array.isArray((data as any).items)
+      ? ((data as any).items as any[])
+      : null;
+    if (!items || items.length === 0) return data;
+
+    const lineInputs: LineItemInput[] = items.map((it) => ({
+      quantity: Number(it.quantity) || 0,
+      unitPrice: Number(it.unitPrice) || 0,
+      taxRate: Number(it.taxRate) || 0,
+      discount: Number(it.discount) || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    }));
+
+    const headerPct = Number((data as any).discountPercentage) || 0;
+    const header: HeaderDiscountInput =
+      headerPct > 0
+        ? { discount: headerPct, discountType: "percentage" }
+        : {
+            discount: Number((data as any).discountAmount) || 0,
+            discountType: "amount",
+          };
+
+    const totals = computeDocumentTotals(lineInputs, header);
+
+    const itemsOut = items.map((it, i) => ({
+      ...it,
+      taxAmount: totals.lines[i].taxAmount,
+      lineTotal: totals.lines[i].lineTotal,
+    }));
+
+    return {
+      ...data,
+      items: itemsOut,
+      subtotal: totals.gross.toFixed(2),
+      // Store the HEADER discount only (its pre-P4b meaning) so the edit/convert
+      // forms reload it correctly. The combined total (header + line) is derived
+      // for display as subtotal + taxAmount - totalAmount, which equals
+      // discountTotal to the cent.
+      discountAmount: totals.headerDiscount.toFixed(2),
+      taxAmount: totals.taxTotal.toFixed(2),
+      totalAmount: totals.total.toFixed(2),
+    };
+  }
+
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
+    invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
     try {
       const invoiceNumber = await this.generateNextNumber(
         "PI",
@@ -1872,6 +1944,8 @@ export class PurchaseStorage extends SalesStorage {
           description: item.description || null,
           quantity: item.quantity,
           unitPrice: item.unitPrice.toString(),
+          discount: (item.discount ?? 0).toString(),
+          discountType: item.discountType || "amount",
           taxRate: item.taxRate?.toString() || "0",
           taxAmount: item.taxAmount?.toString() || "0",
           lineTotal: item.lineTotal.toString(),
@@ -1924,10 +1998,12 @@ export class PurchaseStorage extends SalesStorage {
         throw new Error("Only draft invoices can be edited");
       }
 
+      invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
       const subtotal = parseFloat(invoiceData.subtotal || "0");
       const taxAmount = parseFloat(invoiceData.taxAmount || "0");
-      const discountAmt = parseFloat(invoiceData.discountAmount || "0");
-      const totalAmount = subtotal + taxAmount - discountAmt;
+      // Use the engine's total (nets both line and header discounts). Do NOT
+      // recompute as subtotal + tax - headerDiscount, which ignores line discounts.
+      const totalAmount = parseFloat(invoiceData.totalAmount || "0");
 
       await db
         .update(purchaseInvoices)
@@ -1962,6 +2038,8 @@ export class PurchaseStorage extends SalesStorage {
           description: item.description || null,
           quantity: item.quantity,
           unitPrice: item.unitPrice.toString(),
+          discount: (item.discount ?? 0).toString(),
+          discountType: item.discountType || "amount",
           taxRate: item.taxRate?.toString() || "0",
           taxAmount: item.taxAmount?.toString() || "0",
           lineTotal: item.lineTotal.toString(),

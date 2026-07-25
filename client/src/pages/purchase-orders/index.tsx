@@ -25,6 +25,7 @@ import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
 import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
+import { computeDocumentTotals } from "@shared/document-totals";
 
 interface Supplier {
   id: number;
@@ -89,6 +90,8 @@ interface PurchaseOrderItem {
   unitPrice: string;
   taxRate?: string;
   taxAmount?: string;
+  discount?: number | string;
+  discountType?: "amount" | "percentage";
   lineTotal: string;
 }
 
@@ -146,6 +149,8 @@ export default function PurchaseOrdersIndex() {
     quantity: string;
     unitPrice: string;
     taxRate: string;
+    discount?: string;
+    discountType?: "amount" | "percentage";
   }[]>([]);
 
   const [newItem, setNewItem] = useState({
@@ -155,6 +160,8 @@ export default function PurchaseOrdersIndex() {
     quantity: "1",
     unitPrice: "0",
     taxRate: "0",
+    discount: "0" as string,
+    discountType: "amount" as "amount" | "percentage",
   });
 
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
@@ -179,9 +186,26 @@ export default function PurchaseOrdersIndex() {
     unitPrice: string;
     taxRate: string;
     taxAmount: string;
+    discount?: string;
+    discountType?: "amount" | "percentage";
     lineTotal: string;
   }>>([]);
   const [invoiceNotes, setInvoiceNotes] = useState("");
+
+  // Authoritative totals via the shared engine (VAT on the discounted base;
+  // line discount first, then header apportioned). Mirrors the server.
+  const purchaseOrderTotals = computeDocumentTotals(
+    orderItems.map((it) => ({
+      quantity: parseFloat(it.quantity) || 0,
+      unitPrice: parseFloat(it.unitPrice) || 0,
+      taxRate: parseFloat(it.taxRate) || 0,
+      discount: parseFloat(it.discount || "0") || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    })),
+    parseFloat(formData.discountPercentage || "0") > 0
+      ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
+      : { discount: parseFloat(formData.discountAmount || "0"), discountType: "amount" as const },
+  );
   const [invoicePaymentTerms, setInvoicePaymentTerms] = useState("");
   const [selectedInvoiceFiles, setSelectedInvoiceFiles] = useState<FileList | null>(null);
 
@@ -489,6 +513,8 @@ export default function PurchaseOrdersIndex() {
       quantity: "1",
       unitPrice: "0",
       taxRate: "0",
+      discount: "0",
+      discountType: "amount",
     });
     setSelectedFiles(null);
     setEditingOrder(null);
@@ -518,7 +544,9 @@ export default function PurchaseOrdersIndex() {
         description: item.description || "",
         quantity: item.quantity.toString(),
         unitPrice: item.unitPrice,
-        taxRate: "0",
+        taxRate: item.taxRate != null ? item.taxRate.toString() : "0",
+        discount: item.discount != null ? item.discount.toString() : "0",
+        discountType: item.discountType || "amount",
       })));
     } else {
       setOrderItems([]);
@@ -592,6 +620,8 @@ export default function PurchaseOrdersIndex() {
       quantity: "1",
       unitPrice: "0",
       taxRate: "0",
+      discount: "0",
+      discountType: "amount",
     });
   };
 
@@ -638,7 +668,12 @@ export default function PurchaseOrdersIndex() {
       const quantity = parseInt(item.quantity);
       const unitPrice = parseFloat(item.unitPrice);
       const taxRate = parseFloat(item.taxRate);
-      const taxAmount = (quantity * unitPrice * taxRate) / 100;
+      const lineSubtotal = quantity * unitPrice;
+      const lineDiscountVal = parseFloat(item.discount || "0") || 0;
+      const lineDiscount = item.discountType === "percentage"
+        ? lineSubtotal * (lineDiscountVal / 100)
+        : Math.min(lineDiscountVal, lineSubtotal);
+      const taxAmount = ((lineSubtotal - lineDiscount) * taxRate) / 100;
 
       return {
         itemType: item.itemType,
@@ -648,6 +683,8 @@ export default function PurchaseOrdersIndex() {
         unitPrice,
         taxRate,
         taxAmount,
+        discount: lineDiscountVal,
+        discountType: item.discountType || "amount",
       };
     });
     formDataInstance.append("items", JSON.stringify(items));
@@ -730,9 +767,14 @@ export default function PurchaseOrdersIndex() {
         const qty = parseFloat(item.quantity.toString());
         const price = parseFloat(item.unitPrice);
         const taxRate = parseFloat(item.taxRate || "0");
+        const discountVal = item.discount != null ? Number(item.discount) : 0;
+        const discountType = item.discountType === "percentage" ? "percentage" : "amount";
         const lineSubtotal = qty * price;
-        const taxAmount = lineSubtotal * (taxRate / 100);
-        const lineTotal = lineSubtotal; // In this UI, lineTotal seems to be subtotal
+        const lineDiscount = discountType === "percentage"
+          ? lineSubtotal * (discountVal / 100)
+          : Math.min(discountVal, lineSubtotal);
+        const taxable = lineSubtotal - lineDiscount;
+        const taxAmount = taxable * (taxRate / 100);
         return {
           itemType: item.itemType,
           inventoryItemId: item.inventoryItemId ?? null,
@@ -742,8 +784,10 @@ export default function PurchaseOrdersIndex() {
           quantity: qty.toString(),
           unitPrice: price.toFixed(2),
           taxRate: taxRate.toString(),
+          discount: discountVal.toString(),
+          discountType,
           taxAmount: taxAmount.toFixed(2),
-          lineTotal: lineSubtotal.toFixed(2),
+          lineTotal: taxable.toFixed(2), // pre-tax line net of discount
         };
       }));
     } else {
@@ -754,7 +798,7 @@ export default function PurchaseOrdersIndex() {
 
   const recalcInvoiceItem = (
     idx: number,
-    field: "quantity" | "unitPrice" | "taxRate",
+    field: "quantity" | "unitPrice" | "taxRate" | "discount" | "discountType",
     value: string,
   ) => {
     setInvoiceFormItems(prev => prev.map((item, i) => {
@@ -763,20 +807,37 @@ export default function PurchaseOrdersIndex() {
       const qty = parseFloat(updated.quantity) || 0;
       const price = parseFloat(updated.unitPrice) || 0;
       const rate = parseFloat(updated.taxRate) || 0;
+      const discVal = parseFloat(updated.discount || "0") || 0;
       const subtotal = qty * price;
-      const taxAmt = subtotal * (rate / 100);
+      const disc = updated.discountType === "percentage" ? subtotal * (discVal / 100) : Math.min(discVal, subtotal);
+      const taxable = subtotal - disc;
+      const taxAmt = taxable * (rate / 100);
       return {
         ...updated,
         taxAmount: taxAmt.toFixed(2),
-        lineTotal: subtotal.toFixed(2),
+        lineTotal: taxable.toFixed(2),
       };
     }));
   };
 
-  const invoiceSubtotal = invoiceFormItems.reduce((sum, item) => sum + parseFloat(item.lineTotal || "0"), 0);
-  const invoiceTaxTotal = invoiceFormItems.reduce((sum, item) => sum + parseFloat(item.taxAmount || "0"), 0);
-  const invoiceDiscountAmount = parseFloat(invoiceData.discountAmount) || 0;
-  const invoiceTotal = invoiceSubtotal + invoiceTaxTotal - invoiceDiscountAmount;
+  // Authoritative convert totals via the shared engine (VAT on the discounted
+  // base; line discount first, then header apportioned). Mirrors the server.
+  const convertTotals = computeDocumentTotals(
+    invoiceFormItems.map((it) => ({
+      quantity: parseFloat(it.quantity) || 0,
+      unitPrice: parseFloat(it.unitPrice) || 0,
+      taxRate: parseFloat(it.taxRate) || 0,
+      discount: parseFloat(it.discount || "0") || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    })),
+    parseFloat(invoiceData.discountPercentage || "0") > 0
+      ? { discount: parseFloat(invoiceData.discountPercentage || "0"), discountType: "percentage" as const }
+      : { discount: parseFloat(invoiceData.discountAmount || "0"), discountType: "amount" as const },
+  );
+  const invoiceSubtotal = convertTotals.gross;
+  const invoiceTaxTotal = convertTotals.taxTotal;
+  const invoiceDiscountAmount = convertTotals.discountTotal;
+  const invoiceTotal = convertTotals.total;
 
   const handleConvertToInvoice = (submitForApproval = false) => {
     if (!viewingOrder) return;
@@ -801,6 +862,8 @@ export default function PurchaseOrdersIndex() {
       unitPrice: parseFloat(item.unitPrice) || 0,
       taxRate: parseFloat(item.taxRate) || 0,
       taxAmount: parseFloat(item.taxAmount) || 0,
+      discount: parseFloat(item.discount || "0") || 0,
+      discountType: item.discountType || "amount",
       lineTotal: parseFloat(item.lineTotal) || 0,
     }));
     formData.append("items", JSON.stringify(items));
@@ -1605,6 +1668,26 @@ export default function PurchaseOrdersIndex() {
                           className="mt-1"
                         />
                       </div>
+                      <div>
+                        <Label>Discount</Label>
+                        <div className="flex gap-1 mt-1">
+                          <Input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={newItem.discount}
+                            onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
+                          />
+                          <select
+                            className="border rounded px-2 text-sm bg-background"
+                            value={newItem.discountType}
+                            onChange={(e) => setNewItem(prev => ({ ...prev, discountType: e.target.value as "amount" | "percentage" }))}
+                          >
+                            <option value="amount">{formData.currency || "AED"}</option>
+                            <option value="percentage">%</option>
+                          </select>
+                        </div>
+                      </div>
                       <div className="flex items-end sm:col-span-2 lg:col-span-1">
                         <Button type="button" onClick={addItem} className="w-full lg:w-auto gap-1">
                           <Plus className="w-4 h-4" />
@@ -1633,6 +1716,7 @@ export default function PurchaseOrdersIndex() {
                               <TableHead className="min-w-[80px]">Quantity</TableHead>
                               <TableHead className="min-w-[100px]">Unit Price ({formData.currency})</TableHead>
                               <TableHead className="min-w-[80px]">Tax Rate</TableHead>
+                              <TableHead className="min-w-[90px]">Discount</TableHead>
                               <TableHead className="min-w-[100px]">Line Total ({formData.currency})</TableHead>
                               <TableHead className="w-16"></TableHead>
                             </TableRow>
@@ -1643,8 +1727,13 @@ export default function PurchaseOrdersIndex() {
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               const taxRate = parseFloat(item.taxRate) || 0;
                               const lineSubtotal = quantity * unitPrice;
-                              const lineTax = (lineSubtotal * taxRate) / 100;
-                              const lineTotal = lineSubtotal + lineTax;
+                              const lineDiscVal = parseFloat(item.discount || "0") || 0;
+                              const lineDiscount = item.discountType === "percentage"
+                                ? lineSubtotal * (lineDiscVal / 100)
+                                : Math.min(lineDiscVal, lineSubtotal);
+                              const taxable = lineSubtotal - lineDiscount;
+                              const lineTax = (taxable * taxRate) / 100;
+                              const lineTotal = taxable + lineTax;
 
                               return (
                                 <TableRow key={index}>
@@ -1675,6 +1764,11 @@ export default function PurchaseOrdersIndex() {
                                   </TableCell>
                                   <TableCell>{formatCurrency(item.unitPrice, formData.currency)}</TableCell>
                                   <TableCell>{item.taxRate}%</TableCell>
+                                  <TableCell>
+                                    {lineDiscVal > 0
+                                      ? (item.discountType === "percentage" ? `${lineDiscVal}%` : formatCurrency(lineDiscVal, formData.currency))
+                                      : "-"}
+                                  </TableCell>
                                   <TableCell className="font-semibold">{formatCurrency(lineTotal, formData.currency)}</TableCell>
                                   <TableCell>
                                     <Button
@@ -1700,15 +1794,11 @@ export default function PurchaseOrdersIndex() {
                       <div className="space-y-4 text-sm">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
-                          <span>{formatCurrency(orderItems.reduce((sum, item) => {
-                            const quantity = parseInt(item.quantity) || 0;
-                            const unitPrice = parseFloat(item.unitPrice) || 0;
-                            return sum + (quantity * unitPrice);
-                          }, 0), formData.currency)}</span>
+                          <span>{formatCurrency(purchaseOrderTotals.gross, formData.currency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Total Tax:</span>
-                          <span>{formatCurrency(calculateTotalTax(), formData.currency)}</span>
+                          <span>{formatCurrency(purchaseOrderTotals.taxTotal, formData.currency)}</span>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 py-4 border-y">
@@ -1761,19 +1851,15 @@ export default function PurchaseOrdersIndex() {
                           </div>
                         </div>
 
-                        {parseFloat(formData.discountAmount) > 0 && (
+                        {purchaseOrderTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-red-600">
-                            <span>Discount:</span>
-                            <span>- {formatCurrency(formData.discountAmount, formData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span>- {formatCurrency(purchaseOrderTotals.discountTotal, formData.currency)}</span>
                           </div>
                         )}
                         <div className="flex justify-between font-bold border-t pt-2 text-base">
                           <span>Total Amount:</span>
-                          <span>{formatCurrency((orderItems.reduce((sum, item) => {
-                            const quantity = parseInt(item.quantity) || 0;
-                            const unitPrice = parseFloat(item.unitPrice) || 0;
-                            return sum + (quantity * unitPrice);
-                          }, 0) + calculateTotalTax() - (parseFloat(formData.discountAmount) || 0)), formData.currency)}</span>
+                          <span>{formatCurrency(purchaseOrderTotals.total, formData.currency)}</span>
                         </div>
                       </div>
                     </div>
@@ -2101,6 +2187,7 @@ export default function PurchaseOrdersIndex() {
                           <TableHead className="text-right">Quantity</TableHead>
                           <TableHead className="text-right">Unit Price ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
                           <TableHead className="text-right">Tax Rate</TableHead>
+                          <TableHead className="text-right">Discount</TableHead>
                           <TableHead className="text-right">Line Total ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -2135,6 +2222,11 @@ export default function PurchaseOrdersIndex() {
                             </TableCell>
                             <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
                             <TableCell className="text-right">{item.taxRate || "0"}%</TableCell>
+                            <TableCell className="text-right">
+                              {Number(item.discount) > 0
+                                ? (item.discountType === "percentage" ? `${item.discount}%` : formatCurrency(item.discount as any, viewingOrder.currency || viewingOrder.supplierCurrency))
+                                : "-"}
+                            </TableCell>
                             <TableCell className="text-right font-semibold">{formatCurrency(item.lineTotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
                           </TableRow>
                         ))}
@@ -2153,12 +2245,20 @@ export default function PurchaseOrdersIndex() {
                         <span className="text-muted-foreground">Tax ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
                         <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                       </div>
-                      {/* {parseFloat(viewingOrder.discountAmount || "0") > 0 && ( */}
-                      <div className="flex justify-between items-center text-sm mt-2">
-                        <span className="text-muted-foreground">Discount ({viewingOrder.discountPercentage || "0"}%)</span>
-                        <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                      </div>
-                      {/* )} */}
+                      {(() => {
+                        // Total discount (header + line) derived from stored fields;
+                        // the discountAmount column holds only the header portion.
+                        const totalDiscount =
+                          parseFloat(viewingOrder.subtotal || "0") +
+                          parseFloat(viewingOrder.taxAmount || "0") -
+                          parseFloat(viewingOrder.totalAmount || "0");
+                        return totalDiscount > 0.005 ? (
+                          <div className="flex justify-between items-center text-sm mt-2">
+                            <span className="text-muted-foreground">Total Discount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                            <span className="font-medium text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex justify-between items-center">
@@ -2308,6 +2408,7 @@ export default function PurchaseOrdersIndex() {
                       <TableHead className="text-right w-[14%]">Qty</TableHead>
                       <TableHead className="text-right w-[18%]">Unit Price ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
                       <TableHead className="text-right w-[14%]">Tax %</TableHead>
+                      <TableHead className="text-right w-[16%]">Discount</TableHead>
                       <TableHead className="text-right w-[18%]">Tax Amt ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
                       <TableHead className="text-right w-[18%]">Line Total ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</TableHead>
                     </TableRow>
@@ -2315,7 +2416,7 @@ export default function PurchaseOrdersIndex() {
                   <TableBody>
                     {invoiceFormItems.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                           No items
                         </TableCell>
                       </TableRow>
@@ -2374,6 +2475,26 @@ export default function PurchaseOrdersIndex() {
                             onChange={(e) => recalcInvoiceItem(idx, "taxRate", e.target.value)}
                             className="w-20 text-right ml-auto h-8 text-sm"
                           />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1 justify-end">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={item.discount ?? "0"}
+                              onChange={(e) => recalcInvoiceItem(idx, "discount", e.target.value)}
+                              className="w-16 text-right h-8 text-sm"
+                            />
+                            <select
+                              className="border rounded px-1 text-xs bg-background h-8"
+                              value={item.discountType || "amount"}
+                              onChange={(e) => recalcInvoiceItem(idx, "discountType", e.target.value)}
+                            >
+                              <option value="amount">{viewingOrder?.currency || viewingOrder?.supplierCurrency || "AED"}</option>
+                              <option value="percentage">%</option>
+                            </select>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
                           {formatCurrency(item.taxAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}
@@ -2449,12 +2570,12 @@ export default function PurchaseOrdersIndex() {
                 <span>{formatCurrency(invoiceTaxTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
               </div>
 
-              {/* {parseFloat(invoiceData.discountAmount) > 0 && ( */}
-              <div className="flex justify-between text-sm text-red-600">
-                <span>Discount ({invoiceData.discountPercentage}%):</span>
-                <span>- {formatCurrency(invoiceData.discountAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
-              </div>
-              {/* )} */}
+              {invoiceDiscountAmount > 0.005 && (
+                <div className="flex justify-between text-sm text-red-600">
+                  <span>Total Discount ({viewingOrder?.currency || viewingOrder?.supplierCurrency}):</span>
+                  <span>- {formatCurrency(invoiceDiscountAmount, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-semibold text-base border-t pt-2 mt-2">
                 <span>Total ({viewingOrder?.currency || viewingOrder?.supplierCurrency})</span>
                 <span>{formatCurrency(invoiceTotal, viewingOrder?.currency || viewingOrder?.supplierCurrency)}</span>

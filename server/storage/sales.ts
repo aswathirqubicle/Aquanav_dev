@@ -29,6 +29,11 @@ import {
   salesQuotations,
 } from "@shared/schema";
 import {
+  computeDocumentTotals,
+  type HeaderDiscountInput,
+  type LineItemInput,
+} from "@shared/document-totals";
+import {
   and,
   desc,
   eq,
@@ -266,7 +271,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result: CreditNote[] = await db
         .insert(creditNotes)
-        .values(insertData)
+        .values(this.applySalesDocumentTotals(insertData))
         .returning();
 
       const createdCreditNote = result[0];
@@ -454,7 +459,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result: CreditNote[] = await db
         .update(creditNotes)
-        .set(updateData)
+        .set(this.applySalesDocumentTotals(updateData))
         .where(eq(creditNotes.id, id))
         .returning();
 
@@ -1065,13 +1070,83 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
+  /**
+   * Recompute a sales document's totals authoritatively from its line items and
+   * discounts, so VAT is charged on the DISCOUNTED base (UAE law) and the server
+   * never trusts a client-supplied `taxAmount` (P4b). Line items are the JSON
+   * `items` array (`quantity`, `unitPrice`, `taxRate`, and now `discount` /
+   * `discountType`); the header discount is `discountPercentage` (%) or, when
+   * that is zero, the fixed `discount` amount. Returns a copy of `data` with each
+   * line's `taxAmount`/`lineTotal` and the document `subtotal`/`discount`
+   * (line + header total)/`taxAmount`/`totalAmount` corrected. A document with no
+   * items array is returned unchanged.
+   */
+  private applySalesDocumentTotals<T extends Record<string, any>>(data: T): T {
+    // `items` is an array on most sales docs but a JSON string on credit notes.
+    const raw = (data as any).items;
+    let items: any[] | null = null;
+    let wasString = false;
+    if (Array.isArray(raw)) {
+      items = raw;
+    } else if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          items = parsed;
+          wasString = true;
+        }
+      } catch {
+        /* not JSON — leave items null so this is a no-op */
+      }
+    }
+    if (!items || items.length === 0) return data;
+
+    const lineInputs: LineItemInput[] = items.map((it) => ({
+      quantity: Number(it.quantity) || 0,
+      unitPrice: Number(it.unitPrice) || 0,
+      taxRate: Number(it.taxRate) || 0,
+      discount: Number(it.discount) || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    }));
+
+    const headerPct = Number((data as any).discountPercentage) || 0;
+    const header: HeaderDiscountInput =
+      headerPct > 0
+        ? { discount: headerPct, discountType: "percentage" }
+        : {
+            discount: Number((data as any).discount) || 0,
+            discountType: "amount",
+          };
+
+    const totals = computeDocumentTotals(lineInputs, header);
+
+    const itemsOut = items.map((it, i) => ({
+      ...it,
+      taxAmount: totals.lines[i].taxAmount,
+      lineTotal: totals.lines[i].lineTotal,
+    }));
+
+    return {
+      ...data,
+      items: wasString ? JSON.stringify(itemsOut) : itemsOut,
+      subtotal: totals.gross.toFixed(2),
+      // The `discount` column stores the HEADER discount only (its pre-P4b
+      // meaning) so the edit/convert forms reload it correctly. The combined
+      // total (header + line) is derived for display as
+      // subtotal + taxAmount - totalAmount, which equals discountTotal to the cent.
+      discount: totals.headerDiscount.toFixed(2),
+      taxAmount: totals.taxTotal.toFixed(2),
+      totalAmount: totals.total.toFixed(2),
+    };
+  }
+
   async createSalesQuotation(
     quotationData: InsertSalesQuotation,
   ): Promise<SalesQuotation> {
     try {
       const result = await db
         .insert(salesQuotations)
-        .values(quotationData)
+        .values(this.applySalesDocumentTotals(quotationData))
         .returning();
       return result[0];
     } catch (error: any) {
@@ -1094,7 +1169,7 @@ export class SalesStorage extends LedgerStorage {
     try {
       const result = await db
         .update(salesQuotations)
-        .set(quotationData)
+        .set(this.applySalesDocumentTotals(quotationData))
         .where(eq(salesQuotations.id, id))
         .returning();
       return result[0];
@@ -1335,7 +1410,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result = await db
         .insert(proformaInvoices)
-        .values(insertData)
+        .values(this.applySalesDocumentTotals(insertData))
         .returning();
 
       console.log("Storage: Created proforma invoice:", result[0]);
@@ -1425,7 +1500,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result = await db
         .update(proformaInvoices)
-        .set(updateData)
+        .set(this.applySalesDocumentTotals(updateData))
         .where(eq(proformaInvoices.id, id))
         .returning();
       return result[0];
@@ -1644,12 +1719,14 @@ export class SalesStorage extends LedgerStorage {
         invoiceData.invoiceNumber || `INV-DRFT-${timestamp}`;
       const [invoice] = await db
         .insert(salesInvoices)
-        .values({
-          ...invoiceData,
-          invoiceNumber,
-          status: invoiceData.status || "draft",
-          paidAmount: "0",
-        })
+        .values(
+          this.applySalesDocumentTotals({
+            ...invoiceData,
+            invoiceNumber,
+            status: invoiceData.status || "draft",
+            paidAmount: "0",
+          }),
+        )
         .returning();
       return invoice;
     } catch (error: any) {
@@ -1672,7 +1749,7 @@ export class SalesStorage extends LedgerStorage {
       console.log("invoiceData", invoiceData);
       const result = await db
         .update(salesInvoices)
-        .set(invoiceData)
+        .set(this.applySalesDocumentTotals(invoiceData))
         .where(eq(salesInvoices.id, id))
         .returning();
       return result[0];

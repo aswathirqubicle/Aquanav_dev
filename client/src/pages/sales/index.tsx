@@ -1,5 +1,6 @@
 import { useEffect, useState, startTransition } from "react";
 import { useLocation } from "wouter";
+import { computeDocumentTotals } from "@shared/document-totals";
 import {
   useQuery,
   useMutation,
@@ -86,6 +87,8 @@ const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
         unitPrice: z.number(),
         taxRate: z.number().optional(),
         taxAmount: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -107,6 +110,8 @@ const createSalesInvoiceSchema = insertSalesInvoiceSchema.extend({
         unitPrice: z.number(),
         taxRate: z.number().optional(),
         taxAmount: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -131,6 +136,8 @@ interface QuotationItem {
   unitPrice: number;
   taxRate?: number;
   taxAmount?: number;
+  discount?: number;
+  discountType?: "amount" | "percentage";
 }
 
 export default function SalesIndex() {
@@ -263,12 +270,16 @@ export default function SalesIndex() {
     unitPrice: number | "";
     taxRate: number | "";
     taxAmount: number;
+    discount: number | "";
+    discountType: "amount" | "percentage";
   }>({
     description: "",
     quantity: 1,
     unitPrice: 0,
     taxRate: 0,
     taxAmount: 0,
+    discount: 0,
+    discountType: "amount",
   });
 
   const [paymentFormData, setPaymentFormData] = useState<CreatePaymentData>({
@@ -311,6 +322,38 @@ export default function SalesIndex() {
   // Recalculate quotation discount when items or percentage changes
   const quotationSubtotal = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
   const invoiceSubtotalValue = invoiceFormData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+  // Authoritative document totals (VAT on the discounted base, line + header
+  // discounts) via the shared engine — matches exactly what the server stores.
+  const docTotals = (
+    items: any[],
+    discountPercentage?: string,
+    discountAmount?: string,
+  ) => {
+    const pct = parseFloat(discountPercentage || "0") || 0;
+    return computeDocumentTotals(
+      (items || []).map((it) => ({
+        quantity: Number(it.quantity) || 0,
+        unitPrice: Number(it.unitPrice) || 0,
+        taxRate: Number(it.taxRate) || 0,
+        discount: Number(it.discount) || 0,
+        discountType: it.discountType === "percentage" ? "percentage" : "amount",
+      })),
+      pct > 0
+        ? { discount: pct, discountType: "percentage" }
+        : { discount: parseFloat(discountAmount || "0") || 0, discountType: "amount" },
+    );
+  };
+  const quotationTotals = docTotals(
+    formData.items,
+    formData.discountPercentage,
+    formData.discount,
+  );
+  const invoiceTotals = docTotals(
+    invoiceFormData.items,
+    invoiceFormData.discountPercentage,
+    invoiceFormData.discount,
+  );
 
   // Recalculate quotation discount when items or percentage changes
   useEffect(() => {
@@ -1110,6 +1153,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: 0,     // will be fixed by useEffect
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
 
     setIsEditingQuotation(false);
@@ -1143,6 +1188,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: 0,
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -1296,9 +1343,15 @@ export default function SalesIndex() {
     const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
     const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
-    const calculatedTaxAmount = lineSubtotal * (taxRate / 100);
+    const lineDiscount =
+      discountType === "percentage"
+        ? lineSubtotal * (discount / 100)
+        : Math.min(discount, lineSubtotal);
+    const calculatedTaxAmount = (lineSubtotal - lineDiscount) * (taxRate / 100);
 
     const item = {
       description: newItem.description,
@@ -1306,6 +1359,8 @@ export default function SalesIndex() {
       unitPrice,
       taxRate,
       taxAmount: calculatedTaxAmount,
+      discount,
+      discountType,
     };
 
     setFormData(prev => ({
@@ -1319,6 +1374,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -1342,9 +1399,15 @@ export default function SalesIndex() {
     const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
     const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
-    const taxAmount = lineSubtotal * (taxRate / 100);
+    const lineDiscount =
+      discountType === "percentage"
+        ? lineSubtotal * (discount / 100)
+        : Math.min(discount, lineSubtotal);
+    const taxAmount = (lineSubtotal - lineDiscount) * (taxRate / 100);
 
     const item = {
       description: newItem.description,
@@ -1352,6 +1415,8 @@ export default function SalesIndex() {
       unitPrice,
       taxRate,
       taxAmount,
+      discount,
+      discountType,
     };
 
     setInvoiceFormData(prev => ({
@@ -1365,6 +1430,8 @@ export default function SalesIndex() {
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
     });
   };
 
@@ -2165,6 +2232,45 @@ export default function SalesIndex() {
                               }
                             />
                           </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">
+                              Discount
+                            </Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="0"
+                                value={newItem.discount}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discount:
+                                      e.target.value === ""
+                                        ? ""
+                                        : parseFloat(e.target.value),
+                                  }))
+                                }
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background"
+                                value={newItem.discountType}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discountType: e.target.value as
+                                      | "amount"
+                                      | "percentage",
+                                  }))
+                                }
+                              >
+                                <option value="amount">
+                                  {formData.currency || "AED"}
+                                </option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                         <Button
                           type="button"
@@ -2196,6 +2302,9 @@ export default function SalesIndex() {
                                     Unit Price
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Discount
+                                  </th>
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Tax Rate
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2213,9 +2322,14 @@ export default function SalesIndex() {
                                 {formData.items.map((item, index) => {
                                   const lineSubtotal =
                                     item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    item.discountType === "percentage"
+                                      ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                                      : Math.min(Number(item.discount) || 0, lineSubtotal);
+                                  const taxable = lineSubtotal - lineDiscount;
                                   const taxAmount =
-                                    lineSubtotal * ((item.taxRate || 0) / 100);
-                                  const lineTotal = lineSubtotal + taxAmount;
+                                    taxable * ((item.taxRate || 0) / 100);
+                                  const lineTotal = taxable + taxAmount;
 
                                   return (
                                     <tr key={index}>
@@ -2227,6 +2341,13 @@ export default function SalesIndex() {
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {formData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-right">
+                                        {(Number(item.discount) || 0) > 0
+                                          ? item.discountType === "percentage"
+                                            ? `${item.discount}%`
+                                            : `${formData.currency || "AED"} ${(Number(item.discount) || 0).toFixed(2)}`
+                                          : "-"}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -2316,29 +2437,22 @@ export default function SalesIndex() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Subtotal:</span>
-                          <span className="font-medium">{formatCurrency(quotationSubtotal, formData.currency)}</span>
+                          <span className="font-medium">{formatCurrency(quotationTotals.gross, formData.currency)}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax Amount:</span>
-                          <span className="font-medium">{formatCurrency(formData.items.reduce((sum, item) => {
-                            const itemTotal = item.quantity * item.unitPrice;
-                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                          }, 0), formData.currency)}</span>
-                        </div>
-                        {parseFloat(formData.discount || "0") > 0 && (
+                        {quotationTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-sm text-red-600">
-                            <span>Discount ({formData.discountPercentage}%):</span>
-                            <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span className="font-medium">- {formatCurrency(quotationTotals.discountTotal, formData.currency)}</span>
                           </div>
                         )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(quotationTotals.taxTotal, formData.currency)}</span>
+                        </div>
                         <div className="border-t pt-2">
                           <div className="flex justify-between text-lg font-bold">
                             <span>Total Amount:</span>
-                            <span className="text-blue-600">{formatCurrency((formData.items.reduce((sum, item) => {
-                              const itemTotal = item.quantity * item.unitPrice;
-                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
-                              return sum + itemTotal + itemTax;
-                            }, 0) - (parseFloat(formData.discount || "0"))), formData.currency)}</span>
+                            <span className="text-blue-600">{formatCurrency(quotationTotals.total, formData.currency)}</span>
                           </div>
                           {formData.currency !== "AED" && (
                             <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -2761,6 +2875,45 @@ export default function SalesIndex() {
                               }
                             />
                           </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">
+                              Discount
+                            </Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="0"
+                                value={newItem.discount}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discount:
+                                      e.target.value === ""
+                                        ? ""
+                                        : parseFloat(e.target.value),
+                                  }))
+                                }
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background"
+                                value={newItem.discountType}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discountType: e.target.value as
+                                      | "amount"
+                                      | "percentage",
+                                  }))
+                                }
+                              >
+                                <option value="amount">
+                                  {invoiceFormData.currency || "AED"}
+                                </option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                         <Button
                           type="button"
@@ -2792,6 +2945,9 @@ export default function SalesIndex() {
                                     Unit Price
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Discount
+                                  </th>
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Tax Rate
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2809,9 +2965,14 @@ export default function SalesIndex() {
                                 {invoiceFormData.items.map((item, index) => {
                                   const lineSubtotal =
                                     item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    item.discountType === "percentage"
+                                      ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                                      : Math.min(Number(item.discount) || 0, lineSubtotal);
+                                  const taxable = lineSubtotal - lineDiscount;
                                   const taxAmount =
-                                    lineSubtotal * ((item.taxRate || 0) / 100);
-                                  const lineTotal = lineSubtotal + taxAmount;
+                                    taxable * ((item.taxRate || 0) / 100);
+                                  const lineTotal = taxable + taxAmount;
 
                                   return (
                                     <tr key={index}>
@@ -2823,6 +2984,13 @@ export default function SalesIndex() {
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {invoiceFormData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-right">
+                                        {(Number(item.discount) || 0) > 0
+                                          ? item.discountType === "percentage"
+                                            ? `${item.discount}%`
+                                            : `${invoiceFormData.currency || "AED"} ${(Number(item.discount) || 0).toFixed(2)}`
+                                          : "-"}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -2914,29 +3082,22 @@ export default function SalesIndex() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Subtotal:</span>
-                          <span className="font-medium">{formatCurrency(invoiceSubtotalValue, invoiceFormData.currency)}</span>
+                          <span className="font-medium">{formatCurrency(invoiceTotals.gross, invoiceFormData.currency)}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax Amount:</span>
-                          <span className="font-medium">{formatCurrency(invoiceFormData.items.reduce((sum, item) => {
-                            const itemTotal = item.quantity * item.unitPrice;
-                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                          }, 0), invoiceFormData.currency)}</span>
-                        </div>
-                        {parseFloat(invoiceFormData.discount || "0") > 0 && (
+                        {invoiceTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-sm text-red-600">
-                            <span>Discount ({invoiceFormData.discountPercentage}%):</span>
-                            <span className="font-medium">- {formatCurrency(invoiceFormData.discount || "0", invoiceFormData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span className="font-medium">- {formatCurrency(invoiceTotals.discountTotal, invoiceFormData.currency)}</span>
                           </div>
                         )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(invoiceTotals.taxTotal, invoiceFormData.currency)}</span>
+                        </div>
                         <div className="border-t pt-2">
                           <div className="flex justify-between text-lg font-bold">
                             <span>Total Amount:</span>
-                            <span className="text-blue-600">{formatCurrency((invoiceFormData.items.reduce((sum, item) => {
-                              const itemTotal = item.quantity * item.unitPrice;
-                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
-                              return sum + itemTotal + itemTax;
-                            }, 0) - (parseFloat(invoiceFormData.discount || "0"))), invoiceFormData.currency)}</span>
+                            <span className="text-blue-600">{formatCurrency(invoiceTotals.total, invoiceFormData.currency)}</span>
                           </div>
                           {invoiceFormData.currency !== "AED" && (
                             <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -4132,6 +4293,9 @@ export default function SalesIndex() {
                               Unit Price
                             </th>
                             <th className="text-right p-3 font-medium">
+                              Discount
+                            </th>
+                            <th className="text-right p-3 font-medium">
                               Tax Rate
                             </th>
                             <th className="text-right p-3 font-medium">
@@ -4145,14 +4309,18 @@ export default function SalesIndex() {
                         <tbody>
                           {selectedQuotation.items.map((item, index) => {
                             const lineSubtotal = item.quantity * item.unitPrice;
+                            const lineDiscount =
+                              (item as any).discountType === "percentage"
+                                ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
+                                : Math.min(Number((item as any).discount) || 0, lineSubtotal);
                             const taxRate = item.taxRate || 0;
-                            const calculatedTaxAmount =
-                              lineSubtotal * (taxRate / 100);
+                            const taxable = lineSubtotal - lineDiscount;
+                            const calculatedTaxAmount = taxable * (taxRate / 100);
                             const taxAmount =
                               item.taxAmount !== undefined
                                 ? parseFloat(item.taxAmount.toString())
                                 : calculatedTaxAmount;
-                            const lineTotal = lineSubtotal + taxAmount;
+                            const lineTotal = taxable + taxAmount;
 
                             return (
                               <tr key={index} className="border-b">
@@ -4162,6 +4330,13 @@ export default function SalesIndex() {
                                 </td>
                                 <td className="text-right p-3">
                                   {formatCurrency(item.unitPrice, selectedQuotation?.currency)}
+                                </td>
+                                <td className="text-right p-3">
+                                  {(Number((item as any).discount) || 0) > 0
+                                    ? (item as any).discountType === "percentage"
+                                      ? `${(item as any).discount}%`
+                                      : formatCurrency((item as any).discount, selectedQuotation?.currency)
+                                    : "-"}
                                 </td>
                                 <td className="text-right p-3">{taxRate}%</td>
                                 <td className="text-right p-3">
@@ -4195,14 +4370,21 @@ export default function SalesIndex() {
                     <span className="font-medium">Subtotal:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}</span>
                   </div>
-                  {selectedQuotation.discount && parseFloat(selectedQuotation.discount) > 0 && (
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">
-                            Discount ({selectedQuotation.discountPercentage || "0"}%):
-                      </span>
-                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Total discount (header + line) derived from stored fields;
+                    // equals discountTotal to the cent. The `discount` column
+                    // itself now holds only the header portion.
+                    const totalDiscount =
+                      parseFloat(selectedQuotation.subtotal || "0") +
+                      parseFloat(selectedQuotation.taxAmount || "0") -
+                      parseFloat(selectedQuotation.totalAmount || "0");
+                    return totalDiscount > 0.005 ? (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Total Discount:</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedQuotation?.currency)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                     <span className="font-medium">Tax Amount:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}</span>
@@ -4506,13 +4688,34 @@ export default function SalesIndex() {
                               Unit Price
                             </th>
                             <th className="text-right p-3 font-medium">
+                              Discount
+                            </th>
+                            <th className="text-right p-3 font-medium">
+                              Tax Rate
+                            </th>
+                            <th className="text-right p-3 font-medium">
+                              Tax Amount
+                            </th>
+                            <th className="text-right p-3 font-medium">
                               Line Total
                             </th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedInvoice.items.map((item, index) => {
-                            const lineTotal = item.quantity * item.unitPrice;
+                            const lineSubtotal = item.quantity * item.unitPrice;
+                            const lineDiscount =
+                              (item as any).discountType === "percentage"
+                                ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
+                                : Math.min(Number((item as any).discount) || 0, lineSubtotal);
+                            const taxRate = item.taxRate || 0;
+                            const taxable = lineSubtotal - lineDiscount;
+                            const calculatedTaxAmount = taxable * (taxRate / 100);
+                            const taxAmount =
+                              item.taxAmount !== undefined
+                                ? parseFloat(item.taxAmount.toString())
+                                : calculatedTaxAmount;
+                            const lineTotal = taxable + taxAmount;
 
                             return (
                               <tr key={index} className="border-b">
@@ -4522,6 +4725,17 @@ export default function SalesIndex() {
                                 </td>
                                 <td className="text-right p-3">
                                   {formatCurrency(item.unitPrice, selectedInvoice?.currency)}
+                                </td>
+                                <td className="text-right p-3">
+                                  {(Number((item as any).discount) || 0) > 0
+                                    ? (item as any).discountType === "percentage"
+                                      ? `${(item as any).discount}%`
+                                      : formatCurrency((item as any).discount, selectedInvoice?.currency)
+                                    : "-"}
+                                </td>
+                                <td className="text-right p-3">{taxRate}%</td>
+                                <td className="text-right p-3">
+                                  {formatCurrency(taxAmount, selectedInvoice?.currency)}
                                 </td>
                                 <td className="text-right p-3 font-medium">
                                   {formatCurrency(lineTotal, selectedInvoice?.currency)}
@@ -4551,14 +4765,21 @@ export default function SalesIndex() {
                     <span className="font-medium">Subtotal:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}</span>
                   </div>
-                  {selectedInvoice.discount && parseFloat(selectedInvoice.discount) > 0 && (
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">
-                        Discount ({selectedInvoice.discountPercentage || "0"}%):
-                      </span>
-                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedInvoice.discount, selectedInvoice?.currency)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Total discount (header + line) derived from stored fields;
+                    // equals discountTotal to the cent. The `discount` column
+                    // itself now holds only the header portion.
+                    const totalDiscount =
+                      parseFloat(selectedInvoice.subtotal || "0") +
+                      parseFloat(selectedInvoice.taxAmount || "0") -
+                      parseFloat(selectedInvoice.totalAmount || "0");
+                    return totalDiscount > 0.005 ? (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Total Discount:</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedInvoice?.currency)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                     <span className="font-medium">Tax Amount:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}</span>

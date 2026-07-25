@@ -155,16 +155,22 @@ export function generatePurchaseOrderHTML(
                           <td><strong>Subtotal:</strong></td>
                           <td class="text-right">${formatCurrency(order.subtotal || 0)}</td>
                         </tr>
-                         ${
-                           parseFloat(order.discountAmount || "0") > 0
+                         ${(() => {
+                           // Total discount (header + line) derived from stored
+                           // fields; the discountAmount column holds only the header.
+                           const totalDiscount =
+                             parseFloat(order.subtotal || "0") +
+                             parseFloat(order.taxAmount || "0") -
+                             parseFloat(order.totalAmount || "0");
+                           return totalDiscount > 0.005
                              ? `
                         <tr>
-                          <td><strong>Discount (${order.discountPercentage || 0}%):</strong></td>
-                          <td class="text-right">-${formatCurrency(order.discountAmount)}</td>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
                         </tr>
                         `
-                             : ""
-                         }
+                             : "";
+                         })()}
                         <tr>
                           <td><strong>Tax Amount:</strong></td>
                           <td class="text-right">${formatCurrency(order.taxAmount || 0)}</td>

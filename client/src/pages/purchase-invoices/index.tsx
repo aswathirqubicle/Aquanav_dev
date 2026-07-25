@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
 import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip } from "lucide-react";
@@ -93,6 +94,8 @@ interface PurchaseInvoiceItem {
   quantity: number;
   unitPrice: string;
   taxAmount?: string;
+  discount?: number | string;
+  discountType?: "amount" | "percentage";
   lineTotal: string;
   projectId?: number;
   projectTitle?: string;
@@ -188,6 +191,8 @@ export default function PurchaseInvoicesIndex() {
     quantity: string;
     unitPrice: string;
     taxRate: string;
+    discount?: string;
+    discountType?: "amount" | "percentage";
     projectId?: string;
     assetInstanceId?: string;
   }[]>([]);
@@ -199,9 +204,26 @@ export default function PurchaseInvoicesIndex() {
     quantity: "1" as string,
     unitPrice: "0" as string,
     taxRate: "0" as string,
+    discount: "0" as string,
+    discountType: "amount" as "amount" | "percentage",
     projectId: "",
     assetInstanceId: "",
   });
+
+  // Authoritative totals via the shared engine (VAT on the discounted base;
+  // line discount first, then header apportioned). Mirrors the server.
+  const purchaseInvoiceTotals = computeDocumentTotals(
+    invoiceItems.map((it) => ({
+      quantity: parseFloat(it.quantity) || 0,
+      unitPrice: parseFloat(it.unitPrice) || 0,
+      taxRate: parseFloat(it.taxRate) || 0,
+      discount: parseFloat(it.discount || "0") || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    })),
+    parseFloat(formData.discountPercentage || "0") > 0
+      ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
+      : { discount: parseFloat(formData.discountAmount || "0"), discountType: "amount" as const },
+  );
 
   const [paymentData, setPaymentData] = useState({
     amount: "",
@@ -394,6 +416,8 @@ export default function PurchaseInvoicesIndex() {
           quantity: item.quantity.toString(),
           unitPrice: parseFloat(item.unitPrice).toString(),
           taxRate: parseFloat(item.taxRate || "0").toString(),
+          discount: item.discount != null ? item.discount.toString() : "0",
+          discountType: item.discountType || "amount",
           projectId: item.projectId ? item.projectId.toString() : "",
           assetInstanceId: item.assetInstanceId ? item.assetInstanceId.toString() : "",
         })));
@@ -442,6 +466,8 @@ export default function PurchaseInvoicesIndex() {
         quantity: item.quantity.toString(),
         unitPrice: parseFloat(item.unitPrice).toString(),
         taxRate: parseFloat(item.taxRate || "0").toString(),
+        discount: item.discount != null ? item.discount.toString() : "0",
+        discountType: item.discountType || "amount",
         projectId: item.projectId ? item.projectId.toString() : "",
         assetInstanceId: item.assetInstanceId ? item.assetInstanceId.toString() : "",
       })));
@@ -629,6 +655,8 @@ export default function PurchaseInvoicesIndex() {
       quantity: "1",
       unitPrice: "0",
       taxRate: "0",
+      discount: "0",
+      discountType: "amount",
       projectId: "",
       assetInstanceId: "",
     });
@@ -688,6 +716,8 @@ export default function PurchaseInvoicesIndex() {
       quantity: "1",
       unitPrice: "0",
       taxRate: "0",
+      discount: "0",
+      discountType: "amount",
       projectId: "",
       assetInstanceId: "",
     });
@@ -729,7 +759,11 @@ export default function PurchaseInvoicesIndex() {
 
     const items = invoiceItems.map(item => {
       const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
-      const lineTaxAmount = lineSubtotal * (parseFloat(item.taxRate) / 100);
+      const lineDiscountVal = parseFloat(item.discount || "0") || 0;
+      const lineDiscount = item.discountType === "percentage"
+        ? lineSubtotal * (lineDiscountVal / 100)
+        : Math.min(lineDiscountVal, lineSubtotal);
+      const lineTaxAmount = (lineSubtotal - lineDiscount) * (parseFloat(item.taxRate) / 100);
       return {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
@@ -738,7 +772,9 @@ export default function PurchaseInvoicesIndex() {
         unitPrice: parseFloat(item.unitPrice),
         taxRate: parseFloat(item.taxRate),
         taxAmount: lineTaxAmount,
-        lineTotal: (lineSubtotal + lineTaxAmount).toFixed(2),
+        discount: lineDiscountVal,
+        discountType: item.discountType || "amount",
+        lineTotal: (lineSubtotal - lineDiscount + lineTaxAmount).toFixed(2),
         projectId: item.projectId ? parseInt(item.projectId) : null,
         assetInstanceId: item.assetInstanceId ? parseInt(item.assetInstanceId) : null,
       };
@@ -1827,6 +1863,29 @@ export default function PurchaseInvoicesIndex() {
                             />
                           </div>
 
+                          <div>
+                            <Label className="text-xs font-medium text-muted-foreground">DISCOUNT</Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                min="0"
+                                value={newItem.discount}
+                                onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
+                                placeholder="0"
+                                className="h-9"
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background h-9"
+                                value={newItem.discountType}
+                                onChange={(e) => setNewItem(prev => ({ ...prev, discountType: e.target.value as "amount" | "percentage" }))}
+                              >
+                                <option value="amount">{formData.currency || "AED"}</option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
+                          </div>
+
                         </div>
 
                         {/* Project and Asset Allocation Row */}
@@ -1878,18 +1937,24 @@ export default function PurchaseInvoicesIndex() {
                       <div className="space-y-2">
                         <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground border-b pb-2">
                           <div className="col-span-1">TYPE</div>
-                          <div className="col-span-3">ITEM</div>
+                          <div className="col-span-2">ITEM</div>
                           <div className="col-span-2 text-center">QUANTITY</div>
                           <div className="col-span-2 text-right">UNIT PRICE</div>
                           <div className="col-span-1 text-center">TAX</div>
+                          <div className="col-span-1 text-center">DISC</div>
                           <div className="col-span-2 text-right">TOTAL</div>
                           <div className="col-span-1"></div>
                         </div>
 
                         {invoiceItems.map((item, index) => {
                           const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
-                          const lineTax = lineSubtotal * (parseFloat(item.taxRate) / 100);
-                          const lineTotal = lineSubtotal + lineTax;
+                          const lineDiscVal = parseFloat(item.discount || "0") || 0;
+                          const lineDiscount = item.discountType === "percentage"
+                            ? lineSubtotal * (lineDiscVal / 100)
+                            : Math.min(lineDiscVal, lineSubtotal);
+                          const taxable = lineSubtotal - lineDiscount;
+                          const lineTax = taxable * (parseFloat(item.taxRate) / 100);
+                          const lineTotal = taxable + lineTax;
 
                           return (
                             <div key={index} className="grid grid-cols-12 gap-2 items-center py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-lg px-2">
@@ -1898,7 +1963,7 @@ export default function PurchaseInvoicesIndex() {
                                   {item.itemType === "product" ? "Product" : "Service"}
                                 </Badge>
                               </div>
-                              <div className="col-span-3">
+                              <div className="col-span-2">
                                 <div className="flex flex-col">
                                   <div className="font-medium text-sm">
                                     {item.itemType === "product" ? getItemName(item.inventoryItemId || "") : item.description}
@@ -1934,6 +1999,13 @@ export default function PurchaseInvoicesIndex() {
                               </div>
                               <div className="col-span-1 text-center">
                                 <Badge variant="outline" className="text-xs">{item.taxRate}%</Badge>
+                              </div>
+                              <div className="col-span-1 text-center">
+                                <span className="text-xs">
+                                  {lineDiscVal > 0
+                                    ? (item.discountType === "percentage" ? `${lineDiscVal}%` : formatCurrency(lineDiscVal, formData.currency))
+                                    : "-"}
+                                </span>
                               </div>
                               <div className="col-span-2 text-right">
                                 <span className="font-semibold text-green-600">{formatCurrency(lineTotal, formData.currency)}</span>
@@ -2021,39 +2093,22 @@ export default function PurchaseInvoicesIndex() {
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Subtotal:</span>
-                            <span className="font-medium">{formatCurrency(invoiceItems.reduce((sum, item) => {
-                              const quantity = parseInt(item.quantity) || 0;
-                              const unitPrice = parseFloat(item.unitPrice) || 0;
-                              return sum + (quantity * unitPrice);
-                            }, 0), formData.currency)}</span>
+                            <span className="font-medium">{formatCurrency(purchaseInvoiceTotals.gross, formData.currency)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Tax Amount:</span>
-                            <span className="font-medium">{formatCurrency(invoiceItems.reduce((sum, item) => {
-                              const quantity = parseInt(item.quantity) || 0;
-                              const unitPrice = parseFloat(item.unitPrice) || 0;
-                              const taxRate = parseFloat(item.taxRate) || 0;
-                              const lineSubtotal = quantity * unitPrice;
-                              return sum + (lineSubtotal * taxRate / 100);
-                            }, 0), formData.currency)}</span>
-                          </div>
-                          {parseFloat(formData.discountAmount) > 0 && (
+                          {purchaseInvoiceTotals.discountTotal > 0 && (
                             <div className="flex justify-between text-sm text-red-600">
-                              <span>Discount ({formData.discountPercentage}%):</span>
-                              <span className="font-medium">- {formatCurrency(formData.discountAmount, formData.currency)}</span>
+                              <span>Total Discount:</span>
+                              <span className="font-medium">- {formatCurrency(purchaseInvoiceTotals.discountTotal, formData.currency)}</span>
                             </div>
                           )}
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Tax Amount:</span>
+                            <span className="font-medium">{formatCurrency(purchaseInvoiceTotals.taxTotal, formData.currency)}</span>
+                          </div>
                           <div className="border-t pt-2">
                             <div className="flex justify-between text-lg font-bold">
                               <span>Total Amount:</span>
-                              <span className="text-green-600">{formatCurrency((invoiceItems.reduce((sum, item) => {
-                                const quantity = parseInt(item.quantity) || 0;
-                                const unitPrice = parseFloat(item.unitPrice) || 0;
-                                const taxRate = parseFloat(item.taxRate) || 0;
-                                const lineSubtotal = quantity * unitPrice;
-                                const lineTax = lineSubtotal * taxRate / 100;
-                                return sum + lineSubtotal + lineTax;
-                              }, 0) - (parseFloat(formData.discountAmount) || 0)), formData.currency)}</span>
+                              <span className="text-green-600">{formatCurrency(purchaseInvoiceTotals.total, formData.currency)}</span>
                             </div>
                             {formData.currency !== "AED" && (
                               <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -2365,6 +2420,7 @@ export default function PurchaseInvoicesIndex() {
                               <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Qty</th>
                               <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Price</th>
                               <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Tax</th>
+                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Discount</th>
                               <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Total</th>
                             </tr>
                           </thead>
@@ -2411,6 +2467,11 @@ export default function PurchaseInvoicesIndex() {
                                 </td>
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatCurrency(item.unitPrice, viewingInvoice.supplierCurrency)}</td>
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatCurrency(item.taxAmount || "0.00", viewingInvoice.supplierCurrency)}</td>
+                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
+                                  {Number(item.discount) > 0
+                                    ? (item.discountType === "percentage" ? `${item.discount}%` : formatCurrency(item.discount as any, viewingInvoice.supplierCurrency))
+                                    : "-"}
+                                </td>
                                 <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">{formatCurrency(item.lineTotal, viewingInvoice.supplierCurrency)}</td>
                               </tr>
                             ))}
@@ -2436,12 +2497,20 @@ export default function PurchaseInvoicesIndex() {
                       <span className="font-medium">Tax:</span>
                       <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.taxAmount, viewingInvoice.supplierCurrency)}</span>
                     </div>
-                    {parseFloat(viewingInvoice.discountAmount || "0") > 0 && (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">Discount ({viewingInvoice.discountPercentage || "0"}%):</span>
-                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(viewingInvoice.discountAmount || "0", viewingInvoice.supplierCurrency)}</span>
-                      </div>
-                    )}
+                    {(() => {
+                      // Total discount (header + line) derived from stored fields;
+                      // the discountAmount column holds only the header portion.
+                      const totalDiscount =
+                        parseFloat(viewingInvoice.subtotal || "0") +
+                        parseFloat(viewingInvoice.taxAmount || "0") -
+                        parseFloat(viewingInvoice.totalAmount || "0");
+                      return totalDiscount > 0.005 ? (
+                        <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                          <span className="font-medium">Total Discount:</span>
+                          <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingInvoice.supplierCurrency)}</span>
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
                       <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
                       <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.supplierCurrency)}</span>

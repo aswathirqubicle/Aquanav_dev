@@ -157,16 +157,22 @@ export function generateProformaHTML(
                           <td><strong>Subtotal:</strong></td>
                           <td class="text-right">${formatCurrency(proforma.subtotal || 0)}</td>
                         </tr>
-                        ${
-                          proforma.discount && parseFloat(proforma.discount) > 0
+                        ${(() => {
+                          // Total discount (header + line) derived from stored
+                          // fields; the `discount` column holds only the header.
+                          const totalDiscount =
+                            parseFloat(proforma.subtotal || "0") +
+                            parseFloat(proforma.taxAmount || "0") -
+                            parseFloat(proforma.totalAmount || "0");
+                          return totalDiscount > 0.005
                             ? `
                         <tr>
                           <td><strong>Discount:</strong></td>
-                          <td class="text-right">-${formatCurrency(proforma.discount)}</td>
+                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
                         </tr>
                         `
-                            : ""
-                        }
+                            : "";
+                        })()}
                         <tr>
                           <td><strong>Tax Amount:</strong></td>
                           <td class="text-right">${formatCurrency(proforma.taxAmount || 0)}</td>
