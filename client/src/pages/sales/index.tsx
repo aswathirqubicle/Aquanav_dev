@@ -87,6 +87,8 @@ const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
         unitPrice: z.number(),
         taxRate: z.number().optional(),
         taxAmount: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -108,6 +110,8 @@ const createSalesInvoiceSchema = insertSalesInvoiceSchema.extend({
         unitPrice: z.number(),
         taxRate: z.number().optional(),
         taxAmount: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -2228,7 +2232,9 @@ export default function SalesIndex() {
                                   }))
                                 }
                               >
-                                <option value="amount">AED</option>
+                                <option value="amount">
+                                  {formData.currency || "AED"}
+                                </option>
                                 <option value="percentage">%</option>
                               </select>
                             </div>
@@ -2264,6 +2270,9 @@ export default function SalesIndex() {
                                     Unit Price
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Discount
+                                  </th>
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Tax Rate
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2281,9 +2290,14 @@ export default function SalesIndex() {
                                 {formData.items.map((item, index) => {
                                   const lineSubtotal =
                                     item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    item.discountType === "percentage"
+                                      ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                                      : Math.min(Number(item.discount) || 0, lineSubtotal);
+                                  const taxable = lineSubtotal - lineDiscount;
                                   const taxAmount =
-                                    lineSubtotal * ((item.taxRate || 0) / 100);
-                                  const lineTotal = lineSubtotal + taxAmount;
+                                    taxable * ((item.taxRate || 0) / 100);
+                                  const lineTotal = taxable + taxAmount;
 
                                   return (
                                     <tr key={index}>
@@ -2295,6 +2309,13 @@ export default function SalesIndex() {
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {formData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-right">
+                                        {(Number(item.discount) || 0) > 0
+                                          ? item.discountType === "percentage"
+                                            ? `${item.discount}%`
+                                            : `${formData.currency || "AED"} ${(Number(item.discount) || 0).toFixed(2)}`
+                                          : "-"}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
@@ -2861,7 +2882,9 @@ export default function SalesIndex() {
                                   }))
                                 }
                               >
-                                <option value="amount">AED</option>
+                                <option value="amount">
+                                  {invoiceFormData.currency || "AED"}
+                                </option>
                                 <option value="percentage">%</option>
                               </select>
                             </div>
@@ -2897,6 +2920,9 @@ export default function SalesIndex() {
                                     Unit Price
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Discount
+                                  </th>
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Tax Rate
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2914,9 +2940,14 @@ export default function SalesIndex() {
                                 {invoiceFormData.items.map((item, index) => {
                                   const lineSubtotal =
                                     item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    item.discountType === "percentage"
+                                      ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                                      : Math.min(Number(item.discount) || 0, lineSubtotal);
+                                  const taxable = lineSubtotal - lineDiscount;
                                   const taxAmount =
-                                    lineSubtotal * ((item.taxRate || 0) / 100);
-                                  const lineTotal = lineSubtotal + taxAmount;
+                                    taxable * ((item.taxRate || 0) / 100);
+                                  const lineTotal = taxable + taxAmount;
 
                                   return (
                                     <tr key={index}>
@@ -2928,6 +2959,13 @@ export default function SalesIndex() {
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {invoiceFormData.currency || "AED"} {(typeof item.unitPrice === 'number' ? item.unitPrice : 0).toFixed(2)}
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-right">
+                                        {(Number(item.discount) || 0) > 0
+                                          ? item.discountType === "percentage"
+                                            ? `${item.discount}%`
+                                            : `${invoiceFormData.currency || "AED"} ${(Number(item.discount) || 0).toFixed(2)}`
+                                          : "-"}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
