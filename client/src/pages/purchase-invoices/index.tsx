@@ -466,6 +466,8 @@ export default function PurchaseInvoicesIndex() {
         quantity: item.quantity.toString(),
         unitPrice: parseFloat(item.unitPrice).toString(),
         taxRate: parseFloat(item.taxRate || "0").toString(),
+        discount: item.discount != null ? item.discount.toString() : "0",
+        discountType: item.discountType || "amount",
         projectId: item.projectId ? item.projectId.toString() : "",
         assetInstanceId: item.assetInstanceId ? item.assetInstanceId.toString() : "",
       })));
