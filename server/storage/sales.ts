@@ -459,7 +459,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result: CreditNote[] = await db
         .update(creditNotes)
-        .set(updateData)
+        .set(this.applySalesDocumentTotals(updateData))
         .where(eq(creditNotes.id, id))
         .returning();
 
@@ -1082,9 +1082,23 @@ export class SalesStorage extends LedgerStorage {
    * items array is returned unchanged.
    */
   private applySalesDocumentTotals<T extends Record<string, any>>(data: T): T {
-    const items = Array.isArray((data as any).items)
-      ? ((data as any).items as any[])
-      : null;
+    // `items` is an array on most sales docs but a JSON string on credit notes.
+    const raw = (data as any).items;
+    let items: any[] | null = null;
+    let wasString = false;
+    if (Array.isArray(raw)) {
+      items = raw;
+    } else if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          items = parsed;
+          wasString = true;
+        }
+      } catch {
+        /* not JSON — leave items null so this is a no-op */
+      }
+    }
     if (!items || items.length === 0) return data;
 
     const lineInputs: LineItemInput[] = items.map((it) => ({
@@ -1114,7 +1128,7 @@ export class SalesStorage extends LedgerStorage {
 
     return {
       ...data,
-      items: itemsOut,
+      items: wasString ? JSON.stringify(itemsOut) : itemsOut,
       subtotal: totals.gross.toFixed(2),
       discount: totals.discountTotal.toFixed(2),
       taxAmount: totals.taxTotal.toFixed(2),
@@ -1151,7 +1165,7 @@ export class SalesStorage extends LedgerStorage {
     try {
       const result = await db
         .update(salesQuotations)
-        .set(quotationData)
+        .set(this.applySalesDocumentTotals(quotationData))
         .where(eq(salesQuotations.id, id))
         .returning();
       return result[0];
@@ -1482,7 +1496,7 @@ export class SalesStorage extends LedgerStorage {
 
       const result = await db
         .update(proformaInvoices)
-        .set(updateData)
+        .set(this.applySalesDocumentTotals(updateData))
         .where(eq(proformaInvoices.id, id))
         .returning();
       return result[0];
@@ -1731,7 +1745,7 @@ export class SalesStorage extends LedgerStorage {
       console.log("invoiceData", invoiceData);
       const result = await db
         .update(salesInvoices)
-        .set(invoiceData)
+        .set(this.applySalesDocumentTotals(invoiceData))
         .where(eq(salesInvoices.id, id))
         .returning();
       return result[0];
