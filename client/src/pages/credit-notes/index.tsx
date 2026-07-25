@@ -16,6 +16,7 @@ import { insertCreditNoteSchema } from "@shared/schema";
 import { z } from "zod";
 import { printByUrl } from "@/lib/print-utils";
 import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
+import { computeDocumentTotals } from "@shared/document-totals";
 
 const createCreditNoteSchema = insertCreditNoteSchema.extend({
   creditNoteDate: z.string(),
@@ -27,6 +28,8 @@ const createCreditNoteSchema = insertCreditNoteSchema.extend({
         unitPrice: z.number(),
         taxRate: z.number().optional(),
         taxAmount: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -208,7 +211,7 @@ export default function CreditNotesIndex() {
       billingAddress: creditNote?.billingAddress || "",
       bankAccount: creditNote?.bankAccount || "",
       reason: creditNote?.reason || "",
-      items: creditNote?.items || [{ description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0 }],
+      items: creditNote?.items || [{ description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0, discount: 0, discountType: "amount" }],
       subtotal: creditNote?.subtotal || "0.00",
       taxAmount: creditNote?.taxAmount || "0.00",
       discountPercentage: creditNote?.discountPercentage || "0",
@@ -246,28 +249,26 @@ export default function CreditNotesIndex() {
     }, [selectedInvoice]);
 
     const calculateTotals = () => {
-      let subtotal = 0;
-      let totalTaxAmount = 0;
-
-      formData.items.forEach((item: any) => {
-        const quantity = item.quantity === "" ? 0 : item.quantity;
-        const unitPrice = item.unitPrice === "" ? 0 : item.unitPrice;
-        const taxRate = item.taxRate === "" ? 0 : (item.taxRate || 0);
-
-        const lineSubtotal = quantity * unitPrice;
-        const taxAmount = lineSubtotal * (taxRate / 100);
-        subtotal += lineSubtotal;
-        totalTaxAmount += taxAmount;
-      });
-
-      const discountAmount = parseFloat(formData.discount || "0");
-      const totalAmount = subtotal - discountAmount + totalTaxAmount;
+      // Authoritative totals via the shared engine (VAT on the discounted base;
+      // line discount first, then header apportioned). Mirrors the server.
+      const totals = computeDocumentTotals(
+        (formData.items || []).map((it: any) => ({
+          quantity: Number(it.quantity) || 0,
+          unitPrice: Number(it.unitPrice) || 0,
+          taxRate: Number(it.taxRate) || 0,
+          discount: Number(it.discount) || 0,
+          discountType: it.discountType === "percentage" ? "percentage" : "amount",
+        })),
+        parseFloat(formData.discountPercentage || "0") > 0
+          ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
+          : { discount: parseFloat(formData.discount || "0"), discountType: "amount" as const },
+      );
 
       setFormData((prev: any) => ({
         ...prev,
-        subtotal: subtotal.toFixed(2),
-        taxAmount: totalTaxAmount.toFixed(2),
-        totalAmount: totalAmount.toFixed(2),
+        subtotal: totals.gross.toFixed(2),
+        taxAmount: totals.taxTotal.toFixed(2),
+        totalAmount: totals.total.toFixed(2),
       }));
     };
 
@@ -291,7 +292,7 @@ export default function CreditNotesIndex() {
     const addItem = () => {
       setFormData(prev => ({
         ...prev,
-        items: [...prev.items, { description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0 }],
+        items: [...prev.items, { description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0, discount: 0, discountType: "amount" }],
       }));
     };
 
@@ -532,6 +533,27 @@ export default function CreditNotesIndex() {
                     onChange={(e) => updateItem(index, "taxRate", e.target.value === "" ? "" : parseFloat(e.target.value))}
                   />
                 </div>
+                <div className="w-32">
+                  <Label htmlFor={`discount-${index}`}>Discount</Label>
+                  <div className="flex gap-1">
+                    <Input
+                      id={`discount-${index}`}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={item.discount ?? ""}
+                      onChange={(e) => updateItem(index, "discount", e.target.value === "" ? "" : parseFloat(e.target.value))}
+                    />
+                    <select
+                      className="border rounded px-2 text-sm bg-background"
+                      value={item.discountType || "amount"}
+                      onChange={(e) => updateItem(index, "discountType", e.target.value)}
+                    >
+                      <option value="amount">{formData.currency || "AED"}</option>
+                      <option value="percentage">%</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="flex items-end">
                   <Button
                     type="button"
@@ -612,12 +634,20 @@ export default function CreditNotesIndex() {
                 <span className="text-muted-foreground">Tax Amount:</span>
                 <span className="font-medium">{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
               </div>
-              {parseFloat(formData.discount || "0") > 0 && (
-                <div className="flex justify-between text-sm text-red-600">
-                  <span>Discount ({formData.discountPercentage}%):</span>
-                  <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
-                </div>
-              )}
+              {(() => {
+                // Total discount (header + line) derived from the engine-set
+                // totals; equals discountTotal to the cent.
+                const totalDiscount =
+                  parseFloat(formData.subtotal || "0") +
+                  parseFloat(formData.taxAmount || "0") -
+                  parseFloat(formData.totalAmount || "0");
+                return totalDiscount > 0.005 ? (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>Total Discount:</span>
+                    <span className="font-medium">- {formatCurrency(totalDiscount.toFixed(2), formData.currency)}</span>
+                  </div>
+                ) : null;
+              })()}
               <div className="border-t pt-2">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total Amount:</span>
@@ -849,6 +879,7 @@ export default function CreditNotesIndex() {
                           <TableHead className="text-right">Quantity</TableHead>
                           <TableHead className="text-right">Unit Price</TableHead>
                           <TableHead className="text-right">Tax Rate</TableHead>
+                          <TableHead className="text-right">Discount</TableHead>
                           <TableHead className="text-right">Tax Amount</TableHead>
                           <TableHead className="text-right">Total</TableHead>
                         </TableRow>
@@ -856,14 +887,27 @@ export default function CreditNotesIndex() {
                       <TableBody>
                         {(viewingCreditNote.items || []).map((item: any, index: number) => {
                           const lineSubtotal = item.quantity * item.unitPrice;
-                          const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-                          const lineTotal = lineSubtotal + taxAmount;
+                          const lineDiscount = item.discountType === "percentage"
+                            ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                            : Math.min(Number(item.discount) || 0, lineSubtotal);
+                          const taxable = lineSubtotal - lineDiscount;
+                          const taxAmount = item.taxAmount !== undefined
+                            ? parseFloat(item.taxAmount.toString())
+                            : taxable * ((item.taxRate || 0) / 100);
+                          const lineTotal = taxable + taxAmount;
                           return (
                             <TableRow key={index}>
                               <TableCell>{item.description}</TableCell>
                               <TableCell className="text-right">{item.quantity}</TableCell>
                               <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingCreditNote.currency)}</TableCell>
                               <TableCell className="text-right">{item.taxRate || 0}%</TableCell>
+                              <TableCell className="text-right">
+                                {Number(item.discount) > 0
+                                  ? (item.discountType === "percentage"
+                                      ? `${item.discount}%`
+                                      : `${viewingCreditNote.currency || "AED"} ${(Number(item.discount)).toFixed(2)}`)
+                                  : "-"}
+                              </TableCell>
                               <TableCell className="text-right">{formatCurrency(taxAmount, viewingCreditNote.currency)}</TableCell>
                               <TableCell className="text-right">{formatCurrency(lineTotal, viewingCreditNote.currency)}</TableCell>
                             </TableRow>
@@ -885,14 +929,20 @@ export default function CreditNotesIndex() {
                       <span className="font-medium">Subtotal:</span>
                       <span className="text-lg font-semibold">{formatCurrency(viewingCreditNote.subtotal || 0, viewingCreditNote.currency)}</span>
                     </div>
-                    {viewingCreditNote.discount && parseFloat(viewingCreditNote.discount) > 0 && (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">
-                          Discount ({viewingCreditNote.discountPercentage}%):
-                        </span>
-                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(viewingCreditNote.discount, viewingCreditNote.currency)}</span>
-                      </div>
-                    )}
+                    {(() => {
+                      // Total discount (header + line) derived from stored fields;
+                      // the discount column holds only the header portion.
+                      const totalDiscount =
+                        parseFloat(viewingCreditNote.subtotal || "0") +
+                        parseFloat(viewingCreditNote.taxAmount || "0") -
+                        parseFloat(viewingCreditNote.totalAmount || "0");
+                      return totalDiscount > 0.005 ? (
+                        <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                          <span className="font-medium">Total Discount:</span>
+                          <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingCreditNote.currency)}</span>
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                       <span className="font-medium">Tax Amount:</span>
                       <span className="text-lg font-semibold">{formatCurrency(viewingCreditNote.taxAmount || 0, viewingCreditNote.currency)}</span>
