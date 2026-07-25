@@ -1308,20 +1308,28 @@ export class PurchaseStorage extends SalesStorage {
           ? overrides.items
           : po.items || [];
 
-      const computedSubtotal = itemsToUse.reduce(
-        (sum: number, item: any) =>
-          sum + parseFloat(item.quantity) * parseFloat(item.unitPrice),
-        0,
-      );
-      const computedTax = itemsToUse.reduce(
-        (sum: number, item: any) => sum + parseFloat(item.taxAmount || "0"),
-        0,
-      );
+      const convertDiscountPercentage =
+        overrides?.discountPercentage ?? po.discountPercentage ?? "0";
+      const convertDiscountAmountInput =
+        overrides?.discountAmount ?? po.discountAmount ?? "0";
 
-      const discountAmount = parseFloat(
-        overrides?.discountAmount ?? po.discountAmount ?? "0",
-      );
-      const computedTotal = computedSubtotal + computedTax - discountAmount;
+      // Recompute through the shared engine (VAT on the discounted base; line
+      // discount first, then header apportioned) — the same path every other
+      // purchase document uses. Replaces the old gross + tax - headerDiscount
+      // formula, which ignored line discounts.
+      const convertComputed: any = this.applyPurchaseDocumentTotals({
+        items: itemsToUse.map((item: any) => ({
+          quantity: parseFloat(item.quantity) || 0,
+          unitPrice: parseFloat(item.unitPrice) || 0,
+          taxRate: parseFloat(item.taxRate || "0") || 0,
+          discount: parseFloat(item.discount ?? "0") || 0,
+          discountType:
+            item.discountType === "percentage" ? "percentage" : "amount",
+        })),
+        discountPercentage: convertDiscountPercentage,
+        discountAmount: convertDiscountAmountInput,
+      });
+      const convertItems = convertComputed.items;
 
       // Create the invoice
       const [invoice] = await db
@@ -1343,12 +1351,11 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: overrides?.paymentTerms ?? po.paymentTerms ?? null,
           bankAccount: po.bankAccount ?? null,
           notes: overrides?.notes ?? po.notes ?? null,
-          subtotal: computedSubtotal.toFixed(2),
-          discountPercentage:
-            overrides?.discountPercentage ?? po.discountPercentage ?? "0",
-          discountAmount: discountAmount.toFixed(2),
-          taxAmount: computedTax.toFixed(2),
-          totalAmount: computedTotal.toFixed(2),
+          subtotal: convertComputed.subtotal,
+          discountPercentage: convertDiscountPercentage,
+          discountAmount: convertComputed.discountAmount,
+          taxAmount: convertComputed.taxAmount,
+          totalAmount: convertComputed.totalAmount,
           paidAmount: "0",
           currency: overrides?.currency ?? po.currency ?? "AED",
           exchangeRate: overrides?.exchangeRate ?? po.exchangeRate ?? "1",
@@ -1358,7 +1365,7 @@ export class PurchaseStorage extends SalesStorage {
 
       // Insert line items (user-edited or copied from PO)
       if (itemsToUse.length > 0) {
-        const invoiceItemsToInsert = itemsToUse.map((item: any) => ({
+        const invoiceItemsToInsert = itemsToUse.map((item: any, i: number) => ({
           invoiceId: invoice.id,
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
@@ -1366,10 +1373,11 @@ export class PurchaseStorage extends SalesStorage {
           quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unitPrice).toFixed(2),
           taxRate: parseFloat(item.taxRate || "0").toFixed(2),
-          taxAmount: parseFloat(item.taxAmount || "0").toFixed(2),
-          lineTotal: (
-            parseFloat(item.quantity) * parseFloat(item.unitPrice)
-          ).toFixed(2),
+          discount: (parseFloat(item.discount ?? "0") || 0).toString(),
+          discountType:
+            item.discountType === "percentage" ? "percentage" : "amount",
+          taxAmount: Number(convertItems[i].taxAmount).toFixed(2),
+          lineTotal: Number(convertItems[i].lineTotal).toFixed(2),
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
