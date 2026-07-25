@@ -401,7 +401,21 @@ export class LedgerStorage extends ProjectAssetStorage {
     status?: string;
     notes?: string;
     createdBy?: number;
-  }): Promise<any> {
+  },
+  /**
+   * Optional transaction (1.7/L14). When a caller is posting several rows that
+   * must land together, it opens one `db.transaction` and passes `tx` here so a
+   * failure part-way rolls the whole set back instead of leaving a one-sided
+   * ledger. Omitted, this behaves exactly as before and posts on its own.
+   *
+   * NOTE: the project-cost recalculation below still runs on the shared `db`
+   * connection, not on `tx`. It only fires for `payable` entries carrying a
+   * projectId; a caller passing `tx` for such an entry would be recalculating
+   * from outside its own uncommitted transaction, so don't do that without
+   * moving the recalc after the commit.
+   */
+  tx?: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ): Promise<any> {
     try {
       console.log("Creating GL entry with data:", entryData);
 
@@ -445,7 +459,7 @@ export class LedgerStorage extends ProjectAssetStorage {
       }
 
       // Use the generalLedgerEntries table from schema instead of raw SQL
-      const result = await db
+      const result = await (tx ?? db)
         .insert(generalLedgerEntries)
         .values({
           entryType: entryData.entryType,
