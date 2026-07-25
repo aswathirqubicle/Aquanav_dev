@@ -947,6 +947,8 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   description: text("description"), // For service items or additional details
   quantity: integer("quantity").notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
+  discountType: text("discount_type").default("amount"), // amount | percentage
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   lineTotal: decimal("line_total", { precision: 10, scale: 2 }).notNull(),
@@ -1092,6 +1094,8 @@ export const purchaseInvoiceItems = pgTable("purchase_invoice_items", {
   description: text("description"), // For service items or additional details
   quantity: integer("quantity").notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
+  discountType: text("discount_type").default("amount"), // amount | percentage
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
   lineTotal: decimal("line_total", { precision: 10, scale: 2 }).notNull(),
