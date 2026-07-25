@@ -2537,15 +2537,16 @@ export class PurchaseStorage extends SalesStorage {
         parseFloat(invoice.paidAmount || "0") + parseFloat(paymentData.amount);
       const totalAmount = parseFloat(invoice.totalAmount);
 
-      // Determine new status
-      let newStatus = "pending";
+      // Determine new payment status (unpaid -> partial -> paid). This is the
+      // payment lifecycle; the approval `status` is never touched here.
+      let newStatus = "unpaid";
       if (newPaidAmount >= totalAmount) {
         newStatus = "paid";
       } else if (newPaidAmount > 0) {
         newStatus = "partial";
       }
 
-      // Update invoice paid amount and status
+      // Update invoice paid amount and payment status
       await db
         .update(purchaseInvoices)
         .set({
@@ -3096,27 +3097,30 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceData = invoice[0];
       const totalAmount = parseFloat(invoiceData.totalAmount || "0");
 
-      // Determine status based on payment
-      let status = "pending";
+      // The payment lifecycle lives in paymentStatus (unpaid -> partial -> paid).
+      // The approval `status` must be left untouched, so a payment on an approved
+      // invoice keeps status = "approved" (previously this clobbered status with a
+      // payment value, destroying the approval state).
+      let paymentStatus = "unpaid";
       if (totalPaid >= totalAmount) {
-        status = "paid";
+        paymentStatus = "paid";
       } else if (totalPaid > 0) {
-        status = "partially_paid";
+        paymentStatus = "partial";
       }
 
-      // Update invoice
+      // Update invoice — only paidAmount + paymentStatus.
       await db
         .update(purchaseInvoices)
         .set({
           paidAmount: totalPaid.toFixed(2),
-          status,
+          paymentStatus,
         })
         .where(eq(purchaseInvoices.id, invoiceId));
 
       console.log(
         `Updated purchase invoice ${invoiceId} paid amount to ${totalPaid.toFixed(
           2,
-        )} with status ${status}`,
+        )} with paymentStatus ${paymentStatus}`,
       );
     } catch (error: any) {
       console.error(
