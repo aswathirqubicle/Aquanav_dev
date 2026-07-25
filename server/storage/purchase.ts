@@ -1378,6 +1378,12 @@ export class PurchaseStorage extends SalesStorage {
             item.discountType === "percentage" ? "percentage" : "amount",
           taxAmount: Number(convertItems[i].taxAmount).toFixed(2),
           lineTotal: Number(convertItems[i].lineTotal).toFixed(2),
+          // Carry per-line allocation through the conversion when the payload
+          // provides it (6.3). Purchase-order items have no projectId column, so
+          // this is null for a straight PO copy and set only when the conversion
+          // form assigns one — never a regression.
+          projectId: item.projectId || null,
+          assetInstanceId: item.assetInstanceId || null,
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
@@ -1953,6 +1959,11 @@ export class PurchaseStorage extends SalesStorage {
           taxRate: item.taxRate?.toString() || "0",
           taxAmount: item.taxAmount?.toString() || "0",
           lineTotal: item.lineTotal.toString(),
+          // Per-line allocation (6.3). Mirrors updatePurchaseInvoice — without
+          // these the create path silently drops the line's project/asset, so
+          // project cost and asset maintenance were never allocated on approve.
+          projectId: item.projectId || null,
+          assetInstanceId: item.assetInstanceId || null,
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
