@@ -2582,6 +2582,7 @@ export class PurchaseStorage extends SalesStorage {
         description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         entityId: invoice.supplierId,
         entityName: supplierName,
+        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: paymentData.paymentDate,
         status: "paid" as const,
@@ -2815,6 +2816,79 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
+  /**
+   * Post the GL for an issued purchase credit note (L5/H1). A purchase return
+   * reverses the payable and the recoverable input VAT:
+   *   Dr Accounts Payable (gross) / Cr Purchase Expense (net) / Cr VAT Recoverable (tax)
+   * VAT line omitted when zero. Balances to the cent. Shared by both entry paths
+   * (create-as-issued and draft->issued). The credit note's own settlement row in
+   * purchase_invoice_payments carries no GL (it's inserted directly, not via
+   * createPurchaseInvoicePayment) — D1 symmetry with the sales side.
+   */
+  private async postPurchaseCreditNoteGL(creditNote: any): Promise<void> {
+    const invoice = creditNote.purchaseInvoiceId
+      ? await this.getPurchaseInvoice(creditNote.purchaseInvoiceId)
+      : null;
+    const supplierId: number | null = invoice?.supplierId ?? null;
+    let supplierName = "Unknown Supplier";
+    if (supplierId) {
+      const [supplier] = await db
+        .select()
+        .from(suppliers)
+        .where(eq(suppliers.id, supplierId));
+      if (supplier) supplierName = supplier.name;
+    }
+
+    const rate = parseFloat(invoice?.exchangeRate || "1");
+    const currency = invoice?.currency || "AED";
+    const originalTotal = parseFloat(creditNote.totalAmount || "0");
+    const originalTax = parseFloat(creditNote.taxAmount || "0");
+    const aedTotal = Math.round(originalTotal * rate * 100) / 100;
+    const aedTax = Math.round(originalTax * rate * 100) / 100;
+    const aedNet = Math.round((aedTotal - aedTax) * 100) / 100;
+    const currencyNote =
+      currency !== "AED"
+        ? ` (${currency} ${originalTotal.toFixed(2)} @ ${rate})`
+        : "";
+
+    const shared = {
+      entryType: "payable" as const,
+      referenceType: "purchase_credit_note" as const,
+      referenceId: creditNote.id,
+      description: `Purchase Credit Note ${creditNote.creditNoteNumber} for Invoice ${invoice?.invoiceNumber || "N/A"}${currencyNote}`,
+      entityId: supplierId,
+      entityName: supplierName,
+      projectId: invoice?.projectId || null,
+      invoiceNumber: invoice?.invoiceNumber || null,
+      transactionDate:
+        creditNote.creditNoteDate || new Date().toISOString().split("T")[0],
+      status: "issued" as const,
+    };
+
+    await db.transaction(async (tx) => {
+      await tx.insert(generalLedgerEntries).values({
+        ...shared,
+        accountName: "Accounts Payable",
+        debitAmount: aedTotal.toFixed(2),
+        creditAmount: "0",
+      });
+      await tx.insert(generalLedgerEntries).values({
+        ...shared,
+        accountName: "Purchase Expense",
+        debitAmount: "0",
+        creditAmount: aedNet.toFixed(2),
+      });
+      if (aedTax > 0.005) {
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "VAT Recoverable",
+          debitAmount: "0",
+          creditAmount: aedTax.toFixed(2),
+        });
+      }
+    });
+  }
+
   async createPurchaseCreditNote(creditNoteData: any): Promise<any> {
     try {
       console.log("Creating purchase credit note with data:", creditNoteData);
@@ -2859,6 +2933,9 @@ export class PurchaseStorage extends SalesStorage {
         await this.updatePurchaseInvoicePaidAmount(
           creditNote.purchaseInvoiceId,
         );
+
+        // Post the credit-note GL (L5) — previously nothing was posted.
+        await this.postPurchaseCreditNoteGL(creditNote);
       }
 
       return creditNote;
@@ -2923,6 +3000,9 @@ export class PurchaseStorage extends SalesStorage {
         await this.updatePurchaseInvoicePaidAmount(
           updatedCreditNote.purchaseInvoiceId,
         );
+
+        // Post the credit-note GL (L5) — previously nothing was posted.
+        await this.postPurchaseCreditNoteGL(updatedCreditNote);
       }
 
       return updatedCreditNote;
