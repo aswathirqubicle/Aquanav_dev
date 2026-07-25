@@ -4293,6 +4293,9 @@ export default function SalesIndex() {
                               Unit Price
                             </th>
                             <th className="text-right p-3 font-medium">
+                              Discount
+                            </th>
+                            <th className="text-right p-3 font-medium">
                               Tax Rate
                             </th>
                             <th className="text-right p-3 font-medium">
@@ -4306,14 +4309,18 @@ export default function SalesIndex() {
                         <tbody>
                           {selectedQuotation.items.map((item, index) => {
                             const lineSubtotal = item.quantity * item.unitPrice;
+                            const lineDiscount =
+                              (item as any).discountType === "percentage"
+                                ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
+                                : Math.min(Number((item as any).discount) || 0, lineSubtotal);
                             const taxRate = item.taxRate || 0;
-                            const calculatedTaxAmount =
-                              lineSubtotal * (taxRate / 100);
+                            const taxable = lineSubtotal - lineDiscount;
+                            const calculatedTaxAmount = taxable * (taxRate / 100);
                             const taxAmount =
                               item.taxAmount !== undefined
                                 ? parseFloat(item.taxAmount.toString())
                                 : calculatedTaxAmount;
-                            const lineTotal = lineSubtotal + taxAmount;
+                            const lineTotal = taxable + taxAmount;
 
                             return (
                               <tr key={index} className="border-b">
@@ -4323,6 +4330,13 @@ export default function SalesIndex() {
                                 </td>
                                 <td className="text-right p-3">
                                   {formatCurrency(item.unitPrice, selectedQuotation?.currency)}
+                                </td>
+                                <td className="text-right p-3">
+                                  {(Number((item as any).discount) || 0) > 0
+                                    ? (item as any).discountType === "percentage"
+                                      ? `${(item as any).discount}%`
+                                      : formatCurrency((item as any).discount, selectedQuotation?.currency)
+                                    : "-"}
                                 </td>
                                 <td className="text-right p-3">{taxRate}%</td>
                                 <td className="text-right p-3">
@@ -4358,9 +4372,7 @@ export default function SalesIndex() {
                   </div>
                   {selectedQuotation.discount && parseFloat(selectedQuotation.discount) > 0 && (
                     <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">
-                            Discount ({selectedQuotation.discountPercentage || "0"}%):
-                      </span>
+                      <span className="font-medium">Total Discount:</span>
                       <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}</span>
                     </div>
                   )}
