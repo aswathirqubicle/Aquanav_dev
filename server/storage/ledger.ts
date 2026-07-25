@@ -761,7 +761,14 @@ export class LedgerStorage extends ProjectAssetStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Standard VAT posting (D5): AR is the gross the customer owes; Sales
+      // Revenue is net of discount and EXCLUDING VAT; the output VAT collected
+      // is a liability (VAT/GST Payable). Rounded so Dr AR == Cr Revenue + Cr VAT
+      // to the cent by construction.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -787,21 +794,31 @@ export class LedgerStorage extends ProjectAssetStorage {
       };
 
       await db.transaction(async (tx) => {
-        // Debit Accounts Receivable, in AED
+        // Debit Accounts Receivable (gross, incl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...shared,
           accountName: "Accounts Receivable",
-          debitAmount: aedAmount,
+          debitAmount: aedTotal.toFixed(2),
           creditAmount: "0",
         });
 
-        // Credit Sales Revenue, in AED
+        // Credit Sales Revenue (net of discount, excl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...shared,
           accountName: "Sales Revenue",
           debitAmount: "0",
-          creditAmount: aedAmount,
+          creditAmount: aedRevenue.toFixed(2),
         });
+
+        // Credit VAT/GST Payable (output VAT) — omitted when zero (G2)
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT/GST Payable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
       });
 
       console.log(

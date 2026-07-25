@@ -33,34 +33,13 @@ salesInvoicesRoutes.post(
           .json({ message: "Only draft invoices can be approved" });
       }
 
-      // Generate invoice number if not already assigned
-      let invoiceNumber = invoice.invoiceNumber;
-      if (!invoiceNumber) {
-        invoiceNumber = await storage.generateNextNumber(
-          "INV",
-          salesInvoices,
-          salesInvoices.invoiceNumber,
-        );
-      }
+      // Consolidated approval (L13/G3): record the approver, land on "approved",
+      // generate the permanent number and post the GL — the same path the PATCH
+      // approve endpoint uses, so both behave identically. Payment status
+      // (partially_paid / paid / overdue) is derived later by the payment flow,
+      // not conflated with approval.
+      await storage.approveSalesInvoice(invoiceId, req.session.userId!);
 
-      // Update invoice to assign invoice number and set initial status to unpaid
-      await storage.updateSalesInvoice(invoiceId, {
-        status: "unpaid",
-        invoiceNumber: invoiceNumber,
-      });
-
-      // Create general ledger entries for the approved invoice
-      await storage.createInvoiceGLEntries(invoiceId);
-
-      // Update invoice status based on payment amounts and due date
-      await storage.updateInvoicePaidAmount(invoiceId);
-
-      // If invoice is linked to a project, update project total revenue (accrual basis)
-      if (invoice.projectId) {
-        await storage.updateProjectRevenue(invoice.projectId);
-      }
-
-      // Fetch and return the updated invoice with correct status
       const updatedInvoice = await storage.getSalesInvoice(invoiceId);
       res.json(updatedInvoice);
     } catch (error) {
