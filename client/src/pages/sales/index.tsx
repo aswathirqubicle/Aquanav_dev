@@ -4370,12 +4370,21 @@ export default function SalesIndex() {
                     <span className="font-medium">Subtotal:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}</span>
                   </div>
-                  {selectedQuotation.discount && parseFloat(selectedQuotation.discount) > 0 && (
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">Total Discount:</span>
-                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedQuotation.discount, selectedQuotation?.currency)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Total discount (header + line) derived from stored fields;
+                    // equals discountTotal to the cent. The `discount` column
+                    // itself now holds only the header portion.
+                    const totalDiscount =
+                      parseFloat(selectedQuotation.subtotal || "0") +
+                      parseFloat(selectedQuotation.taxAmount || "0") -
+                      parseFloat(selectedQuotation.totalAmount || "0");
+                    return totalDiscount > 0.005 ? (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Total Discount:</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedQuotation?.currency)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                     <span className="font-medium">Tax Amount:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}</span>
@@ -4756,12 +4765,21 @@ export default function SalesIndex() {
                     <span className="font-medium">Subtotal:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}</span>
                   </div>
-                  {selectedInvoice.discount && parseFloat(selectedInvoice.discount) > 0 && (
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">Total Discount:</span>
-                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedInvoice.discount, selectedInvoice?.currency)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Total discount (header + line) derived from stored fields;
+                    // equals discountTotal to the cent. The `discount` column
+                    // itself now holds only the header portion.
+                    const totalDiscount =
+                      parseFloat(selectedInvoice.subtotal || "0") +
+                      parseFloat(selectedInvoice.taxAmount || "0") -
+                      parseFloat(selectedInvoice.totalAmount || "0");
+                    return totalDiscount > 0.005 ? (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Total Discount:</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedInvoice?.currency)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                     <span className="font-medium">Tax Amount:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}</span>

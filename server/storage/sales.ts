@@ -1130,7 +1130,11 @@ export class SalesStorage extends LedgerStorage {
       ...data,
       items: wasString ? JSON.stringify(itemsOut) : itemsOut,
       subtotal: totals.gross.toFixed(2),
-      discount: totals.discountTotal.toFixed(2),
+      // The `discount` column stores the HEADER discount only (its pre-P4b
+      // meaning) so the edit/convert forms reload it correctly. The combined
+      // total (header + line) is derived for display as
+      // subtotal + taxAmount - totalAmount, which equals discountTotal to the cent.
+      discount: totals.headerDiscount.toFixed(2),
       taxAmount: totals.taxTotal.toFixed(2),
       totalAmount: totals.total.toFixed(2),
     };
