@@ -164,16 +164,22 @@ export function generatePurchaseInvoiceHTML(
                           <td><strong>Subtotal:</strong></td>
                           <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
                         </tr>
-                        ${
-                          parseFloat(invoice.discountAmount || "0") > 0
+                        ${(() => {
+                          // Total discount (header + line) derived from stored
+                          // fields; the discountAmount column holds only the header.
+                          const totalDiscount =
+                            parseFloat(invoice.subtotal || "0") +
+                            parseFloat(invoice.taxAmount || "0") -
+                            parseFloat(invoice.totalAmount || "0");
+                          return totalDiscount > 0.005
                             ? `
                         <tr>
-                          <td><strong>Discount (${invoice.discountPercentage || 0}%):</strong></td>
-                          <td class="text-right">-${formatCurrency(invoice.discountAmount)}</td>
+                          <td><strong>Discount:</strong></td>
+                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
                         </tr>
                         `
-                            : ""
-                        }
+                            : "";
+                        })()}
                         <tr>
                           <td><strong>Tax Amount:</strong></td>
                           <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
