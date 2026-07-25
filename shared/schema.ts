@@ -1034,6 +1034,10 @@ export const purchaseInvoicePayments = pgTable("purchase_invoice_payments", {
   paymentMethod: text("payment_method"),
   referenceNumber: text("reference_number"),
   notes: text("notes"),
+  paymentType: text("payment_type").notNull().default("payment"), // payment, credit_note
+  creditNoteId: integer("credit_note_id").references(
+    () => purchaseCreditNotes.id,
+  ),
   recordedBy: integer("recorded_by").references(() => users.id),
   recordedAt: timestamp("recorded_at").notNull().defaultNow(),
 });
