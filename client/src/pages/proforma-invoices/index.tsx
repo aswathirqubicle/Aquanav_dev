@@ -56,6 +56,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Autocomplete } from "@/components/ui/autocomplete";
+import { computeDocumentTotals } from "@shared/document-totals";
 // Proforma Invoice Schema
 const createProformaInvoiceSchema = z.object({
   customerId: z.number(),
@@ -77,6 +78,8 @@ const createProformaInvoiceSchema = z.object({
         quantity: z.number(),
         unitPrice: z.number(),
         taxRate: z.number().optional(),
+        discount: z.number().optional(),
+        discountType: z.enum(["amount", "percentage"]).optional(),
       }),
     )
     .default([]),
@@ -112,6 +115,9 @@ interface ProformaInvoice {
     quantity: number;
     unitPrice: number;
     taxRate?: number;
+    discount?: number;
+    discountType?: "amount" | "percentage";
+    taxAmount?: number | string;
   }>;
   subtotal?: string;
   taxAmount?: string;
@@ -128,6 +134,8 @@ interface ProformaItem {
   quantity: number | "";
   unitPrice: number | "";
   taxRate?: number | "";
+  discount?: number | "";
+  discountType?: "amount" | "percentage";
 }
 
 export default function ProformaInvoicesIndex() {
@@ -167,6 +175,8 @@ export default function ProformaInvoicesIndex() {
     quantity: 1,
     unitPrice: 0,
     taxRate: 0,
+    discount: 0,
+    discountType: "amount",
   });
 
   // Pagination state
@@ -216,6 +226,21 @@ export default function ProformaInvoicesIndex() {
 
   // Recalculate proforma discount when items or percentage changes
   const proformaSubtotal = formData.items.reduce((sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0), 0);
+
+  // Authoritative totals via the shared engine (VAT on the discounted base;
+  // line discount first, then header apportioned). Mirrors the server.
+  const proformaTotals = computeDocumentTotals(
+    (formData.items || []).map((it: any) => ({
+      quantity: Number(it.quantity) || 0,
+      unitPrice: Number(it.unitPrice) || 0,
+      taxRate: Number(it.taxRate) || 0,
+      discount: Number(it.discount) || 0,
+      discountType: it.discountType === "percentage" ? "percentage" : "amount",
+    })),
+    parseFloat(formData.discountPercentage || "0") > 0
+      ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
+      : { discount: parseFloat(formData.discount || "0"), discountType: "amount" as const },
+  );
 
   // Recalculate proforma discount when items or percentage changes
   useEffect(() => {
@@ -435,6 +460,8 @@ export default function ProformaInvoicesIndex() {
       quantity: 1,
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
+      discount: 0,
+      discountType: "amount",
     });
     setIsEditingProforma(false);
   };
@@ -473,14 +500,18 @@ export default function ProformaInvoicesIndex() {
     const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
     const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const discount = newItem.discount === "" ? 0 : (newItem.discount || 0);
+    const discountType = newItem.discountType || "amount";
 
     setFormData((prev) => ({
       ...prev,
-      items: [...prev.items, { 
+      items: [...prev.items, {
         ...newItem,
         quantity,
         unitPrice,
-        taxRate
+        taxRate,
+        discount,
+        discountType
       }],
     }));
 
@@ -658,6 +689,8 @@ export default function ProformaInvoicesIndex() {
       quantity: 1,
       unitPrice: 0,
       taxRate: defaultTaxRate,
+      discount: 0,
+      discountType: "amount",
     });
 
     setIsEditingProforma(false);
@@ -981,7 +1014,7 @@ export default function ProformaInvoicesIndex() {
                     {/* Add Item Form */}
                     <Card>
                       <CardContent className="p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                           <div>
                             <Label className="text-xs text-gray-600">Description</Label>
                             <Input
@@ -1039,6 +1072,36 @@ export default function ProformaInvoicesIndex() {
                               }
                             />
                           </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">Discount</Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                step="any"
+                                placeholder="0"
+                                value={newItem.discount}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discount: e.target.value === "" ? "" : parseFloat(e.target.value),
+                                  }))
+                                }
+                              />
+                              <select
+                                className="border rounded px-2 text-sm bg-background"
+                                value={newItem.discountType}
+                                onChange={(e) =>
+                                  setNewItem((prev) => ({
+                                    ...prev,
+                                    discountType: e.target.value as "amount" | "percentage",
+                                  }))
+                                }
+                              >
+                                <option value="amount">{formData.currency || "AED"}</option>
+                                <option value="percentage">%</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                         <Button
                           type="button"
@@ -1073,6 +1136,9 @@ export default function ProformaInvoicesIndex() {
                                     Tax Rate
                                   </th>
                                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Discount
+                                  </th>
+                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Total
                                   </th>
                                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1083,8 +1149,12 @@ export default function ProformaInvoicesIndex() {
                               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                 {formData.items.map((item, index) => {
                                   const lineSubtotal = item.quantity * item.unitPrice;
-                                  const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-                                  const lineTotal = lineSubtotal + taxAmount;
+                                  const lineDiscount = item.discountType === "percentage"
+                                    ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                                    : Math.min(Number(item.discount) || 0, lineSubtotal);
+                                  const taxable = lineSubtotal - lineDiscount;
+                                  const taxAmount = taxable * ((item.taxRate || 0) / 100);
+                                  const lineTotal = taxable + taxAmount;
 
                                   return (
                                     <tr key={index}>
@@ -1095,6 +1165,13 @@ export default function ProformaInvoicesIndex() {
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.taxRate || 0}%
+                                      </td>
+                                      <td className="px-4 py-3 text-sm text-right">
+                                        {Number(item.discount) > 0
+                                          ? (item.discountType === "percentage"
+                                              ? `${item.discount}%`
+                                              : `${formData.currency || "AED"} ${(Number(item.discount)).toFixed(2)}`)
+                                          : "-"}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right font-medium">
                                         {formatCurrency(lineTotal, formData.currency)}
@@ -1203,29 +1280,22 @@ export default function ProformaInvoicesIndex() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Subtotal:</span>
-                          <span className="font-medium">{formatCurrency(proformaSubtotal, formData.currency)}</span>
+                          <span className="font-medium">{formatCurrency(proformaTotals.gross, formData.currency)}</span>
                         </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax Amount:</span>
-                          <span className="font-medium">{formatCurrency(formData.items.reduce((sum, item) => {
-                            const itemTotal = item.quantity * item.unitPrice;
-                            return sum + (itemTotal * (item.taxRate || 0)) / 100;
-                          }, 0), formData.currency)}</span>
-                        </div>
-                        {parseFloat(formData.discount || "0") > 0 && (
+                        {proformaTotals.discountTotal > 0 && (
                           <div className="flex justify-between text-sm text-red-600">
-                            <span>Discount ({formData.discountPercentage}%):</span>
-                            <span className="font-medium">- {formatCurrency(formData.discount || "0", formData.currency)}</span>
+                            <span>Total Discount:</span>
+                            <span className="font-medium">- {formatCurrency(proformaTotals.discountTotal, formData.currency)}</span>
                           </div>
                         )}
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Tax Amount:</span>
+                          <span className="font-medium">{formatCurrency(proformaTotals.taxTotal, formData.currency)}</span>
+                        </div>
                         <div className="border-t pt-2">
                           <div className="flex justify-between text-lg font-bold">
                             <span>Total Amount:</span>
-                            <span className="text-blue-600">{formatCurrency((formData.items.reduce((sum, item) => {
-                              const itemTotal = item.quantity * item.unitPrice;
-                              const itemTax = (itemTotal * (item.taxRate || 0)) / 100;
-                              return sum + itemTotal + itemTax;
-                            }, 0) - (parseFloat(formData.discount || "0"))), formData.currency)}</span>
+                            <span className="text-blue-600">{formatCurrency(proformaTotals.total, formData.currency)}</span>
                           </div>
                           {formData.currency !== "AED" && (
                             <div className="text-xs text-muted-foreground mt-2 text-right">
@@ -1726,14 +1796,21 @@ export default function ProformaInvoicesIndex() {
                             <th className="text-right p-3 font-medium">Qty</th>
                             <th className="text-right p-3 font-medium">Unit Price</th>
                             <th className="text-right p-3 font-medium">Tax Rate</th>
+                            <th className="text-right p-3 font-medium">Discount</th>
                             <th className="text-right p-3 font-medium">Line Total</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedProforma.items.map((item, index) => {
                             const lineSubtotal = item.quantity * item.unitPrice;
-                            const taxAmount = lineSubtotal * ((item.taxRate || 0) / 100);
-                            const lineTotal = lineSubtotal + taxAmount;
+                            const lineDiscount = item.discountType === "percentage"
+                              ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                              : Math.min(Number(item.discount) || 0, lineSubtotal);
+                            const taxable = lineSubtotal - lineDiscount;
+                            const taxAmount = item.taxAmount !== undefined
+                              ? parseFloat(item.taxAmount.toString())
+                              : taxable * ((item.taxRate || 0) / 100);
+                            const lineTotal = taxable + taxAmount;
 
                             return (
                               <tr key={index} className="border-b">
@@ -1741,6 +1818,13 @@ export default function ProformaInvoicesIndex() {
                                 <td className="text-right p-3">{item.quantity}</td>
                                 <td className="text-right p-3">{formatCurrency(item.unitPrice, selectedProforma.currency)}</td>
                                 <td className="text-right p-3">{item.taxRate || 0}%</td>
+                                <td className="text-right p-3">
+                                  {Number(item.discount) > 0
+                                    ? (item.discountType === "percentage"
+                                        ? `${item.discount}%`
+                                        : `${selectedProforma.currency || "AED"} ${(Number(item.discount)).toFixed(2)}`)
+                                    : "-"}
+                                </td>
                                 <td className="text-right p-3 font-medium">{formatCurrency(lineTotal, selectedProforma.currency)}</td>
                               </tr>
                             );
@@ -1765,14 +1849,21 @@ export default function ProformaInvoicesIndex() {
                     <span className="font-medium">Subtotal:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedProforma.subtotal || "0", selectedProforma.currency)}</span>
                   </div>
-                  {selectedProforma.discount && parseFloat(selectedProforma.discount) > 0 && (
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">
-                        Discount ({selectedProforma.discountPercentage}%):
-                      </span>
-                      <span className="text-lg font-semibold text-red-600">- {formatCurrency(selectedProforma.discount, selectedProforma.currency)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    // Total discount (header + line) derived from stored fields;
+                    // equals discountTotal to the cent. The discount column
+                    // itself holds only the header portion.
+                    const totalDiscount =
+                      parseFloat(selectedProforma.subtotal || "0") +
+                      parseFloat(selectedProforma.taxAmount || "0") -
+                      parseFloat(selectedProforma.totalAmount || "0");
+                    return totalDiscount > 0.005 ? (
+                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
+                        <span className="font-medium">Total Discount:</span>
+                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedProforma.currency)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
                     <span className="font-medium">Tax Amount:</span>
                     <span className="text-lg font-semibold">{formatCurrency(selectedProforma.taxAmount || "0", selectedProforma.currency)}</span>
