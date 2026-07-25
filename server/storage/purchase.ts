@@ -2410,16 +2410,18 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Reverse the 3-row approval posting (T6.7): Dr AP (gross) / Cr Purchase
+      // Expense (net) / Cr VAT Recoverable (tax). VAT line omitted when zero.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // Both reversal rows in ONE transaction (L14).
-      // NOTE: projectId is deliberately absent here, matching the original —
-      // that omission is finding L11 and is fixed in P6, not here. P1 changes
-      // no ledger amounts or attributes.
+      // All reversal rows in ONE transaction (L14). projectId now carried (L11).
       const cancelShared = {
         entryType: "payable" as const,
         referenceType: "purchase_invoice" as const,
@@ -2427,27 +2429,38 @@ export class PurchaseStorage extends SalesStorage {
         description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         entityId: invoice.supplierId,
         entityName: supplierName,
+        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: new Date().toISOString(),
         status: "cancelled" as const,
       };
 
       await db.transaction(async (tx) => {
-        // Reverse: Debit Accounts Payable
+        // Reverse Cr AP: debit Accounts Payable (gross)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Accounts Payable",
-          debitAmount: aedAmount,
+          debitAmount: aedTotal.toFixed(2),
           creditAmount: "0",
         });
 
-        // Reverse: Credit Purchase Expense
+        // Reverse Dr Expense: credit Purchase Expense (net of discount, excl. VAT)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Purchase Expense",
           debitAmount: "0",
-          creditAmount: aedAmount,
+          creditAmount: aedExpense.toFixed(2),
         });
+
+        // Reverse Dr VAT: credit VAT Recoverable (input VAT) — omitted when zero
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            accountName: "VAT Recoverable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
       });
 
       return this.getPurchaseInvoice(id);
