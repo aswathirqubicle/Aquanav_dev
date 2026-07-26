@@ -1306,7 +1306,45 @@ summary (L17) from both the server (`ledger.ts`) and the client
 
 **Decision:** D13 · **Finding:** L10 (first half only). **Depends on:** P5, P6.
 
-### Change
+> **✅ DONE 2026-07-26 — resolved by decision rather than by the change below.**
+>
+> **Decided 2026-07-26: every settlement is denominated in the currency of the
+> document it settles.** A payment or credit note against a USD invoice is
+> entered in USD, and the ledger translates it at that invoice's rate. This is
+> what the code already assumed everywhere; it simply was not enforced or
+> stated. Making it explicit removes the double conversion at its source and
+> needs no `currency` column on `invoice_payments`, and so no migration.
+>
+> **The live instance of L10 was the credit-note direction, not the payment
+> direction the plan anticipated.** `CN-AQNV-2026-003` and `-004` were AED
+> 105.00 against USD `INV-AQNV-2026-012` at 3.672555. The ledger posted them at
+> the note's own rate (105.00) while `paid_amount` — a currency-blind sum — was
+> translated at the invoice's rate (385.62). The 564.90 between them was the
+> largest component of the 867.37 gap between receivables and the AR control
+> account. Closed by taking a credit note's currency and rate from the invoice
+> it credits, on create and on update, drafts included.
+>
+> **The payment direction needed no server change.** Both paths already
+> translate at the invoice rate — sales [sales.ts:736](server/storage/sales.ts:736),
+> purchase [purchase.ts:2657](server/storage/purchase.ts:2657) — which is correct
+> under this decision. Both dialogs already label the field with the invoice's
+> currency; the purchase one gained the AED-equivalent preview the sales one had,
+> since that preview is the only confirmation the person entering a payment gets
+> that they typed the currency the field is asking for.
+>
+> **T10.2 is now not-supported-by-design rather than a defect.** If a customer
+> settles a USD invoice by transferring AED, whoever records it converts to USD
+> at the invoice rate themselves; the system will not do it for them and does not
+> record what was actually received. That is a real limitation, accepted for this
+> scope, and it is the same boundary as D13's deferred FX gain/loss — recognising
+> a difference between transaction-date and settlement-date rates is exactly what
+> D13 defers.
+>
+> **Not fixed: the two existing notes.** Restating them in USD multiplies the
+> customer's credit by 3.67; restating the amounts as AED changes what was
+> credited. Which is correct depends on what was agreed with the customer.
+
+### Original change (superseded)
 
 Make the payment currency explicit so a payment already in AED against a
 foreign-currency invoice is not multiplied by the invoice rate a second time.
@@ -1321,10 +1359,13 @@ currency.
 
 | ID | Test |
 |---|---|
-| **T10.1** | GIVEN a USD 1,000 invoice at 3.6725 → WHEN a USD 1,000 payment is recorded → THEN GL posts **3,672.50** |
-| **T10.2** | *(the bug)* GIVEN the same invoice → WHEN a payment of **AED 3,672.50** is recorded → THEN GL posts **3,672.50**, not 13,487.26 (3,672.50 × 3.6725 double-converted) |
-| **T10.3** | GIVEN an AED invoice and an AED payment → THEN unchanged behaviour |
-| **T10.4** | GIVEN a fully-paid foreign-currency invoice → WHEN AR is checked → THEN it settles to **zero** at the invoice rate (FX difference deferred, not silently absorbed elsewhere) |
+| **T10.1** | GIVEN a USD 1,000 invoice at 3.6725 → WHEN a USD 1,000 payment is recorded → THEN GL posts **3,672.50**. ✅ Unchanged behaviour, already correct |
+| **T10.2** | ~~GIVEN the same invoice → WHEN a payment of **AED 3,672.50** is recorded → THEN GL posts 3,672.50~~ — **withdrawn 2026-07-26.** Settlements are denominated in document currency, so an AED payment against a USD invoice is not a supported input; it is converted to USD by whoever records it |
+| **T10.3** | GIVEN an AED invoice and an AED payment → THEN unchanged behaviour. ✅ |
+| **T10.4** | GIVEN a fully-paid foreign-currency invoice → WHEN AR is checked → THEN it settles to **zero** at the invoice rate (FX difference deferred, not silently absorbed elsewhere). ✅ Holds by construction: one rate is used for both the invoice and its settlements |
+| **T10.5** | *(the live bug)* GIVEN a USD invoice at 3.672555 → WHEN a credit note is raised against it → THEN the note is stored in **USD at 3.672555**, whatever currency was submitted, and its ledger entry and its `invoice_payments` row describe the same money. ✅ Verified 11/11 |
+| **T10.6** | GIVEN a credit note against an **AED** invoice submitted as USD → THEN it is corrected to AED at rate 1. ✅ |
+| **T10.7** | GIVEN a **draft** credit note linked to a foreign-currency invoice → THEN it inherits that currency immediately and keeps it through issuing; an **unlinked** draft keeps what it was given and inherits when linked. ✅ |
 
 ---
 
