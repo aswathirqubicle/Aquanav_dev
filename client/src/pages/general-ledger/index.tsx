@@ -91,6 +91,72 @@ export default function GeneralLedger() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<GeneralLedgerEntry | null>(null);
 
+  // Journal entry form (8.2). Starts with the two lines every journal needs.
+  const emptyJournalLine = () => ({
+    accountName: "",
+    direction: "debit" as "debit" | "credit",
+    amount: "",
+    notes: "",
+  });
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [journalForm, setJournalForm] = useState({
+    description: "",
+    transactionDate: new Date().toISOString().split("T")[0],
+    projectId: undefined as number | undefined,
+    lines: [emptyJournalLine(), emptyJournalLine()],
+  });
+
+  const resetJournalForm = () =>
+    setJournalForm({
+      description: "",
+      transactionDate: new Date().toISOString().split("T")[0],
+      projectId: undefined,
+      lines: [emptyJournalLine(), emptyJournalLine()],
+    });
+
+  const updateJournalLine = (index: number, field: string, value: any) =>
+    setJournalForm((prev) => ({
+      ...prev,
+      lines: prev.lines.map((l, i) => (i === index ? { ...l, [field]: value } : l)),
+    }));
+
+  const addJournalLine = () =>
+    setJournalForm((prev) => ({ ...prev, lines: [...prev.lines, emptyJournalLine()] }));
+
+  const removeJournalLine = (index: number) =>
+    setJournalForm((prev) => ({
+      ...prev,
+      lines: prev.lines.filter((_, i) => i !== index),
+    }));
+
+  // Running totals — the whole point of the form. Debits must equal credits
+  // before the ledger will accept the set.
+  const journalTotals = (() => {
+    let debit = 0;
+    let credit = 0;
+    for (const l of journalForm.lines) {
+      const amt = parseFloat(l.amount || "0") || 0;
+      if (l.direction === "debit") debit += amt;
+      else credit += amt;
+    }
+    debit = Math.round(debit * 100) / 100;
+    credit = Math.round(credit * 100) / 100;
+    return { debit, credit, difference: Math.round((debit - credit) * 100) / 100 };
+  })();
+
+  const journalBlockers = (() => {
+    const reasons: string[] = [];
+    if (journalForm.lines.length < 2) reasons.push("At least 2 lines are required");
+    if (journalForm.lines.some((l) => !l.accountName.trim()))
+      reasons.push("Every line needs an account");
+    if (journalForm.lines.some((l) => !(parseFloat(l.amount || "0") > 0)))
+      reasons.push("Every line needs an amount greater than zero");
+    if (!journalForm.description.trim()) reasons.push("A description is required");
+    if (!journalForm.transactionDate) reasons.push("A date is required");
+    if (journalTotals.difference !== 0) reasons.push("Debits must equal credits");
+    return reasons;
+  })();
+
   const [filters, setFilters] = useState({
     entryType: "all",
     referenceType: "",
@@ -240,6 +306,49 @@ export default function GeneralLedger() {
       toast({ title: "Success", description: "General ledger entry created successfully" });
       setIsDialogOpen(false);
       resetForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // ---- Journal entry (8.2): a balanced multi-line posting ------------------
+  // Unlike the single-entry form above, this posts every line together through
+  // /journal, which rejects the set unless debits equal credits. The old form
+  // asks the user to remember to create the opposite side by hand; nothing
+  // enforced it, so the ledger could be left permanently one-sided.
+  const createJournalMutation = useMutation({
+    mutationFn: async (data: typeof journalForm) => {
+      const payload = {
+        referenceType: "manual",
+        description: data.description,
+        transactionDate: data.transactionDate,
+        entries: data.lines.map((l) => ({
+          accountName: l.accountName,
+          debitAmount: l.direction === "debit" ? l.amount : "0",
+          creditAmount: l.direction === "credit" ? l.amount : "0",
+          projectId: data.projectId,
+          notes: l.notes || undefined,
+        })),
+      };
+      const response = await apiRequest("/api/general-ledger/journal", {
+        method: "POST",
+        body: payload,
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to post journal entry");
+      }
+      return response.json();
+    },
+    onSuccess: (rows: any[]) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
+      toast({
+        title: "Journal posted",
+        description: `${rows?.length ?? 0} balanced lines posted to the ledger.`,
+      });
+      setIsJournalOpen(false);
+      resetJournalForm();
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -554,6 +663,191 @@ export default function GeneralLedger() {
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
+
+          <Dialog
+            open={isJournalOpen}
+            onOpenChange={(open) => {
+              setIsJournalOpen(open);
+              if (!open) resetJournalForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                New Journal Entry
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>New Journal Entry</DialogTitle>
+                <div className="text-sm text-muted-foreground">
+                  <p>
+                    A balanced double-entry posting. All lines are posted together —
+                    the ledger will reject the entry unless debits equal credits.
+                  </p>
+                </div>
+              </DialogHeader>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (journalBlockers.length > 0) {
+                    toast({
+                      title: "Cannot post this entry",
+                      description: journalBlockers[0],
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  createJournalMutation.mutate(journalForm);
+                }}
+                className="space-y-4"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="journalDescription">Description *</Label>
+                    <Input
+                      id="journalDescription"
+                      value={journalForm.description}
+                      onChange={(e) =>
+                        setJournalForm((prev) => ({ ...prev, description: e.target.value }))
+                      }
+                      placeholder="e.g. Provident fund payout"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="journalDate">Transaction Date *</Label>
+                    <Input
+                      id="journalDate"
+                      type="date"
+                      value={journalForm.transactionDate}
+                      onChange={(e) =>
+                        setJournalForm((prev) => ({
+                          ...prev,
+                          transactionDate: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Lines</Label>
+                  {journalForm.lines.map((line, index) => (
+                    <div
+                      key={index}
+                      className="grid grid-cols-12 gap-2 items-center border rounded-md p-2"
+                    >
+                      <div className="col-span-5">
+                        <Autocomplete
+                          options={accountOptions}
+                          value={line.accountName}
+                          onValueChange={(v) => updateJournalLine(index, "accountName", v)}
+                          placeholder="Account..."
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <Select
+                          value={line.direction}
+                          onValueChange={(v) => updateJournalLine(index, "direction", v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="debit">Debit</SelectItem>
+                            <SelectItem value="credit">Credit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-3">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={line.amount}
+                          onChange={(e) => updateJournalLine(index, "amount", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={journalForm.lines.length <= 2}
+                          onClick={() => removeJournalLine(index)}
+                          title={
+                            journalForm.lines.length <= 2
+                              ? "A journal needs at least 2 lines"
+                              : "Remove line"
+                          }
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={addJournalLine}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Line
+                  </Button>
+                </div>
+
+                {/* Running totals — the balance check, always visible */}
+                <div className="rounded-md border p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span>Total Debits</span>
+                    <span className="font-mono">{journalTotals.debit.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Credits</span>
+                    <span className="font-mono">{journalTotals.credit.toFixed(2)}</span>
+                  </div>
+                  <div
+                    className={`flex justify-between font-medium ${
+                      journalTotals.difference === 0 ? "text-green-600" : "text-destructive"
+                    }`}
+                  >
+                    <span>
+                      {journalTotals.difference === 0 ? "Balanced" : "Out of balance by"}
+                    </span>
+                    <span className="font-mono">
+                      {journalTotals.difference === 0
+                        ? "0.00"
+                        : Math.abs(journalTotals.difference).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {journalBlockers.length > 0 && (
+                  <p className="text-sm text-muted-foreground">{journalBlockers[0]}</p>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsJournalOpen(false);
+                      resetJournalForm();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      journalBlockers.length > 0 || createJournalMutation.isPending
+                    }
+                  >
+                    {createJournalMutation.isPending ? "Posting..." : "Post Journal Entry"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
