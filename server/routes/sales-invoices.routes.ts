@@ -592,9 +592,15 @@ salesInvoicesRoutes.post(
       const creditNote = await storage.createCreditNote(creditNoteData);
       console.log("Created credit note:", creditNote);
       res.status(201).json(creditNote);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating credit note:", error);
-      res.status(500).json({ message: "Failed to create credit note" });
+      // Pass the reason through, as the cancel and delete routes below do.
+      // Refusals here are business rules — an unlinked invoice, for one — and a
+      // bare "Failed to create credit note" leaves the user with no idea what
+      // to change.
+      res.status(400).json({
+        message: error?.message || "Failed to create credit note",
+      });
     }
   },
 );
@@ -616,9 +622,11 @@ salesInvoicesRoutes.put(
 
       console.log("Updated credit note:", creditNote);
       res.json(creditNote);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating credit note:", error);
-      res.status(500).json({ message: "Failed to update credit note" });
+      res.status(400).json({
+        message: error?.message || "Failed to update credit note",
+      });
     }
   },
 );
