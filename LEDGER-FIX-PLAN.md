@@ -718,6 +718,15 @@ invoice and a **zero-VAT** invoice (**P4b**, T4b.1/T4b.5, T5.13/T5.14) · a
 Grouped because none changes a ledger amount — they make later phases safe and
 observable.
 
+> **✅ PHASE COMPLETE 2026-07-26.** 1.1–1.6 were implemented earlier but never
+> carried completion markers, so this phase read as untouched; each was
+> re-verified against the code on 2026-07-26 — `rowCount` is gone from
+> `server/storage/` (0 sites), `delete-projects-employees.ts` is deleted,
+> `zero-project-financials.ts` carries a dry-run/confirmation guard, `tsconfig`
+> includes `scripts/**/*`, the credit-note update path re-throws GL failures,
+> and `createPurchaseInvoiceFromPO` is gone. **1.7 was the only genuinely
+> outstanding item** and is now closed — see its row below.
+
 ### Changes
 
 | # | Change | Detail |
@@ -728,7 +737,7 @@ observable.
 | 1.4 | **tsconfig** | Add `scripts/**/*` to `include` so this class of error is caught by `npm run check` (**D11**) |
 | 1.5 | **L25** stop swallowing | `sales.ts:555` — re-throw GL failures on credit-note update, matching `createCreditNote` |
 | 1.6 | **L30** delete dead code | Remove `createPurchaseInvoiceFromPO` + its `IStorage` declaration |
-| 1.7 | **L14** transaction wrapping *(G3)* | Wrap every multi-row posting in a DB transaction so a pair can never half-post. **Do this before P4–P6**, which increase postings from 2 rows to 3–5. Also replace the per-call `new Pool()` in `getProfitLossEntries` ([ledger.ts:375](server/storage/ledger.ts:375)) with the shared connection |
+| 1.7 | **L14** transaction wrapping *(G3)* | **✅ DONE 2026-07-26.** ~~Do this before P4–P6~~ — the ordering was **not** followed: P4, P5 and P6 all shipped first, so the row-count increase landed before the safety net. Closed afterwards instead, in three parts. **(a)** `getProfitLossEntries` no longer opens a per-call `pg` Pool; it uses the shared postgres-js connection via the `sqlRaw` convention *(branch `fix/ledger-transactions`)*. **(b)** Sales credit note (3 rows, both entry paths) and sales payment (2 rows) wrapped; `createGeneralLedgerEntry` gained an optional `tx` argument so a set can post atomically **without losing its double-entry validation** *(branch `feature/sales-ledger-postings`)*. **(c)** Payroll — the last unwrapped module — all **8** sites across accrual, payment and reversal *(branch `fix/payroll-ledger-transactions`)*. ⚠ Passing `tx` **skips** the per-row `recalculateProjectCost`: that recalc reads over the shared connection and from inside an open transaction would persist a cost computed *without* the rows being written. Callers passing `tx` recalculate the affected projects **after** the commit — see `postPayrollAccrual`. Sales/purchase approval, edit, cancellation and credit-note postings were already wrapped as part of P5/P6. Verified by forced-failure tests on each: the whole set rolls back and the GL row count is unchanged |
 
 ⚠ **1.4 will surface pre-existing type errors.** `npm run check` already fails
 (CLAUDE.md §12). Adding `scripts/` may add more. Decide whether to fix those in
