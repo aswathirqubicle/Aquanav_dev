@@ -412,6 +412,343 @@ export class LedgerStorage extends ProjectAssetStorage {
     }
   }
 
+  // ===========================================================================
+  // Statements (Phase 12)
+  // ---------------------------------------------------------------------------
+  // These read the ledger through a FULL OUTER JOIN to the chart of accounts,
+  // NOT the inner join getProfitLossEntries uses. An inner join silently drops
+  // ledger rows whose account name is absent from the chart, and a statement
+  // whose whole job is to prove that debits equal credits must not be able to
+  // balance by hiding rows — an unmatched account is listed as its own row and
+  // named in `unmatchedAccounts` instead. The other half of the outer join lets
+  // a chart account with no movement still be listed, which is what
+  // `includeZero` controls.
+  //
+  // Deliberately no status filter: reversal rows carry status 'cancelled' and
+  // are ordinary entries whose entire purpose is to net the original out.
+  // ===========================================================================
+
+  /**
+   * Trial balance. As-at by default (cumulative to `asOfDate`, no start date) —
+   * that is what a trial balance normally means. Supplying `startDate` switches
+   * it to a period MOVEMENT report, and the returned `mode` says which one the
+   * caller got, so a movement can never be presented under a heading that reads
+   * like a balance.
+   */
+  async getTrialBalance(filters: {
+    asOfDate?: string;
+    startDate?: string;
+    includeZero?: boolean;
+  }): Promise<{
+    mode: "as_at" | "movement";
+    asOfDate: string;
+    startDate: string | null;
+    accounts: {
+      accountCode: string | null;
+      accountName: string;
+      accountType: string | null;
+      accountCategory: string | null;
+      inChart: boolean;
+      totalDebit: string;
+      totalCredit: string;
+      debitBalance: string;
+      creditBalance: string;
+    }[];
+    totals: {
+      totalDebit: string;
+      totalCredit: string;
+      debitBalance: string;
+      creditBalance: string;
+      difference: string;
+      balanced: boolean;
+    };
+    unmatchedAccounts: string[];
+  }> {
+    try {
+      const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+      const asOfDate =
+        filters.asOfDate || new Date().toISOString().split("T")[0];
+
+      // Compared as ::date on both sides. transaction_date is a timestamp and
+      // some postings (cancellations) carry a time of day, so a plain
+      // `<= '2026-07-26'` compares against midnight and drops that day's rows.
+      const conditions: string[] = [`gle.transaction_date::date <= $1::date`];
+      const params: (string | number)[] = [asOfDate];
+      let paramIdx = 2;
+      if (filters.startDate) {
+        conditions.push(`gle.transaction_date::date >= $${paramIdx++}::date`);
+        params.push(filters.startDate);
+      }
+
+      // The ledger is aggregated per account BEFORE the join, so a duplicate
+      // name in the chart cannot multiply the amounts.
+      const query = `
+        SELECT
+          coa.account_code                            AS "accountCode",
+          COALESCE(coa.account_name, gl.account_name) AS "accountName",
+          coa.account_type                            AS "accountType",
+          coa.account_category                        AS "accountCategory",
+          (coa.id IS NOT NULL)                        AS "inChart",
+          COALESCE(gl.total_debit, 0)                 AS "totalDebit",
+          COALESCE(gl.total_credit, 0)                AS "totalCredit"
+        FROM (
+          SELECT
+            LOWER(TRIM(gle.account_name))   AS account_key,
+            MIN(gle.account_name)           AS account_name,
+            SUM(gle.debit_amount::numeric)  AS total_debit,
+            SUM(gle.credit_amount::numeric) AS total_credit
+          FROM general_ledger_entries gle
+          WHERE ${conditions.join(" AND ")}
+          GROUP BY LOWER(TRIM(gle.account_name))
+        ) gl
+        FULL OUTER JOIN chart_of_accounts coa
+          ON LOWER(TRIM(coa.account_name)) = gl.account_key
+      `;
+
+      const rows = (await sqlRaw.unsafe(query, params)) as unknown as {
+        accountCode: string | null;
+        accountName: string;
+        accountType: string | null;
+        accountCategory: string | null;
+        inChart: boolean;
+        totalDebit: string;
+        totalCredit: string;
+      }[];
+
+      const mapped = rows.map((r) => {
+        const totalDebit = r2(Number(r.totalDebit || 0));
+        const totalCredit = r2(Number(r.totalCredit || 0));
+        const net = r2(totalDebit - totalCredit);
+        return {
+          accountCode: r.accountCode ?? null,
+          accountName: r.accountName,
+          accountType: r.accountType ?? null,
+          accountCategory: r.accountCategory ?? null,
+          inChart: r.inChart === true,
+          totalDebit: totalDebit.toFixed(2),
+          totalCredit: totalCredit.toFixed(2),
+          debitBalance: (net >= 0 ? net : 0).toFixed(2),
+          creditBalance: (net < 0 ? -net : 0).toFixed(2),
+        };
+      });
+
+      const accounts = mapped
+        .filter(
+          (a) =>
+            filters.includeZero === true ||
+            a.totalDebit !== "0.00" ||
+            a.totalCredit !== "0.00",
+        )
+        .sort((a, b) => {
+          // Unmatched accounts have no code and sort last, so the statement
+          // reads down the chart and then shows what fell outside it.
+          if (a.accountCode === null || b.accountCode === null) {
+            if (a.accountCode === b.accountCode)
+              return a.accountName.localeCompare(b.accountName);
+            return a.accountCode === null ? 1 : -1;
+          }
+          return a.accountCode.localeCompare(b.accountCode);
+        });
+
+      let totalDebit = 0;
+      let totalCredit = 0;
+      let debitBalance = 0;
+      let creditBalance = 0;
+      for (const a of accounts) {
+        totalDebit = r2(totalDebit + Number(a.totalDebit));
+        totalCredit = r2(totalCredit + Number(a.totalCredit));
+        debitBalance = r2(debitBalance + Number(a.debitBalance));
+        creditBalance = r2(creditBalance + Number(a.creditBalance));
+      }
+      const difference = r2(debitBalance - creditBalance);
+
+      return {
+        mode: filters.startDate ? "movement" : "as_at",
+        asOfDate,
+        startDate: filters.startDate || null,
+        accounts,
+        totals: {
+          totalDebit: totalDebit.toFixed(2),
+          totalCredit: totalCredit.toFixed(2),
+          debitBalance: debitBalance.toFixed(2),
+          creditBalance: creditBalance.toFixed(2),
+          difference: difference.toFixed(2),
+          balanced: Math.abs(difference) < 0.005,
+        },
+        unmatchedAccounts: mapped
+          .filter((a) => !a.inChart)
+          .map((a) => a.accountName),
+      };
+    } catch (error: any) {
+      console.error("Error in getTrialBalance:", error?.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Balance sheet as at a date. Always cumulative — there is no start date.
+   *
+   * Built on top of getTrialBalance rather than its own query, so the two
+   * statements cannot disagree about what the ledger says.
+   *
+   * Current-year earnings are DERIVED here, not read: the system has no period
+   * close, so revenue and expense are never rolled into retained earnings and
+   * the equity accounts sit at zero. Without deriving them the sheet would be
+   * out of balance by the whole of the year's result.
+   */
+  async getBalanceSheet(filters: { asOfDate?: string }): Promise<{
+    asOfDate: string;
+    assets: {
+      groups: {
+        category: string;
+        accounts: {
+          accountCode: string | null;
+          accountName: string;
+          balance: string;
+        }[];
+        subtotal: string;
+      }[];
+      total: string;
+    };
+    liabilities: {
+      groups: {
+        category: string;
+        accounts: {
+          accountCode: string | null;
+          accountName: string;
+          balance: string;
+        }[];
+        subtotal: string;
+      }[];
+      total: string;
+    };
+    equity: {
+      groups: {
+        category: string;
+        accounts: {
+          accountCode: string | null;
+          accountName: string;
+          balance: string;
+        }[];
+        subtotal: string;
+      }[];
+      currentYearEarnings: {
+        amount: string;
+        revenue: string;
+        expenses: string;
+        derived: boolean;
+      };
+      total: string;
+    };
+    equation: {
+      assets: string;
+      liabilitiesPlusEquity: string;
+      difference: string;
+      balanced: boolean;
+    };
+    unmatchedAccounts: string[];
+  }> {
+    try {
+      const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+      const asOfDate =
+        filters.asOfDate || new Date().toISOString().split("T")[0];
+
+      const tb = await this.getTrialBalance({ asOfDate, includeZero: true });
+
+      // Presentation order of the categories within each section; anything not
+      // listed falls to the end alphabetically rather than being dropped.
+      const categoryOrder = [
+        "current_assets",
+        "fixed_assets",
+        "current_liabilities",
+        "long_term_liabilities",
+        "shareholders_equity",
+      ];
+      const rank = (c: string) => {
+        const i = categoryOrder.indexOf(c);
+        return i === -1 ? categoryOrder.length : i;
+      };
+
+      const buildSection = (accountType: string, creditNormal: boolean) => {
+        const groups = new Map<
+          string,
+          { accountCode: string | null; accountName: string; balance: string }[]
+        >();
+        let total = 0;
+        for (const a of tb.accounts) {
+          if (a.accountType !== accountType) continue;
+          const net = r2(Number(a.totalDebit) - Number(a.totalCredit));
+          // Positive in the section's own normal direction.
+          const balance = creditNormal ? r2(-net) : net;
+          if (Math.abs(balance) < 0.005) continue;
+          const category = a.accountCategory || "uncategorized";
+          if (!groups.has(category)) groups.set(category, []);
+          groups.get(category)!.push({
+            accountCode: a.accountCode,
+            accountName: a.accountName,
+            balance: balance.toFixed(2),
+          });
+          total = r2(total + balance);
+        }
+        return {
+          groups: Array.from(groups.entries())
+            .sort(([x], [y]) => rank(x) - rank(y) || x.localeCompare(y))
+            .map(([category, accounts]) => ({
+              category,
+              accounts,
+              subtotal: accounts
+                .reduce((s, acc) => r2(s + Number(acc.balance)), 0)
+                .toFixed(2),
+            })),
+          total: total.toFixed(2),
+        };
+      };
+
+      const assets = buildSection("asset", false);
+      const liabilities = buildSection("liability", true);
+      const postedEquity = buildSection("equity", true);
+
+      let revenue = 0;
+      let expenses = 0;
+      for (const a of tb.accounts) {
+        const net = r2(Number(a.totalDebit) - Number(a.totalCredit));
+        if (a.accountType === "revenue") revenue = r2(revenue - net);
+        else if (a.accountType === "expense") expenses = r2(expenses + net);
+      }
+      const earnings = r2(revenue - expenses);
+
+      const equityTotal = r2(Number(postedEquity.total) + earnings);
+      const liabilitiesPlusEquity = r2(Number(liabilities.total) + equityTotal);
+      const difference = r2(Number(assets.total) - liabilitiesPlusEquity);
+
+      return {
+        asOfDate,
+        assets,
+        liabilities,
+        equity: {
+          groups: postedEquity.groups,
+          currentYearEarnings: {
+            amount: earnings.toFixed(2),
+            revenue: revenue.toFixed(2),
+            expenses: expenses.toFixed(2),
+            derived: true,
+          },
+          total: equityTotal.toFixed(2),
+        },
+        equation: {
+          assets: assets.total,
+          liabilitiesPlusEquity: liabilitiesPlusEquity.toFixed(2),
+          difference: difference.toFixed(2),
+          balanced: Math.abs(difference) < 0.005,
+        },
+        unmatchedAccounts: tb.unmatchedAccounts,
+      };
+    } catch (error: any) {
+      console.error("Error in getBalanceSheet:", error?.message);
+      throw error;
+    }
+  }
+
   async createGeneralLedgerEntry(entryData: {
     entryType: string;
     referenceType: string;

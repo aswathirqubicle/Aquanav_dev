@@ -274,14 +274,22 @@ export class SalesStorage extends LedgerStorage {
           : JSON.stringify([]),
       };
 
+      // Validate the total the server computes from the line items, not the one
+      // the client sent — applySalesDocumentTotals is what actually gets stored.
+      const finalData = this.applyCreditNoteInvoiceCurrency(
+        this.applySalesDocumentTotals(insertData),
+        linkedInvoice,
+      );
+      if (linkedInvoice && finalData.status === "issued") {
+        await this.assertCreditNoteWithinInvoice(
+          linkedInvoice,
+          parseFloat(finalData.totalAmount || "0"),
+        );
+      }
+
       const result: CreditNote[] = await db
         .insert(creditNotes)
-        .values(
-          this.applyCreditNoteInvoiceCurrency(
-            this.applySalesDocumentTotals(insertData),
-            linkedInvoice,
-          ),
-        )
+        .values(finalData)
         .returning();
 
       const createdCreditNote = result[0];
@@ -483,14 +491,29 @@ export class SalesStorage extends LedgerStorage {
         updateData.items = JSON.stringify(validCreditNoteData.items);
       }
 
+      const finalUpdate = this.applyCreditNoteInvoiceCurrency(
+        this.applySalesDocumentTotals(updateData),
+        linkedInvoice,
+      );
+
+      // An edit can change the amount, the status, or neither, so fall back to
+      // what the note already carries. This note is excluded from the running
+      // total it is checked against — otherwise re-saving an issued note would
+      // count it twice and refuse itself.
+      const effectiveStatus = finalUpdate.status ?? currentCreditNote.status;
+      const effectiveAmount =
+        finalUpdate.totalAmount ?? currentCreditNote.totalAmount;
+      if (linkedInvoice && effectiveStatus === "issued") {
+        await this.assertCreditNoteWithinInvoice(
+          linkedInvoice,
+          parseFloat((effectiveAmount as string) || "0"),
+          id,
+        );
+      }
+
       const result: CreditNote[] = await db
         .update(creditNotes)
-        .set(
-          this.applyCreditNoteInvoiceCurrency(
-            this.applySalesDocumentTotals(updateData),
-            linkedInvoice,
-          ),
-        )
+        .set(finalUpdate)
         .where(eq(creditNotes.id, id))
         .returning();
 
@@ -1224,6 +1247,59 @@ export class SalesStorage extends LedgerStorage {
   }
 
   /**
+   * A credit note cannot credit more than the invoice was worth, and neither
+   * can the credit notes against one invoice in aggregate.
+   *
+   * Nothing enforced this, which is how `CN-AQNV-2026-002` came to exist: USD
+   * 483.79 against a USD 179.56 invoice, 2.7 times what was ever owed. It read
+   * as an overpayment of 1,117.30 in every receivables view and was a third of
+   * the gap between the document view of receivables and the AR control
+   * account. Checking one note against the invoice alone would not be enough —
+   * five notes at a quarter of the invoice each would pass individually — so
+   * the test is on the running total.
+   *
+   * Only ISSUED notes count toward that total: a draft has posted nothing and a
+   * cancelled one has been reversed, so counting either would refuse credits
+   * that are genuinely available. Amounts are directly comparable because a
+   * credit note now takes its invoice's currency and rate.
+   */
+  private async assertCreditNoteWithinInvoice(
+    invoice: any,
+    amount: number,
+    excludeCreditNoteId?: number,
+  ): Promise<void> {
+    const invoiceTotal = parseFloat(invoice.totalAmount || "0");
+
+    const issued = await db
+      .select({ id: creditNotes.id, totalAmount: creditNotes.totalAmount })
+      .from(creditNotes)
+      .where(
+        and(
+          eq(creditNotes.salesInvoiceId, invoice.id),
+          eq(creditNotes.status, "issued"),
+        ),
+      );
+
+    const alreadyCredited = issued
+      .filter((c) => c.id !== excludeCreditNoteId)
+      .reduce((sum, c) => sum + parseFloat(c.totalAmount || "0"), 0);
+
+    if (alreadyCredited + amount > invoiceTotal + 0.005) {
+      const remaining = invoiceTotal - alreadyCredited;
+      throw new Error(
+        `A credit note cannot exceed the invoice it credits. Invoice ` +
+          `${invoice.invoiceNumber} is ${invoiceTotal.toFixed(2)} ` +
+          `${invoice.currency || "AED"}` +
+          (alreadyCredited > 0
+            ? `, of which ${alreadyCredited.toFixed(2)} is already credited by other credit notes`
+            : "") +
+          `, so at most ${Math.max(0, remaining).toFixed(2)} can be credited — this one is ` +
+          `${amount.toFixed(2)}.`,
+      );
+    }
+  }
+
+  /**
    * A credit note is denominated in the currency of the invoice it credits, at
    * that invoice's rate — never in its own.
    *
@@ -1687,20 +1763,44 @@ export class SalesStorage extends LedgerStorage {
       }
 
       const invoiceId = creditNote.salesInvoiceId;
-      const cnAmount = parseFloat((creditNote.totalAmount as string) || "0");
 
       let invoice: SalesInvoice | undefined;
       if (invoiceId) {
         invoice = await this.getSalesInvoice(invoiceId);
         if (invoice) {
+          // Measure the invoice WITHOUT this credit note, since cancelling is
+          // precisely the act of removing it. The previous check read
+          // `paidAmount`, which already includes this note's own settlement
+          // row, so a note that settled its invoice in full always looked like
+          // it exceeded the outstanding balance and could never be cancelled —
+          // the one case most likely to need correcting. Partial ones passed,
+          // which is why the tests missed it.
+          //
+          // Cancelling never demands money the customer has already handed
+          // over: their cash stays applied and only the credited portion of the
+          // debt reopens, which is the correct outcome when the credit was
+          // wrong. What is genuinely unsafe is cancelling into an invoice that
+          // OTHER settlements have already over-paid, because that compounds a
+          // state needing a refund rather than a reversal.
+          const settlements = await db
+            .select({
+              amount: invoicePayments.amount,
+              creditNoteId: invoicePayments.creditNoteId,
+            })
+            .from(invoicePayments)
+            .where(eq(invoicePayments.invoiceId, invoiceId));
+
           const total = parseFloat(invoice.totalAmount || "0");
-          const paid = parseFloat(invoice.paidAmount || "0");
-          const pending = Math.round((total - paid) * 100) / 100;
-          if (cnAmount > pending + 0.005) {
+          const settledByOthers = settlements
+            .filter((s) => s.creditNoteId !== id)
+            .reduce((sum, s) => sum + parseFloat(s.amount || "0"), 0);
+
+          if (settledByOthers > total + 0.005) {
             throw new Error(
-              `Cannot cancel: this credit note is ${cnAmount.toFixed(2)} but only ` +
-                `${pending.toFixed(2)} is outstanding on invoice ${invoice.invoiceNumber}. ` +
-                `Payments have since settled what it was covering — refund the payment instead.`,
+              `Cannot cancel: invoice ${invoice.invoiceNumber} is already settled ` +
+                `${settledByOthers.toFixed(2)} against a total of ${total.toFixed(2)} by ` +
+                `other payments and credit notes, so removing this one would leave it ` +
+                `over-settled. Refund the excess instead.`,
             );
           }
         }

@@ -9,7 +9,10 @@ import {
   requireAuth,
   requireRole,
 } from "../middleware/auth";
-import { storage } from "../storage";
+// `Storage` is imported alongside the singleton only so the two statement
+// routes below can name its concrete type: the singleton is declared as
+// `IStorage`, which does not list the ledger reporting methods.
+import { Storage, storage } from "../storage";
 
 export const reportsRoutes = Router();
 
@@ -197,6 +200,46 @@ reportsRoutes.get(
     } catch (error) {
       console.error("Get profit loss entries error:", error);
       res.status(500).json({ message: "Failed to get profit loss entries" });
+    }
+  },
+);
+
+reportsRoutes.get(
+  "/api/reports/trial-balance",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const filters = {
+        asOfDate: req.query.asOfDate as string | undefined,
+        // Presence of startDate — not its value — switches the report from an
+        // as-at balance to a period movement.
+        startDate: req.query.startDate as string | undefined,
+        includeZero: req.query.includeZero === "true",
+      };
+      const result = await (storage as unknown as Storage).getTrialBalance(filters);
+      res.json(result);
+    } catch (error) {
+      console.error("Get trial balance error:", error);
+      res.status(500).json({ message: "Failed to get trial balance" });
+    }
+  },
+);
+
+reportsRoutes.get(
+  "/api/reports/balance-sheet",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const filters = {
+        asOfDate: req.query.asOfDate as string | undefined,
+      };
+      const result = await (storage as unknown as Storage).getBalanceSheet(filters);
+      res.json(result);
+    } catch (error) {
+      console.error("Get balance sheet error:", error);
+      res.status(500).json({ message: "Failed to get balance sheet" });
     }
   },
 );
