@@ -312,85 +312,83 @@ export class SalesStorage extends LedgerStorage {
         const cnOriginalAmount = parseFloat(
           (createdCreditNote.totalAmount as string) || "0",
         );
-        const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+        // Standard sales-return posting (H1): a credit note reverses revenue and
+        // the output VAT — Dr Sales Returns (net) / Dr VAT/GST Payable (tax) /
+        // Cr Accounts Receivable (gross). VAT line omitted when tax is zero.
+        const cnOriginalTax = parseFloat(
+          (createdCreditNote.taxAmount as string) || "0",
+        );
+        const cnAedTotal =
+          Math.round(cnOriginalAmount * cnExchangeRate * 100) / 100;
+        const cnAedTax = Math.round(cnOriginalTax * cnExchangeRate * 100) / 100;
+        const cnAedNet = Math.round((cnAedTotal - cnAedTax) * 100) / 100;
         const cnCurrencyNote =
           cnCurrency !== "AED"
             ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
             : "";
 
-        // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
-        try {
-          const debitEntry = await this.createGeneralLedgerEntry({
-            entryType: "receivable",
-            referenceType: "credit_note",
-            referenceId: createdCreditNote.id,
-            accountName: "Sales Returns and Allowances",
-            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
-            debitAmount: cnAedAmount,
-            creditAmount: "0",
-            entityId: createdCreditNote.customerId as number,
-            entityName: customer?.name || "Unknown Customer",
-            projectId: invoice?.projectId || undefined,
-            invoiceNumber: invoice?.invoiceNumber || undefined,
-            transactionDate:
-              createdCreditNote.creditNoteDate ||
-              new Date().toISOString().split("T")[0],
-            status: "issued",
-          });
+        const cnShared = {
+          entryType: "receivable" as const,
+          referenceType: "credit_note" as const,
+          referenceId: createdCreditNote.id,
+          description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
+          entityId: createdCreditNote.customerId as number,
+          entityName: customer?.name || "Unknown Customer",
+          projectId: invoice?.projectId || undefined,
+          invoiceNumber: invoice?.invoiceNumber || undefined,
+          transactionDate:
+            createdCreditNote.creditNoteDate ||
+            new Date().toISOString().split("T")[0],
+          status: "issued" as const,
+        };
 
+        try {
+          // All three rows in ONE transaction (1.7/L14). Posted independently,
+          // a failure after the first left Sales Returns debited with no
+          // matching credit to Accounts Receivable — a permanently one-sided
+          // ledger on a credit note that still reported success.
+          await db.transaction(async (tx) => {
+            await this.createGeneralLedgerEntry(
+              {
+                ...cnShared,
+                accountName: "Sales Returns and Allowances",
+                debitAmount: cnAedNet.toFixed(2),
+                creditAmount: "0",
+              },
+              tx,
+            );
+            if (cnAedTax > 0.005) {
+              await this.createGeneralLedgerEntry(
+                {
+                  ...cnShared,
+                  accountName: "VAT/GST Payable",
+                  debitAmount: cnAedTax.toFixed(2),
+                  creditAmount: "0",
+                },
+                tx,
+              );
+            }
+            await this.createGeneralLedgerEntry(
+              {
+                ...cnShared,
+                accountName: "Accounts Receivable",
+                debitAmount: "0",
+                creditAmount: cnAedTotal.toFixed(2),
+              },
+              tx,
+            );
+          });
           console.log(
-            `Successfully created debit entry (Sales Returns and Allowances):`,
-            debitEntry,
+            `Successfully created credit-note GL entries for ${createdCreditNote.id}`,
           );
-        } catch (debitError) {
-          console.error("Error creating debit GL entry:", debitError);
+        } catch (glError) {
+          console.error("Error creating credit note GL entries:", glError);
           throw new Error(
-            `Failed to create debit GL entry: ${
-              debitError instanceof Error
-                ? debitError.message
-                : String(debitError)
+            `Failed to create credit note GL entries: ${
+              glError instanceof Error ? glError.message : String(glError)
             }`,
           );
         }
-
-        // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
-        try {
-          const creditEntry = await this.createGeneralLedgerEntry({
-            entryType: "receivable",
-            referenceType: "credit_note",
-            referenceId: createdCreditNote.id,
-            accountName: "Accounts Receivable",
-            description: `Credit Note: ${createdCreditNote.creditNoteNumber || "N/A"} for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
-            debitAmount: "0",
-            creditAmount: cnAedAmount,
-            entityId: createdCreditNote.customerId as number,
-            entityName: customer?.name || "Unknown Customer",
-            projectId: invoice?.projectId || undefined,
-            invoiceNumber: invoice?.invoiceNumber || undefined,
-            transactionDate:
-              createdCreditNote.creditNoteDate ||
-              new Date().toISOString().split("T")[0],
-            status: "issued",
-          });
-
-          console.log(
-            `Successfully created credit entry (Accounts Receivable):`,
-            creditEntry,
-          );
-        } catch (creditError) {
-          console.error("Error creating credit GL entry:", creditError);
-          throw new Error(
-            `Failed to create credit GL entry: ${
-              creditError instanceof Error
-                ? creditError.message
-                : String(creditError)
-            }`,
-          );
-        }
-
-        console.log(
-          `Successfully created 2 GL entries for credit note ${createdCreditNote.id}`,
-        );
 
         // Update the related sales invoice
         if (invoice) {
@@ -492,50 +490,69 @@ export class SalesStorage extends LedgerStorage {
             const cnOriginalAmount = parseFloat(
               (updatedCreditNote.totalAmount as string) || "0",
             );
-            const cnAedAmount = (cnOriginalAmount * cnExchangeRate).toFixed(2);
+            // Standard sales-return posting (H1): Dr Sales Returns (net) /
+            // Dr VAT/GST Payable (tax) / Cr Accounts Receivable (gross). VAT line
+            // omitted when tax is zero.
+            const cnOriginalTax = parseFloat(
+              (updatedCreditNote.taxAmount as string) || "0",
+            );
+            const cnAedTotal =
+              Math.round(cnOriginalAmount * cnExchangeRate * 100) / 100;
+            const cnAedTax =
+              Math.round(cnOriginalTax * cnExchangeRate * 100) / 100;
+            const cnAedNet = Math.round((cnAedTotal - cnAedTax) * 100) / 100;
             const cnCurrencyNote =
               cnCurrency !== "AED"
                 ? ` (${cnCurrency} ${cnOriginalAmount.toFixed(2)} @ ${cnExchangeRate})`
                 : "";
 
-            // Create double-entry GL records for credit note
-
-            // 1. Debit: Sales Returns and Allowances (contra-revenue account) in AED
-            await this.createGeneralLedgerEntry({
-              entryType: "receivable",
-              referenceType: "credit_note",
+            const cnShared = {
+              entryType: "receivable" as const,
+              referenceType: "credit_note" as const,
               referenceId: updatedCreditNote.id,
-              accountName: "Sales Returns and Allowances",
               description: `Credit Note: ${
                 updatedCreditNote.creditNoteNumber || "N/A"
               } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
-              debitAmount: cnAedAmount,
-              creditAmount: "0",
               entityId: customer.id,
               entityName: customer.name,
               projectId: invoice?.projectId || undefined,
               invoiceNumber: invoice?.invoiceNumber || undefined,
               transactionDate: transactionDate,
-              status: "issued",
-            });
+              status: "issued" as const,
+            };
 
-            // 2. Credit: Accounts Receivable (reduce what customer owes) in AED
-            await this.createGeneralLedgerEntry({
-              entryType: "receivable",
-              referenceType: "credit_note",
-              referenceId: updatedCreditNote.id,
-              accountName: "Accounts Receivable",
-              description: `Credit Note: ${
-                updatedCreditNote.creditNoteNumber || "N/A"
-              } for Invoice: ${invoice?.invoiceNumber || "N/A"}${cnCurrencyNote}`,
-              debitAmount: "0",
-              creditAmount: cnAedAmount,
-              entityId: customer.id,
-              entityName: customer.name,
-              projectId: invoice?.projectId || undefined,
-              invoiceNumber: invoice?.invoiceNumber || undefined,
-              transactionDate: transactionDate,
-              status: "issued",
+            // All three rows in ONE transaction (1.7/L14), as on the
+            // create-as-issued path above.
+            await db.transaction(async (tx) => {
+              await this.createGeneralLedgerEntry(
+                {
+                  ...cnShared,
+                  accountName: "Sales Returns and Allowances",
+                  debitAmount: cnAedNet.toFixed(2),
+                  creditAmount: "0",
+                },
+                tx,
+              );
+              if (cnAedTax > 0.005) {
+                await this.createGeneralLedgerEntry(
+                  {
+                    ...cnShared,
+                    accountName: "VAT/GST Payable",
+                    debitAmount: cnAedTax.toFixed(2),
+                    creditAmount: "0",
+                  },
+                  tx,
+                );
+              }
+              await this.createGeneralLedgerEntry(
+                {
+                  ...cnShared,
+                  accountName: "Accounts Receivable",
+                  debitAmount: "0",
+                  creditAmount: cnAedTotal.toFixed(2),
+                },
+                tx,
+              );
             });
 
             console.log(
@@ -695,83 +712,69 @@ export class SalesStorage extends LedgerStorage {
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // Create double-entry accounting records for payment
+      // Create double-entry accounting records for payment.
+      //
+      // A credit note is recorded here as a payment (paymentType 'credit_note')
+      // so the invoice shows part-settled — but it must NOT post the cash
+      // settlement (Dr Cash/Bank / Cr AR). The credit note posts its own
+      // Sales Returns / VAT / AR entry (L1/D1). Only real payments settle here.
+      if (paymentData.paymentType !== "credit_note") {
+      // Both rows in ONE transaction (1.7/L14). Posted independently, a failure
+      // between them left Cash/Bank debited with no matching credit to
+      // Accounts Receivable — cash recorded as received while the customer
+      // still owed the full amount.
+      const paymentShared = {
+        entryType: "receivable",
+        referenceType: "payment",
+        referenceId: payment.id,
+        description: `Payment received for Invoice: ${
+          invoice.invoiceNumber || "N/A"
+        }${currencyNote}`,
+        entityId: invoice.customerId,
+        entityName: customer?.name || "Unknown Customer",
+        projectId: invoice.projectId || undefined,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate:
+          payment.paymentDate || new Date().toISOString().split("T")[0],
+        status: "paid",
+      };
 
-      // 1. Debit: Cash/Bank (increase asset - cash received) in AED
       try {
-        const debitEntry = await this.createGeneralLedgerEntry({
-          entryType: "receivable",
-          referenceType: "payment",
-          referenceId: payment.id,
-          accountName: "Cash/Bank",
-          description: `Payment received for Invoice: ${
-            invoice.invoiceNumber || "N/A"
-          }${currencyNote}`,
-          debitAmount: aedAmount,
-          creditAmount: "0",
-          entityId: invoice.customerId,
-          entityName: customer?.name || "Unknown Customer",
-          projectId: invoice.projectId || undefined,
-          invoiceNumber: invoice.invoiceNumber,
-          transactionDate:
-            payment.paymentDate || new Date().toISOString().split("T")[0],
-          status: "paid",
+        await db.transaction(async (tx) => {
+          // 1. Debit: Cash/Bank (increase asset - cash received) in AED
+          await this.createGeneralLedgerEntry(
+            {
+              ...paymentShared,
+              accountName: "Cash/Bank",
+              debitAmount: aedAmount,
+              creditAmount: "0",
+            },
+            tx,
+          );
+          // 2. Credit: Accounts Receivable (customer no longer owes this) in AED
+          await this.createGeneralLedgerEntry(
+            {
+              ...paymentShared,
+              accountName: "Accounts Receivable",
+              debitAmount: "0",
+              creditAmount: aedAmount,
+            },
+            tx,
+          );
         });
 
         console.log(
-          `Successfully created debit entry (Cash/Bank):`,
-          debitEntry,
+          `Successfully created payment GL entries for payment ${payment.id}`,
         );
-      } catch (debitError) {
-        console.error("Error creating debit GL entry:", debitError);
+      } catch (glError) {
+        console.error("Error creating payment GL entries:", glError);
         throw new Error(
-          `Failed to create debit GL entry: ${
-            debitError instanceof Error
-              ? debitError.message
-              : String(debitError)
+          `Failed to create payment GL entries: ${
+            glError instanceof Error ? glError.message : String(glError)
           }`,
         );
       }
-
-      // 2. Credit: Accounts Receivable (reduce asset - customer no longer owes this amount) in AED
-      try {
-        const creditEntry = await this.createGeneralLedgerEntry({
-          entryType: "receivable",
-          referenceType: "payment",
-          referenceId: payment.id,
-          accountName: "Accounts Receivable",
-          description: `Payment received for Invoice: ${
-            invoice.invoiceNumber || "N/A"
-          }${currencyNote}`,
-          debitAmount: "0",
-          creditAmount: aedAmount,
-          entityId: invoice.customerId,
-          entityName: customer?.name || "Unknown Customer",
-          projectId: invoice.projectId || undefined,
-          invoiceNumber: invoice.invoiceNumber,
-          transactionDate:
-            payment.paymentDate || new Date().toISOString().split("T")[0],
-          status: "paid",
-        });
-
-        console.log(
-          `Successfully created credit entry (Accounts Receivable):`,
-          creditEntry,
-        );
-      } catch (creditError) {
-        console.error("Error creating credit GL entry:", creditError);
-        throw new Error(
-          `Failed to create credit GL entry: ${
-            creditError instanceof Error
-              ? creditError.message
-              : String(creditError)
-          }`,
-        );
       }
-
-      console.log(
-        `Successfully created 2 GL entries for payment ${payment.id}`,
-      );
 
       // Update invoice paid amount and project revenue
       await this.updateInvoicePaidAmount(paymentData.invoiceId);
@@ -1996,7 +1999,11 @@ export class SalesStorage extends LedgerStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Recompute the standard 3-row split from the EDITED figures.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -2004,47 +2011,83 @@ export class SalesStorage extends LedgerStorage {
 
       const description = `Sales Invoice ${invoiceData.invoiceNumber} - ${customerData?.name || "Unknown Customer"}${currencyNote}`;
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: aedAmount,
-          creditAmount: "0",
-          description,
-          entityId: invoiceData.customerId,
-          entityName: customerData?.name || null,
-          projectId: invoiceData.projectId,
-          transactionDate: invoiceData.invoiceDate,
-          dueDate: invoiceData.dueDate,
-        })
+      const shared = {
+        entryType: "receivable" as const,
+        referenceType: "sales_invoice" as const,
+        referenceId: invoiceId,
+        description,
+        entityId: invoiceData.customerId,
+        entityName: customerData?.name || null,
+        projectId: invoiceData.projectId,
+        invoiceNumber: invoiceData.invoiceNumber,
+        transactionDate: invoiceData.invoiceDate,
+        dueDate: invoiceData.dueDate,
+        status: "pending" as const,
+      };
+
+      // Reverse-and-re-post (H2): a fixed in-place UPDATE can neither create a VAT
+      // row that didn't exist nor delete one that should no longer exist (e.g. an
+      // edit that makes the customer zero-rated). Instead, reverse the current
+      // active posting and post the new split — atomically, and leaving the
+      // reversal visible for audit (T5.21/T5.22).
+      const activeRows = await db
+        .select()
+        .from(generalLedgerEntries)
         .where(
           and(
             eq(generalLedgerEntries.referenceType, "sales_invoice"),
             eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Accounts Receivable"),
-            ne(generalLedgerEntries.status, "cancelled"),
+            eq(generalLedgerEntries.status, "pending"),
           ),
         );
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
+      await db.transaction(async (tx) => {
+        for (const row of activeRows) {
+          // Post a reversal (debit/credit swapped) and retire the original row.
+          await tx.insert(generalLedgerEntries).values({
+            entryType: row.entryType,
+            referenceType: "sales_invoice",
+            referenceId: invoiceId,
+            accountName: row.accountName,
+            description: `REVERSAL (edit) - ${row.description}`,
+            debitAmount: row.creditAmount,
+            creditAmount: row.debitAmount,
+            entityId: row.entityId,
+            entityName: row.entityName,
+            projectId: row.projectId,
+            invoiceNumber: row.invoiceNumber,
+            transactionDate: row.transactionDate,
+            dueDate: row.dueDate,
+            status: "reversed",
+          });
+          await tx
+            .update(generalLedgerEntries)
+            .set({ status: "reversed" })
+            .where(eq(generalLedgerEntries.id, row.id));
+        }
+
+        // Re-post the new 3-row split (VAT line omitted when zero).
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Accounts Receivable",
+          debitAmount: aedTotal.toFixed(2),
+          creditAmount: "0",
+        });
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Sales Revenue",
           debitAmount: "0",
-          creditAmount: aedAmount,
-          description,
-          entityId: invoiceData.customerId,
-          entityName: customerData?.name || null,
-          projectId: invoiceData.projectId,
-          transactionDate: invoiceData.invoiceDate,
-          dueDate: invoiceData.dueDate,
-        })
-        .where(
-          and(
-            eq(generalLedgerEntries.referenceType, "sales_invoice"),
-            eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Sales Revenue"),
-            ne(generalLedgerEntries.status, "cancelled"),
-          ),
-        );
+          creditAmount: aedRevenue.toFixed(2),
+        });
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT/GST Payable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
+      });
 
       console.log(
         `GL entries updated for sales invoice ${invoiceData.invoiceNumber}`,

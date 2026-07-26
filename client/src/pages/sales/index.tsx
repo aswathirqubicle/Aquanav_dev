@@ -3986,7 +3986,7 @@ export default function SalesIndex() {
                               </Button>
                             </>
                           )}
-                          {["approved", "partial", "paid"].includes(invoice.status) && user?.role === "admin" && (
+                          {["approved", "pending_approval", "unpaid", "overdue"].includes(invoice.status) && parseFloat(invoice.paidAmount || "0") === 0 && user?.role === "admin" && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -5072,7 +5072,7 @@ export default function SalesIndex() {
                       </Button>
                     </>
                   )}
-                  {["approved", "partial", "paid"].includes(selectedInvoice.status) && user?.role === "admin" && (
+                  {["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) && parseFloat(selectedInvoice.paidAmount || "0") === 0 && user?.role === "admin" && (
                     <Button
                       variant="outline"
                       onClick={() => {

@@ -33,34 +33,13 @@ salesInvoicesRoutes.post(
           .json({ message: "Only draft invoices can be approved" });
       }
 
-      // Generate invoice number if not already assigned
-      let invoiceNumber = invoice.invoiceNumber;
-      if (!invoiceNumber) {
-        invoiceNumber = await storage.generateNextNumber(
-          "INV",
-          salesInvoices,
-          salesInvoices.invoiceNumber,
-        );
-      }
+      // Consolidated approval (L13/G3): record the approver, land on "approved",
+      // generate the permanent number and post the GL — the same path the PATCH
+      // approve endpoint uses, so both behave identically. Payment status
+      // (partially_paid / paid / overdue) is derived later by the payment flow,
+      // not conflated with approval.
+      await storage.approveSalesInvoice(invoiceId, req.session.userId!);
 
-      // Update invoice to assign invoice number and set initial status to unpaid
-      await storage.updateSalesInvoice(invoiceId, {
-        status: "unpaid",
-        invoiceNumber: invoiceNumber,
-      });
-
-      // Create general ledger entries for the approved invoice
-      await storage.createInvoiceGLEntries(invoiceId);
-
-      // Update invoice status based on payment amounts and due date
-      await storage.updateInvoicePaidAmount(invoiceId);
-
-      // If invoice is linked to a project, update project total revenue (accrual basis)
-      if (invoice.projectId) {
-        await storage.updateProjectRevenue(invoice.projectId);
-      }
-
-      // Fetch and return the updated invoice with correct status
       const updatedInvoice = await storage.getSalesInvoice(invoiceId);
       res.json(updatedInvoice);
     } catch (error) {
@@ -103,10 +82,28 @@ salesInvoicesRoutes.put(
         return res.status(404).json({ message: "Invoice not found" });
       }
       const isAdmin = req.session.userRole === "admin";
-      const editableStatuses = ["draft", "approved", "partial", "paid"];
+      // Editable only in the pre-payment part of the lifecycle. partially_paid /
+      // paid are excluded because a payment has been recorded (see the
+      // paidAmount guard below); cancelled / rejected are terminal.
+      const editableStatuses = [
+        "draft",
+        "pending_approval",
+        "approved",
+        "unpaid",
+        "overdue",
+      ];
       if (!editableStatuses.includes(existingInvoice.status)) {
         return res.status(400).json({
           message: "This invoice cannot be edited in its current status",
+        });
+      }
+      // Known bug fix: once ANY payment is recorded against the invoice it must
+      // not be editable. Status alone isn't enough (an overdue invoice can carry
+      // a partial payment), so gate on the recorded amount.
+      if (parseFloat(existingInvoice.paidAmount || "0") > 0) {
+        return res.status(400).json({
+          message:
+            "This invoice has recorded payments and can no longer be edited",
         });
       }
       if (existingInvoice.status !== "draft" && !isAdmin) {
@@ -176,7 +173,15 @@ salesInvoicesRoutes.put(
       }
 
       if (existingInvoice.status !== "draft") {
-        await storage.updateSalesInvoiceGLEntries(invoiceId);
+        // GL is posted on approval. An invoice still awaiting approval has no
+        // posting to reverse, so re-posting here would create ledger entries for
+        // an unapproved document — and approval would then post the same split a
+        // second time, silently doubling revenue, output VAT and receivables (the
+        // doubled set still balances, so no ΣDr=ΣCr check catches it). Only an
+        // already-approved invoice gets the reverse-and-re-post.
+        if (existingInvoice.status !== "pending_approval") {
+          await storage.updateSalesInvoiceGLEntries(invoiceId);
+        }
 
         const paidAmount = parseFloat(invoice.paidAmount || "0");
         const newTotal = parseFloat(invoice.totalAmount || "0");
@@ -185,12 +190,12 @@ salesInvoicesRoutes.put(
           if (paidAmount >= newTotal) {
             newStatus = "paid";
           } else {
-            newStatus = "partial";
+            newStatus = "partially_paid";
           }
         } else if (
           paidAmount === 0 &&
           (existingInvoice.status === "paid" ||
-            existingInvoice.status === "partial")
+            existingInvoice.status === "partially_paid")
         ) {
           newStatus = "approved";
         }

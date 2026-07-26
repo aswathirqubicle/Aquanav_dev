@@ -408,7 +408,21 @@ export class LedgerStorage extends ProjectAssetStorage {
     status?: string;
     notes?: string;
     createdBy?: number;
-  }): Promise<any> {
+  },
+  /**
+   * Optional transaction (1.7/L14). When a caller is posting several rows that
+   * must land together, it opens one `db.transaction` and passes `tx` here so a
+   * failure part-way rolls the whole set back instead of leaving a one-sided
+   * ledger. Omitted, this behaves exactly as before and posts on its own.
+   *
+   * NOTE: the project-cost recalculation below still runs on the shared `db`
+   * connection, not on `tx`. It only fires for `payable` entries carrying a
+   * projectId; a caller passing `tx` for such an entry would be recalculating
+   * from outside its own uncommitted transaction, so don't do that without
+   * moving the recalc after the commit.
+   */
+  tx?: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ): Promise<any> {
     try {
       console.log("Creating GL entry with data:", entryData);
 
@@ -452,7 +466,7 @@ export class LedgerStorage extends ProjectAssetStorage {
       }
 
       // Use the generalLedgerEntries table from schema instead of raw SQL
-      const result = await db
+      const result = await (tx ?? db)
         .insert(generalLedgerEntries)
         .values({
           entryType: entryData.entryType,
@@ -694,7 +708,13 @@ export class LedgerStorage extends ProjectAssetStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Reverse the exact 3-row approval posting (T5.6): Cr AR (gross) /
+      // Dr Sales Revenue (net) / Dr VAT/GST Payable (tax). VAT line omitted when
+      // zero. Rounded so the reversal balances to the cent.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -717,19 +737,31 @@ export class LedgerStorage extends ProjectAssetStorage {
       };
 
       await db.transaction(async (tx) => {
+        // Reverse Dr AR: credit Accounts Receivable (gross)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Accounts Receivable",
           debitAmount: "0",
-          creditAmount: aedAmount,
+          creditAmount: aedTotal.toFixed(2),
         });
 
+        // Reverse Cr Revenue: debit Sales Revenue (net of discount, excl. VAT)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Sales Revenue",
-          debitAmount: aedAmount,
+          debitAmount: aedRevenue.toFixed(2),
           creditAmount: "0",
         });
+
+        // Reverse Cr VAT: debit VAT/GST Payable (output VAT) — omitted when zero
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            accountName: "VAT/GST Payable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
       });
 
       console.log(
@@ -768,7 +800,14 @@ export class LedgerStorage extends ProjectAssetStorage {
       const invoiceCurrency = invoiceData.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoiceData.exchangeRate || "1");
       const originalAmount = parseFloat(invoiceData.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Standard VAT posting (D5): AR is the gross the customer owes; Sales
+      // Revenue is net of discount and EXCLUDING VAT; the output VAT collected
+      // is a liability (VAT/GST Payable). Rounded so Dr AR == Cr Revenue + Cr VAT
+      // to the cent by construction.
+      const originalTax = parseFloat(invoiceData.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedRevenue = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -794,21 +833,31 @@ export class LedgerStorage extends ProjectAssetStorage {
       };
 
       await db.transaction(async (tx) => {
-        // Debit Accounts Receivable, in AED
+        // Debit Accounts Receivable (gross, incl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...shared,
           accountName: "Accounts Receivable",
-          debitAmount: aedAmount,
+          debitAmount: aedTotal.toFixed(2),
           creditAmount: "0",
         });
 
-        // Credit Sales Revenue, in AED
+        // Credit Sales Revenue (net of discount, excl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...shared,
           accountName: "Sales Revenue",
           debitAmount: "0",
-          creditAmount: aedAmount,
+          creditAmount: aedRevenue.toFixed(2),
         });
+
+        // Credit VAT/GST Payable (output VAT) — omitted when zero (G2)
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT/GST Payable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
       });
 
       console.log(

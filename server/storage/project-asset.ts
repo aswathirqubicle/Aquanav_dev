@@ -2089,6 +2089,8 @@ export class ProjectAssetStorage extends InventoryStorage {
           invoiceNumber: salesInvoices.invoiceNumber,
           invoiceCurrency: salesInvoices.currency,
           invoiceExchangeRate: salesInvoices.exchangeRate,
+          invoiceTotalAmount: salesInvoices.totalAmount,
+          invoiceTaxAmount: salesInvoices.taxAmount,
         })
         .from(invoicePayments)
         .leftJoin(
@@ -2350,10 +2352,19 @@ export class ProjectAssetStorage extends InventoryStorage {
         0,
       );
 
-      // Calculate total revenue from payments (convert to AED using exchange rate)
+      // Calculate total revenue from payments (convert to AED using exchange
+      // rate), EXCLUDING VAT. A payment settles the gross invoice, part of which
+      // is output VAT owed to the tax authority rather than income. Apportion it
+      // out by the invoice's own net share ((total - tax) / total) so this
+      // reconciles with project cost, which is likewise net of its input VAT.
       const totalRevenue = projectInvoicePaymentsRaw.reduce((sum, payment) => {
         const exchangeRate = parseFloat(payment.invoiceExchangeRate || "1");
-        return sum + parseFloat(payment.amount || "0") * exchangeRate;
+        const invTotal = parseFloat(payment.invoiceTotalAmount || "0");
+        const invTax = parseFloat(payment.invoiceTaxAmount || "0");
+        const netShare = invTotal > 0 ? (invTotal - invTax) / invTotal : 1;
+        return (
+          sum + parseFloat(payment.amount || "0") * netShare * exchangeRate
+        );
       }, 0);
 
       // Get project cost
@@ -2410,6 +2421,7 @@ export class ProjectAssetStorage extends InventoryStorage {
       const activeInvoices = await db
         .select({
           totalAmount: salesInvoices.totalAmount,
+          taxAmount: salesInvoices.taxAmount,
           exchangeRate: salesInvoices.exchangeRate,
         })
         .from(salesInvoices)
@@ -2420,8 +2432,15 @@ export class ProjectAssetStorage extends InventoryStorage {
           ),
         );
 
+      // Recognise revenue EXCLUDING VAT. Output VAT is collected on behalf of
+      // the tax authority and is a liability, never income — the GL books it to
+      // VAT/GST Payable, not Sales Revenue. Summing the gross total here would
+      // overstate project profit by the VAT on every invoice, and would not
+      // reconcile to GL Sales Revenue (which is net) or to project cost (which
+      // is also net of its input VAT).
       const totalRevenue = activeInvoices.reduce((sum, inv) => {
-        const amount = parseFloat(inv.totalAmount || "0");
+        const amount =
+          parseFloat(inv.totalAmount || "0") - parseFloat(inv.taxAmount || "0");
         const rate = parseFloat(inv.exchangeRate || "1");
         return sum + amount * rate;
       }, 0);
