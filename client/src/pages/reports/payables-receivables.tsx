@@ -68,6 +68,24 @@ interface CompanyInfo {
   financialYearEndMonth: number;
 }
 
+// What a customer owes is the balance of the Accounts Receivable control
+// account, and what we owe suppliers is the balance of Accounts Payable. Only
+// those two: matching account names by substring pulled in six further accounts
+// on the payable side alone (VAT/GST Payable, Salary Payable, Income Tax
+// Payable, Employee Benefits Payable, Service Tax Payable, Supplier Payables).
+// None carries a `payable` entry today, so the old figure was right by luck
+// rather than by construction — the first payroll or tax posting tagged
+// `payable` would have been absorbed silently into "supplier payables".
+const RECEIVABLE_CONTROL_ACCOUNT = "Accounts Receivable";
+const PAYABLE_CONTROL_ACCOUNT = "Accounts Payable";
+
+// A control account balance is the net of EVERY row posted to it, so the whole
+// set has to be fetched. This endpoint paginates at 20 by default, which made
+// the summary the net of whichever 20 rows were most recent — on a day whose
+// latest entries were all credit notes that came to a negative figure, and the
+// Math.max floors then reported Current and Overdue as 0.00.
+const LEDGER_PAGE_SIZE = "100000";
+
 export default function PayablesReceivablesReport() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
@@ -193,7 +211,11 @@ export default function PayablesReceivablesReport() {
   const { data: receivableResponse, isLoading: receivablesLoading } = useQuery<{ data: GeneralLedgerEntry[] }>({
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "receivable" });
+      const params = new URLSearchParams({
+        entryType: "receivable",
+        accountName: RECEIVABLE_CONTROL_ACCOUNT,
+        limit: LEDGER_PAGE_SIZE,
+      });
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
@@ -211,7 +233,11 @@ export default function PayablesReceivablesReport() {
   const { data: payableResponse, isLoading: payablesLoading } = useQuery<{ data: GeneralLedgerEntry[] }>({
     queryKey: ["/api/general-ledger", "payable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "payable" });
+      const params = new URLSearchParams({
+        entryType: "payable",
+        accountName: PAYABLE_CONTROL_ACCOUNT,
+        limit: LEDGER_PAGE_SIZE,
+      });
       if (filters.startDate) params.append("startDate", filters.startDate);
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.entityId) params.append("entityId", filters.entityId.toString());
@@ -255,42 +281,14 @@ export default function PayablesReceivablesReport() {
 
   const projects = Array.isArray(projectsResponse?.data) ? projectsResponse.data : [];
 
-  // Fetch chart of accounts to identify receivable and payable accounts
-  const { data: chartOfAccountsData } = useQuery<{
-    id: number;
-    accountCode: string;
-    accountName: string;
-    accountType: string;
-  }[]>({
-    queryKey: ["/api/chart-of-accounts"],
-    enabled: isAuthenticated,
-  });
-
-  // Get receivable and payable account names from chart of accounts
-  const receivableAccountNames = chartOfAccountsData
-    ?.filter(account => 
-      account.accountName?.toLowerCase().includes("receivable") ||
-      account.accountCode?.startsWith("1100") ||
-      account.accountCode?.startsWith("1110")
-    )
-    .map(account => account.accountName) || [];
-  
-  const payableAccountNames = chartOfAccountsData
-    ?.filter(account => 
-      account.accountName?.toLowerCase().includes("payable") ||
-      account.accountCode?.startsWith("2000") ||
-      account.accountCode?.startsWith("2010") ||
-      account.accountCode?.startsWith("2110")
-    )
-    .map(account => account.accountName) || [];
-
-  // Filter entries to only include actual receivable/payable accounts
-  const filteredReceivableEntries = receivableEntries.filter(entry =>
-    receivableAccountNames.includes(entry.accountName)
+  // Belt and braces: the server already narrows to the control account with a
+  // LIKE, so this only guards against a future account whose name contains it.
+  const filteredReceivableEntries = receivableEntries.filter(
+    entry => entry.accountName === RECEIVABLE_CONTROL_ACCOUNT
   );
 
-  const filteredPayableEntries = payableEntries.filter(entry =>
-    payableAccountNames.includes(entry.accountName)
+  const filteredPayableEntries = payableEntries.filter(
+    entry => entry.accountName === PAYABLE_CONTROL_ACCOUNT
   );
 
   const formatCurrency = (amount: string | number) => {
@@ -323,20 +321,44 @@ export default function PayablesReceivablesReport() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // A control account balance is the plain net of every row posted to it. A
+  // reversal is an ordinary entry that happens to carry `status: 'cancelled'`,
+  // and its whole purpose is to cancel the original out — so both sides must be
+  // counted. Excluding cancelled rows dropped the reversal but kept whatever it
+  // was reversing, leaving the balance wrong by the value of the reversal; the
+  // old `totalDebits - cancelledCredits` adjustment only masked that when every
+  // cancelled row happened to sit on one side.
+  const sumDebits = (entries: GeneralLedgerEntry[]) =>
+    entries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
+  const sumCredits = (entries: GeneralLedgerEntry[]) =>
+    entries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+
+  // What a row moved the balance by, in the account's normal direction:
+  // receivables are debit-normal, payables credit-normal. Showing only the
+  // debit (or only the credit) printed AED 0.00 against every credit note and
+  // every payment, because those sit on the other side — so a row that plainly
+  // did move the balance looked like it had done nothing. Signed, these add up
+  // to the Outstanding figure above the table.
+  const rowMovement = (
+    entry: GeneralLedgerEntry,
+    normal: "debit" | "credit",
+  ) => {
+    const debit = parseFloat(entry.debitAmount || "0");
+    const credit = parseFloat(entry.creditAmount || "0");
+    return normal === "debit" ? debit - credit : credit - debit;
+  };
+
   const receivableSummary = (() => {
-    const activeEntries = filteredReceivableEntries.filter(e => e.status !== "cancelled");
-    const cancelledEntries = filteredReceivableEntries.filter(e => e.status === "cancelled");
+    const totalDebits = sumDebits(filteredReceivableEntries);
+    const totalCredits = sumCredits(filteredReceivableEntries);
 
-    const totalDebits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const totalCredits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
-    const cancelledDebits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const cancelledCredits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    // Receivables are a debit balance: invoices raised less amounts settled.
+    const totalOutstanding = totalDebits - totalCredits;
 
-    const netDebits = totalDebits - cancelledCredits;
-    const totalOutstanding = netDebits - totalCredits;
-    
-    // Calculate overdue: entries with due date in the past that have debit amounts (invoices)
-    const overdueAmount = activeEntries
+    // Overdue: invoice debits past their due date. This is an ageing indicator
+    // on the gross debits, not a share of the net balance, so it is capped at
+    // the outstanding total rather than allowed to exceed it.
+    const overdueDebits = filteredReceivableEntries
       .filter(e => {
         if (!e.dueDate) return false;
         const dueDate = new Date(e.dueDate);
@@ -344,33 +366,27 @@ export default function PayablesReceivablesReport() {
         return dueDate < today && parseFloat(e.debitAmount || "0") > 0;
       })
       .reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    
-    
+    const overdueAmount = Math.max(0, Math.min(overdueDebits, totalOutstanding));
+
     const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
-    
+
     return {
       total: totalOutstanding,
       current: currentAmount,
       overdue: overdueAmount,
       collected: totalCredits,
-      count: activeEntries.length,
+      count: filteredReceivableEntries.length,
     };
   })();
 
   const payableSummary = (() => {
-    const activeEntries = filteredPayableEntries.filter(e => e.status !== "cancelled");
-    const cancelledEntries = filteredPayableEntries.filter(e => e.status === "cancelled");
+    const totalDebits = sumDebits(filteredPayableEntries);
+    const totalCredits = sumCredits(filteredPayableEntries);
 
-    const totalCredits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
-    const totalDebits = activeEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const cancelledDebits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.debitAmount || "0"), 0);
-    const cancelledCredits = cancelledEntries.reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
+    // Payables are a credit balance: bills received less amounts paid.
+    const totalOutstanding = totalCredits - totalDebits;
 
-    const netCredits = totalCredits - cancelledDebits;
-    const totalOutstanding = netCredits - totalDebits;
-    
-    // Calculate overdue: entries with due date in the past that have credit amounts (invoices)
-    const overdueAmount = activeEntries
+    const overdueCredits = filteredPayableEntries
       .filter(e => {
         if (!e.dueDate) return false;
         const dueDate = new Date(e.dueDate);
@@ -378,15 +394,16 @@ export default function PayablesReceivablesReport() {
         return dueDate < today && parseFloat(e.creditAmount || "0") > 0;
       })
       .reduce((sum, entry) => sum + parseFloat(entry.creditAmount || "0"), 0);
-    
+    const overdueAmount = Math.max(0, Math.min(overdueCredits, totalOutstanding));
+
     const currentAmount = Math.max(0, totalOutstanding - overdueAmount);
-    
+
     return {
       total: totalOutstanding,
       current: currentAmount,
       overdue: overdueAmount,
       paid: totalDebits,
-      count: activeEntries.length,
+      count: filteredPayableEntries.length,
     };
   })();
 
@@ -409,7 +426,7 @@ export default function PayablesReceivablesReport() {
       entry.entityName || "-",
       entry.projectTitle || "-",
       entry.invoiceNumber || "-",
-      type === "receivables" ? entry.debitAmount : entry.creditAmount,
+      rowMovement(entry, type === "receivables" ? "debit" : "credit").toFixed(2),
       entry.dueDate ? formatDisplayDate(entry.dueDate) : "-",
       entry.status,
       entry.notes || "-"
@@ -714,7 +731,7 @@ export default function PayablesReceivablesReport() {
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>
                           <td className="p-2">{entry.invoiceNumber || "-"}</td>
-                          <td className="p-2 text-right font-medium">{formatCurrency(entry.debitAmount)}</td>
+                          <td className="p-2 text-right font-medium">{formatCurrency(rowMovement(entry, "debit"))}</td>
                           <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                           <td className="p-2">{getStatusBadge(entry.status)}</td>
                         </tr>
@@ -801,7 +818,7 @@ export default function PayablesReceivablesReport() {
                           <td className="p-2">{entry.entityName || "-"}</td>
                           <td className="p-2">{entry.projectTitle || "-"}</td>
                           <td className="p-2">{entry.invoiceNumber || "-"}</td>
-                          <td className="p-2 text-right font-medium">{formatCurrency(entry.creditAmount)}</td>
+                          <td className="p-2 text-right font-medium">{formatCurrency(rowMovement(entry, "credit"))}</td>
                           <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                           <td className="p-2">{getStatusBadge(entry.status)}</td>
                         </tr>

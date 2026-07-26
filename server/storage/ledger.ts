@@ -198,10 +198,28 @@ export class LedgerStorage extends ProjectAssetStorage {
         filters.entryType === "receivable" ||
         filters.entryType === "payable"
       ) {
+        // These conditions must mirror the ones used for the list, or the
+        // summary describes a different set of rows than the page is showing.
+        //
+        // accountName was the one being dropped (L17), and it is the one that
+        // matters most: a receivable posting is Dr Accounts Receivable /
+        // Cr Sales Revenue / Cr VAT Payable, so summing debits less credits
+        // across all of them is guaranteed to give zero — the revenue and tax
+        // credits cancel the receivable debit exactly. The Receivable and
+        // Payable pages both filter to their control account and so listed the
+        // right rows while reporting a total of 0.00 above them.
         const summaryConditions: SQL[] = [];
         if (filters.entryType)
           summaryConditions.push(
             eq(generalLedgerEntries.entryType, filters.entryType),
+          );
+        if (filters.accountName)
+          summaryConditions.push(
+            ilike(generalLedgerEntries.accountName, `%${filters.accountName}%`),
+          );
+        if (filters.referenceType)
+          summaryConditions.push(
+            eq(generalLedgerEntries.referenceType, filters.referenceType),
           );
         if (filters.startDate)
           summaryConditions.push(

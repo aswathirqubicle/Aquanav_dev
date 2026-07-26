@@ -241,6 +241,11 @@ export class SalesStorage extends LedgerStorage {
     try {
       console.log("Creating credit note with data:", creditNoteData);
 
+      await this.assertCreditNoteInvoice(
+        creditNoteData.salesInvoiceId,
+        creditNoteData.status,
+      );
+
       // Generate credit note number
       const creditNoteNumber = await this.generateNextNumber(
         "CN",
@@ -444,6 +449,18 @@ export class SalesStorage extends LedgerStorage {
 
       // Remove projectId from the data if present, as it's not in creditNotes table
       const { projectId, ...validCreditNoteData } = creditNoteData as any;
+
+      // The same guard as on create, for the draft -> issued route. The invoice
+      // may be supplied by this very edit, so check the incoming value first and
+      // fall back to what the note already carries.
+      await this.assertCreditNoteInvoice(
+        validCreditNoteData.salesInvoiceId !== undefined
+          ? validCreditNoteData.salesInvoiceId
+          : currentCreditNote.salesInvoiceId,
+        validCreditNoteData.status !== undefined
+          ? validCreditNoteData.status
+          : currentCreditNote.status,
+      );
 
       const updateData: Partial<InsertCreditNote> = { ...validCreditNoteData };
 
@@ -1096,6 +1113,41 @@ export class SalesStorage extends LedgerStorage {
    * (line + header total)/`taxAmount`/`totalAmount` corrected. A document with no
    * items array is returned unchanged.
    */
+  /**
+   * A credit note credits an invoice. Issued without one it still posts
+   * `Cr Accounts Receivable`, reducing the control account against nothing —
+   * an amount no statement, receivables list or ageing view can attribute to
+   * anyone, because there is no document to attribute it to. Three such notes
+   * exist (CN-AQNV-2026-005/006/007), holding 315.00 of AR credit between them
+   * that reconciles to no invoice.
+   *
+   * Only issuing is blocked. A draft posts nothing, so it can be saved and
+   * linked later, which is also how the existing edit flow reaches `issued`.
+   *
+   * The invoice is fetched rather than the id merely checked for presence: a
+   * stale or wrong id resolves to `undefined` and then posts exactly the same
+   * way, since every use of it downstream is optional-chained.
+   */
+  private async assertCreditNoteInvoice(
+    salesInvoiceId: number | null | undefined,
+    status: string | null | undefined,
+  ): Promise<void> {
+    if (status !== "issued") return;
+
+    if (!salesInvoiceId) {
+      throw new Error(
+        "A credit note must be linked to a sales invoice before it can be issued — it posts against that invoice's receivable.",
+      );
+    }
+
+    const invoice = await this.getSalesInvoice(salesInvoiceId);
+    if (!invoice) {
+      throw new Error(
+        `Sales invoice ${salesInvoiceId} could not be found, so this credit note cannot be issued against it.`,
+      );
+    }
+  }
+
   private applySalesDocumentTotals<T extends Record<string, any>>(data: T): T {
     // `items` is an array on most sales docs but a JSON string on credit notes.
     const raw = (data as any).items;

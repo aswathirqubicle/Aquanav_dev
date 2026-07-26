@@ -158,21 +158,6 @@ generalLedgerRoutes.put(
 );
 
 generalLedgerRoutes.get(
-  "/api/general-ledger/payables",
-  requireAuth,
-  requireRole(["admin", "finance"]),
-  async (req, res) => {
-    try {
-      const payables = await storage.getPayables();
-      res.json(payables);
-    } catch (error) {
-      console.error("Get payables error:", error);
-      res.status(500).json({ message: "Failed to get payables" });
-    }
-  },
-);
-
-generalLedgerRoutes.get(
   "/api/general-ledger/receivables",
   requireAuth,
   requireRole(["admin", "finance"]),
