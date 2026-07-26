@@ -587,34 +587,83 @@ export class LedgerStorage extends ProjectAssetStorage {
         );
       }
 
+      // Every account must exist in the chart of accounts (8.5). A journal is
+      // the one posting path where the account name is typed by a user rather
+      // than chosen by code, so a typo silently creates a new "account" that no
+      // report knows about and no statement rolls up.
+      //
+      // Scoped to journals deliberately. Widening it to createGeneralLedgerEntry
+      // would make every posting path — sales, purchase, payroll — depend on the
+      // chart matching the account names those paths hard-code, so a single COA
+      // rename or deactivation would start failing approvals. Migration 0068
+      // removed the one mismatch that existed (payroll credits "Provident Fund
+      // Contribution"; account 2120 was still named "Tax Deducted at Source"),
+      // so widening is now possible — but it is a separate decision.
+      const chartRows = await db
+        .select({ name: chartOfAccounts.accountName })
+        .from(chartOfAccounts);
+      const knownAccounts = new Set(
+        chartRows.map((r) => (r.name || "").trim().toLowerCase()),
+      );
+      const unknown = journalData.entries
+        .map((e) => (e.accountName || "").trim())
+        .filter((n) => !knownAccounts.has(n.toLowerCase()));
+      if (unknown.length > 0) {
+        throw new Error(
+          `Unknown account${unknown.length > 1 ? "s" : ""}: ${Array.from(
+            new Set(unknown),
+          ).join(", ")}. Journal accounts must exist in the chart of accounts.`,
+        );
+      }
+
       console.log(
         `Creating balanced journal entry: Debits=${totalDebits.toFixed(
           2,
         )}, Credits=${totalCredits.toFixed(2)}`,
       );
 
-      // Create all entries in the journal
-      const createdEntries = [];
-      for (const entry of journalData.entries) {
-        const glEntry = await this.createGeneralLedgerEntry({
-          entryType: journalData.entryType || "manual",
-          referenceType: journalData.referenceType,
-          referenceId: journalData.referenceId,
-          accountName: entry.accountName,
-          description: journalData.description,
-          debitAmount: entry.debitAmount || "0",
-          creditAmount: entry.creditAmount || "0",
-          entityId: entry.entityId,
-          entityName: entry.entityName,
-          projectId: entry.projectId,
-          invoiceNumber: entry.invoiceNumber,
-          transactionDate: journalData.transactionDate,
-          dueDate: journalData.dueDate,
-          status: journalData.status,
-          notes: entry.notes,
-          createdBy: journalData.createdBy,
-        });
-        createdEntries.push(glEntry);
+      // Every line of the journal in ONE transaction (1.7/L14). Posted
+      // independently, a failure part-way left a journal half-posted — and a
+      // journal is the one posting with no source document to re-derive it
+      // from, so the ledger would be permanently unbalanced with nothing to
+      // reconcile against.
+      const createdEntries: any[] = [];
+      const affectedProjectIds = new Set<number>();
+
+      await db.transaction(async (tx) => {
+        for (const entry of journalData.entries) {
+          const glEntry = await this.createGeneralLedgerEntry(
+            {
+              entryType: journalData.entryType || "manual",
+              referenceType: journalData.referenceType,
+              referenceId: journalData.referenceId,
+              accountName: entry.accountName,
+              description: journalData.description,
+              debitAmount: entry.debitAmount || "0",
+              creditAmount: entry.creditAmount || "0",
+              entityId: entry.entityId,
+              entityName: entry.entityName,
+              projectId: entry.projectId,
+              invoiceNumber: entry.invoiceNumber,
+              transactionDate: journalData.transactionDate,
+              dueDate: journalData.dueDate,
+              status: journalData.status,
+              notes: entry.notes,
+              createdBy: journalData.createdBy,
+            },
+            tx,
+          );
+          createdEntries.push(glEntry);
+          if (entry.projectId) affectedProjectIds.add(entry.projectId);
+        }
+      });
+
+      // Recalculate after the commit: passing `tx` skips the per-row recalc,
+      // since from inside the transaction it could not see these rows.
+      if ((journalData.entryType || "manual") === "payable") {
+        for (const projectId of Array.from(affectedProjectIds)) {
+          await this.recalculateProjectCost(projectId);
+        }
       }
 
       console.log(
