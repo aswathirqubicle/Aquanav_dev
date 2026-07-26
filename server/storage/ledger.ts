@@ -18,7 +18,9 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { db } from "../db";
+// `sqlRaw` is the shared postgres-js connection, aliased because `sql` above is
+// drizzle's query-template helper. Same convention as server/routes/system.routes.ts.
+import { db, sql as sqlRaw } from "../db";
 
 export class LedgerStorage extends ProjectAssetStorage {
   // Chart of Accounts methods
@@ -372,12 +374,17 @@ export class LedgerStorage extends ProjectAssetStorage {
         ORDER BY gle.transaction_date DESC, gle.created_at DESC
       `;
 
-      const { Pool } = await import("pg");
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-      const result = await pool.query(query, params);
-      await pool.end();
+      // Use the shared connection (1.7). This previously opened a brand-new `pg`
+      // Pool per call and closed it again — a second driver alongside the app's
+      // postgres-js one, and a fresh connection on every P&L report, which
+      // exhausts the server's connection budget under repeated use (T1.11).
+      // postgres-js `.unsafe` takes the same $1 placeholders and returns the
+      // rows directly rather than wrapping them in a `.rows` property.
+      const rows = await sqlRaw.unsafe(query, params);
 
-      return { entries: result.rows };
+      return { entries: rows as unknown as Awaited<
+        ReturnType<LedgerStorage["getProfitLossEntries"]>
+      >["entries"] };
     } catch (error: any) {
       console.error("Error in getProfitLossEntries:", error?.message);
       throw error;
