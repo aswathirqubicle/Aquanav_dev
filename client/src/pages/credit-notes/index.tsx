@@ -1046,6 +1046,39 @@ export default function CreditNotesIndex() {
                 </div>
 
                 <div className="flex justify-end gap-2">
+                  {viewingCreditNote.status === "issued" && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive">
+                          <Ban className="h-4 w-4 mr-2" />
+                          Cancel Credit Note
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Cancel this credit note?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {viewingCreditNote.creditNoteNumber} will be reversed: its ledger
+                            entries are cancelled out, and the amount it settled is returned
+                            to the linked invoice's outstanding balance. The credit note stays
+                            on record as cancelled.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Keep it</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              cancelCreditNoteMutation.mutate(viewingCreditNote.id);
+                              setViewingCreditNote(null);
+                            }}
+                            disabled={cancelCreditNoteMutation.isPending}
+                          >
+                            {cancelCreditNoteMutation.isPending ? "Cancelling..." : "Cancel Credit Note"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                   <Button
                     variant="outline"
                     onClick={() => {
