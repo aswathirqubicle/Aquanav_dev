@@ -9,6 +9,17 @@ import {
 } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -5144,18 +5155,42 @@ export default function SalesIndex() {
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
-                      <Button
-                        variant="destructive"
-                        onClick={() => {
-                          if (window.confirm("Are you sure you want to cancel this invoice? This will create reversal ledger entries.")) {
-                            startTransition(() => cancelInvoiceMutation.mutate(selectedInvoice.id));
-                          }
-                        }}
-                        disabled={cancelInvoiceMutation.isPending}
-                        className="w-full sm:w-auto"
-                      >
-                        {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            disabled={cancelInvoiceMutation.isPending}
+                            className="w-full sm:w-auto"
+                          >
+                            {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancel Invoice</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to cancel invoice{" "}
+                              {selectedInvoice.invoiceNumber}? This will create
+                              reversal ledger entries. This cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() =>
+                                startTransition(() =>
+                                  cancelInvoiceMutation.mutate(selectedInvoice.id),
+                                )
+                              }
+                              disabled={cancelInvoiceMutation.isPending}
+                            >
+                              {cancelInvoiceMutation.isPending
+                                ? "Cancelling..."
+                                : "Cancel Invoice"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                   <Button
                     variant="outline"

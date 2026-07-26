@@ -4,6 +4,17 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -2678,29 +2689,51 @@ export default function PurchaseInvoicesIndex() {
                     </Button>
                   )}
                   {viewingInvoice.status === "approved" && user?.role === "admin" && parseFloat(viewingInvoice.paidAmount || "0") <= 0 && (
-                    <Button
-                      onClick={() => {
-                        if (window.confirm("Are you sure you want to cancel this invoice? This will create reverse ledger entries.")) {
-                          cancelInvoiceMutation.mutate(viewingInvoice.id);
-                        }
-                      }}
-                      disabled={cancelInvoiceMutation.isPending}
-                      variant="destructive"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                    >
-                      {cancelInvoiceMutation.isPending ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Cancelling...
-                        </>
-                      ) : (
-                        <>
-                          <Ban className="w-4 h-4 mr-2" />
-                          Cancel Invoice
-                        </>
-                      )}
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          disabled={cancelInvoiceMutation.isPending}
+                          variant="destructive"
+                          size="lg"
+                          className="w-full sm:w-auto"
+                        >
+                          {cancelInvoiceMutation.isPending ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                              Cancelling...
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="w-4 h-4 mr-2" />
+                              Cancel Invoice
+                            </>
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Cancel Invoice</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to cancel invoice{" "}
+                            {viewingInvoice.invoiceNumber}? This will create
+                            reverse ledger entries. This cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() =>
+                              cancelInvoiceMutation.mutate(viewingInvoice.id)
+                            }
+                            disabled={cancelInvoiceMutation.isPending}
+                          >
+                            {cancelInvoiceMutation.isPending
+                              ? "Cancelling..."
+                              : "Cancel Invoice"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                 </div>
               </div>
