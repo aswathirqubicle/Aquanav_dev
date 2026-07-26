@@ -520,11 +520,22 @@ export class PayrollStorage extends PurchaseStorage {
     const pf = deductions
       .filter((d) => d.type === "provident_fund")
       .reduce((s, d) => s + parseFloat(d.amount || "0"), 0);
+    // Every other deduction — `advance_recovery` and `other`, the remaining two
+    // the CHECK constraint permits — recovers money already handed to the
+    // employee outside the system and never booked when it was given. It has to
+    // leave the payable, because Salary Payable is what will actually be paid:
+    // without this the accrual credited gross less PF, the payment debited that
+    // same figure, and Cash/Bank was credited more than left the bank. On the
+    // one entry that carried an advance recovery the books said 3,334.75 was
+    // paid where the employee received 2,834.75.
+    const otherDeductions = deductions
+      .filter((d) => d.type !== "provident_fund")
+      .reduce((s, d) => s + parseFloat(d.amount || "0"), 0);
     const reimbTotal = reimbRecords.reduce(
       (s, r) => s + parseFloat(r.amount || "0"),
       0,
     );
-    const payable = earnings - pf + reimbTotal;
+    const payable = earnings - pf + reimbTotal - otherDeductions;
 
     if (earnings <= 0 && reimbTotal <= 0) return; // nothing to post (T4.18)
 
@@ -636,7 +647,25 @@ export class PayrollStorage extends PurchaseStorage {
         );
       }
 
-      // Cr Salary Payable — earnings − PF + reimbursements (D18).
+      // Cr Employee Advances (1120) — the non-PF deductions. These recover cash
+      // already given to the employee and never booked at the time, so this
+      // leaves the account with a CREDIT balance: a standing, visible measure of
+      // disbursements that were never recorded, which someone clears by booking
+      // the original payments. That is the point of putting it here rather than
+      // netting it invisibly into Salary Expense.
+      if (otherDeductions > 0) {
+        await this.createGeneralLedgerEntry(
+          line({
+            accountName: "Employee Advances",
+            description: `Advance / other deductions recovered from ${employeeName} - ${monthName} ${entry.year}`,
+            creditAmount: otherDeductions.toFixed(2),
+          }),
+          tx,
+        );
+      }
+
+      // Cr Salary Payable — what the employee is actually owed: earnings + reimbursements
+      // less every deduction (D18, generalised beyond PF).
       await this.createGeneralLedgerEntry(
         line({
           accountName: "Salary Payable",
