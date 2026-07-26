@@ -4,18 +4,16 @@ import {
   desc,
   eq,
   gte,
-  isNotNull,
+  inArray,
   isNull,
   lte,
   ne,
-  or,
   sql,
 } from "drizzle-orm";
 import {
   customers,
   generalLedgerEntries,
   invoicePayments,
-  projects,
   salesInvoices,
   salesQuotations,
 } from "@shared/schema";
@@ -77,39 +75,6 @@ export class ReportStorage extends ReimbursementStorage {
     }
   }
 
-  async getPayables(): Promise<any[]> {
-    try {
-      const result = await db
-        .select({
-          id: generalLedgerEntries.id,
-          description: generalLedgerEntries.description,
-          amount: generalLedgerEntries.creditAmount, // Aliasing credit_amount as amount
-          supplierName: generalLedgerEntries.entityName, // Aliasing entity_name as supplierName
-          projectId: generalLedgerEntries.projectId,
-          projectTitle: projects.title, // Selecting from joined projects table
-          invoiceNumber: generalLedgerEntries.invoiceNumber,
-          transactionDate: generalLedgerEntries.transactionDate,
-          dueDate: generalLedgerEntries.dueDate,
-          status: generalLedgerEntries.status,
-          createdAt: generalLedgerEntries.createdAt,
-        })
-        .from(generalLedgerEntries)
-        .leftJoin(projects, eq(generalLedgerEntries.projectId, projects.id))
-        .where(eq(generalLedgerEntries.entryType, "payable"))
-        .orderBy(desc(generalLedgerEntries.transactionDate));
-
-      return result;
-    } catch (error: any) {
-      await this.createErrorLog({
-        message: "Error in getPayables: " + (error?.message || "Unknown error"),
-        stack: error?.stack,
-        component: "getPayables",
-        severity: "error",
-      });
-      throw error;
-    }
-  }
-
   async getReceivables(filters?: {
     customerId?: number;
     projectId?: number;
@@ -117,16 +82,24 @@ export class ReportStorage extends ReimbursementStorage {
     endDate?: string;
   }): Promise<any[]> {
     try {
+      // Receivables are document-driven: what each invoice still owes.
+      //
+      // A cancelled invoice owes nothing — it posts no ledger entry at all, so
+      // leaving it here made the report disagree with the AR control account by
+      // the full value of every invoice ever cancelled (L22a). The trailing
+      // `or(... isNotNull(invoiceNumber))` was what let it through: every
+      // approved invoice has a number, so that branch re-admitted every status
+      // the lines above had just excluded, cancelled included. Listing the
+      // statuses that do owe money says the same thing without the loophole.
       const queryConditions = [
-        ne(salesInvoices.status, "draft"),
-        ne(salesInvoices.status, "rejected"),
-        ne(salesInvoices.status, "pending_approval"),
-        or(
-          eq(salesInvoices.status, "approved"),
-          eq(salesInvoices.status, "partially_paid"),
-          eq(salesInvoices.status, "paid"),
-          isNotNull(salesInvoices.invoiceNumber),
-        ),
+        inArray(salesInvoices.status, [
+          "approved",
+          "unpaid",
+          "partially_paid",
+          "partial",
+          "paid",
+          "overdue",
+        ]),
       ];
 
       if (filters?.customerId) {
@@ -162,14 +135,26 @@ export class ReportStorage extends ReimbursementStorage {
           const invoice = row.sales_invoices;
           const customer = row.customers;
 
-          const totalAmount = parseFloat(invoice.totalAmount || "0");
+          // Report in AED (L22b). These figures are labelled AED wherever they
+          // are shown and are summed into an AED total, so a foreign-currency
+          // invoice reported at its face value understates the debt by the
+          // whole exchange rate — a USD 1,050 invoice appeared as "AED 1,050"
+          // rather than 3,856.13. `getSalesStats.totalReceivables` already
+          // converts, which is why the Sales page's Total Receivables card and
+          // this list disagreed.
+          const rate = parseFloat(invoice.exchangeRate || "1");
+          const docTotalAmount = parseFloat(invoice.totalAmount || "0");
           // Use paidAmount from invoice or calculate from payments
           const invoicePaidAmount = parseFloat(invoice.paidAmount || "0");
           const paymentsPaidAmount = paymentsList
             .filter((p) => p.invoiceId === invoice.id)
             .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
-          const paidAmount = Math.max(invoicePaidAmount, paymentsPaidAmount);
-          const outstandingAmount = totalAmount - paidAmount;
+          const docPaidAmount = Math.max(invoicePaidAmount, paymentsPaidAmount);
+          const docOutstandingAmount = docTotalAmount - docPaidAmount;
+
+          const totalAmount = docTotalAmount * rate;
+          const paidAmount = docPaidAmount * rate;
+          const outstandingAmount = docOutstandingAmount * rate;
 
           // Check if overdue
           const today = new Date();
@@ -184,6 +169,13 @@ export class ReportStorage extends ReimbursementStorage {
             totalAmount: totalAmount.toFixed(2),
             paidAmount: paidAmount.toFixed(2),
             outstandingAmount: outstandingAmount.toFixed(2),
+            // The document's own currency, kept alongside so a caller can show
+            // what was actually invoiced rather than only the AED equivalent.
+            currency: invoice.currency || "AED",
+            exchangeRate: rate.toString(),
+            documentTotalAmount: docTotalAmount.toFixed(2),
+            documentPaidAmount: docPaidAmount.toFixed(2),
+            documentOutstandingAmount: docOutstandingAmount.toFixed(2),
             invoiceDate: invoice.invoiceDate,
             dueDate: invoice.dueDate,
             status:

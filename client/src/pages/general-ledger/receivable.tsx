@@ -59,14 +59,21 @@ export default function GeneralLedgerReceivable() {
     financialYear: "",
   });
 
-  const formatCurrency = (amount: string) => {
+  const formatCurrency = (amount: string | number) => {
     return new Intl.NumberFormat("en-AE", {
       style: "currency",
       currency: "AED",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(parseFloat(amount || "0"));
+    }).format(typeof amount === "number" ? amount : parseFloat(amount || "0"));
   };
+
+  // What the row moved the balance by. Receivables are debit-normal: an invoice raises the balance, a
+  // receipt or credit note reduces it.
+  // Rendering only the debitAmount printed AED 0.00 against every row on the other
+  // side, so entries that plainly moved the balance looked inert.
+  const rowMovement = (entry: GeneralLedgerEntry) =>
+    parseFloat(entry.debitAmount || "0") - parseFloat(entry.creditAmount || "0");
 
   const clearFilters = () => {
     setPendingFilters({
@@ -154,7 +161,14 @@ export default function GeneralLedgerReceivable() {
   }>({
     queryKey: ["/api/general-ledger", "receivable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "receivable" });
+      // Scope to the control account. What customers owe is the balance of
+      // Accounts Receivable alone; without this the list also carried the
+      // Sales Revenue and VAT credits from the same postings, which show as
+      // separate lines against one document and net the summary to 0.00.
+      const params = new URLSearchParams({
+        entryType: "receivable",
+        accountName: "Accounts Receivable",
+      });
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== "" && value !== undefined && value !== "all") {
           params.append(key, value.toString());
@@ -368,7 +382,7 @@ export default function GeneralLedgerReceivable() {
                       <td className="p-2">{entry.description}</td>
                       <td className="p-2">{entry.entityName || "-"}</td>
                       <td className="p-2">{entry.invoiceNumber || "-"}</td>
-                      <td className="p-2 text-right font-medium">{formatCurrency(entry.debitAmount)}</td>
+                      <td className="p-2 text-right font-medium">{formatCurrency(rowMovement(entry))}</td>
                       <td className="p-2">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                     </tr>
                   ))}

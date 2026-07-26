@@ -71,14 +71,21 @@ export default function GeneralLedgerPayable() {
     });
   };
 
-  const formatCurrency = (amount: string) => {
+  const formatCurrency = (amount: string | number) => {
     return new Intl.NumberFormat("en-AE", {
       style: "currency",
       currency: "AED",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(parseFloat(amount || "0"));
+    }).format(typeof amount === "number" ? amount : parseFloat(amount || "0"));
   };
+
+  // What the row moved the balance by. Payables are credit-normal: a bill raises the balance, a payment
+  // or debit note reduces it.
+  // Rendering only the creditAmount printed AED 0.00 against every row on the other
+  // side, so entries that plainly moved the balance looked inert.
+  const rowMovement = (entry: GeneralLedgerEntry) =>
+    parseFloat(entry.creditAmount || "0") - parseFloat(entry.debitAmount || "0");
 
   
 
@@ -157,7 +164,14 @@ export default function GeneralLedgerPayable() {
   }>({
     queryKey: ["/api/general-ledger", "payable", filters],
     queryFn: async () => {
-      const params = new URLSearchParams({ entryType: "payable" });
+      // Scope to the control account. What we owe suppliers is the balance of
+      // Accounts Payable alone; without this the list also carried the
+      // Purchase Expense and VAT debits from the same postings, which show as
+      // separate lines against one document and net the summary to 0.00.
+      const params = new URLSearchParams({
+        entryType: "payable",
+        accountName: "Accounts Payable",
+      });
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== "" && value !== undefined && value !== "all") {
           params.append(key, value.toString());
@@ -394,7 +408,7 @@ export default function GeneralLedgerPayable() {
                       <td className="p-2 text-sm">{entry.entityName || "-"}</td>
                       <td className="p-2 text-sm">{entry.projectTitle || "-"}</td>
                       <td className="p-2 text-sm">{entry.invoiceNumber || "-"}</td>
-                      <td className="p-2 text-right font-medium text-sm">{formatCurrency(entry.creditAmount)}</td>
+                      <td className="p-2 text-right font-medium text-sm">{formatCurrency(rowMovement(entry))}</td>
                       <td className="p-2 text-sm">{entry.dueDate ? formatDisplayDate(entry.dueDate) : "-"}</td>
                       <td className="p-2">{getStatusBadge(entry.status)}</td>
                       <td className="p-2">
