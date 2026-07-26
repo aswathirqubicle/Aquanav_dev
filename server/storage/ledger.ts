@@ -408,11 +408,11 @@ export class LedgerStorage extends ProjectAssetStorage {
    * failure part-way rolls the whole set back instead of leaving a one-sided
    * ledger. Omitted, this behaves exactly as before and posts on its own.
    *
-   * NOTE: the project-cost recalculation below still runs on the shared `db`
-   * connection, not on `tx`. It only fires for `payable` entries carrying a
-   * projectId; a caller passing `tx` for such an entry would be recalculating
-   * from outside its own uncommitted transaction, so don't do that without
-   * moving the recalc after the commit.
+   * NOTE: passing `tx` also SKIPS the project-cost recalculation below, because
+   * that recalc reads the ledger over the shared connection and from inside an
+   * open transaction would compute the cost without the rows being written.
+   * Callers passing `tx` must recalculate the affected projects themselves once
+   * the transaction has committed — see postPayrollAccrual for the pattern.
    */
   tx?: Parameters<Parameters<typeof db.transaction>[0]>[0],
   ): Promise<any> {
@@ -488,8 +488,13 @@ export class LedgerStorage extends ProjectAssetStorage {
         } ${debitAmount > 0 ? debitAmount.toFixed(2) : creditAmount.toFixed(2)}`,
       );
 
-      // If this is a payable entry linked to a project, trigger full cost recalculation
-      if (entryData.entryType === "payable" && entryData.projectId) {
+      // If this is a payable entry linked to a project, trigger full cost
+      // recalculation — but NOT when posting inside a transaction. The recalc
+      // reads the ledger over the shared connection, so from inside an open
+      // transaction it cannot see the rows just written and would compute the
+      // project's cost from stale data, then persist that. Callers passing `tx`
+      // must recalculate the affected projects themselves AFTER the commit.
+      if (!tx && entryData.entryType === "payable" && entryData.projectId) {
         await this.recalculateProjectCost(entryData.projectId);
       }
 
