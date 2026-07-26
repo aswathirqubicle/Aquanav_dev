@@ -1572,10 +1572,20 @@ export default function ReportsIndex() {
           name: "Department Cost Analysis", 
           description: "Cost breakdown by department" 
         },
-        { 
+        {
+          id: "trial-balance",
+          name: "Trial Balance",
+          description: "Every account's debit and credit balance, proving the ledger balances"
+        },
+        {
+          id: "balance-sheet",
+          name: "Balance Sheet",
+          description: "Assets, liabilities and equity as at a date"
+        },
+        {
           id: "profit-loss",
-          name: "Profit & Loss Report", 
-          description: "Comprehensive financial performance analysis" 
+          name: "Profit & Loss Report",
+          description: "Comprehensive financial performance analysis"
         },
         { 
           id: "payables-receivables",
@@ -1907,6 +1917,14 @@ export default function ReportsIndex() {
                         }
                         if (report.id === "project-location") {
                           setLocation("/reports/project-location");
+                          return;
+                        }
+                        if (report.id === "trial-balance") {
+                          setLocation("/reports/trial-balance");
+                          return;
+                        }
+                        if (report.id === "balance-sheet") {
+                          setLocation("/reports/balance-sheet");
                           return;
                         }
                         setDialogYear(new Date().getFullYear());
