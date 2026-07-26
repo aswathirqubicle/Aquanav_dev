@@ -49,6 +49,7 @@ import {
   purchaseInvoiceItems,
   purchaseInvoices,
   reimbursements,
+  creditNotes,
   salesInvoices,
   suppliers,
   users,
@@ -2457,12 +2458,56 @@ export class ProjectAssetStorage extends InventoryStorage {
         return sum + amount * rate;
       }, 0);
 
+      // Credit notes reduce revenue. In the ledger a credit note debits Sales
+      // Returns and Allowances — a contra-revenue account — so true revenue is
+      // Sales Revenue less Sales Returns. Summing invoices alone counts only
+      // the first half and overstates the project by every credit note raised
+      // against it.
+      //
+      // Only ISSUED notes count: a draft has posted nothing, and a cancelled
+      // one has had its postings reversed, so deducting either would understate
+      // revenue. Netted of VAT like the invoice side, and converted at the
+      // credit note's OWN exchange rate — which is what the ledger uses, and
+      // does not always match its invoice's currency.
+      //
+      // credit_notes carries no projectId, so the project comes from the
+      // invoice it credits.
+      const projectCreditNotes = await db
+        .select({
+          totalAmount: creditNotes.totalAmount,
+          taxAmount: creditNotes.taxAmount,
+          exchangeRate: creditNotes.exchangeRate,
+        })
+        .from(creditNotes)
+        .innerJoin(
+          salesInvoices,
+          eq(salesInvoices.id, creditNotes.salesInvoiceId),
+        )
+        .where(
+          and(
+            eq(salesInvoices.projectId, projectId),
+            inArray(salesInvoices.status, approvedStatuses),
+            eq(creditNotes.status, "issued"),
+          ),
+        );
+
+      const totalCredited = projectCreditNotes.reduce((sum, cn) => {
+        const amount =
+          parseFloat(cn.totalAmount || "0") - parseFloat(cn.taxAmount || "0");
+        const rate = parseFloat(cn.exchangeRate || "1");
+        return sum + amount * rate;
+      }, 0);
+
+      const netRevenue = totalRevenue - totalCredited;
+
       await this.updateProject(projectId, {
-        totalRevenue: totalRevenue.toFixed(2),
+        totalRevenue: netRevenue.toFixed(2),
       });
 
       console.log(
-        `Updated project ${projectId} total revenue to ${totalRevenue.toFixed(2)} (from ${activeInvoices.length} active invoice(s))`,
+        `Updated project ${projectId} total revenue to ${netRevenue.toFixed(2)} ` +
+          `(${activeInvoices.length} invoice(s) ${totalRevenue.toFixed(2)} less ` +
+          `${projectCreditNotes.length} credit note(s) ${totalCredited.toFixed(2)})`,
       );
     } catch (error: any) {
       await this.createErrorLog({

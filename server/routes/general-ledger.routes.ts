@@ -59,24 +59,23 @@ generalLedgerRoutes.get(
   },
 );
 
+// Retired (8.3/D3). This posted ONE ledger row at a time, so a caller had to
+// remember to post the opposite side itself and nothing checked that it did —
+// the ledger could be left permanently one-sided. Use the journal endpoint
+// below, which takes every line together and rejects the set unless debits
+// equal credits. Answers 410 rather than 404 so an existing caller is told
+// what to do instead of seeing a routing bug.
 generalLedgerRoutes.post(
   "/api/general-ledger",
   requireAuth,
   requireRole(["admin", "finance"]),
-  async (req, res) => {
-    try {
-      const entryData = {
-        ...req.body,
-        createdBy: req.session.userId,
-      };
-      const entry = await storage.createGeneralLedgerEntry(entryData);
-      res.status(201).json(entry);
-    } catch (error) {
-      console.error("Create general ledger entry error:", error);
-      res
-        .status(500)
-        .json({ message: "Failed to create general ledger entry" });
-    }
+  async (_req, res) => {
+    res.status(410).json({
+      message:
+        "Single-sided ledger entries are no longer accepted. Post a balanced " +
+        "entry to /api/general-ledger/journal instead — it takes all lines at " +
+        "once and requires debits to equal credits.",
+    });
   },
 );
 
@@ -109,6 +108,27 @@ generalLedgerRoutes.put(
   async (req, res) => {
     try {
       const entryId = parseInt(req.params.id);
+
+      // A posted amount or account may never be edited in place (8.4/D3).
+      // Editing them rewrites history: the ledger stops showing what was
+      // actually posted, so it can no longer be reconciled against the document
+      // or statement it came from, and an audit cannot tell a correction from a
+      // fabrication. Corrections go through reversal-and-repost — post a
+      // balanced reversing journal, then the corrected one — which leaves the
+      // original on record. Descriptive fields stay editable.
+      const financialFields = ["debitAmount", "creditAmount", "accountName"];
+      const attempted = financialFields.filter(
+        (f) => req.body[f] !== undefined,
+      );
+      if (attempted.length > 0) {
+        return res.status(400).json({
+          message:
+            `Cannot edit ${attempted.join(", ")} on a posted ledger entry. ` +
+            `Post a reversing journal entry and re-post the correction, so the ` +
+            `original remains on record.`,
+        });
+      }
+
       const updateData = {
         ...req.body,
         createdBy: req.session.userId,

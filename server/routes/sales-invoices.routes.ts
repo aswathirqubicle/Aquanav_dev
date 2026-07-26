@@ -623,6 +623,30 @@ salesInvoicesRoutes.put(
   },
 );
 
+// Cancel an issued credit note: reverses its ledger entries, removes the
+// settlement row so the invoice's paid amount and status self-correct, and
+// leaves the note on record as cancelled.
+salesInvoicesRoutes.post(
+  "/api/credit-notes/:id/cancel",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const cancelled = await storage.cancelCreditNote(id, req.session.userId);
+      res.json(cancelled);
+    } catch (error: any) {
+      console.error("Error cancelling credit note:", error);
+      // These are business-rule refusals (already cancelled, not issued, or
+      // worth more than the outstanding balance), not server faults.
+      res.status(400).json({
+        message: error?.message || "Failed to cancel credit note",
+      });
+    }
+  },
+);
+
+// Deleting is now only for drafts — storage refuses anything issued.
 salesInvoicesRoutes.delete(
   "/api/credit-notes/:id",
   requireAuth,
@@ -632,9 +656,11 @@ salesInvoicesRoutes.delete(
       const id = parseInt(req.params.id);
       await storage.deleteCreditNote(id);
       res.status(204).send();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting credit note:", error);
-      res.status(500).json({ message: "Failed to delete credit note" });
+      res.status(400).json({
+        message: error?.message || "Failed to delete credit note",
+      });
     }
   },
 );

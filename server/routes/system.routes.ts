@@ -8,6 +8,7 @@ import {
   requireRole,
 } from "../middleware/auth";
 import { sql as sqlRaw } from "../db";
+import { storage } from "../storage";
 
 export const systemRoutes = Router();
 
@@ -262,6 +263,101 @@ systemRoutes.get(
     } catch (error) {
       console.error("Export error:", error);
       res.status(500).json({ error: "Failed to export data" });
+    }
+  },
+);
+
+// ===========================================================================
+// General ledger rebuild (Phase 11)
+// ---------------------------------------------------------------------------
+// Preview is read-only and safe to call at any time. Execute is destructive:
+// it replaces the chart of accounts with the canonical list if it has drifted,
+// then deletes and re-posts the ledger from the documents that currently exist.
+// Both are admin-only. Storage takes a snapshot of everything it touches first
+// and refuses to write a ledger whose debits do not equal its credits.
+// ===========================================================================
+
+systemRoutes.post(
+  "/api/system/gl-rebuild/preview",
+  requireAuth,
+  requireRole(["admin"]),
+  async (_req, res) => {
+    try {
+      const [chart, plan, current] = await Promise.all([
+        storage.verifyChartOfAccounts(),
+        storage.computeLedgerRebuild(),
+        sqlRaw`select count(*)::int rows,
+                      coalesce(sum(debit_amount),0)::numeric dr,
+                      coalesce(sum(credit_amount),0)::numeric cr
+               from general_ledger_entries`,
+      ]);
+
+      const cur = new Map<string, number>();
+      const currentByAccount = (await sqlRaw`
+        select account_name, sum(debit_amount - credit_amount)::numeric net
+        from general_ledger_entries group by account_name`) as any[];
+      for (const r of currentByAccount) cur.set(r.account_name, Number(r.net));
+
+      const accounts = plan.byAccount.map((a: any) => ({
+        accountName: a.accountName,
+        currentNet: cur.get(a.accountName) ?? 0,
+        rebuiltNet: a.net,
+        delta: Math.round((a.net - (cur.get(a.accountName) ?? 0)) * 100) / 100,
+      }));
+      // accounts that exist today but would disappear
+      for (const [name, net] of Array.from(cur.entries())) {
+        if (!plan.byAccount.some((a: any) => a.accountName === name)) {
+          accounts.push({ accountName: name, currentNet: net, rebuiltNet: 0, delta: -net });
+        }
+      }
+
+      res.json({
+        chart: {
+          ok: chart.ok,
+          missing: chart.missing,
+          renamed: chart.renamed,
+          unexpected: chart.unexpected,
+          willBeReseeded: !chart.ok,
+        },
+        current: {
+          rows: (current as any[])[0].rows,
+          debit: Number((current as any[])[0].dr),
+          credit: Number((current as any[])[0].cr),
+        },
+        rebuilt: {
+          rows: plan.rows.length,
+          debit: plan.totalDebit,
+          credit: plan.totalCredit,
+          balanced: plan.balanced,
+        },
+        skipped: plan.skipped,
+        accounts: accounts.sort((a: any, b: any) => a.accountName.localeCompare(b.accountName)),
+      });
+    } catch (error: any) {
+      console.error("GL rebuild preview error:", error);
+      res.status(500).json({ message: error?.message || "Failed to compute rebuild preview" });
+    }
+  },
+);
+
+systemRoutes.post(
+  "/api/system/gl-rebuild/execute",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req, res) => {
+    try {
+      // Typed confirmation, so this cannot fire from a stray click.
+      if (req.body?.confirm !== "REBUILD LEDGER") {
+        return res.status(400).json({
+          message:
+            'Confirmation required. Send { "confirm": "REBUILD LEDGER" } to proceed.',
+        });
+      }
+      const result = await storage.executeLedgerRebuild(req.session.userId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("GL rebuild error:", error);
+      res.status(500).json({ message: error?.message || "Failed to rebuild ledger" });
     }
   },
 );

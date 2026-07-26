@@ -5,6 +5,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -52,6 +63,56 @@ export default function SettingsIndex() {
   const isAdmin = user?.role === "admin";
   const isFinance = user?.role === "finance";
   const hasAccess = isAdmin || isFinance;
+
+  // ---- Ledger rebuild (Phase 11) ----
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildPreview, setRebuildPreview] = useState<any>(null);
+  const [rebuildResult, setRebuildResult] = useState<any>(null);
+  const [rebuildConfirm, setRebuildConfirm] = useState("");
+
+  const handleRebuildPreview = async () => {
+    setIsPreviewing(true);
+    setRebuildResult(null);
+    try {
+      const response = await apiRequest("/api/system/gl-rebuild/preview", { method: "POST" });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to compute preview");
+      }
+      setRebuildPreview(await response.json());
+    } catch (error: any) {
+      toast({ title: "Preview failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const handleRebuildExecute = async () => {
+    setIsRebuilding(true);
+    try {
+      const response = await apiRequest("/api/system/gl-rebuild/execute", {
+        method: "POST",
+        body: { confirm: "REBUILD LEDGER" },
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Rebuild failed");
+      }
+      const result = await response.json();
+      setRebuildResult(result);
+      setRebuildPreview(null);
+      setRebuildConfirm("");
+      toast({
+        title: "Ledger rebuilt",
+        description: `${result.postedRows} rows posted. Backups: ${result.backupTables.join(", ")}`,
+      });
+    } catch (error: any) {
+      toast({ title: "Rebuild failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsRebuilding(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -871,6 +932,156 @@ export default function SettingsIndex() {
                 )}
               </CardContent>
             </Card>
+
+            {/* ---- Ledger rebuild (Phase 11) — destructive, admin only ---- */}
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-destructive" />
+                  Rebuild General Ledger
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Deletes the general ledger and re-posts it from the sales invoices,
+                  purchase invoices, payments and credit notes that currently exist, so it
+                  reflects the current posting rules. If the chart of accounts has drifted
+                  from the planned list it is replaced first. Cancelled and draft documents
+                  are not posted. The payroll sub-ledger is cleared. Everything touched is
+                  backed up to timestamped tables first.
+                </p>
+
+                <Button variant="outline" onClick={handleRebuildPreview} disabled={isPreviewing}>
+                  {isPreviewing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Activity className="h-4 w-4 mr-2" />}
+                  {isPreviewing ? "Calculating..." : "Preview Changes"}
+                </Button>
+
+                {rebuildPreview && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div className="p-3 border rounded-lg">
+                        <span className="block text-slate-500">Rows now</span>
+                        <span className="font-medium">{rebuildPreview.current.rows}</span>
+                      </div>
+                      <div className="p-3 border rounded-lg">
+                        <span className="block text-slate-500">Rows after</span>
+                        <span className="font-medium">{rebuildPreview.rebuilt.rows}</span>
+                      </div>
+                      <div className="p-3 border rounded-lg">
+                        <span className="block text-slate-500">Total after</span>
+                        <span className="font-medium">{Number(rebuildPreview.rebuilt.debit).toLocaleString(undefined,{minimumFractionDigits:2})}</span>
+                      </div>
+                      <div className="p-3 border rounded-lg">
+                        <span className="block text-slate-500">Balanced</span>
+                        <span className={rebuildPreview.rebuilt.balanced ? "font-medium text-green-600" : "font-medium text-destructive"}>
+                          {rebuildPreview.rebuilt.balanced ? "Yes" : "No"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {!rebuildPreview.chart.ok && (
+                      <div className="p-3 border border-amber-300 bg-amber-50 dark:bg-amber-950 rounded-lg text-sm">
+                        <p className="font-medium text-amber-900 dark:text-amber-100">
+                          Chart of accounts will be replaced with the planned list
+                        </p>
+                        <p className="text-amber-800 dark:text-amber-200">
+                          {rebuildPreview.chart.missing.length} missing, {rebuildPreview.chart.renamed.length} renamed,
+                          {" "}{rebuildPreview.chart.unexpected.length} not in the planned list
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="border rounded-lg overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-900">
+                          <tr>
+                            <th className="text-left p-2">Account</th>
+                            <th className="text-right p-2">Now</th>
+                            <th className="text-right p-2">After</th>
+                            <th className="text-right p-2">Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rebuildPreview.accounts.map((a: any) => (
+                            <tr key={a.accountName} className="border-t">
+                              <td className="p-2">{a.accountName}</td>
+                              <td className="p-2 text-right font-mono">{Number(a.currentNet).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                              <td className="p-2 text-right font-mono">{Number(a.rebuiltNet).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                              <td className={`p-2 text-right font-mono ${Math.abs(a.delta) > 0.005 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                                {Number(a.delta).toLocaleString(undefined,{minimumFractionDigits:2})}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      Skipping {rebuildPreview.skipped.cancelledSales} cancelled sales and
+                      {" "}{rebuildPreview.skipped.cancelledPurchase} cancelled purchase invoices.
+                    </p>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" disabled={!rebuildPreview.rebuilt.balanced || isRebuilding}>
+                          {isRebuilding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <AlertTriangle className="h-4 w-4 mr-2" />}
+                          {isRebuilding ? "Rebuilding..." : "Rebuild Ledger"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Rebuild the general ledger?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This deletes all {rebuildPreview.current.rows} ledger rows and the payroll
+                            sub-ledger, then posts {rebuildPreview.rebuilt.rows} rows from the current
+                            documents. Backups are taken first, but this cannot be undone from the app.
+                            Type REBUILD LEDGER below to confirm.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <Input
+                          value={rebuildConfirm}
+                          onChange={(e) => setRebuildConfirm(e.target.value)}
+                          placeholder="REBUILD LEDGER"
+                        />
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={() => setRebuildConfirm("")}>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={handleRebuildExecute}
+                            disabled={rebuildConfirm !== "REBUILD LEDGER"}
+                          >
+                            Rebuild Ledger
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                )}
+
+                {rebuildResult && (
+                  <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg text-sm space-y-1">
+                    <div className="flex items-center mb-2">
+                      <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                      <span className="font-medium text-green-900 dark:text-green-100">Ledger rebuilt</span>
+                    </div>
+                    <p className="text-green-800 dark:text-green-200">
+                      Removed {rebuildResult.deletedGl} ledger rows and {rebuildResult.deletedPayroll} payroll entries;
+                      posted {rebuildResult.postedRows} rows totalling{" "}
+                      {Number(rebuildResult.totalDebit).toLocaleString(undefined,{minimumFractionDigits:2})}.
+                    </p>
+                    {rebuildResult.chartRepaired && (
+                      <p className="text-green-800 dark:text-green-200">
+                        Chart of accounts replaced: {rebuildResult.chartRepaired.removed} removed,
+                        {" "}{rebuildResult.chartRepaired.inserted} inserted.
+                      </p>
+                    )}
+                    <p className="text-green-700 dark:text-green-300 text-xs">
+                      Backups: {rebuildResult.backupTables.join(", ")}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
 
             {healthData && (
               <Card>

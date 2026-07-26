@@ -4,6 +4,9 @@ import {
   chartOfAccounts,
   customers,
   generalLedgerEntries,
+  payrollAdditions,
+  payrollDeductions,
+  payrollEntries,
   projects,
   salesInvoices,
 } from "@shared/schema";
@@ -587,34 +590,83 @@ export class LedgerStorage extends ProjectAssetStorage {
         );
       }
 
+      // Every account must exist in the chart of accounts (8.5). A journal is
+      // the one posting path where the account name is typed by a user rather
+      // than chosen by code, so a typo silently creates a new "account" that no
+      // report knows about and no statement rolls up.
+      //
+      // Scoped to journals deliberately. Widening it to createGeneralLedgerEntry
+      // would make every posting path — sales, purchase, payroll — depend on the
+      // chart matching the account names those paths hard-code, so a single COA
+      // rename or deactivation would start failing approvals. Migration 0068
+      // removed the one mismatch that existed (payroll credits "Provident Fund
+      // Contribution"; account 2120 was still named "Tax Deducted at Source"),
+      // so widening is now possible — but it is a separate decision.
+      const chartRows = await db
+        .select({ name: chartOfAccounts.accountName })
+        .from(chartOfAccounts);
+      const knownAccounts = new Set(
+        chartRows.map((r) => (r.name || "").trim().toLowerCase()),
+      );
+      const unknown = journalData.entries
+        .map((e) => (e.accountName || "").trim())
+        .filter((n) => !knownAccounts.has(n.toLowerCase()));
+      if (unknown.length > 0) {
+        throw new Error(
+          `Unknown account${unknown.length > 1 ? "s" : ""}: ${Array.from(
+            new Set(unknown),
+          ).join(", ")}. Journal accounts must exist in the chart of accounts.`,
+        );
+      }
+
       console.log(
         `Creating balanced journal entry: Debits=${totalDebits.toFixed(
           2,
         )}, Credits=${totalCredits.toFixed(2)}`,
       );
 
-      // Create all entries in the journal
-      const createdEntries = [];
-      for (const entry of journalData.entries) {
-        const glEntry = await this.createGeneralLedgerEntry({
-          entryType: journalData.entryType || "manual",
-          referenceType: journalData.referenceType,
-          referenceId: journalData.referenceId,
-          accountName: entry.accountName,
-          description: journalData.description,
-          debitAmount: entry.debitAmount || "0",
-          creditAmount: entry.creditAmount || "0",
-          entityId: entry.entityId,
-          entityName: entry.entityName,
-          projectId: entry.projectId,
-          invoiceNumber: entry.invoiceNumber,
-          transactionDate: journalData.transactionDate,
-          dueDate: journalData.dueDate,
-          status: journalData.status,
-          notes: entry.notes,
-          createdBy: journalData.createdBy,
-        });
-        createdEntries.push(glEntry);
+      // Every line of the journal in ONE transaction (1.7/L14). Posted
+      // independently, a failure part-way left a journal half-posted — and a
+      // journal is the one posting with no source document to re-derive it
+      // from, so the ledger would be permanently unbalanced with nothing to
+      // reconcile against.
+      const createdEntries: any[] = [];
+      const affectedProjectIds = new Set<number>();
+
+      await db.transaction(async (tx) => {
+        for (const entry of journalData.entries) {
+          const glEntry = await this.createGeneralLedgerEntry(
+            {
+              entryType: journalData.entryType || "manual",
+              referenceType: journalData.referenceType,
+              referenceId: journalData.referenceId,
+              accountName: entry.accountName,
+              description: journalData.description,
+              debitAmount: entry.debitAmount || "0",
+              creditAmount: entry.creditAmount || "0",
+              entityId: entry.entityId,
+              entityName: entry.entityName,
+              projectId: entry.projectId,
+              invoiceNumber: entry.invoiceNumber,
+              transactionDate: journalData.transactionDate,
+              dueDate: journalData.dueDate,
+              status: journalData.status,
+              notes: entry.notes,
+              createdBy: journalData.createdBy,
+            },
+            tx,
+          );
+          createdEntries.push(glEntry);
+          if (entry.projectId) affectedProjectIds.add(entry.projectId);
+        }
+      });
+
+      // Recalculate after the commit: passing `tx` skips the per-row recalc,
+      // since from inside the transaction it could not see these rows.
+      if ((journalData.entryType || "manual") === "payable") {
+        for (const projectId of Array.from(affectedProjectIds)) {
+          await this.recalculateProjectCost(projectId);
+        }
       }
 
       console.log(
@@ -879,5 +931,384 @@ export class LedgerStorage extends ProjectAssetStorage {
       });
       throw error;
     }
+  }
+
+  // ===========================================================================
+  // Ledger rebuild (Phase 11)
+  // ---------------------------------------------------------------------------
+  // Re-posts the ledger from the documents that currently exist, so it reflects
+  // the corrected posting rules rather than whatever historic bugs produced it.
+  //
+  // NOT re-posted: cancelled invoices (a cancelled document has no economic
+  // effect; posting then immediately reversing it only adds noise) and
+  // drafts / pending-approval documents. Payroll is cleared rather than rebuilt
+  // — its GL cannot be regenerated from anything but payroll_entries, so
+  // deleting the GL while leaving the sub-ledger populated would leave the two
+  // permanently disagreeing.
+  // ===========================================================================
+
+  /**
+   * Check the chart of accounts against the canonical list in
+   * scripts/seed-chart-of-accounts.ts — the same list migration 0062 keeps in
+   * step. Reports accounts that are missing entirely, and accounts whose name
+   * has drifted from the planned one for that code.
+   *
+   * The rebuild posts to account names hard-coded in the posting logic, so a
+   * missing or renamed account silently produces ledger rows for an account no
+   * report knows about. That is exactly what happened with 2120: the code
+   * credited "Provident Fund Contribution" while the chart still said "Tax
+   * Deducted at Source (TDS)", leaving six rows outside the chart.
+   */
+  async verifyChartOfAccounts(): Promise<{
+    ok: boolean;
+    missing: { accountCode: string; accountName: string }[];
+    renamed: { accountCode: string; expected: string; actual: string }[];
+    unexpected: { accountCode: string; accountName: string }[];
+  }> {
+    const { accounts: planned } = await import("@shared/chart-of-accounts");
+    const rows = (await db
+      .select({
+        accountCode: chartOfAccounts.accountCode,
+        accountName: chartOfAccounts.accountName,
+      })
+      .from(chartOfAccounts)) as { accountCode: string; accountName: string }[];
+
+    const actual = new Map(rows.map((r) => [r.accountCode, r.accountName]));
+    const plannedCodes = new Set<string>();
+
+    const missing: { accountCode: string; accountName: string }[] = [];
+    const renamed: { accountCode: string; expected: string; actual: string }[] = [];
+    for (const p of planned as { accountCode: string; accountName: string }[]) {
+      plannedCodes.add(p.accountCode);
+      const got = actual.get(p.accountCode);
+      if (got === undefined) {
+        missing.push({ accountCode: p.accountCode, accountName: p.accountName });
+      } else if (got.trim() !== p.accountName.trim()) {
+        renamed.push({ accountCode: p.accountCode, expected: p.accountName, actual: got });
+      }
+    }
+    const unexpected = rows
+      .filter((r) => !plannedCodes.has(r.accountCode))
+      .map((r) => ({ accountCode: r.accountCode, accountName: r.accountName }));
+
+    return {
+      ok: missing.length === 0 && renamed.length === 0,
+      missing,
+      renamed,
+      unexpected,
+    };
+  }
+
+  /**
+   * Replace the chart of accounts with the canonical list. Snapshots the
+   * existing chart first. Nothing references chart_of_accounts by foreign key —
+   * the ledger links to it by account NAME — so replacing rows cannot orphan
+   * anything structurally. Accounts present in the database but absent from the
+   * planned list are dropped; that is the point of the operation.
+   */
+  async reseedChartOfAccounts(): Promise<{
+    backupTable: string;
+    removed: number;
+    inserted: number;
+  }> {
+    const { accounts: planned } = await import("@shared/chart-of-accounts");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    const backupTable = `coa_backup_${stamp}`;
+
+    const [before] = (await sqlRaw`select count(*)::int n from chart_of_accounts`) as any[];
+    await sqlRaw.unsafe(
+      `create table ${backupTable} as select * from chart_of_accounts`,
+    );
+
+    await db.transaction(async (tx) => {
+      await tx.delete(chartOfAccounts);
+      for (const a of planned as any[]) {
+        await tx.insert(chartOfAccounts).values({
+          accountCode: a.accountCode,
+          accountName: a.accountName,
+          accountType: a.accountType,
+          accountCategory: a.accountCategory,
+          description: a.description,
+          isActive: a.isActive ?? true,
+        });
+      }
+    });
+
+    return { backupTable, removed: before.n, inserted: (planned as any[]).length };
+  }
+
+  /** Compute the rebuilt ledger WITHOUT writing. Safe to call any time. */
+  async computeLedgerRebuild(): Promise<{
+    rows: any[];
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+    byAccount: { accountName: string; debit: number; credit: number; net: number }[];
+    skipped: { cancelledSales: number; cancelledPurchase: number; creditNoteSettlements: number };
+  }> {
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const rows: any[] = [];
+    const push = (r: any) => {
+      if (Number(r.debitAmount) > 0.005 || Number(r.creditAmount) > 0.005) rows.push(r);
+    };
+
+    const salesInv = await sqlRaw`
+      select s.id, s.invoice_number, s.customer_id, s.project_id, s.invoice_date,
+             coalesce(s.exchange_rate,1)::numeric rate, s.total_amount::numeric total,
+             coalesce(s.tax_amount,0)::numeric tax, c.name customer_name
+      from sales_invoices s left join customers c on c.id = s.customer_id
+      where s.status in ('approved','unpaid','partially_paid','paid','overdue') order by s.id`;
+    for (const v of salesInv as any[]) {
+      const gross = r2(Number(v.total) * Number(v.rate));
+      const tax = r2(Number(v.tax) * Number(v.rate));
+      const base = {
+        entryType: "receivable", referenceType: "sales_invoice", referenceId: v.id,
+        description: `Sales Invoice ${v.invoice_number} - ${v.customer_name || "Unknown Customer"}`,
+        entityId: v.customer_id, entityName: v.customer_name, projectId: v.project_id,
+        invoiceNumber: v.invoice_number, transactionDate: v.invoice_date, status: "pending",
+      };
+      push({ ...base, accountName: "Accounts Receivable", debitAmount: gross, creditAmount: 0 });
+      push({ ...base, accountName: "Sales Revenue", debitAmount: 0, creditAmount: r2(gross - tax) });
+      push({ ...base, accountName: "VAT/GST Payable", debitAmount: 0, creditAmount: tax });
+    }
+
+    const salesPay = await sqlRaw`
+      select p.id, p.amount::numeric amount, p.payment_date, s.invoice_number,
+             s.customer_id, s.project_id, coalesce(s.exchange_rate,1)::numeric rate,
+             c.name customer_name
+      from invoice_payments p join sales_invoices s on s.id = p.invoice_id
+      left join customers c on c.id = s.customer_id
+      where s.status in ('approved','unpaid','partially_paid','paid','overdue')
+        and coalesce(p.payment_type,'payment') <> 'credit_note' order by p.id`;
+    for (const p of salesPay as any[]) {
+      const aed = r2(Number(p.amount) * Number(p.rate));
+      const base = {
+        entryType: "receivable", referenceType: "payment", referenceId: p.id,
+        description: `Payment received for Invoice: ${p.invoice_number}`,
+        entityId: p.customer_id, entityName: p.customer_name, projectId: p.project_id,
+        invoiceNumber: p.invoice_number, transactionDate: p.payment_date, status: "paid",
+      };
+      push({ ...base, accountName: "Cash/Bank", debitAmount: aed, creditAmount: 0 });
+      push({ ...base, accountName: "Accounts Receivable", debitAmount: 0, creditAmount: aed });
+    }
+
+    const cns = await sqlRaw`
+      select n.id, n.credit_note_number, n.customer_id, n.credit_note_date,
+             coalesce(n.exchange_rate,1)::numeric rate, coalesce(n.total_amount,0)::numeric total,
+             coalesce(n.tax_amount,0)::numeric tax, s.invoice_number, s.project_id, c.name customer_name
+      from credit_notes n left join sales_invoices s on s.id = n.sales_invoice_id
+      left join customers c on c.id = n.customer_id where n.status='issued' order by n.id`;
+    for (const v of cns as any[]) {
+      const gross = r2(Number(v.total) * Number(v.rate));
+      const tax = r2(Number(v.tax) * Number(v.rate));
+      const base = {
+        entryType: "receivable", referenceType: "credit_note", referenceId: v.id,
+        description: `Credit Note: ${v.credit_note_number} for Invoice: ${v.invoice_number || "N/A"}`,
+        entityId: v.customer_id, entityName: v.customer_name, projectId: v.project_id,
+        invoiceNumber: v.invoice_number, transactionDate: v.credit_note_date, status: "issued",
+      };
+      push({ ...base, accountName: "Sales Returns and Allowances", debitAmount: r2(gross - tax), creditAmount: 0 });
+      push({ ...base, accountName: "VAT/GST Payable", debitAmount: tax, creditAmount: 0 });
+      push({ ...base, accountName: "Accounts Receivable", debitAmount: 0, creditAmount: gross });
+    }
+
+    const purchInv = await sqlRaw`
+      select p.id, p.invoice_number, p.supplier_id, p.invoice_date,
+             coalesce(p.exchange_rate,1)::numeric rate, p.total_amount::numeric total,
+             coalesce(p.tax_amount,0)::numeric tax, s.name supplier_name
+      from purchase_invoices p left join suppliers s on s.id = p.supplier_id
+      where p.status='approved' order by p.id`;
+    for (const v of purchInv as any[]) {
+      const gross = r2(Number(v.total) * Number(v.rate));
+      const tax = r2(Number(v.tax) * Number(v.rate));
+      const expense = r2(gross - tax);
+      const base = {
+        entryType: "payable", referenceType: "purchase_invoice", referenceId: v.id,
+        description: `Purchase Invoice ${v.invoice_number} - ${v.supplier_name || "Unknown Supplier"}`,
+        entityId: v.supplier_id, entityName: v.supplier_name,
+        invoiceNumber: v.invoice_number, transactionDate: v.invoice_date, status: "pending",
+      };
+      // expense weighted by each line's net-of-VAT amount, grouped by project
+      const items = (await sqlRaw`
+        select project_id, sum(line_total::numeric - coalesce(tax_amount,0)::numeric) net
+        from purchase_invoice_items where invoice_id = ${v.id} group by project_id`) as any[];
+      const weights = items.map((i) => Math.max(0, Number(i.net)));
+      const totalW = weights.reduce((s, w) => s + w, 0);
+      if (totalW > 0) {
+        let allocated = 0;
+        items.forEach((it, idx) => {
+          const share = idx === items.length - 1
+            ? r2(expense - allocated)
+            : r2((expense * weights[idx]) / totalW);
+          allocated = r2(allocated + share);
+          push({ ...base, accountName: "Purchase Expense", debitAmount: share, creditAmount: 0, projectId: it.project_id });
+        });
+      } else {
+        push({ ...base, accountName: "Purchase Expense", debitAmount: expense, creditAmount: 0, projectId: null });
+      }
+      push({ ...base, accountName: "VAT Recoverable", debitAmount: tax, creditAmount: 0, projectId: null });
+      push({ ...base, accountName: "Accounts Payable", debitAmount: 0, creditAmount: gross, projectId: null });
+    }
+
+    const purchPay = await sqlRaw`
+      select p.id, p.amount::numeric amount, p.payment_date, i.invoice_number, i.supplier_id,
+             coalesce(i.exchange_rate,1)::numeric rate, s.name supplier_name
+      from purchase_invoice_payments p join purchase_invoices i on i.id = p.invoice_id
+      left join suppliers s on s.id = i.supplier_id
+      where i.status='approved' and coalesce(p.payment_type,'payment') <> 'credit_note' order by p.id`;
+    for (const p of purchPay as any[]) {
+      const aed = r2(Number(p.amount) * Number(p.rate));
+      const base = {
+        entryType: "payable", referenceType: "payment", referenceId: p.id,
+        description: `Payment for Purchase Invoice ${p.invoice_number}`,
+        entityId: p.supplier_id, entityName: p.supplier_name, projectId: null,
+        invoiceNumber: p.invoice_number, transactionDate: p.payment_date, status: "paid",
+      };
+      push({ ...base, accountName: "Accounts Payable", debitAmount: aed, creditAmount: 0 });
+      push({ ...base, accountName: "Cash/Bank", debitAmount: 0, creditAmount: aed });
+    }
+
+    const pcns = await sqlRaw`
+      select n.id, n.credit_note_number, n.supplier_id, n.credit_note_date,
+             coalesce(n.total_amount,0)::numeric total, coalesce(n.tax_amount,0)::numeric tax,
+             coalesce(i.exchange_rate,1)::numeric rate, i.invoice_number, s.name supplier_name
+      from purchase_credit_notes n join purchase_invoices i on i.id = n.purchase_invoice_id
+      left join suppliers s on s.id = n.supplier_id
+      where n.status='issued' and i.status='approved' order by n.id`;
+    for (const v of pcns as any[]) {
+      const gross = r2(Number(v.total) * Number(v.rate));
+      const tax = r2(Number(v.tax) * Number(v.rate));
+      const base = {
+        entryType: "payable", referenceType: "purchase_credit_note", referenceId: v.id,
+        description: `Purchase Credit Note ${v.credit_note_number} for Invoice ${v.invoice_number}`,
+        entityId: v.supplier_id, entityName: v.supplier_name, projectId: null,
+        invoiceNumber: v.invoice_number, transactionDate: v.credit_note_date, status: "issued",
+      };
+      push({ ...base, accountName: "Accounts Payable", debitAmount: gross, creditAmount: 0 });
+      push({ ...base, accountName: "Purchase Expense", debitAmount: 0, creditAmount: r2(gross - tax) });
+      push({ ...base, accountName: "VAT Recoverable", debitAmount: 0, creditAmount: tax });
+    }
+
+    const totalDebit = r2(rows.reduce((s, r) => s + Number(r.debitAmount), 0));
+    const totalCredit = r2(rows.reduce((s, r) => s + Number(r.creditAmount), 0));
+
+    const acc = new Map<string, { debit: number; credit: number }>();
+    for (const r of rows) {
+      const e = acc.get(r.accountName) || { debit: 0, credit: 0 };
+      e.debit = r2(e.debit + Number(r.debitAmount));
+      e.credit = r2(e.credit + Number(r.creditAmount));
+      acc.set(r.accountName, e);
+    }
+
+    const [cs] = (await sqlRaw`select count(*)::int n from sales_invoices where status='cancelled'`) as any[];
+    const [cp] = (await sqlRaw`select count(*)::int n from purchase_invoices where status='cancelled'`) as any[];
+    const [cset] = (await sqlRaw`select count(*)::int n from invoice_payments where payment_type='credit_note'`) as any[];
+
+    return {
+      rows,
+      totalDebit,
+      totalCredit,
+      balanced: totalDebit === totalCredit,
+      byAccount: Array.from(acc.entries())
+        .map(([accountName, v]) => ({ accountName, ...v, net: r2(v.debit - v.credit) }))
+        .sort((a, b) => a.accountName.localeCompare(b.accountName)),
+      skipped: { cancelledSales: cs.n, cancelledPurchase: cp.n, creditNoteSettlements: cset.n },
+    };
+  }
+
+  /**
+   * Rebuild the ledger. DESTRUCTIVE. Snapshots general_ledger_entries and
+   * payroll_entries to timestamped tables first, and refuses to write a ledger
+   * whose debits do not equal its credits.
+   */
+  async executeLedgerRebuild(userId?: number): Promise<{
+    backupTables: string[];
+    deletedGl: number;
+    deletedPayroll: number;
+    postedRows: number;
+    totalDebit: number;
+    totalCredit: number;
+    chartRepaired: { backupTable: string; removed: number; inserted: number } | null;
+  }> {
+    // Step 1 — the chart must match the planned one. The rebuild posts to
+    // hard-coded account names, so a missing or renamed account would put rows
+    // outside the chart where no report can find them. If it has drifted,
+    // replace it with the canonical list rather than refusing: the chart is a
+    // fixed reference set, so restoring it is the correct repair.
+    let coaRepair: { backupTable: string; removed: number; inserted: number } | null = null;
+    const coaBefore = await this.verifyChartOfAccounts();
+    if (!coaBefore.ok) {
+      coaRepair = await this.reseedChartOfAccounts();
+      const coaAfter = await this.verifyChartOfAccounts();
+      if (!coaAfter.ok) {
+        const problems = [
+          ...coaAfter.missing.map((m) => `missing ${m.accountCode} ${m.accountName}`),
+          ...coaAfter.renamed.map(
+            (r) => `${r.accountCode}: expected "${r.expected}", found "${r.actual}"`,
+          ),
+        ];
+        throw new Error(
+          `Refusing to rebuild: the chart of accounts still does not match the ` +
+            `planned list after reseeding — ${problems.join("; ")}`,
+        );
+      }
+    }
+
+    // Gate 2 — never write an unbalanced ledger.
+    const plan = await this.computeLedgerRebuild();
+    if (!plan.balanced) {
+      throw new Error(
+        `Refusing to rebuild: computed ledger is out of balance by ${(
+          plan.totalDebit - plan.totalCredit
+        ).toFixed(2)}`,
+      );
+    }
+
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    const glBackup = `gl_backup_${stamp}`;
+    const payrollBackup = `payroll_backup_${stamp}`;
+
+    const [glBefore] = (await sqlRaw`select count(*)::int n from general_ledger_entries`) as any[];
+    const [payBefore] = (await sqlRaw`select count(*)::int n from payroll_entries`) as any[];
+
+    await sqlRaw.unsafe(`create table ${glBackup} as select * from general_ledger_entries`);
+    await sqlRaw.unsafe(`create table ${payrollBackup} as select * from payroll_entries`);
+
+    await db.transaction(async (tx) => {
+      await tx.delete(payrollDeductions);
+      await tx.delete(payrollAdditions);
+      await tx.delete(payrollEntries);
+      await tx.delete(generalLedgerEntries);
+      for (const r of plan.rows) {
+        await tx.insert(generalLedgerEntries).values({
+          entryType: r.entryType,
+          referenceType: r.referenceType,
+          referenceId: r.referenceId ?? null,
+          accountName: r.accountName,
+          description: r.description,
+          debitAmount: Number(r.debitAmount).toFixed(2),
+          creditAmount: Number(r.creditAmount).toFixed(2),
+          entityId: r.entityId ?? null,
+          entityName: r.entityName ?? null,
+          projectId: r.projectId ?? null,
+          invoiceNumber: r.invoiceNumber ?? null,
+          transactionDate: r.transactionDate,
+          status: r.status,
+          createdBy: userId ?? null,
+        });
+      }
+    });
+
+    return {
+      backupTables: coaRepair
+        ? [glBackup, payrollBackup, coaRepair.backupTable]
+        : [glBackup, payrollBackup],
+      deletedGl: glBefore.n,
+      deletedPayroll: payBefore.n,
+      postedRows: plan.rows.length,
+      totalDebit: plan.totalDebit,
+      totalCredit: plan.totalCredit,
+      chartRepaired: coaRepair,
+    };
   }
 }

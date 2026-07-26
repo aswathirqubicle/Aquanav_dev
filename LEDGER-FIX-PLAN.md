@@ -1226,6 +1226,25 @@ invoices, credit notes, purchase credit notes. Drafts (no GL) delete as now.
 **Decisions:** D3 · **Findings:** L4, L16. **Depends on:** P0.
 **Must precede P11.**
 
+> **✅ PHASE COMPLETE 2026-07-26**, with one item carried forward. 8.1, 8.2, 8.3
+> and 8.5 shipped; 8.4 shipped as the **guard** only. T8.1–T8.5 and T8.7–T8.11
+> verified — 24 assertions against the real router and the real auth middleware,
+> every rejection confirmed to write nothing and the ledger returned to its
+> starting state afterwards.
+>
+> **Carried forward — T8.6.** A posted journal can no longer be edited, and the
+> refusal names reversal-and-repost as the route to a correction, but nothing
+> *offers* it: there is no "reverse this entry" action, so the correcting
+> journal has to be typed by hand. The original does remain visible, which is
+> the part that mattered for audit. Worth a follow-up, not a blocker.
+>
+> **Note.** Business-rule refusals from the journal endpoint return **500**
+> rather than 400 (unbalanced, unknown account, zero amount). The message is
+> correct and the client surfaces it, so the user sees the real reason — but the
+> status code says "server fault" for what is a validation failure. The credit
+> note routes were changed to 400 for exactly this reason; the journal route was
+> not. Cosmetic, and left alone rather than widened beyond the approved scope.
+
 ### Changes
 
 | # | Change | Detail |
@@ -1313,6 +1332,39 @@ currency.
 
 **Decisions:** D15, D17. **Depends on:** P0–P10 — it must call the corrected
 posting code.
+
+> **⚠ PARTIALLY DONE 2026-07-26 — four of the six guards are in place, and the
+> two that are missing are the ones that protect production.**
+>
+> **Shipped and verified** (23 assertions, no rebuild executed by the tests):
+> admin-only on both preview and execute (T11.2 — finance, project_manager,
+> employee and anonymous all refused); two-step preview → confirm; typed
+> `REBUILD LEDGER` phrase, with five near-miss phrases all aborting and the GL
+> row count unchanged (T11.4); preview read-only (T11.5); un-regenerable rows
+> reported before deletion (T11.6, T11.7); the rebuild plan balances exactly
+> (T11.8); no orphan rows and no account outside the chart (T11.10); computing
+> the rebuild twice yields identical postings (T11.11); a pre-deletion backup
+> table exists and holds every row (T11.13). Run live on the local UAT copy:
+> 891 rows → 535, VAT Recoverable restored to 27,126.04.
+>
+> **NOT implemented — needs a decision before this reaches a deployed
+> environment:**
+>
+> - **T11.1 — no environment check.** `POST /api/system/gl-rebuild/execute` will
+>   run wherever it is deployed. The only things standing between a signed-in
+>   admin and deletion of the entire general ledger are the role check and the
+>   typed phrase. The plan calls this *"the single most important test in this
+>   phase"*, and it is the one guard that does not depend on a human getting a
+>   dialog right.
+> - **T11.3 — no re-authentication.** The admin does not re-enter their password
+>   for this specific action, so an unattended logged-in session is enough.
+>
+> Also not covered: **T11.12** (behaviour on a mid-rebuild failure). The delete
+> and re-post run inside one `db.transaction`, so it should roll back whole, but
+> this was reasoned about rather than tested — no forced-failure run was made.
+>
+> The rebuild is otherwise sound; what is missing is defence in depth around a
+> destructive action, not correctness of the rebuild itself.
 
 ### Changes
 
