@@ -556,81 +556,104 @@ export class PayrollStorage extends PurchaseStorage {
       ...over,
     });
 
-    // Dr Salary Expense — split per project by real time worked.
-    if (earnings > 0) {
-      const split = await this.computeProjectEarnings(
-        employee,
-        entry.month,
-        entry.year,
-      );
-      if (split.projectEarningsList.length > 0) {
-        const debits = this.splitAmountAcrossRows(
-          split.projectEarningsList.map((p) => p.earnings),
-          earnings,
+    // Every row of the accrual in ONE transaction (1.7/L14). Posted
+    // independently, a failure part-way left the ledger one-sided — e.g. Salary
+    // Expense debited with no matching credit to Salary Payable — on an entry
+    // that still reported success and showed as approved.
+    const affectedProjectIds = new Set<number>();
+
+    await db.transaction(async (tx) => {
+      // Dr Salary Expense — split per project by real time worked.
+      if (earnings > 0) {
+        const split = await this.computeProjectEarnings(
+          employee,
+          entry.month,
+          entry.year,
         );
-        for (let i = 0; i < split.projectEarningsList.length; i++) {
+        if (split.projectEarningsList.length > 0) {
+          const debits = this.splitAmountAcrossRows(
+            split.projectEarningsList.map((p) => p.earnings),
+            earnings,
+          );
+          for (let i = 0; i < split.projectEarningsList.length; i++) {
+            await this.createGeneralLedgerEntry(
+              line({
+                accountName: "Salary Expense",
+                description: `Salary for ${employeeName} - Project: ${split.projectEarningsList[i].title} - ${monthName} ${entry.year}`,
+                debitAmount: debits[i].toFixed(2),
+                projectId: split.projectEarningsList[i].projectId,
+              }),
+              tx,
+            );
+            affectedProjectIds.add(split.projectEarningsList[i].projectId);
+          }
+        } else {
           await this.createGeneralLedgerEntry(
             line({
               accountName: "Salary Expense",
-              description: `Salary for ${employeeName} - Project: ${split.projectEarningsList[i].title} - ${monthName} ${entry.year}`,
-              debitAmount: debits[i].toFixed(2),
-              projectId: split.projectEarningsList[i].projectId,
+              description: `Salary for ${employeeName} - ${monthName} ${entry.year}`,
+              debitAmount: earnings.toFixed(2),
+              projectId: entry.projectId || undefined,
             }),
+            tx,
           );
+          if (entry.projectId) affectedProjectIds.add(entry.projectId);
         }
-      } else {
+      }
+
+      // Dr each reimbursement to its category account (D16); the liability rides
+      // Salary Payable (routed through salary — no separate reimbursement payable).
+      for (const r of reimbRecords) {
+        const amt = parseFloat(r.amount || "0");
+        if (amt <= 0) continue;
+        const code = accountCodeForCategory(r.category);
+        const [acct] = await tx
+          .select({ name: chartOfAccounts.accountName })
+          .from(chartOfAccounts)
+          .where(eq(chartOfAccounts.accountCode, code))
+          .limit(1);
         await this.createGeneralLedgerEntry(
           line({
-            accountName: "Salary Expense",
-            description: `Salary for ${employeeName} - ${monthName} ${entry.year}`,
-            debitAmount: earnings.toFixed(2),
-            projectId: entry.projectId || undefined,
+            accountName: acct?.name || "Employee Reimbursement",
+            description: `Reimbursement (${r.category}) for ${employeeName} - ${monthName} ${entry.year}`,
+            debitAmount: amt.toFixed(2),
+            projectId: r.projectId || undefined,
           }),
+          tx,
+        );
+        if (r.projectId) affectedProjectIds.add(r.projectId);
+      }
+
+      // Cr Provident Fund Contribution (2120).
+      if (pf > 0) {
+        await this.createGeneralLedgerEntry(
+          line({
+            accountName: "Provident Fund Contribution",
+            description: `Provident Fund for ${employeeName} - ${monthName} ${entry.year}`,
+            creditAmount: pf.toFixed(2),
+          }),
+          tx,
         );
       }
-    }
 
-    // Dr each reimbursement to its category account (D16); the liability rides
-    // Salary Payable (routed through salary — no separate reimbursement payable).
-    for (const r of reimbRecords) {
-      const amt = parseFloat(r.amount || "0");
-      if (amt <= 0) continue;
-      const code = accountCodeForCategory(r.category);
-      const [acct] = await db
-        .select({ name: chartOfAccounts.accountName })
-        .from(chartOfAccounts)
-        .where(eq(chartOfAccounts.accountCode, code))
-        .limit(1);
+      // Cr Salary Payable — earnings − PF + reimbursements (D18).
       await this.createGeneralLedgerEntry(
         line({
-          accountName: acct?.name || "Employee Reimbursement",
-          description: `Reimbursement (${r.category}) for ${employeeName} - ${monthName} ${entry.year}`,
-          debitAmount: amt.toFixed(2),
-          projectId: r.projectId || undefined,
+          accountName: "Salary Payable",
+          description: `Salary payable to ${employeeName} - ${monthName} ${entry.year}`,
+          creditAmount: payable.toFixed(2),
+          projectId: entry.projectId || undefined,
         }),
+        tx,
       );
-    }
+      if (entry.projectId) affectedProjectIds.add(entry.projectId);
+    });
 
-    // Cr Provident Fund Contribution (2120).
-    if (pf > 0) {
-      await this.createGeneralLedgerEntry(
-        line({
-          accountName: "Provident Fund Contribution",
-          description: `Provident Fund for ${employeeName} - ${monthName} ${entry.year}`,
-          creditAmount: pf.toFixed(2),
-        }),
-      );
+    // Recalculate AFTER the commit: passing `tx` skips the per-row recalc,
+    // because from inside the transaction the recalc could not see these rows.
+    for (const projectId of Array.from(affectedProjectIds)) {
+      await this.recalculateProjectCost(projectId);
     }
-
-    // Cr Salary Payable — earnings − PF + reimbursements (D18).
-    await this.createGeneralLedgerEntry(
-      line({
-        accountName: "Salary Payable",
-        description: `Salary payable to ${employeeName} - ${monthName} ${entry.year}`,
-        creditAmount: payable.toFixed(2),
-        projectId: entry.projectId || undefined,
-      }),
-    );
   }
 
   /**
@@ -669,36 +692,53 @@ export class PayrollStorage extends PurchaseStorage {
     const monthName = this.getMonthName(entry.month);
     const transactionDate = new Date().toISOString().split("T")[0];
 
-    await this.createGeneralLedgerEntry({
-      entryType: "payable",
-      referenceType: "payroll_payment",
-      referenceId: entryId,
-      accountName: "Salary Payable",
-      description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
-      debitAmount: amount.toFixed(2),
-      creditAmount: "0",
-      entityId: employeeId,
-      entityName: employeeName,
-      projectId: entry.projectId || undefined,
-      transactionDate,
-      status: "paid",
-      createdBy: userId,
+    // Both rows in ONE transaction (1.7/L14). Posted independently, a failure
+    // between them debited Salary Payable — clearing the liability — with no
+    // matching credit to Cash/Bank, so the salary showed as settled without the
+    // money ever leaving.
+    await db.transaction(async (tx) => {
+      await this.createGeneralLedgerEntry(
+        {
+          entryType: "payable",
+          referenceType: "payroll_payment",
+          referenceId: entryId,
+          accountName: "Salary Payable",
+          description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
+          debitAmount: amount.toFixed(2),
+          creditAmount: "0",
+          entityId: employeeId,
+          entityName: employeeName,
+          projectId: entry.projectId || undefined,
+          transactionDate,
+          status: "paid",
+          createdBy: userId,
+        },
+        tx,
+      );
+      await this.createGeneralLedgerEntry(
+        {
+          entryType: "payable",
+          referenceType: "payroll_payment",
+          referenceId: entryId,
+          accountName: "Cash/Bank",
+          description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
+          debitAmount: "0",
+          creditAmount: amount.toFixed(2),
+          entityId: employeeId,
+          entityName: employeeName,
+          projectId: entry.projectId || undefined,
+          transactionDate,
+          status: "paid",
+          createdBy: userId,
+        },
+        tx,
+      );
     });
-    await this.createGeneralLedgerEntry({
-      entryType: "payable",
-      referenceType: "payroll_payment",
-      referenceId: entryId,
-      accountName: "Cash/Bank",
-      description: `Paid salary to ${employeeName} - ${monthName} ${entry.year}`,
-      debitAmount: "0",
-      creditAmount: amount.toFixed(2),
-      entityId: employeeId,
-      entityName: employeeName,
-      projectId: entry.projectId || undefined,
-      transactionDate,
-      status: "paid",
-      createdBy: userId,
-    });
+
+    // Recalculate after the commit (passing `tx` skips the per-row recalc).
+    if (entry.projectId) {
+      await this.recalculateProjectCost(entry.projectId);
+    }
   }
 
   /**
@@ -726,23 +766,39 @@ export class PayrollStorage extends PurchaseStorage {
       );
     const transactionDate = new Date().toISOString().split("T")[0];
     let count = 0;
-    for (const r of rows) {
-      await this.createGeneralLedgerEntry({
-        entryType: r.entryType,
-        referenceType: "payroll_reversal",
-        referenceId: entryId,
-        accountName: r.accountName,
-        description: `Reversal: ${r.description ?? ""}`,
-        debitAmount: r.creditAmount ?? "0", // swap
-        creditAmount: r.debitAmount ?? "0", // swap
-        entityId: r.entityId ?? undefined,
-        entityName: r.entityName ?? undefined,
-        projectId: r.projectId ?? undefined,
-        transactionDate,
-        status: r.status ?? "pending",
-        createdBy: userId,
-      });
-      count++;
+    const affectedProjectIds = new Set<number>();
+
+    // The whole reversal set in ONE transaction (1.7/L14). A partial reversal is
+    // worse than none: it leaves the entry neither properly posted nor properly
+    // reversed, with no way to tell which rows were undone.
+    await db.transaction(async (tx) => {
+      for (const r of rows) {
+        await this.createGeneralLedgerEntry(
+          {
+            entryType: r.entryType,
+            referenceType: "payroll_reversal",
+            referenceId: entryId,
+            accountName: r.accountName,
+            description: `Reversal: ${r.description ?? ""}`,
+            debitAmount: r.creditAmount ?? "0", // swap
+            creditAmount: r.debitAmount ?? "0", // swap
+            entityId: r.entityId ?? undefined,
+            entityName: r.entityName ?? undefined,
+            projectId: r.projectId ?? undefined,
+            transactionDate,
+            status: r.status ?? "pending",
+            createdBy: userId,
+          },
+          tx,
+        );
+        if (r.projectId) affectedProjectIds.add(r.projectId);
+        count++;
+      }
+    });
+
+    // Recalculate after the commit (passing `tx` skips the per-row recalc).
+    for (const projectId of Array.from(affectedProjectIds)) {
+      await this.recalculateProjectCost(projectId);
     }
     return count;
   }
