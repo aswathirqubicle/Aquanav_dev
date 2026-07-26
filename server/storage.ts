@@ -596,6 +596,8 @@ export interface IStorage {
     id: number,
     creditNoteData: Partial<InsertCreditNote>,
   ): Promise<CreditNote | undefined>;
+  /** Reverse an issued credit note's ledger entries and invoice settlement. */
+  cancelCreditNote(id: number, userId?: number): Promise<CreditNote>;
   getCreditNotes(): Promise<CreditNoteWithDetails[]>;
   createInvoicePaymentForCreditNote(
     invoiceId: number,

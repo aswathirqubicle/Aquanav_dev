@@ -1537,9 +1537,158 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
+  /**
+   * Cancel an ISSUED credit note, reversing everything issuing it did.
+   *
+   * Issuing a credit note has three effects: it posts three GL rows
+   * (Dr Sales Returns / Dr VAT Payable / Cr Accounts Receivable), it writes a
+   * settlement row into invoice_payments so the invoice shows part-settled, and
+   * the invoice's paidAmount and status are recalculated from that. Cancelling
+   * undoes all three, in one transaction:
+   *
+   *   - a mirrored GL set is posted, so net movement is zero and BOTH the
+   *     original and the reversal stay visible for audit
+   *   - the settlement row is deleted. It posts no GL of its own (D1), so
+   *     removing it destroys no ledger history, and paidAmount is derived by
+   *     summing invoice_payments — so deleting the row is what makes the
+   *     invoice self-correct. The credit note itself remains, marked cancelled,
+   *     as the record that this happened
+   *   - the invoice's paidAmount and status are recalculated
+   *
+   * Refused when the credit note is worth more than the invoice's outstanding
+   * balance: that means cash has since settled what the credit note was
+   * covering, and reopening it would demand money the customer has already
+   * paid. Refund the payment instead.
+   */
+  async cancelCreditNote(id: number, userId?: number): Promise<CreditNote> {
+    try {
+      const [creditNote] = await db
+        .select()
+        .from(creditNotes)
+        .where(eq(creditNotes.id, id))
+        .limit(1);
+      if (!creditNote) throw new Error("Credit note not found");
+      if (creditNote.status === "cancelled") {
+        throw new Error("This credit note is already cancelled");
+      }
+      if (creditNote.status !== "issued") {
+        throw new Error(
+          `Only an issued credit note can be cancelled. This one is ${creditNote.status} — delete it instead, it has posted nothing.`,
+        );
+      }
+
+      const invoiceId = creditNote.salesInvoiceId;
+      const cnAmount = parseFloat((creditNote.totalAmount as string) || "0");
+
+      let invoice: SalesInvoice | undefined;
+      if (invoiceId) {
+        invoice = await this.getSalesInvoice(invoiceId);
+        if (invoice) {
+          const total = parseFloat(invoice.totalAmount || "0");
+          const paid = parseFloat(invoice.paidAmount || "0");
+          const pending = Math.round((total - paid) * 100) / 100;
+          if (cnAmount > pending + 0.005) {
+            throw new Error(
+              `Cannot cancel: this credit note is ${cnAmount.toFixed(2)} but only ` +
+                `${pending.toFixed(2)} is outstanding on invoice ${invoice.invoiceNumber}. ` +
+                `Payments have since settled what it was covering — refund the payment instead.`,
+            );
+          }
+        }
+      }
+
+      // Mirror whatever was actually posted, rather than recomputing it, so the
+      // reversal matches the original line for line even if rates have moved.
+      const original = await db
+        .select()
+        .from(generalLedgerEntries)
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, "credit_note"),
+            eq(generalLedgerEntries.referenceId, id),
+            ne(generalLedgerEntries.status, "cancelled"),
+          ),
+        );
+
+      await db.transaction(async (tx) => {
+        for (const row of original) {
+          await tx.insert(generalLedgerEntries).values({
+            entryType: row.entryType,
+            referenceType: "credit_note",
+            referenceId: id,
+            accountName: row.accountName,
+            description: `CANCELLED - ${row.description ?? ""}`,
+            debitAmount: row.creditAmount ?? "0", // swap
+            creditAmount: row.debitAmount ?? "0", // swap
+            entityId: row.entityId,
+            entityName: row.entityName,
+            projectId: row.projectId,
+            invoiceNumber: row.invoiceNumber,
+            transactionDate: new Date().toISOString().split("T")[0],
+            status: "cancelled",
+            createdBy: userId ?? null,
+          });
+        }
+
+        // Drop the settlement row so the invoice's paidAmount self-corrects.
+        if (invoiceId) {
+          await tx
+            .delete(invoicePayments)
+            .where(
+              and(
+                eq(invoicePayments.invoiceId, invoiceId),
+                eq(invoicePayments.creditNoteId, id),
+              ),
+            );
+        }
+
+        await tx
+          .update(creditNotes)
+          .set({ status: "cancelled" })
+          .where(eq(creditNotes.id, id));
+      });
+
+      // Recalculate outside the transaction: it reads invoice_payments back.
+      if (invoiceId) await this.updateInvoicePaidAmount(invoiceId);
+
+      const [updated] = await db
+        .select()
+        .from(creditNotes)
+        .where(eq(creditNotes.id, id))
+        .limit(1);
+      return updated;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in cancelCreditNote (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "cancelCreditNote",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async deleteCreditNote(id: number): Promise<boolean> {
     // This is for sales credit notes
     try {
+      // Only a draft may be deleted. An issued credit note has posted to the
+      // ledger and settled part of an invoice; deleting it left those rows
+      // orphaned — revenue still reduced and VAT still reversed for a document
+      // that no longer exists. Issued notes go through cancelCreditNote, which
+      // reverses all of it and keeps the note on record.
+      const [existing] = await db
+        .select({ status: creditNotes.status })
+        .from(creditNotes)
+        .where(eq(creditNotes.id, id))
+        .limit(1);
+      if (existing && existing.status !== "draft") {
+        throw new Error(
+          `Only a draft credit note can be deleted. This one is ${existing.status} — cancel it instead, so its ledger entries are reversed rather than orphaned.`,
+        );
+      }
+
       const result = await db.delete(creditNotes).where(eq(creditNotes.id, id));
       return result.count > 0;
     } catch (error: any) {

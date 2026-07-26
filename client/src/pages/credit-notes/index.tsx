@@ -1,7 +1,18 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Eye, FileText } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, FileText, Ban } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,27 +170,56 @@ export default function CreditNotesIndex() {
     },
   });
 
-  // Delete credit note mutation
+  // Cancel an ISSUED credit note. Deleting one used to leave its ledger
+  // entries behind — revenue still reduced and VAT still reversed for a
+  // document that no longer existed. Cancelling reverses the postings, removes
+  // the settlement row so the invoice's paid amount and status correct
+  // themselves, and keeps the note on record.
+  const cancelCreditNoteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/credit-notes/${id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to cancel credit note");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      toast({
+        title: "Credit note cancelled",
+        description:
+          "Its ledger entries have been reversed and the invoice updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Cannot cancel", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Deleting is only for drafts, which have posted nothing.
   const deleteCreditNoteMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await fetch(`/api/credit-notes/${id}`, {
         method: "DELETE",
+        credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to delete credit note");
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to delete credit note");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
-      toast({
-        title: "Success",
-        description: "Credit note deleted successfully",
-      });
+      toast({ title: "Success", description: "Draft credit note deleted" });
     },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to delete credit note",
-        variant: "destructive",
-      });
+    onError: (error: Error) => {
+      toast({ title: "Cannot delete", description: error.message, variant: "destructive" });
     },
   });
 
@@ -771,17 +811,61 @@ export default function CreditNotesIndex() {
                         >
                           <FileText className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete this credit note?")) {
-                              deleteCreditNoteMutation.mutate(creditNote.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {creditNote.status === "issued" && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm" title="Cancel credit note">
+                                <Ban className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Cancel this credit note?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {creditNote.creditNoteNumber} will be reversed: its ledger
+                                  entries are cancelled out, and the amount it settled is
+                                  returned to the linked invoice's outstanding balance. The
+                                  credit note stays on record as cancelled.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Keep it</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => cancelCreditNoteMutation.mutate(creditNote.id)}
+                                  disabled={cancelCreditNoteMutation.isPending}
+                                >
+                                  {cancelCreditNoteMutation.isPending ? "Cancelling..." : "Cancel Credit Note"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        {creditNote.status === "draft" && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm" title="Delete draft">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {creditNote.creditNoteNumber} has not been issued and has
+                                  posted nothing to the ledger, so it can be deleted outright.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Keep it</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteCreditNoteMutation.mutate(creditNote.id)}
+                                >
+                                  Delete Draft
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
