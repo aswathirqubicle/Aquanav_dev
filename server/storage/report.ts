@@ -40,7 +40,15 @@ export class ReportStorage extends ReimbursementStorage {
         .select({
           count: sql<number>`count(*)`,
           totalValue: sql<string>`COALESCE(SUM(${salesInvoices.totalAmount} * ${salesInvoices.exchangeRate}), 0)`,
-          totalReceivables: sql<string>`COALESCE(SUM((${salesInvoices.totalAmount} - ${salesInvoices.paidAmount}) * ${salesInvoices.exchangeRate}), 0)`,
+          // GREATEST(..., 0) per invoice, so an overpaid one contributes zero
+          // rather than a negative. An overpayment is not a negative
+          // receivable: it is a credit balance owed back to that customer, a
+          // liability, and letting it net against what other customers owe both
+          // understates receivables and hides the liability. One invoice here
+          // (USD 179.56 billed, 483.79 paid) was reducing the headline by
+          // 1,117.30, which is why this card and the View Receivables dialog —
+          // which has always floored at zero — disagreed.
+          totalReceivables: sql<string>`COALESCE(SUM(GREATEST(${salesInvoices.totalAmount} - COALESCE(${salesInvoices.paidAmount}, 0), 0) * ${salesInvoices.exchangeRate}), 0)`,
         })
         .from(salesInvoices)
         .where(
