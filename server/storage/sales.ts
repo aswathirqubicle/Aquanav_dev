@@ -1687,20 +1687,44 @@ export class SalesStorage extends LedgerStorage {
       }
 
       const invoiceId = creditNote.salesInvoiceId;
-      const cnAmount = parseFloat((creditNote.totalAmount as string) || "0");
 
       let invoice: SalesInvoice | undefined;
       if (invoiceId) {
         invoice = await this.getSalesInvoice(invoiceId);
         if (invoice) {
+          // Measure the invoice WITHOUT this credit note, since cancelling is
+          // precisely the act of removing it. The previous check read
+          // `paidAmount`, which already includes this note's own settlement
+          // row, so a note that settled its invoice in full always looked like
+          // it exceeded the outstanding balance and could never be cancelled —
+          // the one case most likely to need correcting. Partial ones passed,
+          // which is why the tests missed it.
+          //
+          // Cancelling never demands money the customer has already handed
+          // over: their cash stays applied and only the credited portion of the
+          // debt reopens, which is the correct outcome when the credit was
+          // wrong. What is genuinely unsafe is cancelling into an invoice that
+          // OTHER settlements have already over-paid, because that compounds a
+          // state needing a refund rather than a reversal.
+          const settlements = await db
+            .select({
+              amount: invoicePayments.amount,
+              creditNoteId: invoicePayments.creditNoteId,
+            })
+            .from(invoicePayments)
+            .where(eq(invoicePayments.invoiceId, invoiceId));
+
           const total = parseFloat(invoice.totalAmount || "0");
-          const paid = parseFloat(invoice.paidAmount || "0");
-          const pending = Math.round((total - paid) * 100) / 100;
-          if (cnAmount > pending + 0.005) {
+          const settledByOthers = settlements
+            .filter((s) => s.creditNoteId !== id)
+            .reduce((sum, s) => sum + parseFloat(s.amount || "0"), 0);
+
+          if (settledByOthers > total + 0.005) {
             throw new Error(
-              `Cannot cancel: this credit note is ${cnAmount.toFixed(2)} but only ` +
-                `${pending.toFixed(2)} is outstanding on invoice ${invoice.invoiceNumber}. ` +
-                `Payments have since settled what it was covering — refund the payment instead.`,
+              `Cannot cancel: invoice ${invoice.invoiceNumber} is already settled ` +
+                `${settledByOthers.toFixed(2)} against a total of ${total.toFixed(2)} by ` +
+                `other payments and credit notes, so removing this one would leave it ` +
+                `over-settled. Refund the excess instead.`,
             );
           }
         }
