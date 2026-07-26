@@ -764,6 +764,49 @@ export interface IStorage {
   getChartOfAccountByName(
     accountName: string,
   ): Promise<ChartOfAccount | undefined>;
+
+  // Ledger rebuild (Phase 11)
+  verifyChartOfAccounts(): Promise<{
+    ok: boolean;
+    missing: { accountCode: string; accountName: string }[];
+    renamed: { accountCode: string; expected: string; actual: string }[];
+    unexpected: { accountCode: string; accountName: string }[];
+  }>;
+  reseedChartOfAccounts(): Promise<{
+    backupTable: string;
+    removed: number;
+    inserted: number;
+  }>;
+  computeLedgerRebuild(): Promise<{
+    rows: any[];
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+    byAccount: {
+      accountName: string;
+      debit: number;
+      credit: number;
+      net: number;
+    }[];
+    skipped: {
+      cancelledSales: number;
+      cancelledPurchase: number;
+      creditNoteSettlements: number;
+    };
+  }>;
+  executeLedgerRebuild(userId?: number): Promise<{
+    backupTables: string[];
+    deletedGl: number;
+    deletedPayroll: number;
+    postedRows: number;
+    totalDebit: number;
+    totalCredit: number;
+    chartRepaired: {
+      backupTable: string;
+      removed: number;
+      inserted: number;
+    } | null;
+  }>;
   getLocations(): Promise<Location[]>;
   //Profile
   changePassword(

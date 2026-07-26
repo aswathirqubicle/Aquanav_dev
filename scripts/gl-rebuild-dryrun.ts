@@ -152,7 +152,9 @@ async function main() {
   const cur = new Map<string, { dr: number; cr: number }>();
   for (const c of current) cur.set(c.account_name, { dr: Number(c.dr), cr: Number(c.cr) });
 
-  const accounts = Array.from(new Set([...book.keys(), ...cur.keys()])).sort();
+  const accounts = Array.from(
+    new Set([...Array.from(book.keys()), ...Array.from(cur.keys())]),
+  ).sort();
   console.log("\nPer-account NET balance (Dr positive). Delta = rebuilt − current:\n");
   console.log(
     "  " + "Account".padEnd(30) + "Current".padStart(15) + "Rebuilt".padStart(15) + "Delta".padStart(15),
