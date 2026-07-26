@@ -241,7 +241,7 @@ export class SalesStorage extends LedgerStorage {
     try {
       console.log("Creating credit note with data:", creditNoteData);
 
-      await this.assertCreditNoteInvoice(
+      const linkedInvoice = await this.resolveCreditNoteInvoice(
         creditNoteData.salesInvoiceId,
         creditNoteData.status,
       );
@@ -276,7 +276,12 @@ export class SalesStorage extends LedgerStorage {
 
       const result: CreditNote[] = await db
         .insert(creditNotes)
-        .values(this.applySalesDocumentTotals(insertData))
+        .values(
+          this.applyCreditNoteInvoiceCurrency(
+            this.applySalesDocumentTotals(insertData),
+            linkedInvoice,
+          ),
+        )
         .returning();
 
       const createdCreditNote = result[0];
@@ -453,7 +458,7 @@ export class SalesStorage extends LedgerStorage {
       // The same guard as on create, for the draft -> issued route. The invoice
       // may be supplied by this very edit, so check the incoming value first and
       // fall back to what the note already carries.
-      await this.assertCreditNoteInvoice(
+      const linkedInvoice = await this.resolveCreditNoteInvoice(
         validCreditNoteData.salesInvoiceId !== undefined
           ? validCreditNoteData.salesInvoiceId
           : currentCreditNote.salesInvoiceId,
@@ -480,7 +485,12 @@ export class SalesStorage extends LedgerStorage {
 
       const result: CreditNote[] = await db
         .update(creditNotes)
-        .set(this.applySalesDocumentTotals(updateData))
+        .set(
+          this.applyCreditNoteInvoiceCurrency(
+            this.applySalesDocumentTotals(updateData),
+            linkedInvoice,
+          ),
+        )
         .where(eq(creditNotes.id, id))
         .returning();
 
@@ -1113,41 +1123,6 @@ export class SalesStorage extends LedgerStorage {
    * (line + header total)/`taxAmount`/`totalAmount` corrected. A document with no
    * items array is returned unchanged.
    */
-  /**
-   * A credit note credits an invoice. Issued without one it still posts
-   * `Cr Accounts Receivable`, reducing the control account against nothing —
-   * an amount no statement, receivables list or ageing view can attribute to
-   * anyone, because there is no document to attribute it to. Three such notes
-   * exist (CN-AQNV-2026-005/006/007), holding 315.00 of AR credit between them
-   * that reconciles to no invoice.
-   *
-   * Only issuing is blocked. A draft posts nothing, so it can be saved and
-   * linked later, which is also how the existing edit flow reaches `issued`.
-   *
-   * The invoice is fetched rather than the id merely checked for presence: a
-   * stale or wrong id resolves to `undefined` and then posts exactly the same
-   * way, since every use of it downstream is optional-chained.
-   */
-  private async assertCreditNoteInvoice(
-    salesInvoiceId: number | null | undefined,
-    status: string | null | undefined,
-  ): Promise<void> {
-    if (status !== "issued") return;
-
-    if (!salesInvoiceId) {
-      throw new Error(
-        "A credit note must be linked to a sales invoice before it can be issued — it posts against that invoice's receivable.",
-      );
-    }
-
-    const invoice = await this.getSalesInvoice(salesInvoiceId);
-    if (!invoice) {
-      throw new Error(
-        `Sales invoice ${salesInvoiceId} could not be found, so this credit note cannot be issued against it.`,
-      );
-    }
-  }
-
   private applySalesDocumentTotals<T extends Record<string, any>>(data: T): T {
     // `items` is an array on most sales docs but a JSON string on credit notes.
     const raw = (data as any).items;
@@ -1204,6 +1179,76 @@ export class SalesStorage extends LedgerStorage {
       discount: totals.headerDiscount.toFixed(2),
       taxAmount: totals.taxTotal.toFixed(2),
       totalAmount: totals.total.toFixed(2),
+    };
+  }
+
+  /**
+   * Resolves the invoice a credit note credits, and refuses the cases that
+   * would corrupt Accounts Receivable. Returns the invoice so the caller can
+   * inherit its currency, or `undefined` for an unlinked draft.
+   *
+   * **Issuing without an invoice is refused.** It would still post
+   * `Cr Accounts Receivable`, reducing the control account against nothing — an
+   * amount no statement, receivables list or ageing view can attribute to
+   * anyone, because there is no document to attribute it to. Three such notes
+   * exist (CN-AQNV-2026-005/006/007), holding 315.00 of AR credit between them
+   * that reconciles to no invoice.
+   *
+   * Only issuing is blocked. A draft posts nothing, so it can be saved and
+   * linked later, which is also how the existing edit flow reaches `issued`.
+   *
+   * The invoice is fetched rather than the id merely checked for presence: a
+   * stale or wrong id resolves to `undefined` and then posts exactly the same
+   * way, since every use of it downstream is optional-chained.
+   */
+  private async resolveCreditNoteInvoice(
+    salesInvoiceId: number | null | undefined,
+    status: string | null | undefined,
+  ): Promise<any | undefined> {
+    if (!salesInvoiceId) {
+      if (status === "issued") {
+        throw new Error(
+          "A credit note must be linked to a sales invoice before it can be issued — it posts against that invoice's receivable.",
+        );
+      }
+      return undefined;
+    }
+
+    const invoice = await this.getSalesInvoice(salesInvoiceId);
+    if (!invoice && status === "issued") {
+      throw new Error(
+        `Sales invoice ${salesInvoiceId} could not be found, so this credit note cannot be issued against it.`,
+      );
+    }
+    return invoice;
+  }
+
+  /**
+   * A credit note is denominated in the currency of the invoice it credits, at
+   * that invoice's rate — never in its own.
+   *
+   * Both sides of the system already assume this. The ledger posts the note at
+   * whatever rate the note carries, while `paid_amount` sums settlement amounts
+   * currency-blind and the receivables views translate that sum at the
+   * *invoice's* rate. A note in a different currency is therefore counted at one
+   * rate in the ledger and another in every document view. CN-AQNV-2026-003 and
+   * -004 are AED 105.00 against a USD invoice at 3.672555: the ledger has
+   * 105.00, the document side reads 385.62, and the 564.90 between them is most
+   * of the gap between receivables and the AR control account.
+   *
+   * The credit note form already copies both fields from the selected invoice.
+   * The two that got through were written 31ms apart by a script, so the rule
+   * is enforced here as well, where every path has to pass.
+   */
+  private applyCreditNoteInvoiceCurrency<T extends Record<string, any>>(
+    data: T,
+    invoice: any | undefined,
+  ): T {
+    if (!invoice) return data;
+    return {
+      ...data,
+      currency: invoice.currency || "AED",
+      exchangeRate: invoice.exchangeRate || "1",
     };
   }
 

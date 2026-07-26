@@ -2899,6 +2899,16 @@ export default function PurchaseInvoicesIndex() {
                   onChange={(e) => setPaymentData(prev => ({ ...prev, amount: e.target.value }))}
                   placeholder={`Enter amount in ${viewingInvoice?.currency || "AED"}`}
                 />
+                {/* The amount is taken to be in the invoice's currency and is
+                    posted to the ledger at the invoice's rate. Showing what that
+                    comes to in AED is the only confirmation the person entering
+                    it gets that they typed the currency the field is asking for.
+                    Matches the sales payment dialog. */}
+                {viewingInvoice?.currency && viewingInvoice.currency !== "AED" && viewingInvoice.exchangeRate && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    AED Equivalent: {formatCurrency((parseFloat(paymentData.amount || "0") * parseFloat(viewingInvoice.exchangeRate || "1")).toFixed(2), "AED")}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="paymentDate">Payment Date</Label>
