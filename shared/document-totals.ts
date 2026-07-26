@@ -73,7 +73,7 @@ function resolveDiscount(
  * remainder placed on the largest-weight line so the parts sum to `total` to the
  * cent. All-zero weights (or a zero total) yield all zeros.
  */
-function apportion(weights: number[], total: number): number[] {
+export function apportion(weights: number[], total: number): number[] {
   const n = weights.length;
   if (n === 0 || total === 0) return weights.map(() => 0);
   const sum = weights.reduce((s, w) => s + w, 0);

@@ -24,6 +24,7 @@ import {
   users,
 } from "@shared/schema";
 import {
+  apportion,
   computeDocumentTotals,
   type HeaderDiscountInput,
   type LineItemInput,
@@ -1378,6 +1379,12 @@ export class PurchaseStorage extends SalesStorage {
             item.discountType === "percentage" ? "percentage" : "amount",
           taxAmount: Number(convertItems[i].taxAmount).toFixed(2),
           lineTotal: Number(convertItems[i].lineTotal).toFixed(2),
+          // Carry per-line allocation through the conversion when the payload
+          // provides it (6.3). Purchase-order items have no projectId column, so
+          // this is null for a straight PO copy and set only when the conversion
+          // form assigns one — never a regression.
+          projectId: item.projectId || null,
+          assetInstanceId: item.assetInstanceId || null,
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
@@ -1898,6 +1905,55 @@ export class PurchaseStorage extends SalesStorage {
     };
   }
 
+  /**
+   * Split a purchase invoice's expense amount across the projects its LINE ITEMS
+   * are allocated to. Purchase projects are per line, so one invoice can carry
+   * cost for several projects; posting a single Purchase Expense row with the
+   * invoice-level projectId (usually null) leaves the ledger unattributable to
+   * any project.
+   *
+   * Weights are each line's net-of-discount, ex-VAT amount (`lineTotal -
+   * taxAmount`) — the same basis as the project-cost rollup. `amount` is
+   * apportioned across the groups so the parts sum to it EXACTLY, keeping the
+   * posting balanced to the cent under any exchange rate. Lines with no project
+   * group under a null projectId. Zero-value groups are dropped (G2), and an
+   * invoice with no usable line weights falls back to one unallocated row.
+   */
+  private async allocatePurchaseExpense(
+    invoiceId: number,
+    amount: number,
+    fallbackProjectId: number | null,
+  ): Promise<Array<{ projectId: number | null; amount: number }>> {
+    const items = await db
+      .select({
+        projectId: purchaseInvoiceItems.projectId,
+        lineTotal: purchaseInvoiceItems.lineTotal,
+        taxAmount: purchaseInvoiceItems.taxAmount,
+      })
+      .from(purchaseInvoiceItems)
+      .where(eq(purchaseInvoiceItems.invoiceId, invoiceId));
+
+    const groups = new Map<number | null, number>();
+    for (const item of items) {
+      const net =
+        parseFloat(item.lineTotal || "0") - parseFloat(item.taxAmount || "0");
+      const key = item.projectId ?? null;
+      groups.set(key, (groups.get(key) || 0) + net);
+    }
+
+    const keys = Array.from(groups.keys());
+    const weights = keys.map((k) => groups.get(k) as number);
+    const totalWeight = weights.reduce((s, w) => s + w, 0);
+    if (keys.length === 0 || totalWeight <= 0) {
+      return [{ projectId: fallbackProjectId, amount }];
+    }
+
+    const parts = apportion(weights, amount);
+    return keys
+      .map((k, i) => ({ projectId: k, amount: parts[i] }))
+      .filter((p) => Math.abs(p.amount) > 0.005);
+  }
+
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
     invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
     try {
@@ -1917,7 +1973,11 @@ export class PurchaseStorage extends SalesStorage {
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
             invoiceData.assetInventoryInstanceId || null,
-          status: invoiceData.status || "draft",
+          // L28: always create as draft. A caller-supplied status (e.g.
+          // "approved") must NOT be honored — approval is the only path that
+          // posts GL, goods receipts and project cost, so accepting it here
+          // would let a create skip the entire approval workflow.
+          status: "draft",
           invoiceDate: new Date(invoiceData.invoiceDate),
           dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
           paymentTerms: invoiceData.paymentTerms || null,
@@ -1949,6 +2009,11 @@ export class PurchaseStorage extends SalesStorage {
           taxRate: item.taxRate?.toString() || "0",
           taxAmount: item.taxAmount?.toString() || "0",
           lineTotal: item.lineTotal.toString(),
+          // Per-line allocation (6.3). Mirrors updatePurchaseInvoice — without
+          // these the create path silently drops the line's project/asset, so
+          // project cost and asset maintenance were never allocated on approve.
+          projectId: item.projectId || null,
+          assetInstanceId: item.assetInstanceId || null,
         }));
 
         await db.insert(purchaseInvoiceItems).values(invoiceItemsToInsert);
@@ -2224,13 +2289,19 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Standard VAT posting (D5): AP is the gross owed to the supplier; Purchase
+      // Expense is net of discount and EXCLUDING VAT; the input VAT is recoverable
+      // (an asset). Rounded so Dr Expense + Dr VAT == Cr AP to the cent.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
-      // Both sides in ONE transaction (L14). Two independent inserts could
-      // leave a credit to Accounts Payable with no matching expense debit.
+      // All rows in ONE transaction (L14). Independent inserts could leave a
+      // credit to Accounts Payable with no matching expense/VAT debit.
       const approvalShared = {
         entryType: "payable" as const,
         referenceType: "purchase_invoice" as const,
@@ -2249,21 +2320,44 @@ export class PurchaseStorage extends SalesStorage {
         status: "pending" as const,
       };
 
+      // One Purchase Expense row per project the line items are allocated to, so
+      // the ledger is attributable to a project. VAT Recoverable and Accounts
+      // Payable stay whole: input VAT is reclaimed from the tax authority and the
+      // payable is owed to the supplier — neither is a project cost.
+      const expenseAllocation = await this.allocatePurchaseExpense(
+        id,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
       await db.transaction(async (tx) => {
-        // Credit Accounts Payable, in AED
+        // Debit Purchase Expense (net of discount, excl. VAT), in AED
+        for (const alloc of expenseAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...approvalShared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: alloc.amount.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+
+        // Debit VAT Recoverable (input VAT, recoverable) — omitted when zero (G2)
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...approvalShared,
+            accountName: "VAT Recoverable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+
+        // Credit Accounts Payable (gross, incl. VAT), in AED
         await tx.insert(generalLedgerEntries).values({
           ...approvalShared,
           accountName: "Accounts Payable",
           debitAmount: "0",
-          creditAmount: aedAmount,
-        });
-
-        // Debit Purchase Expense, in AED
-        await tx.insert(generalLedgerEntries).values({
-          ...approvalShared,
-          accountName: "Purchase Expense",
-          debitAmount: aedAmount,
-          creditAmount: "0",
+          creditAmount: aedTotal.toFixed(2),
         });
       });
 
@@ -2394,16 +2488,18 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Reverse the 3-row approval posting (T6.7): Dr AP (gross) / Cr Purchase
+      // Expense (net) / Cr VAT Recoverable (tax). VAT line omitted when zero.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
           : "";
 
-      // Both reversal rows in ONE transaction (L14).
-      // NOTE: projectId is deliberately absent here, matching the original —
-      // that omission is finding L11 and is fixed in P6, not here. P1 changes
-      // no ledger amounts or attributes.
+      // All reversal rows in ONE transaction (L14). projectId now carried (L11).
       const cancelShared = {
         entryType: "payable" as const,
         referenceType: "purchase_invoice" as const,
@@ -2411,27 +2507,49 @@ export class PurchaseStorage extends SalesStorage {
         description: `CANCELLED - Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         entityId: invoice.supplierId,
         entityName: supplierName,
+        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: new Date().toISOString(),
         status: "cancelled" as const,
       };
 
+      const cancelAllocation = await this.allocatePurchaseExpense(
+        id,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
       await db.transaction(async (tx) => {
-        // Reverse: Debit Accounts Payable
+        // Reverse Cr AP: debit Accounts Payable (gross)
         await tx.insert(generalLedgerEntries).values({
           ...cancelShared,
           accountName: "Accounts Payable",
-          debitAmount: aedAmount,
+          debitAmount: aedTotal.toFixed(2),
           creditAmount: "0",
         });
 
-        // Reverse: Credit Purchase Expense
-        await tx.insert(generalLedgerEntries).values({
-          ...cancelShared,
-          accountName: "Purchase Expense",
-          debitAmount: "0",
-          creditAmount: aedAmount,
-        });
+        // Reverse Dr Expense: credit Purchase Expense (net of discount, excl.
+        // VAT), mirroring the per-project rows the approval posted so each
+        // project's ledger returns to zero.
+        for (const alloc of cancelAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: "0",
+            creditAmount: alloc.amount.toFixed(2),
+          });
+        }
+
+        // Reverse Dr VAT: credit VAT Recoverable (input VAT) — omitted when zero
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...cancelShared,
+            accountName: "VAT Recoverable",
+            debitAmount: "0",
+            creditAmount: aedTax.toFixed(2),
+          });
+        }
       });
 
       return this.getPurchaseInvoice(id);
@@ -2504,15 +2622,16 @@ export class PurchaseStorage extends SalesStorage {
         parseFloat(invoice.paidAmount || "0") + parseFloat(paymentData.amount);
       const totalAmount = parseFloat(invoice.totalAmount);
 
-      // Determine new status
-      let newStatus = "pending";
+      // Determine new payment status (unpaid -> partial -> paid). This is the
+      // payment lifecycle; the approval `status` is never touched here.
+      let newStatus = "unpaid";
       if (newPaidAmount >= totalAmount) {
         newStatus = "paid";
       } else if (newPaidAmount > 0) {
         newStatus = "partial";
       }
 
-      // Update invoice paid amount and status
+      // Update invoice paid amount and payment status
       await db
         .update(purchaseInvoices)
         .set({
@@ -2553,6 +2672,7 @@ export class PurchaseStorage extends SalesStorage {
         description: `Payment for Purchase Invoice ${invoice.invoiceNumber} - ${supplierName}${currencyNote}`,
         entityId: invoice.supplierId,
         entityName: supplierName,
+        projectId: invoice.projectId || null,
         invoiceNumber: invoice.invoiceNumber,
         transactionDate: paymentData.paymentDate,
         status: "paid" as const,
@@ -2786,6 +2906,91 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
+  /**
+   * Post the GL for an issued purchase credit note (L5/H1). A purchase return
+   * reverses the payable and the recoverable input VAT:
+   *   Dr Accounts Payable (gross) / Cr Purchase Expense (net) / Cr VAT Recoverable (tax)
+   * VAT line omitted when zero. Balances to the cent. Shared by both entry paths
+   * (create-as-issued and draft->issued). The credit note's own settlement row in
+   * purchase_invoice_payments carries no GL (it's inserted directly, not via
+   * createPurchaseInvoicePayment) — D1 symmetry with the sales side.
+   */
+  private async postPurchaseCreditNoteGL(creditNote: any): Promise<void> {
+    const invoice = creditNote.purchaseInvoiceId
+      ? await this.getPurchaseInvoice(creditNote.purchaseInvoiceId)
+      : null;
+    const supplierId: number | null = invoice?.supplierId ?? null;
+    let supplierName = "Unknown Supplier";
+    if (supplierId) {
+      const [supplier] = await db
+        .select()
+        .from(suppliers)
+        .where(eq(suppliers.id, supplierId));
+      if (supplier) supplierName = supplier.name;
+    }
+
+    const rate = parseFloat(invoice?.exchangeRate || "1");
+    const currency = invoice?.currency || "AED";
+    const originalTotal = parseFloat(creditNote.totalAmount || "0");
+    const originalTax = parseFloat(creditNote.taxAmount || "0");
+    const aedTotal = Math.round(originalTotal * rate * 100) / 100;
+    const aedTax = Math.round(originalTax * rate * 100) / 100;
+    const aedNet = Math.round((aedTotal - aedTax) * 100) / 100;
+    const currencyNote =
+      currency !== "AED"
+        ? ` (${currency} ${originalTotal.toFixed(2)} @ ${rate})`
+        : "";
+
+    const shared = {
+      entryType: "payable" as const,
+      referenceType: "purchase_credit_note" as const,
+      referenceId: creditNote.id,
+      description: `Purchase Credit Note ${creditNote.creditNoteNumber} for Invoice ${invoice?.invoiceNumber || "N/A"}${currencyNote}`,
+      entityId: supplierId,
+      entityName: supplierName,
+      projectId: invoice?.projectId || null,
+      invoiceNumber: invoice?.invoiceNumber || null,
+      transactionDate:
+        creditNote.creditNoteDate || new Date().toISOString().split("T")[0],
+      status: "issued" as const,
+    };
+
+    // A purchase credit note carries no project of its own — the only link is the
+    // invoice — so credit each project in proportion to its share of that
+    // invoice's net cost, the same weights the original expense was posted on.
+    const creditAllocation = await this.allocatePurchaseExpense(
+      creditNote.purchaseInvoiceId,
+      aedNet,
+      invoice?.projectId || null,
+    );
+
+    await db.transaction(async (tx) => {
+      await tx.insert(generalLedgerEntries).values({
+        ...shared,
+        accountName: "Accounts Payable",
+        debitAmount: aedTotal.toFixed(2),
+        creditAmount: "0",
+      });
+      for (const alloc of creditAllocation) {
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          projectId: alloc.projectId,
+          accountName: "Purchase Expense",
+          debitAmount: "0",
+          creditAmount: alloc.amount.toFixed(2),
+        });
+      }
+      if (aedTax > 0.005) {
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "VAT Recoverable",
+          debitAmount: "0",
+          creditAmount: aedTax.toFixed(2),
+        });
+      }
+    });
+  }
+
   async createPurchaseCreditNote(creditNoteData: any): Promise<any> {
     try {
       console.log("Creating purchase credit note with data:", creditNoteData);
@@ -2818,7 +3023,7 @@ export class PurchaseStorage extends SalesStorage {
         await db.insert(purchaseInvoicePayments).values({
           invoiceId: creditNote.purchaseInvoiceId,
           amount: creditNote.totalAmount,
-          paymentDate: creditNote.creditNoteDate,
+          paymentDate: new Date(creditNote.creditNoteDate),
           paymentMethod: "Credit Note",
           referenceNumber: creditNote.creditNoteNumber,
           notes: `Credit note applied: ${creditNote.reason || "N/A"}`,
@@ -2830,6 +3035,9 @@ export class PurchaseStorage extends SalesStorage {
         await this.updatePurchaseInvoicePaidAmount(
           creditNote.purchaseInvoiceId,
         );
+
+        // Post the credit-note GL (L5) — previously nothing was posted.
+        await this.postPurchaseCreditNoteGL(creditNote);
       }
 
       return creditNote;
@@ -2882,7 +3090,7 @@ export class PurchaseStorage extends SalesStorage {
         await db.insert(purchaseInvoicePayments).values({
           invoiceId: updatedCreditNote.purchaseInvoiceId,
           amount: updatedCreditNote.totalAmount,
-          paymentDate: updatedCreditNote.creditNoteDate,
+          paymentDate: new Date(updatedCreditNote.creditNoteDate),
           paymentMethod: "Credit Note",
           referenceNumber: updatedCreditNote.creditNoteNumber,
           notes: `Credit note applied: ${updatedCreditNote.reason || "N/A"}`,
@@ -2894,6 +3102,9 @@ export class PurchaseStorage extends SalesStorage {
         await this.updatePurchaseInvoicePaidAmount(
           updatedCreditNote.purchaseInvoiceId,
         );
+
+        // Post the credit-note GL (L5) — previously nothing was posted.
+        await this.postPurchaseCreditNoteGL(updatedCreditNote);
       }
 
       return updatedCreditNote;
@@ -2983,27 +3194,30 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceData = invoice[0];
       const totalAmount = parseFloat(invoiceData.totalAmount || "0");
 
-      // Determine status based on payment
-      let status = "pending";
+      // The payment lifecycle lives in paymentStatus (unpaid -> partial -> paid).
+      // The approval `status` must be left untouched, so a payment on an approved
+      // invoice keeps status = "approved" (previously this clobbered status with a
+      // payment value, destroying the approval state).
+      let paymentStatus = "unpaid";
       if (totalPaid >= totalAmount) {
-        status = "paid";
+        paymentStatus = "paid";
       } else if (totalPaid > 0) {
-        status = "partially_paid";
+        paymentStatus = "partial";
       }
 
-      // Update invoice
+      // Update invoice — only paidAmount + paymentStatus.
       await db
         .update(purchaseInvoices)
         .set({
           paidAmount: totalPaid.toFixed(2),
-          status,
+          paymentStatus,
         })
         .where(eq(purchaseInvoices.id, invoiceId));
 
       console.log(
         `Updated purchase invoice ${invoiceId} paid amount to ${totalPaid.toFixed(
           2,
-        )} with status ${status}`,
+        )} with paymentStatus ${paymentStatus}`,
       );
     } catch (error: any) {
       console.error(
@@ -3040,7 +3254,11 @@ export class PurchaseStorage extends SalesStorage {
       const invoiceCurrency = invoice.currency || "AED";
       const invoiceExchangeRate = parseFloat(invoice.exchangeRate || "1");
       const originalAmount = parseFloat(invoice.totalAmount || "0");
-      const aedAmount = (originalAmount * invoiceExchangeRate).toFixed(2);
+      // Recompute the 3-row split from the EDITED figures.
+      const originalTax = parseFloat(invoice.taxAmount || "0");
+      const aedTotal = Math.round(originalAmount * invoiceExchangeRate * 100) / 100;
+      const aedTax = Math.round(originalTax * invoiceExchangeRate * 100) / 100;
+      const aedExpense = Math.round((aedTotal - aedTax) * 100) / 100;
       const currencyNote =
         invoiceCurrency !== "AED"
           ? ` (${invoiceCurrency} ${originalAmount.toFixed(2)} @ ${invoiceExchangeRate})`
@@ -3054,47 +3272,91 @@ export class PurchaseStorage extends SalesStorage {
         ? new Date(invoice.dueDate).toISOString()
         : null;
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: "0",
-          creditAmount: aedAmount,
-          description,
-          entityId: invoice.supplierId,
-          entityName: supplierName,
-          projectId: invoice.projectId || null,
-          transactionDate,
-          dueDate,
-        })
+      const shared = {
+        entryType: "payable" as const,
+        referenceType: "purchase_invoice" as const,
+        referenceId: invoiceId,
+        description,
+        entityId: invoice.supplierId,
+        entityName: supplierName,
+        projectId: invoice.projectId || null,
+        invoiceNumber: invoice.invoiceNumber,
+        transactionDate,
+        dueDate,
+        status: "pending" as const,
+      };
+
+      // Reverse-and-re-post (H2): a fixed 2-row UPDATE can neither add a VAT row
+      // nor remove one when an edit changes the tax. Reverse the current active
+      // posting and post the new split — atomically, keeping the reversal visible.
+      const activeRows = await db
+        .select()
+        .from(generalLedgerEntries)
         .where(
           and(
             eq(generalLedgerEntries.referenceType, "purchase_invoice"),
             eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Accounts Payable"),
-            ne(generalLedgerEntries.status, "cancelled"),
+            eq(generalLedgerEntries.status, "pending"),
           ),
         );
 
-      await db
-        .update(generalLedgerEntries)
-        .set({
-          debitAmount: aedAmount,
-          creditAmount: "0",
-          description,
-          entityId: invoice.supplierId,
-          entityName: supplierName,
-          projectId: invoice.projectId || null,
-          transactionDate,
-          dueDate,
-        })
-        .where(
-          and(
-            eq(generalLedgerEntries.referenceType, "purchase_invoice"),
-            eq(generalLedgerEntries.referenceId, invoiceId),
-            eq(generalLedgerEntries.accountName, "Purchase Expense"),
-            ne(generalLedgerEntries.status, "cancelled"),
-          ),
-        );
+      const repostAllocation = await this.allocatePurchaseExpense(
+        invoiceId,
+        aedExpense,
+        invoice.projectId || null,
+      );
+
+      await db.transaction(async (tx) => {
+        for (const row of activeRows) {
+          await tx.insert(generalLedgerEntries).values({
+            entryType: row.entryType,
+            referenceType: "purchase_invoice",
+            referenceId: invoiceId,
+            accountName: row.accountName,
+            description: `REVERSAL (edit) - ${row.description}`,
+            debitAmount: row.creditAmount,
+            creditAmount: row.debitAmount,
+            entityId: row.entityId,
+            entityName: row.entityName,
+            projectId: row.projectId,
+            invoiceNumber: row.invoiceNumber,
+            transactionDate: row.transactionDate,
+            dueDate: row.dueDate,
+            status: "reversed",
+          });
+          await tx
+            .update(generalLedgerEntries)
+            .set({ status: "reversed" })
+            .where(eq(generalLedgerEntries.id, row.id));
+        }
+
+        // Re-post the new split from the edited figures (VAT line omitted when
+        // zero), one Purchase Expense row per project the edited lines allocate
+        // to — the edit may have moved a line to a different project.
+        for (const alloc of repostAllocation) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            projectId: alloc.projectId,
+            accountName: "Purchase Expense",
+            debitAmount: alloc.amount.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+        if (aedTax > 0.005) {
+          await tx.insert(generalLedgerEntries).values({
+            ...shared,
+            accountName: "VAT Recoverable",
+            debitAmount: aedTax.toFixed(2),
+            creditAmount: "0",
+          });
+        }
+        await tx.insert(generalLedgerEntries).values({
+          ...shared,
+          accountName: "Accounts Payable",
+          debitAmount: "0",
+          creditAmount: aedTotal.toFixed(2),
+        });
+      });
 
       console.log(
         `GL entries updated for purchase invoice ${invoice.invoiceNumber}`,

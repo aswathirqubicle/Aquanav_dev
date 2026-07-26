@@ -157,10 +157,21 @@ purchaseInvoicesRoutes.put(
           .json({ message: "Purchase invoice not found" });
       }
       const isAdmin = req.session.userRole === "admin";
-      const editableStatuses = ["draft", "approved", "partial", "paid"];
+      // Editable statuses are approval-lifecycle values. partially-paid / paid
+      // live in paymentStatus, not status, so they were never valid here; the
+      // paidAmount guard below is what actually blocks edits after payment.
+      const editableStatuses = ["draft", "pending_approval", "approved"];
       if (!editableStatuses.includes(existingInvoice.status)) {
         return res.status(400).json({
           message: "This invoice cannot be edited in its current status",
+        });
+      }
+      // Once any payment (or credit note) is recorded, the invoice is locked
+      // from edits — mirrors the sales side.
+      if (parseFloat(existingInvoice.paidAmount || "0") > 0) {
+        return res.status(400).json({
+          message:
+            "This invoice has recorded payments and can no longer be edited",
         });
       }
       if (existingInvoice.status !== "draft" && !isAdmin) {
@@ -236,7 +247,15 @@ purchaseInvoicesRoutes.put(
       }
 
       if (existingInvoice.status !== "draft") {
-        await storage.updatePurchaseInvoiceGLEntries(id);
+        // GL is posted on approval. An invoice still awaiting approval has no
+        // posting to reverse, so re-posting here would create ledger entries for
+        // an unapproved document — and approval would then post the same split a
+        // second time, silently doubling expense, input VAT and payable (the
+        // doubled set still balances, so no ΣDr=ΣCr check catches it). Only an
+        // already-approved invoice gets the reverse-and-re-post.
+        if (existingInvoice.status !== "pending_approval") {
+          await storage.updatePurchaseInvoiceGLEntries(id);
+        }
 
         const paidAmount = parseFloat(invoice.paidAmount || "0");
         const newTotal = parseFloat(invoice.totalAmount || "0");
