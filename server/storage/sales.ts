@@ -402,6 +402,12 @@ export class SalesStorage extends LedgerStorage {
             invoice.id,
             createdCreditNote,
           );
+
+          // A credit note reduces the project's revenue — it is contra-revenue
+          // in the ledger, so the project must be recalculated too.
+          if (invoice.projectId) {
+            await this.updateProjectRevenue(invoice.projectId);
+          }
         }
       }
 
@@ -571,6 +577,12 @@ export class SalesStorage extends LedgerStorage {
                 invoice.id,
                 updatedCreditNote,
               );
+
+              // Contra-revenue: the project must be recalculated (see
+              // createCreditNote).
+              if (invoice.projectId) {
+                await this.updateProjectRevenue(invoice.projectId);
+              }
             }
           }
         } catch (glError) {
@@ -1648,8 +1660,13 @@ export class SalesStorage extends LedgerStorage {
           .where(eq(creditNotes.id, id));
       });
 
-      // Recalculate outside the transaction: it reads invoice_payments back.
+      // Recalculate outside the transaction: these read the rows back.
       if (invoiceId) await this.updateInvoicePaidAmount(invoiceId);
+      // The credit note no longer counts against the project, so its revenue
+      // must be restored.
+      if (invoice?.projectId) {
+        await this.updateProjectRevenue(invoice.projectId);
+      }
 
       const [updated] = await db
         .select()
