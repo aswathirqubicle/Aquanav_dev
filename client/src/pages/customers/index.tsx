@@ -863,8 +863,11 @@ export default function CustomersIndex() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-currency">Currency</Label>
-                    <Select value={formData.currency} onValueChange={(value) => handleChange("currency", value)}>
-                      <SelectTrigger>
+                    {/* Fixed after creation. Changing it would strand every
+                        document already priced in the old currency — their
+                        stored amounts and exchange rates do not follow. */}
+                    <Select value={formData.currency} disabled>
+                      <SelectTrigger id="edit-currency">
                         <SelectValue placeholder="Select currency" />
                       </SelectTrigger>
                       <SelectContent>
@@ -873,6 +876,10 @@ export default function CustomersIndex() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Currency is set when the customer is created. To bill in a
+                      different currency, add a new customer.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-creditLimit">Credit Limit</Label>
