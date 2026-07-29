@@ -693,8 +693,16 @@ export default function SuppliersIndex() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="currency">Currency</Label>
-                      <Select value={formData.currency} onValueChange={(value) => handleChange("currency", value)}>
-                        <SelectTrigger>
+                      {/* Create and edit share this form. Fixed once the
+                          supplier exists: changing it would strand every
+                          document already priced in the old currency — their
+                          stored amounts and exchange rates do not follow. */}
+                      <Select
+                        value={formData.currency}
+                        onValueChange={(value) => handleChange("currency", value)}
+                        disabled={!!editingSupplier}
+                      >
+                        <SelectTrigger id="currency">
                           <SelectValue placeholder="Select currency" />
                         </SelectTrigger>
                         <SelectContent>
@@ -703,6 +711,12 @@ export default function SuppliersIndex() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {editingSupplier && (
+                        <p className="text-xs text-muted-foreground">
+                          Currency is set when the supplier is created. To trade
+                          in a different currency, add a new supplier.
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="creditLimit">Credit Limit</Label>
