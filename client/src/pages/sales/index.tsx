@@ -1,4 +1,4 @@
-import { useEffect, useState, startTransition } from "react";
+import { useEffect, useRef, useState, startTransition } from "react";
 import { useLocation } from "wouter";
 import { computeDocumentTotals } from "@shared/document-totals";
 import {
@@ -62,6 +62,8 @@ import {
   Download,
   Copy,
   Pencil,
+  Trash2,
+  X,
   History,
   ChevronDown,
   ChevronUp,
@@ -292,6 +294,49 @@ export default function SalesIndex() {
     discount: 0,
     discountType: "amount",
   });
+
+  // Index of the line being edited, or null when the form is adding a new one.
+  // Quotation and invoice keep separate indices because they hold separate item
+  // arrays, even though they share the newItem staging object above.
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [editingInvoiceItemIndex, setEditingInvoiceItemIndex] = useState<
+    number | null
+  >(null);
+  const quotationItemFormRef = useRef<HTMLDivElement>(null);
+  const quotationDescriptionRef = useRef<HTMLTextAreaElement>(null);
+  const invoiceItemFormRef = useRef<HTMLDivElement>(null);
+  const invoiceDescriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Bring the staging form into view and put the cursor in Description, so
+  // clicking Edit on a row far down the table doesn't leave the form off-screen.
+  const focusItemForm = (
+    cardRef: React.RefObject<HTMLDivElement>,
+    descriptionRef: React.RefObject<HTMLTextAreaElement>,
+  ) => {
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  // Never carry a half-finished line edit across a dialog open or close. This
+  // keys off the open state rather than the dialog's onOpenChange because Radix
+  // only fires that for its own triggers (Escape, overlay, close button) — the
+  // programmatic setIsDialogOpen calls in the duplicate, edit and post-submit
+  // paths would otherwise leave the index pointing at a row that is gone.
+  // Only reset when an edit was actually abandoned: clearing the index alone
+  // would leave that row's values sitting in the staging form, so the next
+  // "Add Service" would append a duplicate of it. A half-typed NEW item is
+  // left untouched.
+  useEffect(() => {
+    if (editingItemIndex !== null) {
+      cancelEditItem();
+    }
+  }, [isDialogOpen]);
+
+  useEffect(() => {
+    if (editingInvoiceItemIndex !== null) {
+      cancelEditInvoiceItem();
+    }
+  }, [isInvoiceDialogOpen]);
 
   const [paymentFormData, setPaymentFormData] = useState<CreatePaymentData>({
     invoiceId: 0,
@@ -942,6 +987,9 @@ export default function SalesIndex() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      // Editing a line item changes the invoice total, so the header summary
+      // cards (receivables, invoice value) are stale until this refetches.
+      queryClient.invalidateQueries({ queryKey: ["/api/sales/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", variables.id, "edit-history"] });
       toast({
         title: "Invoice Updated",
@@ -1168,6 +1216,7 @@ export default function SalesIndex() {
       discountType: "amount",
     });
 
+    setEditingItemIndex(null);
     setIsEditingQuotation(false);
     setSelectedQuotation(null);
   };
@@ -1202,6 +1251,7 @@ export default function SalesIndex() {
       discount: 0,
       discountType: "amount",
     });
+    setEditingInvoiceItemIndex(null);
   };
 
   const resetPaymentForm = () => {
@@ -1376,7 +1426,12 @@ export default function SalesIndex() {
 
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, item],
+      items:
+        editingItemIndex === null
+          ? [...prev.items, item]
+          : prev.items.map((existing, i) =>
+              i === editingItemIndex ? item : existing,
+            ),
     }));
 
     setNewItem({
@@ -1388,6 +1443,39 @@ export default function SalesIndex() {
       discount: 0,
       discountType: "amount",
     });
+    setEditingItemIndex(null);
+  };
+
+  // Load an existing line back into the staging form above the table. Saving
+  // then replaces that row instead of appending a new one.
+  const startEditItem = (index: number) => {
+    const item = formData.items[index];
+    if (!item) return;
+
+    setNewItem({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate ?? 0,
+      taxAmount: item.taxAmount ?? 0,
+      discount: Number(item.discount) || 0,
+      discountType: item.discountType === "percentage" ? "percentage" : "amount",
+    });
+    setEditingItemIndex(index);
+    focusItemForm(quotationItemFormRef, quotationDescriptionRef);
+  };
+
+  const cancelEditItem = () => {
+    setNewItem({
+      description: "",
+      quantity: 1,
+      unitPrice: 0,
+      taxRate: customerVatTreatment === "standard" ? 5 : 0,
+      taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
+    });
+    setEditingItemIndex(null);
   };
 
   const removeItem = (index: number) => {
@@ -1432,7 +1520,12 @@ export default function SalesIndex() {
 
     setInvoiceFormData(prev => ({
       ...prev,
-      items: [...prev.items, item],
+      items:
+        editingInvoiceItemIndex === null
+          ? [...prev.items, item]
+          : prev.items.map((existing, i) =>
+              i === editingInvoiceItemIndex ? item : existing,
+            ),
     }));
 
     setNewItem({
@@ -1444,6 +1537,37 @@ export default function SalesIndex() {
       discount: 0,
       discountType: "amount",
     });
+    setEditingInvoiceItemIndex(null);
+  };
+
+  const startEditInvoiceItem = (index: number) => {
+    const item = invoiceFormData.items[index];
+    if (!item) return;
+
+    setNewItem({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate ?? 0,
+      taxAmount: item.taxAmount ?? 0,
+      discount: Number(item.discount) || 0,
+      discountType: item.discountType === "percentage" ? "percentage" : "amount",
+    });
+    setEditingInvoiceItemIndex(index);
+    focusItemForm(invoiceItemFormRef, invoiceDescriptionRef);
+  };
+
+  const cancelEditInvoiceItem = () => {
+    setNewItem({
+      description: "",
+      quantity: 1,
+      unitPrice: 0,
+      taxRate: customerVatTreatment === "standard" ? 5 : 0,
+      taxAmount: 0,
+      discount: 0,
+      discountType: "amount",
+    });
+    setEditingInvoiceItemIndex(null);
   };
 
   const removeInvoiceItem = (index: number) => {
@@ -2175,14 +2299,16 @@ export default function SalesIndex() {
                     <Label className="text-base font-medium">Services</Label>
 
                     {/* Add Service Form */}
-                    <Card>
+                    <Card ref={quotationItemFormRef}>
                       <CardContent className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                          <div>
+                          <div className="md:col-span-2 lg:col-span-4">
                             <Label className="text-xs text-gray-600">
                               Description
                             </Label>
-                            <Input
+                            <Textarea
+                              ref={quotationDescriptionRef}
+                              rows={3}
                               placeholder="Service description"
                               value={newItem.description}
                               onChange={(e) =>
@@ -2283,15 +2409,38 @@ export default function SalesIndex() {
                             </div>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          onClick={addItem}
-                          size="sm"
-                          className="w-full md:w-auto"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Service
-                        </Button>
+                        <div className="flex flex-col md:flex-row gap-2">
+                          <Button
+                            type="button"
+                            onClick={addItem}
+                            size="sm"
+                            className="w-full md:w-auto"
+                          >
+                            {editingItemIndex === null ? (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Service
+                              </>
+                            ) : (
+                              <>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Update Service
+                              </>
+                            )}
+                          </Button>
+                          {editingItemIndex !== null && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={cancelEditItem}
+                              className="w-full md:w-auto"
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -2300,7 +2449,19 @@ export default function SalesIndex() {
                       <Card>
                         <CardContent className="p-0">
                           <div className="overflow-x-auto">
-                            <table className="w-full">
+                            <table className="w-full min-w-[760px] table-fixed">
+                              {/* Description takes whatever the fixed numeric
+                                  columns leave, so long multi-line text has room. */}
+                              <colgroup>
+                                <col />
+                                <col className="w-[70px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[100px]" />
+                                <col className="w-[90px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[90px]" />
+                              </colgroup>
                               <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
                                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2343,8 +2504,15 @@ export default function SalesIndex() {
                                   const lineTotal = taxable + taxAmount;
 
                                   return (
-                                    <tr key={index}>
-                                      <td className="px-4 py-3 text-sm">
+                                    <tr
+                                      key={index}
+                                      className={
+                                        editingItemIndex === index
+                                          ? "bg-blue-50 dark:bg-blue-950"
+                                          : undefined
+                                      }
+                                    >
+                                      <td className="px-4 py-3 text-sm whitespace-pre-wrap break-words">
                                         {item.description}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
@@ -2369,15 +2537,38 @@ export default function SalesIndex() {
                                       <td className="px-4 py-3 text-sm text-right font-medium">
                                         {formData.currency || "AED"} {lineTotal.toFixed(2)}
                                       </td>
-                                      <td className="px-4 py-3 text-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() => removeItem(index)}
-                                        >
-                                          Remove
-                                        </Button>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center justify-center gap-1">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            title="Edit item"
+                                            aria-label="Edit item"
+                                            data-testid={`button-edit-quotation-item-${index}`}
+                                            onClick={() => startEditItem(index)}
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-destructive hover:text-destructive"
+                                            title={
+                                              editingItemIndex !== null
+                                                ? "Finish or cancel the current edit first"
+                                                : "Remove item"
+                                            }
+                                            aria-label="Remove item"
+                                            data-testid={`button-remove-quotation-item-${index}`}
+                                            disabled={editingItemIndex !== null}
+                                            onClick={() => removeItem(index)}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
                                       </td>
                                     </tr>
                                   );
@@ -2818,14 +3009,16 @@ export default function SalesIndex() {
                     <Label className="text-base font-medium">Services</Label>
 
                     {/* Add Service Form for Invoice */}
-                    <Card>
+                    <Card ref={invoiceItemFormRef}>
                       <CardContent className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                          <div>
+                          <div className="md:col-span-2 lg:col-span-4">
                             <Label className="text-xs text-gray-600">
                               Description
                             </Label>
-                            <Input
+                            <Textarea
+                              ref={invoiceDescriptionRef}
+                              rows={3}
                               placeholder="Service description"
                               value={newItem.description}
                               onChange={(e) =>
@@ -2926,15 +3119,38 @@ export default function SalesIndex() {
                             </div>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          onClick={addInvoiceItem}
-                          size="sm"
-                          className="w-full md:w-auto"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Service
-                        </Button>
+                        <div className="flex flex-col md:flex-row gap-2">
+                          <Button
+                            type="button"
+                            onClick={addInvoiceItem}
+                            size="sm"
+                            className="w-full md:w-auto"
+                          >
+                            {editingInvoiceItemIndex === null ? (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Service
+                              </>
+                            ) : (
+                              <>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Update Service
+                              </>
+                            )}
+                          </Button>
+                          {editingInvoiceItemIndex !== null && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={cancelEditInvoiceItem}
+                              className="w-full md:w-auto"
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -2943,7 +3159,19 @@ export default function SalesIndex() {
                       <Card>
                         <CardContent className="p-0">
                           <div className="overflow-x-auto">
-                            <table className="w-full">
+                            <table className="w-full min-w-[760px] table-fixed">
+                              {/* Description takes whatever the fixed numeric
+                                  columns leave, so long multi-line text has room. */}
+                              <colgroup>
+                                <col />
+                                <col className="w-[70px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[100px]" />
+                                <col className="w-[90px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[90px]" />
+                              </colgroup>
                               <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
                                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2986,8 +3214,15 @@ export default function SalesIndex() {
                                   const lineTotal = taxable + taxAmount;
 
                                   return (
-                                    <tr key={index}>
-                                      <td className="px-4 py-3 text-sm">
+                                    <tr
+                                      key={index}
+                                      className={
+                                        editingInvoiceItemIndex === index
+                                          ? "bg-blue-50 dark:bg-blue-950"
+                                          : undefined
+                                      }
+                                    >
+                                      <td className="px-4 py-3 text-sm whitespace-pre-wrap break-words">
                                         {item.description}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
@@ -3012,17 +3247,44 @@ export default function SalesIndex() {
                                       <td className="px-4 py-3 text-sm text-right font-medium">
                                         {invoiceFormData.currency || "AED"} {lineTotal.toFixed(2)}
                                       </td>
-                                      <td className="px-4 py-3 text-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() =>
-                                            removeInvoiceItem(index)
-                                          }
-                                        >
-                                          Remove
-                                        </Button>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center justify-center gap-1">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            title="Edit item"
+                                            aria-label="Edit item"
+                                            data-testid={`button-edit-invoice-item-${index}`}
+                                            onClick={() =>
+                                              startEditInvoiceItem(index)
+                                            }
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-destructive hover:text-destructive"
+                                            title={
+                                              editingInvoiceItemIndex !== null
+                                                ? "Finish or cancel the current edit first"
+                                                : "Remove item"
+                                            }
+                                            aria-label="Remove item"
+                                            data-testid={`button-remove-invoice-item-${index}`}
+                                            disabled={
+                                              editingInvoiceItemIndex !== null
+                                            }
+                                            onClick={() =>
+                                              removeInvoiceItem(index)
+                                            }
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
                                       </td>
                                     </tr>
                                   );
@@ -4335,7 +4597,7 @@ export default function SalesIndex() {
 
                             return (
                               <tr key={index} className="border-b">
-                                <td className="p-3">{item.description}</td>
+                                <td className="p-3 whitespace-pre-wrap break-words">{item.description}</td>
                                 <td className="text-right p-3">
                                   {item.quantity}
                                 </td>
@@ -4730,7 +4992,7 @@ export default function SalesIndex() {
 
                             return (
                               <tr key={index} className="border-b">
-                                <td className="p-3">{item.description}</td>
+                                <td className="p-3 whitespace-pre-wrap break-words">{item.description}</td>
                                 <td className="text-right p-3">
                                   {item.quantity}
                                 </td>

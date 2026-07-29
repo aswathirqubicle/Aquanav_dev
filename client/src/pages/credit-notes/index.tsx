@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Eye, FileText, Ban } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, FileText, Ban, Pencil, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +54,784 @@ const createCreditNoteSchema = insertCreditNoteSchema.extend({
 });
 
 type CreditNoteFormData = z.infer<typeof createCreditNoteSchema>;
+
+interface CreditNoteItem {
+  description: string;
+  quantity: number | "";
+  unitPrice: number | "";
+  taxRate: number | "";
+  taxAmount: number;
+  discount: number | "";
+  discountType: "amount" | "percentage";
+}
+
+const emptyCreditNoteItem: CreditNoteItem = {
+  description: "",
+  quantity: 1,
+  unitPrice: 0,
+  taxRate: 0,
+  taxAmount: 0,
+  discount: 0,
+  discountType: "amount",
+};
+
+const formatCurrency = (amount: string | number, currency?: string) => {
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  return `${currency || "AED"} ${num.toFixed(2)}`;
+};
+
+const CreditNoteForm = ({
+  creditNote,
+  onSubmit,
+  salesInvoices,
+  customers,
+  selectedInvoiceId,
+  isCreateOpen,
+  editingCreditNote,
+  isSubmitting,
+  onCancel,
+}: {
+  creditNote?: any;
+  onSubmit: (data: CreditNoteFormData) => void;
+  salesInvoices: any[];
+  customers: any[];
+  selectedInvoiceId: number | null;
+  isCreateOpen: boolean;
+  editingCreditNote: any;
+  isSubmitting: boolean;
+  onCancel: () => void;
+}) => {
+  const { toast } = useToast();
+
+  const [formData, setFormData] = useState<any>({
+    salesInvoiceId: creditNote?.salesInvoiceId || selectedInvoiceId || 0,
+    customerId: creditNote?.customerId || 0,
+    status: creditNote?.status || "draft",
+    creditNoteDate: formatDateForInput(creditNote?.creditNoteDate) || formatDateForInput(new Date()),
+    billingAddress: creditNote?.billingAddress || "",
+    bankAccount: creditNote?.bankAccount || "",
+    reason: creditNote?.reason || "",
+    items: creditNote?.items || [],
+    subtotal: creditNote?.subtotal || "0.00",
+    taxAmount: creditNote?.taxAmount || "0.00",
+    discountPercentage: creditNote?.discountPercentage || "0",
+    discount: creditNote?.discount || "0.00",
+    totalAmount: creditNote?.totalAmount || "0.00",
+    currency: creditNote?.currency || "AED",
+    exchangeRate: creditNote?.exchangeRate || "1",
+  });
+
+  const [newItem, setNewItem] = useState<CreditNoteItem>({ ...emptyCreditNoteItem });
+
+  // Index of the line being edited, or null when the form is adding a new one.
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const itemFormRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Bring the staging form into view and put the cursor in Description, so
+  // clicking Edit on a row far down the table doesn't leave the form off-screen.
+  const focusItemForm = () => {
+    itemFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  // Never carry a half-finished line edit across a dialog open or close. This
+  // keys off the open state rather than the dialog's onOpenChange because Radix
+  // only fires that for its own triggers (Escape, overlay, close button) — the
+  // programmatic setIsCreateOpen / setEditingCreditNote calls in the cancel and
+  // post-submit paths would otherwise leave the index pointing at a row that is
+  // gone. This one form is shared by the create and the edit dialog.
+  // Only reset when an edit was actually abandoned: clearing the index alone
+  // would leave that row's values sitting in the staging form, so the next
+  // "Add Item" would append a duplicate of it. A half-typed NEW item is left
+  // untouched.
+  useEffect(() => {
+    if (editingItemIndex !== null) {
+      cancelEditItem();
+    }
+  }, [isCreateOpen, editingCreditNote]);
+
+  const selectedInvoice = salesInvoices.find((inv: any) => inv.id === formData.salesInvoiceId);
+
+  useEffect(() => {
+    if (selectedInvoice) {
+      const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice.customerId) : null;
+      const invoiceCurrency = selectedInvoice.currency || selectedCustomer?.currency || "AED";
+      const invoiceExchangeRate = selectedInvoice.exchangeRate || "1";
+      setFormData(prev => ({
+        ...prev,
+        customerId: selectedInvoice.customerId || 0,
+        billingAddress: selectedCustomer?.address || "",
+        currency: invoiceCurrency,
+        exchangeRate: invoiceExchangeRate,
+      }));
+      if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice.exchangeRate) {
+        fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
+          .then(r => r.json())
+          .then(data => {
+            if (data.rate) {
+              setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
+            }
+          })
+          .catch(() => { });
+      }
+    }
+  }, [selectedInvoice]);
+
+  const calculateTotals = () => {
+    // Authoritative totals via the shared engine (VAT on the discounted base;
+    // line discount first, then header apportioned). Mirrors the server.
+    const totals = computeDocumentTotals(
+      (formData.items || []).map((it: any) => ({
+        quantity: Number(it.quantity) || 0,
+        unitPrice: Number(it.unitPrice) || 0,
+        taxRate: Number(it.taxRate) || 0,
+        discount: Number(it.discount) || 0,
+        discountType: it.discountType === "percentage" ? "percentage" : "amount",
+      })),
+      parseFloat(formData.discountPercentage || "0") > 0
+        ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
+        : { discount: parseFloat(formData.discount || "0"), discountType: "amount" as const },
+    );
+
+    setFormData((prev: any) => ({
+      ...prev,
+      subtotal: totals.gross.toFixed(2),
+      taxAmount: totals.taxTotal.toFixed(2),
+      totalAmount: totals.total.toFixed(2),
+    }));
+  };
+
+  useEffect(() => {
+    calculateTotals();
+  }, [formData.items, formData.discount]);
+
+  const creditNoteSubtotalValue = formData.items.reduce((sum: number, item: any) => sum + ((typeof item.quantity === 'number' ? item.quantity : 0) || 0) * ((typeof item.unitPrice === 'number' ? item.unitPrice : 0) || 0), 0);
+
+  // Recalculate credit note discount when items or percentage changes
+  useEffect(() => {
+    const pct = parseFloat(formData.discountPercentage || "0") || 0;
+    const calcDiscountValue = creditNoteSubtotalValue * pct / 100;
+    const currentDiscountValue = parseFloat(formData.discount || "0");
+
+    if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
+      setFormData((prev: any) => ({ ...prev, discount: calcDiscountValue.toString() }));
+    }
+  }, [creditNoteSubtotalValue, formData.discountPercentage]);
+
+  const addItem = () => {
+    if (!newItem.description.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an item description",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const item = {
+      ...newItem,
+      quantity: newItem.quantity === "" ? 0 : newItem.quantity,
+      unitPrice: newItem.unitPrice === "" ? 0 : newItem.unitPrice,
+      taxRate: newItem.taxRate === "" ? 0 : newItem.taxRate,
+      discount: newItem.discount === "" ? 0 : (newItem.discount || 0),
+      discountType: newItem.discountType || "amount",
+    };
+
+    setFormData((prev: any) => ({
+      ...prev,
+      items:
+        editingItemIndex === null
+          ? [...prev.items, item]
+          : prev.items.map((existing: any, i: number) =>
+              i === editingItemIndex ? item : existing,
+            ),
+    }));
+
+    setNewItem({ ...emptyCreditNoteItem });
+    setEditingItemIndex(null);
+  };
+
+  // Load an existing line back into the staging form above the table. Saving
+  // then replaces that row instead of appending a new one.
+  const startEditItem = (index: number) => {
+    const item = formData.items[index];
+    if (!item) return;
+
+    setNewItem({
+      description: item.description || "",
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate ?? 0,
+      taxAmount: Number(item.taxAmount) || 0,
+      discount: Number(item.discount) || 0,
+      discountType: item.discountType === "percentage" ? "percentage" : "amount",
+    });
+    setEditingItemIndex(index);
+    focusItemForm();
+  };
+
+  const cancelEditItem = () => {
+    setNewItem({ ...emptyCreditNoteItem });
+    setEditingItemIndex(null);
+  };
+
+  const removeItem = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate required fields
+    if (!formData.salesInvoiceId) {
+      toast({
+        title: "Error",
+        description: "Please select a sales invoice",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.items.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please add at least one item to the credit note",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const validatedData = createCreditNoteSchema.parse(formData);
+      onSubmit(validatedData);
+    } catch (error) {
+      toast({
+        title: "Validation Error",
+        description: "Please check all required fields",
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <div className="space-y-2">
+          <Label htmlFor="salesInvoiceId">Linked Sales Invoice *</Label>
+          <Select
+            value={formData.salesInvoiceId ? formData.salesInvoiceId.toString() : "0"}
+            onValueChange={(value) => {
+              const selectedInvoice = salesInvoices.find((inv: any) => inv.id === parseInt(value));
+              const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice?.customerId) : null;
+              const invoiceCurrency = selectedInvoice?.currency || selectedCustomer?.currency || "AED";
+              const invoiceExchangeRate = selectedInvoice?.exchangeRate || "1";
+              setFormData(prev => ({
+                ...prev,
+                salesInvoiceId: parseInt(value),
+                customerId: selectedInvoice?.customerId || 0,
+                billingAddress: selectedCustomer?.address || "",
+                currency: invoiceCurrency,
+                exchangeRate: invoiceExchangeRate,
+              }));
+              if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice?.exchangeRate) {
+                fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
+                  .then(r => r.json())
+                  .then(data => {
+                    if (data.rate) {
+                      setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
+                    }
+                  })
+                  .catch(() => { });
+              }
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select an invoice number" />
+            </SelectTrigger>
+            <SelectContent>
+              {salesInvoices
+                .filter(
+                  (invoice: any) =>
+                    invoice.status !== "draft" &&
+                    invoice.status !== "paid" &&
+                    parseFloat(invoice.totalAmount || "0") > 0,
+                )
+                .map((invoice: any) => (
+                  <SelectItem key={invoice.id} value={invoice.id.toString()}>
+                    {invoice.invoiceNumber || `Invoice #${invoice.id}`}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          {(() => {
+            const selectedInvoice = salesInvoices.find((inv: any) => inv.id === formData.salesInvoiceId);
+            const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice?.customerId) : null;
+
+            if (selectedInvoice && selectedCustomer) {
+              return (
+                <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+                  <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">Invoice Details</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="font-medium">Customer:</span> {selectedCustomer.name}
+                    </div>
+                    <div>
+                      <span className="font-medium">Amount:</span> {formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}
+                    </div>
+                    <div>
+                      <span className="font-medium">Date:</span> {formatDisplayDate(selectedInvoice.invoiceDate)}
+                    </div>
+                    <div>
+                      <span className="font-medium">Status:</span> {selectedInvoice.status}
+                    </div>
+                    {selectedCustomer.email && (
+                      <div className="col-span-2">
+                        <span className="font-medium">Email:</span> {selectedCustomer.email}
+                      </div>
+                    )}
+                    {selectedCustomer.phone && (
+                      <div className="col-span-2">
+                        <span className="font-medium">Phone:</span> {selectedCustomer.phone}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+        <div>
+          <Label htmlFor="status">Status</Label>
+          <Select
+            value={formData.status}
+            onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="issued">Issued</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="creditNoteDate">Credit Note Date *</Label>
+          <Input
+            id="creditNoteDate"
+            type="date"
+            value={formData.creditNoteDate}
+            onChange={(e) => setFormData(prev => ({ ...prev, creditNoteDate: e.target.value }))}
+            required
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="reason">Reason</Label>
+          <Input
+            id="reason"
+            placeholder="e.g., Product return, pricing error..."
+            value={formData.reason}
+            onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="billingAddress">Billing Address</Label>
+        <textarea
+          id="billingAddress"
+          className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          value={formData.billingAddress || ""}
+          onChange={(e) => setFormData(prev => ({ ...prev, billingAddress: e.target.value }))}
+          placeholder="Billing address (auto-populated from customer)"
+          rows={3}
+        />
+      </div>
+
+      {/* Items Section */}
+      <div className="space-y-4">
+        <Label className="text-lg font-semibold">Items</Label>
+        {/* Add Item Form */}
+        <Card ref={itemFormRef}>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="md:col-span-2 lg:col-span-4">
+                <Label className="text-xs text-gray-600">Description</Label>
+                <Textarea
+                  ref={descriptionRef}
+                  rows={3}
+                  placeholder="Item description"
+                  value={newItem.description}
+                  onChange={(e) =>
+                    setNewItem((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">Qty</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Qty"
+                  value={newItem.quantity}
+                  onChange={(e) =>
+                    setNewItem((prev) => ({
+                      ...prev,
+                      quantity: e.target.value === "" ? "" : parseFloat(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">Unit Price</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Unit price"
+                  value={newItem.unitPrice}
+                  onChange={(e) =>
+                    setNewItem((prev) => ({
+                      ...prev,
+                      unitPrice: e.target.value === "" ? "" : parseFloat(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">Tax %</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="any"
+                  placeholder="Tax %"
+                  value={newItem.taxRate}
+                  onChange={(e) =>
+                    setNewItem((prev) => ({
+                      ...prev,
+                      taxRate: e.target.value === "" ? "" : parseFloat(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">Discount</Label>
+                <div className="flex gap-1">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="0"
+                    value={newItem.discount}
+                    onChange={(e) =>
+                      setNewItem((prev) => ({
+                        ...prev,
+                        discount: e.target.value === "" ? "" : parseFloat(e.target.value),
+                      }))
+                    }
+                  />
+                  <select
+                    className="border rounded px-2 text-sm bg-background"
+                    value={newItem.discountType}
+                    onChange={(e) =>
+                      setNewItem((prev) => ({
+                        ...prev,
+                        discountType: e.target.value as "amount" | "percentage",
+                      }))
+                    }
+                  >
+                    <option value="amount">{formData.currency || "AED"}</option>
+                    <option value="percentage">%</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row gap-2">
+              <Button
+                type="button"
+                onClick={addItem}
+                size="sm"
+                className="w-full md:w-auto"
+              >
+                {editingItemIndex === null ? (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Item
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Update Item
+                  </>
+                )}
+              </Button>
+              {editingItemIndex !== null && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={cancelEditItem}
+                  className="w-full md:w-auto"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Items List */}
+        {formData.items.length > 0 && (
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] table-fixed">
+                  {/* Description takes whatever the fixed numeric
+                      columns leave, so long multi-line text has room. */}
+                  <colgroup>
+                    <col />
+                    <col className="w-[70px]" />
+                    <col className="w-[110px]" />
+                    <col className="w-[90px]" />
+                    <col className="w-[100px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[90px]" />
+                  </colgroup>
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Description
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Qty
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Unit Price
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tax Rate
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Discount
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {formData.items.map((item: any, index: number) => {
+                      const lineSubtotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+                      const lineDiscount = item.discountType === "percentage"
+                        ? lineSubtotal * ((Number(item.discount) || 0) / 100)
+                        : Math.min(Number(item.discount) || 0, lineSubtotal);
+                      const taxable = lineSubtotal - lineDiscount;
+                      const taxAmount = taxable * ((Number(item.taxRate) || 0) / 100);
+                      const lineTotal = taxable + taxAmount;
+
+                      return (
+                        <tr
+                          key={index}
+                          className={
+                            editingItemIndex === index
+                              ? "bg-blue-50 dark:bg-blue-950"
+                              : undefined
+                          }
+                        >
+                          <td className="px-4 py-3 text-sm whitespace-pre-wrap break-words">{item.description}</td>
+                          <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {formatCurrency(Number(item.unitPrice) || 0, formData.currency)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {Number(item.taxRate) || 0}%
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right">
+                            {Number(item.discount) > 0
+                              ? (item.discountType === "percentage"
+                                  ? `${item.discount}%`
+                                  : `${formData.currency || "AED"} ${(Number(item.discount)).toFixed(2)}`)
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right font-medium">
+                            {formatCurrency(lineTotal, formData.currency)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                title="Edit item"
+                                aria-label="Edit item"
+                                data-testid={`button-edit-credit-note-item-${index}`}
+                                onClick={() => startEditItem(index)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                title={
+                                  editingItemIndex !== null
+                                    ? "Finish or cancel the current edit first"
+                                    : "Remove item"
+                                }
+                                aria-label="Remove item"
+                                data-testid={`button-remove-credit-note-item-${index}`}
+                                disabled={editingItemIndex !== null}
+                                onClick={() => removeItem(index)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Financial Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+        <div className="space-y-4">
+          <h4 className="font-semibold text-sm">Discounts</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="discountPercentage">Discount (%)</Label>
+              <Input
+                id="discountPercentage"
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value={formData.discountPercentage}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const pct = parseFloat(val) || 0;
+                  const calcDiscount = (creditNoteSubtotalValue * pct / 100);
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    discountPercentage: val, 
+                    discount: val === "" ? "" : calcDiscount.toString()
+                  }));
+                }}
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="discountAmount">Discount Amount ({formData.currency})</Label>
+              <Input
+                id="discountAmount"
+                type="number"
+                min="0"
+                step="any"
+                value={formData.discount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const amount = parseFloat(val) || 0;
+                  const calcPct = creditNoteSubtotalValue > 0 ? ((amount / creditNoteSubtotalValue) * 100) : 0;
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    discount: val, 
+                    discountPercentage: val === "" ? "" : calcPct.toString()
+                  }));
+                }}
+                placeholder="0.00"
+                className="mt-1"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
+          <h4 className="font-semibold mb-3 text-sm">Credit Note Summary</h4>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Subtotal:</span>
+              <span className="font-medium">{formatCurrency(formData.subtotal || "0", formData.currency)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Tax Amount:</span>
+              <span className="font-medium">{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
+            </div>
+            {(() => {
+              // Total discount (header + line) derived from the engine-set
+              // totals; equals discountTotal to the cent.
+              const totalDiscount =
+                parseFloat(formData.subtotal || "0") +
+                parseFloat(formData.taxAmount || "0") -
+                parseFloat(formData.totalAmount || "0");
+              return totalDiscount > 0.005 ? (
+                <div className="flex justify-between text-sm text-red-600">
+                  <span>Total Discount:</span>
+                  <span className="font-medium">- {formatCurrency(totalDiscount.toFixed(2), formData.currency)}</span>
+                </div>
+              ) : null;
+            })()}
+            <div className="border-t pt-2">
+              <div className="flex justify-between text-lg font-bold">
+                <span>Total Amount:</span>
+                <span className="text-blue-600">{formatCurrency(formData.totalAmount || "0", formData.currency)}</span>
+              </div>
+              {formData.currency !== "AED" && (
+                <div className="text-xs text-muted-foreground mt-2 text-right">
+                  Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            onCancel();
+            setFormData(prev => ({ ...prev, currency: "AED", exchangeRate: "1" }));
+          }}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+        >
+          {creditNote ? "Update" : "Create"} Credit Note
+        </Button>
+      </div>
+    </form>
+  );
+};
 
 export default function CreditNotesIndex() {
   const [location, setLocation] = useLocation();
@@ -237,495 +1015,6 @@ export default function CreditNotesIndex() {
     );
   };
 
-  const formatCurrency = (amount: string | number, currency?: string) => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `${currency || "AED"} ${num.toFixed(2)}`;
-  };
-
-  const CreditNoteForm = ({ creditNote, onSubmit }: { creditNote?: any; onSubmit: (data: CreditNoteFormData) => void }) => {
-    const [formData, setFormData] = useState<any>({
-      salesInvoiceId: creditNote?.salesInvoiceId || selectedInvoiceId || 0,
-      customerId: creditNote?.customerId || 0,
-      status: creditNote?.status || "draft",
-      creditNoteDate: formatDateForInput(creditNote?.creditNoteDate) || formatDateForInput(new Date()),
-      billingAddress: creditNote?.billingAddress || "",
-      bankAccount: creditNote?.bankAccount || "",
-      reason: creditNote?.reason || "",
-      items: creditNote?.items || [{ description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0, discount: 0, discountType: "amount" }],
-      subtotal: creditNote?.subtotal || "0.00",
-      taxAmount: creditNote?.taxAmount || "0.00",
-      discountPercentage: creditNote?.discountPercentage || "0",
-      discount: creditNote?.discount || "0.00",
-      totalAmount: creditNote?.totalAmount || "0.00",
-      currency: creditNote?.currency || "AED",
-      exchangeRate: creditNote?.exchangeRate || "1",
-    });
-
-    const selectedInvoice = salesInvoices.find((inv: any) => inv.id === formData.salesInvoiceId);
-
-    useEffect(() => {
-      if (selectedInvoice) {
-        const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice.customerId) : null;
-        const invoiceCurrency = selectedInvoice.currency || selectedCustomer?.currency || "AED";
-        const invoiceExchangeRate = selectedInvoice.exchangeRate || "1";
-        setFormData(prev => ({
-          ...prev,
-          customerId: selectedInvoice.customerId || 0,
-          billingAddress: selectedCustomer?.address || "",
-          currency: invoiceCurrency,
-          exchangeRate: invoiceExchangeRate,
-        }));
-        if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice.exchangeRate) {
-          fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
-            .then(r => r.json())
-            .then(data => {
-              if (data.rate) {
-                setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
-              }
-            })
-            .catch(() => { });
-        }
-      }
-    }, [selectedInvoice]);
-
-    const calculateTotals = () => {
-      // Authoritative totals via the shared engine (VAT on the discounted base;
-      // line discount first, then header apportioned). Mirrors the server.
-      const totals = computeDocumentTotals(
-        (formData.items || []).map((it: any) => ({
-          quantity: Number(it.quantity) || 0,
-          unitPrice: Number(it.unitPrice) || 0,
-          taxRate: Number(it.taxRate) || 0,
-          discount: Number(it.discount) || 0,
-          discountType: it.discountType === "percentage" ? "percentage" : "amount",
-        })),
-        parseFloat(formData.discountPercentage || "0") > 0
-          ? { discount: parseFloat(formData.discountPercentage || "0"), discountType: "percentage" as const }
-          : { discount: parseFloat(formData.discount || "0"), discountType: "amount" as const },
-      );
-
-      setFormData((prev: any) => ({
-        ...prev,
-        subtotal: totals.gross.toFixed(2),
-        taxAmount: totals.taxTotal.toFixed(2),
-        totalAmount: totals.total.toFixed(2),
-      }));
-    };
-
-    useEffect(() => {
-      calculateTotals();
-    }, [formData.items, formData.discount]);
-
-    const creditNoteSubtotalValue = formData.items.reduce((sum: number, item: any) => sum + ((typeof item.quantity === 'number' ? item.quantity : 0) || 0) * ((typeof item.unitPrice === 'number' ? item.unitPrice : 0) || 0), 0);
-
-    // Recalculate credit note discount when items or percentage changes
-    useEffect(() => {
-      const pct = parseFloat(formData.discountPercentage || "0") || 0;
-      const calcDiscountValue = creditNoteSubtotalValue * pct / 100;
-      const currentDiscountValue = parseFloat(formData.discount || "0");
-
-      if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
-        setFormData((prev: any) => ({ ...prev, discount: calcDiscountValue.toString() }));
-      }
-    }, [creditNoteSubtotalValue, formData.discountPercentage]);
-
-    const addItem = () => {
-      setFormData(prev => ({
-        ...prev,
-        items: [...prev.items, { description: "", quantity: 1, unitPrice: 0, taxRate: 0, taxAmount: 0, discount: 0, discountType: "amount" }],
-      }));
-    };
-
-    const removeItem = (index: number) => {
-      setFormData(prev => ({
-        ...prev,
-        items: prev.items.filter((_, i) => i !== index),
-      }));
-    };
-
-    const updateItem = (index: number, field: string, value: any) => {
-      setFormData(prev => ({
-        ...prev,
-        items: prev.items.map((item, i) =>
-          i === index ? { ...item, [field]: value } : item
-        ),
-      }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-
-      // Validate required fields
-      if (!formData.salesInvoiceId) {
-        toast({
-          title: "Error",
-          description: "Please select a sales invoice",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      try {
-        const validatedData = createCreditNoteSchema.parse(formData);
-        onSubmit(validatedData);
-      } catch (error) {
-        toast({
-          title: "Validation Error",
-          description: "Please check all required fields",
-          variant: "destructive",
-        });
-      }
-    };
-
-    return (
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-          <div className="space-y-2">
-            <Label htmlFor="salesInvoiceId">Linked Sales Invoice *</Label>
-            <Select
-              value={formData.salesInvoiceId ? formData.salesInvoiceId.toString() : "0"}
-              onValueChange={(value) => {
-                const selectedInvoice = salesInvoices.find((inv: any) => inv.id === parseInt(value));
-                const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice?.customerId) : null;
-                const invoiceCurrency = selectedInvoice?.currency || selectedCustomer?.currency || "AED";
-                const invoiceExchangeRate = selectedInvoice?.exchangeRate || "1";
-                setFormData(prev => ({
-                  ...prev,
-                  salesInvoiceId: parseInt(value),
-                  customerId: selectedInvoice?.customerId || 0,
-                  billingAddress: selectedCustomer?.address || "",
-                  currency: invoiceCurrency,
-                  exchangeRate: invoiceExchangeRate,
-                }));
-                if (invoiceCurrency && invoiceCurrency !== "AED" && !selectedInvoice?.exchangeRate) {
-                  fetch('/api/exchange-rates/lookup?from=' + invoiceCurrency + '&to=AED')
-                    .then(r => r.json())
-                    .then(data => {
-                      if (data.rate) {
-                        setFormData(prev => ({ ...prev, exchangeRate: String(data.rate) }));
-                      }
-                    })
-                    .catch(() => { });
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select an invoice number" />
-              </SelectTrigger>
-              <SelectContent>
-                {salesInvoices
-                  .filter(
-                    (invoice: any) =>
-                      invoice.status !== "draft" &&
-                      invoice.status !== "paid" &&
-                      parseFloat(invoice.totalAmount || "0") > 0,
-                  )
-                  .map((invoice: any) => (
-                    <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                      {invoice.invoiceNumber || `Invoice #${invoice.id}`}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            {(() => {
-              const selectedInvoice = salesInvoices.find((inv: any) => inv.id === formData.salesInvoiceId);
-              const selectedCustomer = Array.isArray(customers) ? customers.find((c: any) => c.id === selectedInvoice?.customerId) : null;
-
-              if (selectedInvoice && selectedCustomer) {
-                return (
-                  <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border">
-                    <h4 className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">Invoice Details</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="font-medium">Customer:</span> {selectedCustomer.name}
-                      </div>
-                      <div>
-                        <span className="font-medium">Amount:</span> {formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}
-                      </div>
-                      <div>
-                        <span className="font-medium">Date:</span> {formatDisplayDate(selectedInvoice.invoiceDate)}
-                      </div>
-                      <div>
-                        <span className="font-medium">Status:</span> {selectedInvoice.status}
-                      </div>
-                      {selectedCustomer.email && (
-                        <div className="col-span-2">
-                          <span className="font-medium">Email:</span> {selectedCustomer.email}
-                        </div>
-                      )}
-                      {selectedCustomer.phone && (
-                        <div className="col-span-2">
-                          <span className="font-medium">Phone:</span> {selectedCustomer.phone}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-          </div>
-          <div>
-            <Label htmlFor="status">Status</Label>
-            <Select
-              value={formData.status}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="issued">Issued</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="creditNoteDate">Credit Note Date *</Label>
-            <Input
-              id="creditNoteDate"
-              type="date"
-              value={formData.creditNoteDate}
-              onChange={(e) => setFormData(prev => ({ ...prev, creditNoteDate: e.target.value }))}
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="reason">Reason</Label>
-            <Input
-              id="reason"
-              placeholder="e.g., Product return, pricing error..."
-              value={formData.reason}
-              onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="billingAddress">Billing Address</Label>
-          <textarea
-            id="billingAddress"
-            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            value={formData.billingAddress || ""}
-            onChange={(e) => setFormData(prev => ({ ...prev, billingAddress: e.target.value }))}
-            placeholder="Billing address (auto-populated from customer)"
-            rows={3}
-          />
-        </div>
-
-        {/* Items Section */}
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <Label className="text-lg font-semibold">Items</Label>
-            <Button type="button" onClick={addItem} size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            {formData.items.map((item, index) => (
-              <div key={index} className="flex gap-4 p-4 border rounded-lg">
-                <div className="flex-1">
-                  <Label htmlFor={`description-${index}`}>Description</Label>
-                  <Input
-                    id={`description-${index}`}
-                    value={item.description}
-                    onChange={(e) => updateItem(index, "description", e.target.value)}
-                    placeholder="Item description"
-                  />
-                </div>
-                <div className="w-24">
-                  <Label htmlFor={`quantity-${index}`}>Qty</Label>
-                  <Input
-                    id={`quantity-${index}`}
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(index, "quantity", e.target.value === "" ? "" : parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className="w-32">
-                  <Label htmlFor={`unitPrice-${index}`}>Unit Price</Label>
-                  <Input
-                    id={`unitPrice-${index}`}
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={item.unitPrice}
-                    onChange={(e) => updateItem(index, "unitPrice", e.target.value === "" ? "" : parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className="w-24">
-                  <Label htmlFor={`taxRate-${index}`}>Tax %</Label>
-                  <Input
-                    id={`taxRate-${index}`}
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="any"
-                    value={item.taxRate}
-                    onChange={(e) => updateItem(index, "taxRate", e.target.value === "" ? "" : parseFloat(e.target.value))}
-                  />
-                </div>
-                <div className="w-32">
-                  <Label htmlFor={`discount-${index}`}>Discount</Label>
-                  <div className="flex gap-1">
-                    <Input
-                      id={`discount-${index}`}
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={item.discount ?? ""}
-                      onChange={(e) => updateItem(index, "discount", e.target.value === "" ? "" : parseFloat(e.target.value))}
-                    />
-                    <select
-                      className="border rounded px-2 text-sm bg-background"
-                      value={item.discountType || "amount"}
-                      onChange={(e) => updateItem(index, "discountType", e.target.value)}
-                    >
-                      <option value="amount">{formData.currency || "AED"}</option>
-                      <option value="percentage">%</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => removeItem(index)}
-                    disabled={formData.items.length === 1}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Financial Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
-          <div className="space-y-4">
-            <h4 className="font-semibold text-sm">Discounts</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="discountPercentage">Discount (%)</Label>
-                <Input
-                  id="discountPercentage"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="any"
-                  value={formData.discountPercentage}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const pct = parseFloat(val) || 0;
-                    const calcDiscount = (creditNoteSubtotalValue * pct / 100);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      discountPercentage: val, 
-                      discount: val === "" ? "" : calcDiscount.toString()
-                    }));
-                  }}
-                  placeholder="0.00"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="discountAmount">Discount Amount ({formData.currency})</Label>
-                <Input
-                  id="discountAmount"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={formData.discount}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const amount = parseFloat(val) || 0;
-                    const calcPct = creditNoteSubtotalValue > 0 ? ((amount / creditNoteSubtotalValue) * 100) : 0;
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      discount: val, 
-                      discountPercentage: val === "" ? "" : calcPct.toString()
-                    }));
-                  }}
-                  placeholder="0.00"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-lg p-4 border">
-            <h4 className="font-semibold mb-3 text-sm">Credit Note Summary</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal:</span>
-                <span className="font-medium">{formatCurrency(formData.subtotal || "0", formData.currency)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tax Amount:</span>
-                <span className="font-medium">{formatCurrency(formData.taxAmount || "0", formData.currency)}</span>
-              </div>
-              {(() => {
-                // Total discount (header + line) derived from the engine-set
-                // totals; equals discountTotal to the cent.
-                const totalDiscount =
-                  parseFloat(formData.subtotal || "0") +
-                  parseFloat(formData.taxAmount || "0") -
-                  parseFloat(formData.totalAmount || "0");
-                return totalDiscount > 0.005 ? (
-                  <div className="flex justify-between text-sm text-red-600">
-                    <span>Total Discount:</span>
-                    <span className="font-medium">- {formatCurrency(totalDiscount.toFixed(2), formData.currency)}</span>
-                  </div>
-                ) : null;
-              })()}
-              <div className="border-t pt-2">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total Amount:</span>
-                  <span className="text-blue-600">{formatCurrency(formData.totalAmount || "0", formData.currency)}</span>
-                </div>
-                {formData.currency !== "AED" && (
-                  <div className="text-xs text-muted-foreground mt-2 text-right">
-                    Exchange Rate: 1 {formData.currency} = {formData.exchangeRate} AED
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setIsCreateOpen(false);
-              setEditingCreditNote(null);
-              setFormData(prev => ({ ...prev, currency: "AED", exchangeRate: "1" }));
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
-          >
-            {creditNote ? "Update" : "Create"} Credit Note
-          </Button>
-        </div>
-      </form>
-    );
-  };
-
   if (creditNotesLoading || customersLoading) {
     return <div>Loading...</div>;
   }
@@ -751,6 +1040,16 @@ export default function CreditNotesIndex() {
               </DialogHeader>
               <CreditNoteForm
                 onSubmit={(data) => createCreditNoteMutation.mutate(data)}
+                salesInvoices={salesInvoices}
+                customers={customers}
+                selectedInvoiceId={selectedInvoiceId}
+                isCreateOpen={isCreateOpen}
+                editingCreditNote={editingCreditNote}
+                isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
+                onCancel={() => {
+                  setIsCreateOpen(false);
+                  setEditingCreditNote(null);
+                }}
               />
             </DialogContent>
           </Dialog>
@@ -894,6 +1193,16 @@ export default function CreditNotesIndex() {
               <CreditNoteForm
                 creditNote={editingCreditNote}
                 onSubmit={(data) => updateCreditNoteMutation.mutate({ id: editingCreditNote.id, data })}
+                salesInvoices={salesInvoices}
+                customers={customers}
+                selectedInvoiceId={selectedInvoiceId}
+                isCreateOpen={isCreateOpen}
+                editingCreditNote={editingCreditNote}
+                isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
+                onCancel={() => {
+                  setIsCreateOpen(false);
+                  setEditingCreditNote(null);
+                }}
               />
             )}
           </DialogContent>
@@ -981,7 +1290,7 @@ export default function CreditNotesIndex() {
                           const lineTotal = taxable + taxAmount;
                           return (
                             <TableRow key={index}>
-                              <TableCell>{item.description}</TableCell>
+                              <TableCell className="whitespace-pre-wrap break-words">{item.description}</TableCell>
                               <TableCell className="text-right">{item.quantity}</TableCell>
                               <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingCreditNote.currency)}</TableCell>
                               <TableCell className="text-right">{item.taxRate || 0}%</TableCell>

@@ -130,7 +130,7 @@ export function generateInvoiceHTML(
                       const lineTotal = item.quantity * item.unitPrice;
                       return `
                     <tr>
-                      <td>${val(item.description)}</td>
+                      <td style="white-space: pre-wrap;">${val(item.description)}</td>
                       <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${formatCurrency(lineTotal)}</td>
