@@ -1,4 +1,4 @@
-import { formatDisplayDate } from "@/lib/utils";
+import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -549,6 +549,58 @@ export default function EmployeesIndex() {
   const { data: selectedEmployeeDocuments } = useQuery<EmployeeDocument[]>({
     queryKey: [`/api/employees/${selectedEmployee?.id}/documents`],
     enabled: !!selectedEmployee?.id,
+  });
+
+  // Joining readiness — admin-facing counterpart to the employee's own Profile.
+  // Both can set it and every change is recorded, so the history below shows
+  // whether a date came from the employee or was entered on their behalf.
+  const [adminReadinessDate, setAdminReadinessDate] = useState("");
+
+  const { data: readinessHistory } = useQuery<any[]>({
+    queryKey: [`/api/employees/${selectedEmployee?.id}/readiness-history`],
+    enabled: !!selectedEmployee?.id && user?.role === "admin",
+  });
+
+  // Seeded from the record each time it loads, so a date the employee sets
+  // themselves is reflected rather than masked by stale local state.
+  useEffect(() => {
+    setAdminReadinessDate(
+      selectedEmployee?.joiningReadinessDate
+        ? formatDateForInput(selectedEmployee.joiningReadinessDate)
+        : "",
+    );
+  }, [selectedEmployee?.id, selectedEmployee?.joiningReadinessDate]);
+
+  const adminReadinessMutation = useMutation({
+    mutationFn: async (value: string) => {
+      const response = await apiRequest(
+        `/api/employees/${selectedEmployee?.id}/joining-readiness`,
+        {
+          method: "PATCH",
+          // Empty clears it — the date is optional, so this is a valid save.
+          body: { joiningReadinessDate: value.trim() === "" ? null : value },
+        },
+      );
+      return response.json();
+    },
+    onSuccess: (updated: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/employees/${selectedEmployee?.id}/readiness-history`],
+      });
+      setSelectedEmployee((prev) => (prev ? { ...prev, ...updated } : prev));
+      toast({
+        title: "Saved",
+        description: "Joining readiness updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update joining readiness.",
+        variant: "destructive",
+      });
+    },
   });
 
   const { data: expiringDocuments } = useQuery<ExpiringDocument>({
@@ -2051,6 +2103,85 @@ export default function EmployeesIndex() {
                         <Label className="text-sm font-medium text-gray-600">Contract Salary</Label>
                         <p className="font-semibold">{selectedEmployee.contractSalary ? `${parseFloat(selectedEmployee.contractSalary).toLocaleString()} ${selectedEmployee.contractCurrency || "AED"}` : "Not specified"}</p>
                       </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Joining Readiness</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {user?.role === "admin" ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium text-gray-600">
+                              Readiness Date
+                            </Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="date"
+                                value={adminReadinessDate}
+                                onChange={(e) => setAdminReadinessDate(e.target.value)}
+                                data-testid="input-admin-joining-readiness"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => adminReadinessMutation.mutate(adminReadinessDate)}
+                                disabled={adminReadinessMutation.isPending}
+                                data-testid="button-save-admin-joining-readiness"
+                              >
+                                {adminReadinessMutation.isPending ? "Saving..." : "Save"}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              Optional. Leave blank to clear it.
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">
+                              Change History
+                            </Label>
+                            {(readinessHistory || []).length === 0 ? (
+                              <p className="text-sm text-slate-400 italic">
+                                No changes recorded yet
+                              </p>
+                            ) : (
+                              <div className="space-y-2 mt-1">
+                                {(readinessHistory || []).map((entry: any) => (
+                                  <div
+                                    key={entry.id}
+                                    className="text-sm border-l-2 border-gray-200 dark:border-gray-700 pl-3"
+                                  >
+                                    <p>
+                                      <span className="text-slate-500">
+                                        {entry.oldDate ? formatDate(entry.oldDate) : "not set"}
+                                      </span>
+                                      {" \u2192 "}
+                                      <span className="font-medium">
+                                        {entry.newDate ? formatDate(entry.newDate) : "cleared"}
+                                      </span>
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                      {entry.changedByName || "Unknown"} \u00b7 {formatDate(entry.changedAt)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-600">
+                            Readiness Date
+                          </Label>
+                          <p className="font-semibold">
+                            {selectedEmployee.joiningReadinessDate
+                              ? formatDate(selectedEmployee.joiningReadinessDate)
+                              : "Not specified"}
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
 

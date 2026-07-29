@@ -142,6 +142,12 @@ export const employees = pgTable("employees", {
   // Safety Equipment Sizes
   boilerSuitSize: text("boiler_suit_size"),
   safetyShoeSize: text("safety_shoe_size"),
+
+  // The date the employee expects to be available to deploy. Optional — a null
+  // date means none has been stated. Set by the employee from their Profile or
+  // by an admin from the Basic Info tab; every change is recorded in
+  // employee_readiness_history.
+  joiningReadinessDate: date("joining_readiness_date"),
 });
 
 // Employee Next of Kin
@@ -1256,6 +1262,38 @@ export type InsertInvoiceEditHistory = z.infer<
   typeof insertInvoiceEditHistorySchema
 >;
 export type InvoiceEditHistory = typeof invoiceEditHistory.$inferSelect;
+
+// Who changed an employee's joining readiness date, and to what. Both the
+// employee and an admin can set it, so an admin needs to see whether a date
+// came from the employee or was entered on their behalf. Mirrors
+// invoiceEditHistory. oldDate is null on the first entry; newDate is null when
+// the date is cleared, which is itself a change worth recording.
+export const employeeReadinessHistory = pgTable(
+  "employee_readiness_history",
+  {
+    id: serial("id").primaryKey(),
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employees.id, { onDelete: "cascade" }),
+    oldDate: date("old_date"),
+    newDate: date("new_date"),
+    changedBy: integer("changed_by").references(() => users.id),
+    changedByName: text("changed_by_name"),
+    changedAt: timestamp("changed_at").notNull().defaultNow(),
+  },
+);
+
+export const insertEmployeeReadinessHistorySchema = createInsertSchema(
+  employeeReadinessHistory,
+).omit({
+  id: true,
+  changedAt: true,
+});
+export type InsertEmployeeReadinessHistory = z.infer<
+  typeof insertEmployeeReadinessHistorySchema
+>;
+export type EmployeeReadinessHistory =
+  typeof employeeReadinessHistory.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,

@@ -282,3 +282,40 @@ reportsRoutes.get(
     }
   },
 );
+
+/**
+ * Employee readiness — who is becoming available to deploy, and when.
+ *
+ * Defaults to today onward with no end date, which is the question the report
+ * exists to answer; a caller can narrow it from either side. Active employees
+ * only, and only those with a date set — see storage.getEmployeeReadiness.
+ *
+ * Project managers need it for resourcing, finance for cost planning, so the
+ * gate is wider than most reports.
+ */
+reportsRoutes.get(
+  "/api/reports/employee-readiness",
+  requireAuth,
+  requireRole(["admin", "project_manager", "finance"]),
+  async (req, res) => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const startDate =
+        typeof req.query.startDate === "string" && req.query.startDate
+          ? req.query.startDate
+          : today;
+      const endDate =
+        typeof req.query.endDate === "string" && req.query.endDate
+          ? req.query.endDate
+          : null;
+
+      const rows = await storage.getEmployeeReadiness(startDate, endDate);
+      res.json({ startDate, endDate, employees: rows });
+    } catch (error) {
+      console.error("Employee readiness report error:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to load employee readiness report" });
+    }
+  },
+);

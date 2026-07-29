@@ -25,6 +25,7 @@ import { generalLedgerRoutes } from "./routes/general-ledger.routes";
 import { assetsRoutes } from "./routes/assets.routes";
 import { miscRoutes } from "./routes/misc.routes";
 import { errorLogsRoutes } from "./routes/error-logs.routes";
+import { profileRoutes } from "./routes/profile.routes";
 
 declare module "express-session" {
   interface SessionData {
@@ -63,6 +64,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // /api/asset-types handlers ahead of it, and those win.
   app.use(projectsRoutes);
   app.use(employeesRoutes);
+  app.use(profileRoutes);
   app.use(salesInvoicesRoutes);
   app.use(purchaseInvoicesRoutes);
   app.use(payrollRoutes);

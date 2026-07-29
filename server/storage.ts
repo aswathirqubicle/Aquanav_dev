@@ -95,6 +95,7 @@ import {
   type EmployeeTrainingRecord,
   type InsertEmployeeTrainingRecord,
   type EmployeeDocument,
+  type EmployeeReadinessHistory,
   type InsertEmployeeDocument,
   type CustomerDocument,
   type InsertCustomerDocument,
@@ -253,6 +254,36 @@ export interface IStorage {
   // Employee methods
   getEmployees(): Promise<Employee[]>;
   getEmployeeByUserId(userId: number): Promise<Employee | undefined>;
+  getEmployeeNextOfKin(employeeId: number): Promise<EmployeeNextOfKin[]>;
+  getEmployeeTrainingRecords(
+    employeeId: number,
+  ): Promise<EmployeeTrainingRecord[]>;
+  getEmployeeDocuments(employeeId: number): Promise<EmployeeDocument[]>;
+  // Joining readiness: set by the employee from Profile or by an admin from the
+  // Basic Info tab; every change is recorded against who made it.
+  updateJoiningReadiness(
+    employeeId: number,
+    newDate: string | null,
+    changedBy: number | null,
+    changedByName: string | null,
+  ): Promise<Employee | undefined>;
+  getReadinessHistory(
+    employeeId: number,
+  ): Promise<EmployeeReadinessHistory[]>;
+  getEmployeeReadiness(
+    startDate: string,
+    endDate?: string | null,
+  ): Promise<
+    Array<{
+      id: number;
+      employeeCode: string;
+      firstName: string;
+      lastName: string;
+      department: string | null;
+      position: string | null;
+      joiningReadinessDate: string;
+    }>
+  >;
   createEmployee(employeeData: InsertEmployee): Promise<Employee>;
   updateEmployee(
     id: number,

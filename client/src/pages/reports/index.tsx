@@ -1667,6 +1667,17 @@ export default function ReportsIndex() {
         },
       ]
     },
+    {
+      title: "Employee Reports",
+      icon: Users,
+      reports: [
+        {
+          id: "employee-readiness",
+          name: "Employee Readiness",
+          description: "When each employee expects to be available to deploy, grouped by month"
+        },
+      ]
+    },
   ];
 
   const quickStats = [
@@ -1925,6 +1936,10 @@ export default function ReportsIndex() {
                         }
                         if (report.id === "balance-sheet") {
                           setLocation("/reports/balance-sheet");
+                          return;
+                        }
+                        if (report.id === "employee-readiness") {
+                          setLocation("/reports/employee-readiness");
                           return;
                         }
                         setDialogYear(new Date().getFullYear());
