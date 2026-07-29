@@ -86,7 +86,28 @@ customersRoutes.put(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const customerData = req.body;
+      const { currency: _currency, ...customerData } = req.body;
+
+      // A customer's currency is fixed once the record exists. Documents store
+      // their own currency and exchange rate at issue and do not follow a later
+      // change here, so changing it strands every invoice already priced in the
+      // old one. Compared against the persisted row, not the body, and dropped
+      // rather than rejected so that a form echoing back the unchanged value
+      // still saves. To bill in another currency, add a new customer.
+      const existingCustomer = await storage.getCustomer(id);
+      if (!existingCustomer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      if (
+        _currency !== undefined &&
+        _currency !== existingCustomer.currency
+      ) {
+        return res.status(400).json({
+          message:
+            "A customer's currency cannot be changed. Add a new customer to bill in a different currency.",
+        });
+      }
+
       const customer = await storage.updateCustomer(id, customerData);
 
       if (!customer) {

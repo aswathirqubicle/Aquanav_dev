@@ -80,7 +80,28 @@ suppliersRoutes.put(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const supplierData = req.body;
+      const { currency: _currency, ...supplierData } = req.body;
+
+      // A supplier's currency is fixed once the record exists. Documents store
+      // their own currency and exchange rate at issue and do not follow a later
+      // change here, so changing it strands every invoice already priced in the
+      // old one. Compared against the persisted row, not the body, and dropped
+      // rather than rejected so that a form echoing back the unchanged value
+      // still saves. To trade in another currency, add a new supplier.
+      const existingSupplier = await storage.getSupplier(id);
+      if (!existingSupplier) {
+        return res.status(404).json({ message: "Supplier not found" });
+      }
+      if (
+        _currency !== undefined &&
+        _currency !== existingSupplier.currency
+      ) {
+        return res.status(400).json({
+          message:
+            "A supplier's currency cannot be changed. Add a new supplier to trade in a different currency.",
+        });
+      }
+
       const supplier = await storage.updateSupplier(id, supplierData);
 
       if (!supplier) {

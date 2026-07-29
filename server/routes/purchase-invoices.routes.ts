@@ -7,6 +7,7 @@ import {
   requireAuth,
   requireRole,
 } from "../middleware/auth";
+import { checkSupplierDocumentCurrency } from "../lib/document-currency";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
 
@@ -132,6 +133,14 @@ purchaseInvoicesRoutes.post(
         createdBy: req.session.userId,
       };
 
+      const currencyError = await checkSupplierDocumentCurrency(
+        invoiceData.supplierId,
+        invoiceData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
+
       const invoice =
         await storage.createPurchaseInvoiceStandalone(invoiceData);
       res.status(201).json(invoice);
@@ -197,6 +206,17 @@ purchaseInvoicesRoutes.put(
         return res.status(400).json({
           message: "Edit note is required when updating an approved invoice",
         });
+      }
+
+      // Checked against the supplier on the payload where one is supplied, so
+      // that reassigning the invoice and setting the currency in one request is
+      // judged on where it ends up, not where it started.
+      const currencyError = await checkSupplierDocumentCurrency(
+        invoiceData.supplierId ?? existingInvoice.supplierId,
+        invoiceData.currency ?? existingInvoice.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
       }
 
       const isApprovedEdit = existingInvoice.status !== "draft";

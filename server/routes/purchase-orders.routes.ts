@@ -4,6 +4,7 @@ import {
   requireAuth,
   requireRole,
 } from "../middleware/auth";
+import { checkSupplierDocumentCurrency } from "../lib/document-currency";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
 
@@ -104,6 +105,14 @@ purchaseOrdersRoutes.post(
         createdBy: req.session.userId,
       };
 
+      const currencyError = await checkSupplierDocumentCurrency(
+        orderData.supplierId,
+        orderData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
+
       const order = await storage.createPurchaseOrder(orderData);
       res.status(201).json(order);
     } catch (error) {
@@ -161,6 +170,17 @@ purchaseOrdersRoutes.put(
           message:
             "Edit note is required when updating an approved purchase order",
         });
+      }
+
+      // Checked against the supplier on the payload where one is supplied, so
+      // that reassigning the order and setting the currency in one request is
+      // judged on where it ends up, not where it started.
+      const currencyError = await checkSupplierDocumentCurrency(
+        orderDataBody.supplierId ?? existingOrder.supplierId,
+        orderDataBody.currency ?? existingOrder.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
       }
 
       const orderItems = JSON.parse(req.body.items || "[]");

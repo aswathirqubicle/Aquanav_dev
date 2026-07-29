@@ -8,6 +8,10 @@ import {
   requireAuth,
   requireRole,
 } from "../middleware/auth";
+import {
+  checkCreditNoteCurrency,
+  checkCustomerDocumentCurrency,
+} from "../lib/document-currency";
 import { salesInvoices } from "@shared/schema";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
@@ -130,6 +134,17 @@ salesInvoicesRoutes.put(
         return res.status(400).json({
           message: "Edit note is required when updating an approved invoice",
         });
+      }
+
+      // Checked against the customer on the payload where one is supplied, so
+      // that reassigning the invoice and setting the currency in one request is
+      // judged on where it ends up, not where it started.
+      const currencyError = await checkCustomerDocumentCurrency(
+        invoiceData.customerId ?? existingInvoice.customerId,
+        invoiceData.currency ?? existingInvoice.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
       }
 
       const invoice = await storage.updateSalesInvoice(
@@ -421,6 +436,14 @@ salesInvoicesRoutes.post(
     try {
       const invoiceData = req.body;
 
+      const currencyError = await checkCustomerDocumentCurrency(
+        invoiceData.customerId,
+        invoiceData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
+
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
       // No conversion needed - Drizzle expects strings for date() columns
 
@@ -600,6 +623,14 @@ salesInvoicesRoutes.post(
       console.log("Creating credit note with data:", req.body);
       const creditNoteData = req.body;
 
+      const currencyError = await checkCreditNoteCurrency(
+        creditNoteData.salesInvoiceId,
+        creditNoteData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
+
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
       // No conversion needed - Drizzle expects strings for date() columns
 
@@ -627,6 +658,19 @@ salesInvoicesRoutes.put(
     try {
       const id = parseInt(req.params.id);
       console.log("Updating credit note", id, "with data:", req.body);
+
+      // Checked against the invoice on the payload where one is supplied, so
+      // that relinking the note and setting the currency in one request is
+      // judged on where it ends up, not where it started. A note that no longer
+      // exists is left to the 404 below.
+      const existingCreditNote = await storage.getCreditNote(id);
+      const currencyError = await checkCreditNoteCurrency(
+        req.body.salesInvoiceId ?? existingCreditNote?.salesInvoiceId,
+        req.body.currency ?? existingCreditNote?.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
 
       const creditNote = await storage.updateCreditNote(id, req.body);
 
