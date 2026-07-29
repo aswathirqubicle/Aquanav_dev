@@ -30,6 +30,7 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNotNull,
   lte,
   or,
@@ -40,6 +41,44 @@ import {
   generateCommonHeader,
   getCommonStyles,
 } from "../document-utils";
+
+/**
+ * The document types the Visas & Permits tab writes. Kept in step with the
+ * dropdown in employees/enhanced-index.tsx — a type missing here is simply
+ * absent from the expiry alert rather than breaking it.
+ */
+const VISA_DOCUMENT_TYPES = [
+  "us_visa",
+  "schengen_visa",
+  "uk_visa",
+  "canada_visa",
+  "australia_visa",
+  "saudi_visa",
+  "singapore_visa",
+  "uae_visa",
+  "residence_permit",
+  "work_permit",
+];
+
+const VISA_TYPE_LABELS: Record<string, string> = {
+  us_visa: "US Visa",
+  schengen_visa: "Schengen Visa",
+  uk_visa: "UK Visa",
+  canada_visa: "Canada Visa",
+  australia_visa: "Australia Visa",
+  saudi_visa: "Saudi Visa",
+  singapore_visa: "Singapore Visa",
+  uae_visa: "UAE Visa",
+  residence_permit: "Residence Permit",
+  work_permit: "Work Permit",
+};
+
+const labelForVisaType = (value: string): string =>
+  VISA_TYPE_LABELS[value] ??
+  value
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 
 export class EmployeeStorage extends SupplierStorage {
   // Employee methods
@@ -358,25 +397,24 @@ export class EmployeeStorage extends SupplierStorage {
       const targetDate = new Date();
       targetDate.setDate(targetDate.getDate() + daysAhead);
 
-      // Get expiring visas
-      const employeesWithExpiringVisas = await db
-        .select()
-        .from(employees)
+      // Visas and permits are employee_documents rows, not columns on the
+      // employee. This used to read employees.usVisaStatus / usVisaExpiryDate /
+      // schengenVisa*, which migrations/schema.ts still declares but the
+      // database has never had — so every call threw and the expiring-documents
+      // banner never appeared. The Visas & Permits tab writes these document
+      // types, so reading them back is what actually reflects the data.
+      const expiringVisaDocs = await db
+        .select({ document: employeeDocuments, employee: employees })
+        .from(employeeDocuments)
+        .leftJoin(employees, eq(employeeDocuments.employeeId, employees.id))
         .where(
-          or(
-            and(
-              eq(employees.usVisaStatus, "valid"),
-              lte(
-                employees.usVisaExpiryDate,
-                targetDate.toISOString().split("T")[0],
-              ),
-            ),
-            and(
-              eq(employees.schengenVisaStatus, "valid"),
-              lte(
-                employees.schengenVisaExpiryDate,
-                targetDate.toISOString().split("T")[0],
-              ),
+          and(
+            eq(employeeDocuments.status, "active"),
+            inArray(employeeDocuments.documentType, VISA_DOCUMENT_TYPES),
+            isNotNull(employeeDocuments.expiryDate),
+            lte(
+              employeeDocuments.expiryDate,
+              targetDate.toISOString().split("T")[0],
             ),
           ),
         );
@@ -403,36 +441,22 @@ export class EmployeeStorage extends SupplierStorage {
           ),
         );
 
-      // Transform data to include days to expiry
-      const visas = employeesWithExpiringVisas.flatMap((emp) => {
-        const results = [];
-        if (emp.usVisaStatus === "valid" && emp.usVisaExpiryDate) {
+      // Shape is unchanged: the employee spread plus documentType, expiryDate
+      // and daysToExpiry, which is what the alert banner already renders.
+      const visas = expiringVisaDocs
+        .filter(({ employee }) => !!employee)
+        .map(({ document, employee }) => {
           const daysToExpiry = Math.ceil(
-            (new Date(emp.usVisaExpiryDate).getTime() - new Date().getTime()) /
+            (new Date(document.expiryDate!).getTime() - new Date().getTime()) /
               (1000 * 60 * 60 * 24),
           );
-          results.push({
-            ...emp,
-            documentType: "US Visa",
-            expiryDate: emp.usVisaExpiryDate,
+          return {
+            ...employee!,
+            documentType: labelForVisaType(document.documentType),
+            expiryDate: document.expiryDate!,
             daysToExpiry,
-          });
-        }
-        if (emp.schengenVisaStatus === "valid" && emp.schengenVisaExpiryDate) {
-          const daysToExpiry = Math.ceil(
-            (new Date(emp.schengenVisaExpiryDate).getTime() -
-              new Date().getTime()) /
-              (1000 * 60 * 60 * 24),
-          );
-          results.push({
-            ...emp,
-            documentType: "Schengen Visa",
-            expiryDate: emp.schengenVisaExpiryDate,
-            daysToExpiry,
-          });
-        }
-        return results;
-      });
+          };
+        });
 
       const trainings = expiringTrainings.map(({ training, employee }) => {
         const daysToExpiry = Math.ceil(
