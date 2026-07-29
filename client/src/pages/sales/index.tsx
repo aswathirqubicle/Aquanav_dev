@@ -1907,9 +1907,36 @@ export default function SalesIndex() {
     });
   };
 
-  const handleEditInvoice = (invoice: any) => {
+  const handleEditInvoice = async (invoice: any) => {
     setEditingInvoiceId(invoice.id);
     setSelectedInvoice(invoice);
+
+    // The customer's currency is authoritative — an invoice must always be
+    // denominated in the currency of the customer it bills. Historic rows can
+    // disagree (they were created before that was enforced, or the customer was
+    // switched afterwards), so derive it here instead of trusting what was
+    // stored. Only look the rate up when the currency actually changes; an
+    // invoice that already agrees keeps the rate it was issued at.
+    const editCustomer = customers?.find((c) => c.id === invoice.customerId);
+    const derivedCurrency =
+      editCustomer?.currency || invoice.currency || "AED";
+    let derivedExchangeRate = invoice.exchangeRate || "1";
+
+    if (derivedCurrency !== (invoice.currency || "AED")) {
+      derivedExchangeRate = "1";
+      if (derivedCurrency !== "AED") {
+        try {
+          const response = await apiRequest(
+            `/api/exchange-rates/lookup?from=${derivedCurrency}`,
+          );
+          const data = await response.json();
+          derivedExchangeRate = data.rate;
+        } catch (error) {
+          console.error("Failed to lookup exchange rate:", error);
+        }
+      }
+    }
+
     setInvoiceFormData({
       customerId: invoice.customerId,
       projectId: invoice.projectId || undefined,
@@ -1923,8 +1950,8 @@ export default function SalesIndex() {
       subtotal: invoice.subtotal || "0",
       taxAmount: invoice.taxAmount || "0",
       totalAmount: invoice.totalAmount || "0",
-      currency: invoice.currency || "AED",
-      exchangeRate: invoice.exchangeRate || "1",
+      currency: derivedCurrency,
+      exchangeRate: derivedExchangeRate,
       remarks: invoice.remarks || "",
       workOrderNumber: invoice.workOrderNumber || "",
       paymentTerms: invoice.paymentTerms || "",

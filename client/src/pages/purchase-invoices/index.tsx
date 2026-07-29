@@ -437,12 +437,39 @@ export default function PurchaseInvoicesIndex() {
       if (!response.ok) throw new Error("Failed to load invoice");
       const full = await response.json();
 
+      // The supplier's currency is authoritative — an invoice must always be
+      // denominated in the currency of the supplier it is owed to. Historic rows
+      // can disagree (they were created before that was enforced, or the
+      // supplier was switched afterwards), so derive it here instead of trusting
+      // what was stored. Only look the rate up when the currency actually
+      // changes; an invoice that already agrees keeps the rate it was issued at.
+      const editSupplier = suppliers.find((s) => s.id === full.supplierId);
+      const derivedCurrency = editSupplier?.currency || full.currency || "AED";
+      let derivedExchangeRate = full.exchangeRate || "1";
+
+      if (derivedCurrency !== (full.currency || "AED")) {
+        derivedExchangeRate = "1";
+        if (derivedCurrency !== "AED") {
+          try {
+            const rateResponse = await apiRequest(
+              `/api/exchange-rates/lookup?from=${derivedCurrency}`,
+            );
+            if (rateResponse.ok) {
+              const rateData = await rateResponse.json();
+              derivedExchangeRate = rateData.rate || "1";
+            }
+          } catch (error) {
+            console.error("Failed to lookup exchange rate:", error);
+          }
+        }
+      }
+
       setEditingInvoice(full);
       setFormData({
         supplierId: full.supplierId.toString(),
         supplierInvoiceNumber: full.supplierInvoiceNumber || "",
-        currency: full.currency || "AED",
-        exchangeRate: full.exchangeRate || "1",
+        currency: derivedCurrency,
+        exchangeRate: derivedExchangeRate,
         invoiceDate: full.invoiceDate ? full.invoiceDate.split('T')[0] : new Date().toISOString().split('T')[0],
         dueDate: full.dueDate ? full.dueDate.split('T')[0] : "",
         paymentTerms: full.paymentTerms || "",
