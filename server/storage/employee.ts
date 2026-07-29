@@ -6,6 +6,7 @@ import {
   EmployeeDocument,
   EmployeeFeedback,
   EmployeeNextOfKin,
+  EmployeeReadinessHistory,
   EmployeeTrainingRecord,
   InsertEmployee,
   InsertEmployeeDocument,
@@ -16,6 +17,7 @@ import {
   employeeDocuments,
   employeeFeedback,
   employeeNextOfKin,
+  employeeReadinessHistory,
   employeeTrainingRecords,
   employees,
   projects,
@@ -24,8 +26,10 @@ import {
 } from "@shared/schema";
 import {
   and,
+  asc,
   desc,
   eq,
+  gte,
   isNotNull,
   lte,
   or,
@@ -902,6 +906,148 @@ export class EmployeeStorage extends SupplierStorage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getExpiringEmployeeDocuments",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Set an employee's joining readiness date and record who changed it.
+   *
+   * A no-op change writes no history row: re-saving the same date is not a
+   * change, and logging it would bury the real ones. Clearing the date IS a
+   * change and is recorded with a null newDate.
+   *
+   * Dates are compared as the plain YYYY-MM-DD strings the date column stores,
+   * so a value that round-trips through the form unchanged compares equal.
+   */
+  async updateJoiningReadiness(
+    employeeId: number,
+    newDate: string | null,
+    changedBy: number | null,
+    changedByName: string | null,
+  ): Promise<Employee | undefined> {
+    try {
+      const existing = await this.getEmployee(employeeId);
+      if (!existing) return undefined;
+
+      const oldValue = existing.joiningReadinessDate ?? null;
+      const newValue = newDate && newDate.trim() !== "" ? newDate : null;
+
+      if (oldValue === newValue) {
+        return existing;
+      }
+
+      const [updated] = await db
+        .update(employees)
+        .set({ joiningReadinessDate: newValue })
+        .where(eq(employees.id, employeeId))
+        .returning();
+
+      await db.insert(employeeReadinessHistory).values({
+        employeeId,
+        oldDate: oldValue,
+        newDate: newValue,
+        changedBy,
+        changedByName,
+      });
+
+      return updated;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in updateJoiningReadiness (employeeId: ${employeeId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "updateJoiningReadiness",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  async getReadinessHistory(
+    employeeId: number,
+  ): Promise<EmployeeReadinessHistory[]> {
+    try {
+      return await db
+        .select()
+        .from(employeeReadinessHistory)
+        .where(eq(employeeReadinessHistory.employeeId, employeeId))
+        .orderBy(desc(employeeReadinessHistory.changedAt));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getReadinessHistory (employeeId: ${employeeId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getReadinessHistory",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Employees with a readiness date in the given range, for the readiness
+   * report. Active employees only — the report answers "who is becoming
+   * available to deploy", and an inactive employee is not a candidate.
+   * endDate is optional: the report's default view is open-ended from today.
+   */
+  async getEmployeeReadiness(
+    startDate: string,
+    endDate?: string | null,
+  ): Promise<
+    Array<{
+      id: number;
+      employeeCode: string;
+      firstName: string;
+      lastName: string;
+      department: string | null;
+      position: string | null;
+      joiningReadinessDate: string;
+    }>
+  > {
+    try {
+      const conditions = [
+        eq(employees.isActive, true),
+        isNotNull(employees.joiningReadinessDate),
+        gte(employees.joiningReadinessDate, startDate),
+      ];
+      if (endDate) {
+        conditions.push(lte(employees.joiningReadinessDate, endDate));
+      }
+
+      const rows = await db
+        .select({
+          id: employees.id,
+          employeeCode: employees.employeeCode,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+          department: employees.department,
+          position: employees.position,
+          joiningReadinessDate: employees.joiningReadinessDate,
+        })
+        .from(employees)
+        .where(and(...conditions))
+        .orderBy(asc(employees.joiningReadinessDate));
+
+      return rows as Array<{
+        id: number;
+        employeeCode: string;
+        firstName: string;
+        lastName: string;
+        department: string | null;
+        position: string | null;
+        joiningReadinessDate: string;
+      }>;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getEmployeeReadiness: ` + (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getEmployeeReadiness",
         severity: "error",
       });
       throw error;

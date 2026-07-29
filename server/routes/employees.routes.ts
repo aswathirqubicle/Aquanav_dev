@@ -764,3 +764,62 @@ employeesRoutes.delete(
     }
   },
 );
+
+// Joining readiness — the admin-facing counterpart to /api/profile. Both an
+// employee and an admin can set the date, and both paths record who did it, so
+// the history shows whether a date came from the employee or was entered on
+// their behalf.
+employeesRoutes.patch(
+  "/api/employees/:id/joining-readiness",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req, res) => {
+    try {
+      const employeeId = parseInt(req.params.id);
+      const { joiningReadinessDate } = req.body;
+      if (
+        joiningReadinessDate !== null &&
+        joiningReadinessDate !== undefined &&
+        typeof joiningReadinessDate !== "string"
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Joining readiness date must be a date or empty" });
+      }
+
+      const user = await storage.getUser(req.session.userId!);
+      const updated = await storage.updateJoiningReadiness(
+        employeeId,
+        joiningReadinessDate ?? null,
+        req.session.userId || null,
+        user?.username || null,
+      );
+
+      if (!updated) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Joining readiness update error:", error);
+      res.status(500).json({ message: "Failed to update joining readiness" });
+    }
+  },
+);
+
+employeesRoutes.get(
+  "/api/employees/:id/readiness-history",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req, res) => {
+    try {
+      const history = await storage.getReadinessHistory(
+        parseInt(req.params.id),
+      );
+      res.json(history);
+    } catch (error) {
+      console.error("Readiness history error:", error);
+      res.status(500).json({ message: "Failed to load readiness history" });
+    }
+  },
+);
