@@ -117,9 +117,18 @@ salesInvoicesRoutes.put(
         paidAmount: _paidAmount,
         ...invoiceData
       } = req.body;
-      if (!editNote || !editNote.trim()) {
+      // An edit note and an edit-history entry are required only once the
+      // invoice has been approved and its ledger entries exist — from that
+      // point an edit rewrites posted accounting and needs an audit trail.
+      // draft and pending_approval are still pre-ledger, so they edit freely.
+      // Read from the PERSISTED row, never req.body, so a client cannot claim
+      // draft status to skip the note.
+      const requiresEditNote =
+        existingInvoice.status !== "draft" &&
+        existingInvoice.status !== "pending_approval";
+      if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
-          message: "Edit note is required when updating an invoice",
+          message: "Edit note is required when updating an approved invoice",
         });
       }
 
@@ -209,15 +218,20 @@ salesInvoicesRoutes.put(
         }
       }
 
-      const user = await storage.getUser(req.session.userId!);
-      await storage.createInvoiceEditHistory({
-        invoiceType: "sales",
-        invoiceId,
-        editNote: editNote.trim(),
-        changes: Object.keys(changes).length > 0 ? changes : null,
-        editedBy: req.session.userId || null,
-        editedByName: user?.username || null,
-      });
+      // Only approved invoices get a history row. Pre-approval edits are the
+      // document still being drafted, not changes to an approved record, so
+      // recording them would bury the entries that matter in drafting noise.
+      if (requiresEditNote) {
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "sales",
+          invoiceId,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
+      }
 
       res.json(invoice);
     } catch (error) {

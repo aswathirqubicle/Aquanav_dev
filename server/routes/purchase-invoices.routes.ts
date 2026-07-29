@@ -186,9 +186,16 @@ purchaseInvoicesRoutes.put(
         paidAmount: _paidAmount,
         ...invoiceData
       } = req.body;
-      if (!editNote || !editNote.trim()) {
+      // An edit note and an edit-history entry are required only once the
+      // invoice has been approved and its ledger entries exist. draft and
+      // pending_approval are still pre-ledger, so they edit freely. Read from
+      // the PERSISTED row, never req.body, so a client cannot claim draft
+      // status to skip the note. Kept separate from isApprovedEdit below,
+      // which drives GL posting and must keep its existing meaning.
+      const requiresEditNote = existingInvoice.status === "approved";
+      if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
-          message: "Edit note is required when updating an invoice",
+          message: "Edit note is required when updating an approved invoice",
         });
       }
 
@@ -288,15 +295,19 @@ purchaseInvoicesRoutes.put(
         }
       }
 
-      const user = await storage.getUser(req.session.userId!);
-      await storage.createInvoiceEditHistory({
-        invoiceType: "purchase",
-        invoiceId: id,
-        editNote: editNote.trim(),
-        changes: Object.keys(changes).length > 0 ? changes : null,
-        editedBy: req.session.userId || null,
-        editedByName: user?.username || null,
-      });
+      // Only approved invoices get a history row. Pre-approval edits are the
+      // document still being drafted, not changes to an approved record.
+      if (requiresEditNote) {
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "purchase",
+          invoiceId: id,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
+      }
 
       res.json(invoice);
     } catch (error: any) {

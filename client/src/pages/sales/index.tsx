@@ -169,6 +169,14 @@ export default function SalesIndex() {
   const [selectedInvoice, setSelectedInvoice] = useState<SalesInvoice | null>(
     null,
   );
+  // An edit note is only required once the invoice is approved and its ledger
+  // entries exist; draft and pending_approval are pre-ledger. This mirrors the
+  // server gate in sales-invoices.routes.ts — the server is the boundary, this
+  // just avoids showing a mandatory field that isn't.
+  const editRequiresNote =
+    !!editingInvoiceId &&
+    selectedInvoice?.status !== "draft" &&
+    selectedInvoice?.status !== "pending_approval";
   const [isInvoiceDetailsOpen, setIsInvoiceDetailsOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isReceivablesOpen, setIsReceivablesOpen] = useState(false);
@@ -1377,7 +1385,7 @@ export default function SalesIndex() {
 
     console.log("Submitting invoice data:", invoiceFormData);
     if (editingInvoiceId) {
-      if (!editNote.trim()) {
+      if (editRequiresNote && !editNote.trim()) {
         toast({
           title: "Error",
           description: "Please provide an edit note explaining the changes",
@@ -3383,7 +3391,7 @@ export default function SalesIndex() {
                   </div>
 
                   {/* Form Actions */}
-                  {editingInvoiceId && (
+                  {editRequiresNote && (
                     <div className="space-y-2 border-t pt-4 mt-4">
                       <Label className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
                       <Textarea

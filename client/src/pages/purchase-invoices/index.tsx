@@ -163,6 +163,11 @@ export default function PurchaseInvoicesIndex() {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null);
+  // An edit note is only required once the invoice is approved and its ledger
+  // entries exist; draft and pending_approval are pre-ledger. Mirrors the server
+  // gate in purchase-invoices.routes.ts — the server is the boundary, this just
+  // avoids showing a mandatory field that isn't.
+  const editRequiresNote = editingInvoice?.status === "approved";
   const [editNote, setEditNote] = useState("");
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
@@ -895,7 +900,7 @@ export default function PurchaseInvoicesIndex() {
     }
 
     if (editingInvoice) {
-      if (!editNote.trim()) {
+      if (editRequiresNote && !editNote.trim()) {
         toast({
           title: "Error",
           description: "Please provide an edit note explaining the changes",
@@ -2240,7 +2245,7 @@ export default function PurchaseInvoicesIndex() {
                 </Card>
 
                 {/* Edit Note - INSIDE SCROLL */}
-                {editingInvoice && (
+                {editRequiresNote && (
                   <div className="space-y-2 border-t pt-4 mt-4">
                     <Label className="text-sm font-medium text-red-600">
                       Edit Note (Required) *
@@ -2277,7 +2282,7 @@ export default function PurchaseInvoicesIndex() {
           !formData.supplierId ||
           !formData.dueDate ||
           invoiceItems.length === 0 ||
-          (editingInvoice && !editNote.trim())
+          (editRequiresNote && !editNote.trim())
         }
       >
         {editingInvoice ? "Save Changes" : "Create Invoice"}

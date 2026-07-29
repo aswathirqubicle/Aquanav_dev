@@ -112,6 +112,11 @@ export default function PurchaseOrdersIndex() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
+  // An edit note is only required once the order is approved. draft,
+  // pending_approval and rejected are all still pre-commitment. Mirrors the
+  // server gate in purchase-orders.routes.ts — the server is the boundary,
+  // this just avoids showing a mandatory field that isn't.
+  const editRequiresNote = editingOrder?.status === "approved";
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
@@ -779,7 +784,7 @@ export default function PurchaseOrdersIndex() {
     }
 
     if (editingOrder) {
-      if (!editNote.trim()) {
+      if (editRequiresNote && !editNote.trim()) {
         toast({
           title: "Error",
           description: "Please provide an edit note",
@@ -1996,7 +2001,7 @@ export default function PurchaseOrdersIndex() {
                 )}
               </div>
 
-              {editingOrder && (
+              {editRequiresNote && (
                 <div className="space-y-2 border-t pt-4">
                   <Label htmlFor="editNote" className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
                   <Textarea
