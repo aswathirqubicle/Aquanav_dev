@@ -55,10 +55,17 @@ CREATE TABLE IF NOT EXISTS notification_log (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_log_unique
   ON notification_log (notification_type, document_type, document_id, milestone);
 
+-- recipient_name and body_html exist so the Email Log report can show who was
+-- written to and what they received, without having to re-derive either. The
+-- name is resolved at send time because the address may belong to a user or an
+-- employee, and looking it up afterwards would misattribute a recipient whose
+-- record has since been renamed or removed.
 CREATE TABLE IF NOT EXISTS email_send_log (
   id serial PRIMARY KEY,
   to_email text NOT NULL,
+  recipient_name text,
   subject text,
+  body_html text,
   template text,
   status text NOT NULL,
   error text,

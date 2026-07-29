@@ -2,7 +2,8 @@ import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Settings, Building, Database, Download, RefreshCw, Activity, Trash2, Loader2, CheckCircle, XCircle, AlertTriangle, DollarSign, Plus, Pencil, Trash, Save, X } from "lucide-react";
+import { Settings, Building, Database, Download, RefreshCw, Activity, Trash2, Loader2, CheckCircle, XCircle, AlertTriangle, DollarSign, Plus, Pencil, Trash, Save, X, Mail } from "lucide-react";
 import { Company, insertCompanySchema, ExchangeRate } from "@shared/schema";
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -70,6 +71,90 @@ export default function SettingsIndex() {
   const [rebuildPreview, setRebuildPreview] = useState<any>(null);
   const [rebuildResult, setRebuildResult] = useState<any>(null);
   const [rebuildConfirm, setRebuildConfirm] = useState("");
+
+  // ---- Microsoft 365 email (CR4) ----
+  // The secret is deliberately absent from what the server returns. The form
+  // holds it only while it is being typed; leaving it blank keeps the stored
+  // one, which is why there is no way to display the current value.
+  const [emailForm, setEmailForm] = useState({
+    tenantId: "",
+    clientId: "",
+    clientSecretId: "",
+    clientSecret: "",
+    senderEmail: "",
+    isEnabled: false,
+  });
+  const [emailStatus, setEmailStatus] = useState<any>(null);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [testAddress, setTestAddress] = useState("");
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
+  const loadEmailSettings = async () => {
+    try {
+      const response = await apiRequest("/api/email-settings");
+      const data = await response.json();
+      setEmailStatus(data);
+      setEmailForm((prev) => ({
+        ...prev,
+        tenantId: data.tenantId || "",
+        clientId: data.clientId || "",
+        clientSecretId: data.clientSecretId || "",
+        senderEmail: data.senderEmail || "",
+        isEnabled: !!data.isEnabled,
+        clientSecret: "",
+      }));
+    } catch {
+      // Non-admins never see this tab; a failure here should not break Settings.
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) loadEmailSettings();
+  }, [isAdmin]);
+
+  const handleSaveEmail = async () => {
+    setIsSavingEmail(true);
+    try {
+      const response = await apiRequest("/api/email-settings", {
+        method: "PUT",
+        body: emailForm,
+      });
+      const data = await response.json();
+      setEmailStatus(data);
+      setEmailForm((prev) => ({ ...prev, clientSecret: "" }));
+      toast({ title: "Saved", description: "Email settings updated." });
+    } catch (error: any) {
+      toast({
+        title: "Could not save",
+        description: error.message || "Failed to save email settings.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  const handleSendTest = async () => {
+    setIsSendingTest(true);
+    try {
+      await apiRequest("/api/email-settings/test", {
+        method: "POST",
+        body: { to: testAddress },
+      });
+      toast({
+        title: "Test sent",
+        description: `A message was sent to ${testAddress}.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Test failed",
+        description: error.message || "Could not send the test message.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   const handleRebuildPreview = async () => {
     setIsPreviewing(true);
@@ -412,9 +497,10 @@ export default function SettingsIndex() {
       </div>
 
       <Tabs defaultValue={isFinance && !isAdmin ? "currency" : "company"} className="space-y-6">
-        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'}`}>
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-1'}`}>
           {isAdmin && <TabsTrigger value="company">Company</TabsTrigger>}
           <TabsTrigger value="currency">Currency Rates</TabsTrigger>
+          {isAdmin && <TabsTrigger value="email">Email</TabsTrigger>}
           {isAdmin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
 
@@ -1178,6 +1264,176 @@ export default function SettingsIndex() {
                 </CardContent>
               </Card>
             )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="email">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Mail className="h-5 w-5 mr-2" />
+                  Microsoft 365 Email
+                </CardTitle>
+                <CardDescription>
+                  Aquanav sends document expiry reminders and the monthly digest
+                  through your Microsoft 365 tenant. These come from the Entra
+                  app registration your IT team creates.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {emailStatus && !emailStatus.encryptionConfigured && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
+                    <p className="font-medium text-amber-900 dark:text-amber-200">
+                      EMAIL_ENCRYPTION_KEY is not set on the server
+                    </p>
+                    <p className="text-amber-800 dark:text-amber-300 mt-1">
+                      The client secret is encrypted before it is stored, so it
+                      cannot be saved until that key exists in the server
+                      environment. Everything else on this page can still be
+                      filled in.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tenantId">Directory (tenant) ID</Label>
+                    <Input
+                      id="tenantId"
+                      value={emailForm.tenantId}
+                      onChange={(e) =>
+                        setEmailForm((prev) => ({ ...prev, tenantId: e.target.value }))
+                      }
+                      placeholder="00000000-0000-0000-0000-000000000000"
+                      data-testid="input-tenant-id"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientId">Application (client) ID</Label>
+                    <Input
+                      id="clientId"
+                      value={emailForm.clientId}
+                      onChange={(e) =>
+                        setEmailForm((prev) => ({ ...prev, clientId: e.target.value }))
+                      }
+                      placeholder="00000000-0000-0000-0000-000000000000"
+                      data-testid="input-client-id"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientSecretId">Client secret ID</Label>
+                    <Input
+                      id="clientSecretId"
+                      value={emailForm.clientSecretId}
+                      onChange={(e) =>
+                        setEmailForm((prev) => ({ ...prev, clientSecretId: e.target.value }))
+                      }
+                      placeholder="Reference only — not used to authenticate"
+                      data-testid="input-client-secret-id"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientSecret">
+                      Client secret value
+                      {emailStatus?.hasClientSecret && (
+                        <Badge variant="secondary" className="ml-2 text-xs">stored</Badge>
+                      )}
+                    </Label>
+                    <Input
+                      id="clientSecret"
+                      type="password"
+                      value={emailForm.clientSecret}
+                      onChange={(e) =>
+                        setEmailForm((prev) => ({ ...prev, clientSecret: e.target.value }))
+                      }
+                      placeholder={
+                        emailStatus?.hasClientSecret
+                          ? "Leave blank to keep the stored secret"
+                          : "Paste the secret value from Entra"
+                      }
+                      data-testid="input-client-secret"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Encrypted before it is stored and never sent back to this
+                      page. Leave blank to keep the existing one.
+                    </p>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="senderEmail">Send from</Label>
+                    <Input
+                      id="senderEmail"
+                      type="email"
+                      value={emailForm.senderEmail}
+                      onChange={(e) =>
+                        setEmailForm((prev) => ({ ...prev, senderEmail: e.target.value }))
+                      }
+                      placeholder="noreply@yourcompany.com"
+                      data-testid="input-sender-email"
+                    />
+                    <p className="text-xs text-slate-500">
+                      A mailbox in your tenant. The app registration needs the
+                      <strong> Mail.Send application permission with admin consent</strong>;
+                      delegated permission signs in successfully and then fails
+                      when sending.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Send notifications</p>
+                    <p className="text-xs text-slate-500">
+                      While off, reminders are worked out but nothing is sent.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={emailForm.isEnabled}
+                    onCheckedChange={(checked) =>
+                      setEmailForm((prev) => ({ ...prev, isEnabled: checked }))
+                    }
+                    data-testid="switch-email-enabled"
+                  />
+                </div>
+
+                <Button
+                  onClick={handleSaveEmail}
+                  disabled={isSavingEmail}
+                  data-testid="button-save-email-settings"
+                >
+                  {isSavingEmail ? "Saving..." : "Save Email Settings"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Send a test message</CardTitle>
+                <CardDescription>
+                  Confirms the credentials and the Mail.Send permission without
+                  waiting for a scheduled run.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-2 max-w-xl">
+                  <Input
+                    type="email"
+                    value={testAddress}
+                    onChange={(e) => setTestAddress(e.target.value)}
+                    placeholder="you@yourcompany.com"
+                    data-testid="input-test-email"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={handleSendTest}
+                    disabled={isSendingTest || !testAddress.trim()}
+                    data-testid="button-send-test-email"
+                  >
+                    {isSendingTest ? "Sending..." : "Send test"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>

@@ -69,12 +69,14 @@ interface ExpiringItem {
 }
 
 /** Active admins are the standing audience for every notification. */
-async function getAdminEmails(): Promise<string[]> {
+async function getAdmins(): Promise<Array<{ email: string; name: string }>> {
   const rows = await db
-    .select({ email: users.email })
+    .select({ email: users.email, username: users.username })
     .from(users)
     .where(and(eq(users.role, "admin"), eq(users.isActive, true)));
-  return rows.map((r) => r.email).filter((e): e is string => !!e);
+  return rows
+    .filter((r): r is { email: string; username: string } => !!r.email)
+    .map((r) => ({ email: r.email, name: r.username || r.email }));
 }
 
 /**
@@ -223,10 +225,10 @@ export async function runExpiryReminders(
     }
 
     const today = todayInClientTz(now);
-    const [items, sentMap, adminEmails] = await Promise.all([
+    const [items, sentMap, admins] = await Promise.all([
       getExpiringItems(),
       getSentMilestones(),
-      getAdminEmails(),
+      getAdmins(),
     ]);
 
     summary.checked = items.length;
@@ -241,8 +243,13 @@ export async function runExpiryReminders(
 
       // Admins always; the employee too when we have an address for them.
       // A missing employee address must not suppress the admin notification.
-      const recipients = [...adminEmails];
-      if (item.employeeEmail) recipients.push(item.employeeEmail);
+      const recipients = admins.map((a) => a.email);
+      const recipientNames: Record<string, string> = {};
+      for (const admin of admins) recipientNames[admin.email] = admin.name;
+      if (item.employeeEmail) {
+        recipients.push(item.employeeEmail);
+        recipientNames[item.employeeEmail] = item.employeeName;
+      }
 
       const { subject, html } = renderExpiryReminder({
         employeeName: item.employeeName,
@@ -259,6 +266,7 @@ export async function runExpiryReminders(
         to: recipients,
         subject,
         html,
+        recipientNames,
         template: "expiry_reminder",
         relatedType: item.kind,
         relatedId: item.id,
@@ -317,9 +325,9 @@ export async function runMonthlyDigest(
 
     if (!claimed) return { sent: false };
 
-    const [items, adminEmails] = await Promise.all([
+    const [items, admins] = await Promise.all([
       getExpiringItems(),
-      getAdminEmails(),
+      getAdmins(),
     ]);
 
     const rows: DigestRow[] = items
@@ -340,9 +348,12 @@ export async function runMonthlyDigest(
 
     const { subject, html } = renderMonthlyDigest({ monthLabel, rows });
     const result = await sendMail({
-      to: adminEmails,
+      to: admins.map((a) => a.email),
       subject,
       html,
+      recipientNames: Object.fromEntries(
+        admins.map((a) => [a.email, a.name]),
+      ),
       template: "monthly_digest",
     });
 

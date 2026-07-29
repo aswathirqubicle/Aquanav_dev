@@ -76,6 +76,11 @@ export interface SendMailInput {
   to: string[];
   subject: string;
   html: string;
+  /**
+   * email -> display name, for the Email Log report. Resolved by the caller
+   * because only it knows whether an address belongs to a user or an employee.
+   */
+  recipientNames?: Record<string, string>;
   /** For the audit trail only. */
   template?: string;
   relatedType?: string;
@@ -159,7 +164,9 @@ async function logSend(
     await db.insert(emailSendLog).values(
       recipients.map((address) => ({
         toEmail: address,
+        recipientName: input.recipientNames?.[address] ?? null,
         subject: input.subject,
+        bodyHtml: input.html,
         template: input.template ?? null,
         status,
         error,

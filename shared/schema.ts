@@ -1331,7 +1331,12 @@ export const notificationLog = pgTable("notification_log", {
 export const emailSendLog = pgTable("email_send_log", {
   id: serial("id").primaryKey(),
   toEmail: text("to_email").notNull(),
+  // Resolved at send time: the address may belong to a user or an employee, and
+  // looking the name up later would misattribute a recipient whose record has
+  // since been renamed or removed.
+  recipientName: text("recipient_name"),
   subject: text("subject"),
+  bodyHtml: text("body_html"),
   template: text("template"),
   status: text("status").notNull(), // sent, failed
   error: text("error"),
