@@ -28,6 +28,7 @@ module.exports = {
     '<rootDir>/server/storage.payroll.calc.test.ts',
     '<rootDir>/server/document-totals.calc.test.ts',
     '<rootDir>/server/documents.multiline.test.ts',
+    '<rootDir>/server/storage.purchase-invoice-update.test.ts',
   ],
 
   transform: {

@@ -2064,31 +2064,64 @@ export class PurchaseStorage extends SalesStorage {
       }
 
       invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
-      const subtotal = parseFloat(invoiceData.subtotal || "0");
-      const taxAmount = parseFloat(invoiceData.taxAmount || "0");
+
+      // Only write what the caller actually supplied. This used to set every
+      // column unconditionally with a literal fallback, so a payload that
+      // omitted a field silently overwrote it — most damagingly
+      // `currency: invoiceData.currency || "AED"` and
+      // `exchangeRate: invoiceData.exchangeRate || "1"`, which rewrote a
+      // USD invoice to AED at rate 1. The amounts kept their numbers but
+      // changed denomination, understating the liability, and a later edit to
+      // an approved invoice would then re-post the ledger at the wrong value.
+      // Mirrors updatePurchaseOrder above. The form always sends all of these,
+      // so this changes nothing for the UI — it only stops partial payloads
+      // from destroying stored values.
+      const updateData: any = {};
+
+      if (invoiceData.supplierId !== undefined)
+        updateData.supplierId = invoiceData.supplierId;
+      if (invoiceData.supplierInvoiceNumber !== undefined)
+        updateData.supplierInvoiceNumber =
+          invoiceData.supplierInvoiceNumber || null;
+      if (invoiceData.invoiceDate !== undefined)
+        updateData.invoiceDate = new Date(invoiceData.invoiceDate);
+      if (invoiceData.dueDate !== undefined)
+        updateData.dueDate = invoiceData.dueDate
+          ? new Date(invoiceData.dueDate)
+          : null;
+      if (invoiceData.paymentTerms !== undefined)
+        updateData.paymentTerms = invoiceData.paymentTerms || null;
+      if (invoiceData.bankAccount !== undefined)
+        updateData.bankAccount = invoiceData.bankAccount || null;
+      if (invoiceData.notes !== undefined)
+        updateData.notes = invoiceData.notes || null;
+      if (invoiceData.currency !== undefined)
+        updateData.currency = invoiceData.currency;
+      if (invoiceData.exchangeRate !== undefined)
+        updateData.exchangeRate = invoiceData.exchangeRate;
+      if (invoiceData.discountPercentage !== undefined)
+        updateData.discountPercentage = invoiceData.discountPercentage || "0";
+      if (invoiceData.discountAmount !== undefined)
+        updateData.discountAmount = invoiceData.discountAmount || "0";
+      if (invoiceData.subtotal !== undefined)
+        updateData.subtotal = parseFloat(invoiceData.subtotal || "0").toFixed(2);
+      if (invoiceData.taxAmount !== undefined)
+        updateData.taxAmount = parseFloat(invoiceData.taxAmount || "0").toFixed(
+          2,
+        );
       // Use the engine's total (nets both line and header discounts). Do NOT
       // recompute as subtotal + tax - headerDiscount, which ignores line discounts.
-      const totalAmount = parseFloat(invoiceData.totalAmount || "0");
+      if (invoiceData.totalAmount !== undefined)
+        updateData.totalAmount = parseFloat(
+          invoiceData.totalAmount || "0",
+        ).toFixed(2);
 
-      await db
-        .update(purchaseInvoices)
-        .set({
-          supplierId: invoiceData.supplierId,
-          supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
-          invoiceDate: new Date(invoiceData.invoiceDate),
-          dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
-          paymentTerms: invoiceData.paymentTerms || null,
-          bankAccount: invoiceData.bankAccount || null,
-          notes: invoiceData.notes || null,
-          currency: invoiceData.currency || "AED",
-          exchangeRate: invoiceData.exchangeRate || "1",
-          subtotal: subtotal.toFixed(2),
-          discountPercentage: invoiceData.discountPercentage || "0",
-          discountAmount: invoiceData.discountAmount || "0",
-          taxAmount: taxAmount.toFixed(2),
-          totalAmount: totalAmount.toFixed(2),
-        })
-        .where(eq(purchaseInvoices.id, id));
+      if (Object.keys(updateData).length > 0) {
+        await db
+          .update(purchaseInvoices)
+          .set(updateData)
+          .where(eq(purchaseInvoices.id, id));
+      }
 
       // Replace all items
       await db

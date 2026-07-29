@@ -151,9 +151,15 @@ purchaseOrdersRoutes.put(
       }
 
       const { editNote, ...orderDataBody } = req.body;
-      if (!editNote || !editNote.trim()) {
+      // An edit note and an edit-history entry are required only once the order
+      // has been approved. draft, pending_approval and rejected are all still
+      // pre-commitment, so they edit freely. Read from the PERSISTED row, never
+      // req.body, so a client cannot claim draft status to skip the note.
+      const requiresEditNote = existingOrder.status === "approved";
+      if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
-          message: "Edit note is required when updating a purchase order",
+          message:
+            "Edit note is required when updating an approved purchase order",
         });
       }
 
@@ -223,15 +229,19 @@ purchaseOrdersRoutes.put(
         };
       }
 
-      const user = await storage.getUser(req.session.userId!);
-      await storage.createInvoiceEditHistory({
-        invoiceType: "purchase_order",
-        invoiceId: id,
-        editNote: editNote.trim(),
-        changes: Object.keys(changes).length > 0 ? changes : null,
-        editedBy: req.session.userId || null,
-        editedByName: user?.username || null,
-      });
+      // Only approved orders get a history row. Pre-approval edits are the
+      // document still being drafted, not changes to an approved record.
+      if (requiresEditNote) {
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "purchase_order",
+          invoiceId: id,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
+      }
 
       res.json(order);
     } catch (error) {
