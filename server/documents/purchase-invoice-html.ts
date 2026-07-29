@@ -129,7 +129,7 @@ export function generatePurchaseInvoiceHTML(
                       return `
                     <tr>
                       <td>
-                        <div style="font-weight: 500;">${item.itemType === "product" ? val(item.inventoryItemName) : val(item.description)}</div>
+                        <div style="font-weight: 500; white-space: pre-wrap;">${item.itemType === "product" ? val(item.inventoryItemName) : val(item.description)}</div>
                         ${item.itemType === "product" && val(item.inventoryItemDescription) ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">${val(item.inventoryItemDescription)}</div>` : ""}
                       </td>
                       <td class="text-right">${val(item.quantity)} ${item.itemType === "product" ? val(item.inventoryItemUnit) : ""}</td>

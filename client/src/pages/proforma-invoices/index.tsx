@@ -1,5 +1,5 @@
 import { formatDisplayDate } from "@/lib/utils";
-import { useEffect, useState, startTransition } from "react";
+import { useEffect, useRef, useState, startTransition } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,9 @@ import {
   Eye,
   Edit,
   Copy,
+  Pencil,
+  Trash2,
+  X,
 } from "lucide-react";
 import { Customer, Project } from "@shared/schema";
 import { z } from "zod";
@@ -178,6 +181,32 @@ export default function ProformaInvoicesIndex() {
     discount: 0,
     discountType: "amount",
   });
+
+  // Index of the line being edited, or null when the form is adding a new one.
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const itemFormRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Bring the staging form into view and put the cursor in Description, so
+  // clicking Edit on a row far down the table doesn't leave the form off-screen.
+  const focusItemForm = () => {
+    itemFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  // Never carry a half-finished line edit across a dialog open or close. This
+  // keys off the open state rather than the dialog's onOpenChange because Radix
+  // only fires that for its own triggers (Escape, overlay, close button) — the
+  // programmatic setIsDialogOpen calls in the new, edit, duplicate and
+  // post-submit paths would otherwise leave the index pointing at a stale row.
+  useEffect(() => {
+    // Only when an edit was actually abandoned: clearing the index alone would
+    // leave that row's values sitting in the staging form, so the next "Add"
+    // would append a duplicate of it. A half-typed NEW item is left untouched.
+    if (editingItemIndex !== null) {
+      cancelEditItem();
+    }
+  }, [isDialogOpen]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -503,16 +532,23 @@ export default function ProformaInvoicesIndex() {
     const discount = newItem.discount === "" ? 0 : (newItem.discount || 0);
     const discountType = newItem.discountType || "amount";
 
+    const item = {
+      ...newItem,
+      quantity,
+      unitPrice,
+      taxRate,
+      discount,
+      discountType
+    };
+
     setFormData((prev) => ({
       ...prev,
-      items: [...prev.items, {
-        ...newItem,
-        quantity,
-        unitPrice,
-        taxRate,
-        discount,
-        discountType
-      }],
+      items:
+        editingItemIndex === null
+          ? [...prev.items, item]
+          : prev.items.map((existing, i) =>
+              i === editingItemIndex ? item : existing,
+            ),
     }));
 
     setNewItem({
@@ -520,7 +556,46 @@ export default function ProformaInvoicesIndex() {
       quantity: 1,
       unitPrice: 0,
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
+      // Reset these too. Leaving them undefined flips the Discount inputs from
+      // controlled to uncontrolled, so they keep displaying the previous line's
+      // value while the staged item is actually 0.
+      discount: 0,
+      discountType: "amount",
     });
+    setEditingItemIndex(null);
+  };
+
+  // Load an existing line back into the staging form above the table. Saving
+  // then replaces that row instead of appending a new one.
+  const startEditItem = (index: number) => {
+    const item = formData.items[index];
+    if (!item) return;
+
+    setNewItem({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate ?? 0,
+      discount: Number(item.discount) || 0,
+      discountType: item.discountType === "percentage" ? "percentage" : "amount",
+    });
+    setEditingItemIndex(index);
+    focusItemForm();
+  };
+
+  const cancelEditItem = () => {
+    setNewItem({
+      description: "",
+      quantity: 1,
+      unitPrice: 0,
+      taxRate: customerVatTreatment === "standard" ? 5 : 0,
+      // Reset these too. Leaving them undefined flips the Discount inputs from
+      // controlled to uncontrolled, so they keep displaying the previous line's
+      // value while the staged item is actually 0.
+      discount: 0,
+      discountType: "amount",
+    });
+    setEditingItemIndex(null);
   };
 
   const removeItem = (index: number) => {
@@ -1012,12 +1087,14 @@ export default function ProformaInvoicesIndex() {
                   <div className="space-y-4">
                     <Label className="text-base font-medium">Items</Label>
                     {/* Add Item Form */}
-                    <Card>
+                    <Card ref={itemFormRef}>
                       <CardContent className="p-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
-                          <div>
+                          <div className="md:col-span-2 lg:col-span-5">
                             <Label className="text-xs text-gray-600">Description</Label>
-                            <Input
+                            <Textarea
+                              ref={descriptionRef}
+                              rows={3}
                               placeholder="Item description"
                               value={newItem.description}
                               onChange={(e) =>
@@ -1103,15 +1180,38 @@ export default function ProformaInvoicesIndex() {
                             </div>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          onClick={addItem}
-                          size="sm"
-                          className="w-full md:w-auto"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Item
-                        </Button>
+                        <div className="flex flex-col md:flex-row gap-2">
+                          <Button
+                            type="button"
+                            onClick={addItem}
+                            size="sm"
+                            className="w-full md:w-auto"
+                          >
+                            {editingItemIndex === null ? (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Item
+                              </>
+                            ) : (
+                              <>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Update Item
+                              </>
+                            )}
+                          </Button>
+                          {editingItemIndex !== null && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={cancelEditItem}
+                              className="w-full md:w-auto"
+                            >
+                              <X className="h-4 w-4 mr-2" />
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -1120,7 +1220,18 @@ export default function ProformaInvoicesIndex() {
                       <Card>
                         <CardContent className="p-0">
                           <div className="overflow-x-auto">
-                            <table className="w-full">
+                            <table className="w-full min-w-[760px] table-fixed">
+                              {/* Description takes whatever the fixed numeric
+                                  columns leave, so long multi-line text has room. */}
+                              <colgroup>
+                                <col />
+                                <col className="w-[70px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[90px]" />
+                                <col className="w-[100px]" />
+                                <col className="w-[120px]" />
+                                <col className="w-[90px]" />
+                              </colgroup>
                               <thead className="bg-gray-50 dark:bg-gray-900">
                                 <tr>
                                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1157,8 +1268,15 @@ export default function ProformaInvoicesIndex() {
                                   const lineTotal = taxable + taxAmount;
 
                                   return (
-                                    <tr key={index}>
-                                      <td className="px-4 py-3 text-sm">{item.description}</td>
+                                    <tr
+                                      key={index}
+                                      className={
+                                        editingItemIndex === index
+                                          ? "bg-blue-50 dark:bg-blue-950"
+                                          : undefined
+                                      }
+                                    >
+                                      <td className="px-4 py-3 text-sm whitespace-pre-wrap break-words">{item.description}</td>
                                       <td className="px-4 py-3 text-sm text-right">{item.quantity}</td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {formatCurrency(item.unitPrice, formData.currency)}
@@ -1177,14 +1295,37 @@ export default function ProformaInvoicesIndex() {
                                         {formatCurrency(lineTotal, formData.currency)}
                                       </td>
                                       <td className="px-4 py-3 text-center">
-                                        <Button
-                                          type="button"
-                                          variant="destructive"
-                                          size="sm"
-                                          onClick={() => removeItem(index)}
-                                        >
-                                          Remove
-                                        </Button>
+                                        <div className="flex items-center justify-center gap-1">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            title="Edit item"
+                                            aria-label="Edit item"
+                                            data-testid={`button-edit-proforma-item-${index}`}
+                                            onClick={() => startEditItem(index)}
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 text-destructive hover:text-destructive"
+                                            title={
+                                              editingItemIndex !== null
+                                                ? "Finish or cancel the current edit first"
+                                                : "Remove item"
+                                            }
+                                            aria-label="Remove item"
+                                            data-testid={`button-remove-proforma-item-${index}`}
+                                            disabled={editingItemIndex !== null}
+                                            onClick={() => removeItem(index)}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
                                       </td>
                                     </tr>
                                   );
@@ -1814,7 +1955,7 @@ export default function ProformaInvoicesIndex() {
 
                             return (
                               <tr key={index} className="border-b">
-                                <td className="p-3">{item.description}</td>
+                                <td className="p-3 whitespace-pre-wrap break-words">{item.description}</td>
                                 <td className="text-right p-3">{item.quantity}</td>
                                 <td className="text-right p-3">{formatCurrency(item.unitPrice, selectedProforma.currency)}</td>
                                 <td className="text-right p-3">{item.taxRate || 0}%</td>

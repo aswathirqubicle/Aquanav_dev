@@ -124,7 +124,7 @@ export function generateProformaHTML(
                       const lineTotal = lineSubtotal + taxAmount;
                       return `
                     <tr>
-                      <td>${val(item.description)}</td>
+                      <td style="white-space: pre-wrap;">${val(item.description)}</td>
                       <td class="text-right">${val(item.quantity)}</td>
                       <td class="text-right">${formatCurrency(item.unitPrice)}</td>
                       <td class="text-right">${item.taxRate || 0}%</td>

@@ -1,5 +1,5 @@
 import { formatDisplayDate } from "@/lib/utils";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
 
@@ -220,6 +220,34 @@ export default function PurchaseInvoicesIndex() {
     projectId: "",
     assetInstanceId: "",
   });
+
+  // Index of the line being edited, or null when the form is adding a new one.
+  // Distinct from editingInvoice above, which is the whole document being edited.
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const itemFormRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Bring the staging form into view and put the cursor in Description, so
+  // clicking Edit on a row far down the list doesn't leave the form off-screen.
+  // Description only exists for service lines; for products the focus is a no-op.
+  const focusItemForm = () => {
+    itemFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    window.setTimeout(() => descriptionRef.current?.focus(), 0);
+  };
+
+  // Never carry a half-finished line edit across a dialog open or close. This
+  // keys off the open state rather than the dialog's onOpenChange because Radix
+  // only fires that for its own triggers (Escape, overlay, close button) — the
+  // programmatic setIsDialogOpen calls in the new, edit, duplicate and
+  // post-submit paths would otherwise leave the index pointing at a stale row.
+  useEffect(() => {
+    // Only when an edit was actually abandoned: clearing the index alone would
+    // leave that row's values sitting in the staging form, so the next "Add"
+    // would append a duplicate of it. A half-typed NEW item is left untouched.
+    if (editingItemIndex !== null) {
+      cancelEditItem();
+    }
+  }, [isDialogOpen]);
 
   // Authoritative totals via the shared engine (VAT on the discounted base;
   // line discount first, then header apportioned). Mirrors the server.
@@ -671,6 +699,7 @@ export default function PurchaseInvoicesIndex() {
       projectId: "",
       assetInstanceId: "",
     });
+    setEditingItemIndex(null);
     setEditingInvoice(null);
     setSelectedInvoiceFiles(null);
     setExistingInvoiceFiles([]);
@@ -699,7 +728,9 @@ export default function PurchaseInvoicesIndex() {
         return;
       }
 
-      if (invoiceItems.some(item => item.itemType === "product" && item.inventoryItemId === newItem.inventoryItemId)) {
+      // The row being edited must be excluded, otherwise re-saving it unchanged
+      // trips the duplicate guard against itself.
+      if (invoiceItems.some((item, i) => i !== editingItemIndex && item.itemType === "product" && item.inventoryItemId === newItem.inventoryItemId)) {
         toast({
           title: "Error",
           description: "This item is already in the invoice",
@@ -719,7 +750,11 @@ export default function PurchaseInvoicesIndex() {
       }
     }
 
-    setInvoiceItems(prev => [...prev, { ...newItem }]);
+    setInvoiceItems(prev =>
+      editingItemIndex === null
+        ? [...prev, { ...newItem }]
+        : prev.map((existing, i) => (i === editingItemIndex ? { ...newItem } : existing))
+    );
     setNewItem({
       itemType: "product",
       inventoryItemId: "",
@@ -732,6 +767,45 @@ export default function PurchaseInvoicesIndex() {
       projectId: "",
       assetInstanceId: "",
     });
+    setEditingItemIndex(null);
+  };
+
+  // Load an existing line back into the staging form above the list. Saving
+  // then replaces that row instead of appending a new one.
+  const startEditItem = (index: number) => {
+    const item = invoiceItems[index];
+    if (!item) return;
+
+    setNewItem({
+      itemType: item.itemType,
+      inventoryItemId: item.inventoryItemId || "",
+      description: item.description || "",
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate,
+      discount: item.discount || "0",
+      discountType: item.discountType === "percentage" ? "percentage" : "amount",
+      projectId: item.projectId || "",
+      assetInstanceId: item.assetInstanceId || "",
+    });
+    setEditingItemIndex(index);
+    focusItemForm();
+  };
+
+  const cancelEditItem = () => {
+    setNewItem({
+      itemType: "product",
+      inventoryItemId: "",
+      description: "",
+      quantity: "1",
+      unitPrice: "0",
+      taxRate: "0",
+      discount: "0",
+      discountType: "amount",
+      projectId: "",
+      assetInstanceId: "",
+    });
+    setEditingItemIndex(null);
   };
 
   const removeItem = (index: number) => {
@@ -1780,8 +1854,8 @@ export default function PurchaseInvoicesIndex() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Add Item Form */}
-                    <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/50">
-                      <h4 className="font-medium mb-3 text-sm">Add New Item</h4>
+                    <div ref={itemFormRef} className="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50/50 dark:bg-gray-800/50">
+                      <h4 className="font-medium mb-3 text-sm">{editingItemIndex === null ? "Add New Item" : `Edit Item ${editingItemIndex + 1}`}</h4>
                       <div className="space-y-3">
                         {/* Item Type Selector */}
                         <div>
@@ -1824,13 +1898,14 @@ export default function PurchaseInvoicesIndex() {
                               />
                             </div>
                           ) : (
-                            <div className="lg:col-span-3">
+                            <div className="sm:col-span-2 lg:col-span-6">
                               <Label className="text-xs font-medium text-muted-foreground">DESCRIPTION</Label>
-                              <Input
+                              <Textarea
+                                ref={descriptionRef}
+                                rows={3}
                                 value={newItem.description || ""}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, description: e.target.value }))}
                                 placeholder="Enter service description"
-                                className="h-9"
                               />
                             </div>
                           )}
@@ -1935,9 +2010,24 @@ export default function PurchaseInvoicesIndex() {
                         </div>
 
                         <div className="flex flex-col sm:flex-row justify-end gap-3">
+                          {editingItemIndex !== null && (
+                            <Button type="button" variant="outline" onClick={cancelEditItem} className=" h-9" size="sm">
+                              <X className="w-4 h-4 mr-1" />
+                              Cancel
+                            </Button>
+                          )}
                           <Button type="button" onClick={addItem} className=" h-9" size="sm">
-                            <Plus className="w-4 h-4 mr-1" />
-                            Add
+                            {editingItemIndex === null ? (
+                              <>
+                                <Plus className="w-4 h-4 mr-1" />
+                                Add
+                              </>
+                            ) : (
+                              <>
+                                <Pencil className="w-4 h-4 mr-1" />
+                                Update Item
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -1948,8 +2038,8 @@ export default function PurchaseInvoicesIndex() {
                       <div className="space-y-2">
                         <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground border-b pb-2">
                           <div className="col-span-1">TYPE</div>
-                          <div className="col-span-2">ITEM</div>
-                          <div className="col-span-2 text-center">QUANTITY</div>
+                          <div className="col-span-3">ITEM</div>
+                          <div className="col-span-1 text-center">QTY</div>
                           <div className="col-span-2 text-right">UNIT PRICE</div>
                           <div className="col-span-1 text-center">TAX</div>
                           <div className="col-span-1 text-center">DISC</div>
@@ -1968,15 +2058,15 @@ export default function PurchaseInvoicesIndex() {
                           const lineTotal = taxable + lineTax;
 
                           return (
-                            <div key={index} className="grid grid-cols-12 gap-2 items-center py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-lg px-2">
+                            <div key={index} className={`grid grid-cols-12 gap-2 items-center py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/50 rounded-lg px-2 ${editingItemIndex === index ? "bg-blue-50 dark:bg-blue-950" : ""}`}>
                               <div className="col-span-1">
                                 <Badge variant={item.itemType === "product" ? "default" : "secondary"} className="text-xs">
                                   {item.itemType === "product" ? "Product" : "Service"}
                                 </Badge>
                               </div>
-                              <div className="col-span-2">
+                              <div className="col-span-3">
                                 <div className="flex flex-col">
-                                  <div className="font-medium text-sm">
+                                  <div className="font-medium text-sm whitespace-pre-wrap break-words">
                                     {item.itemType === "product" ? getItemName(item.inventoryItemId || "") : item.description}
                                   </div>
                                   {item.itemType === "product" && item.inventoryItemId && (() => {
@@ -2002,7 +2092,7 @@ export default function PurchaseInvoicesIndex() {
                                   </Badge>
                                 )}
                               </div>
-                              <div className="col-span-2 text-center">
+                              <div className="col-span-1 text-center">
                                 <span className="font-medium">{item.quantity}</span>
                               </div>
                               <div className="col-span-2 text-right">
@@ -2021,11 +2111,27 @@ export default function PurchaseInvoicesIndex() {
                               <div className="col-span-2 text-right">
                                 <span className="font-semibold text-green-600">{formatCurrency(lineTotal, formData.currency)}</span>
                               </div>
-                              <div className="col-span-1 flex justify-end">
+                              <div className="col-span-1 flex justify-end gap-1">
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="sm"
+                                  title="Edit item"
+                                  aria-label="Edit item"
+                                  data-testid={`button-edit-pi-item-${index}`}
+                                  onClick={() => startEditItem(index)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  title={editingItemIndex !== null ? "Finish or cancel the current edit first" : "Remove item"}
+                                  aria-label="Remove item"
+                                  data-testid={`button-remove-pi-item-${index}`}
+                                  disabled={editingItemIndex !== null}
                                   onClick={() => removeItem(index)}
                                   className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                                 >
@@ -2447,7 +2553,7 @@ export default function PurchaseInvoicesIndex() {
                                       </Badge>
                                     )}
                                     <div className="flex flex-col">
-                                      <span className="font-medium text-gray-900 dark:text-white print:text-black">
+                                      <span className="font-medium text-gray-900 dark:text-white print:text-black whitespace-pre-wrap break-words">
                                         {item.itemType === "product" ? item.inventoryItemName : item.description}
                                       </span>
                                       {item.itemType === "product" && item.inventoryItemId && (() => {
