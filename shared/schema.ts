@@ -1295,6 +1295,60 @@ export type InsertEmployeeReadinessHistory = z.infer<
 export type EmployeeReadinessHistory =
   typeof employeeReadinessHistory.$inferSelect;
 
+// The Entra app registration the company sends mail through. One row.
+// clientSecretEncrypted holds CIPHERTEXT — the raw secret is never stored, so a
+// database dump does not hand over a credential that can send mail as the
+// company. See server/lib/secret-box.ts.
+export const emailSettings = pgTable("email_settings", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id"),
+  clientId: text("client_id"),
+  clientSecretId: text("client_secret_id"),
+  clientSecretEncrypted: text("client_secret_encrypted"),
+  senderEmail: text("sender_email"),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedById: integer("updated_by_id").references(() => users.id),
+});
+
+// What makes sending idempotent. A reminder fires once per (notification,
+// milestone) and never again — a restart, a job running twice, or two app
+// instances sharing this database cannot re-send it. The unique index in
+// migration 0070 is the mechanism; this table is just its shape.
+export const notificationLog = pgTable("notification_log", {
+  id: serial("id").primaryKey(),
+  notificationType: text("notification_type").notNull(),
+  documentType: text("document_type").notNull(),
+  documentId: integer("document_id").notNull(),
+  milestone: text("milestone").notNull(),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+});
+
+// Each individual send and its outcome, so a failure is visible rather than
+// silent. Separate from notificationLog because one notification can email
+// several recipients, and one failing must not cause the whole notification to
+// be retried and re-delivered to everyone else.
+export const emailSendLog = pgTable("email_send_log", {
+  id: serial("id").primaryKey(),
+  toEmail: text("to_email").notNull(),
+  // Resolved at send time: the address may belong to a user or an employee, and
+  // looking the name up later would misattribute a recipient whose record has
+  // since been renamed or removed.
+  recipientName: text("recipient_name"),
+  subject: text("subject"),
+  bodyHtml: text("body_html"),
+  template: text("template"),
+  status: text("status").notNull(), // sent, failed
+  error: text("error"),
+  relatedType: text("related_type"),
+  relatedId: integer("related_id"),
+  sentAt: timestamp("sent_at").notNull().defaultNow(),
+});
+
+export type EmailSettings = typeof emailSettings.$inferSelect;
+export type NotificationLog = typeof notificationLog.$inferSelect;
+export type EmailSendLog = typeof emailSendLog.$inferSelect;
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,

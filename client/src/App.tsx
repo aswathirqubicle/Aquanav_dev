@@ -41,6 +41,7 @@ import ProjectLocationReport from "./pages/reports/project-location";
 import TrialBalanceReport from "./pages/reports/trial-balance";
 import BalanceSheetReport from "./pages/reports/balance-sheet";
 import EmployeeReadinessReport from "./pages/reports/employee-readiness";
+import EmailLogReport from "./pages/reports/email-log";
 import ProfileIndex from "@/pages/profile/index";
 import { lazy, Suspense } from "react";
 
@@ -93,6 +94,7 @@ function Router() {
               <Route path="/reports/trial-balance" component={TrialBalanceReport} />
               <Route path="/reports/balance-sheet" component={BalanceSheetReport} />
               <Route path="/reports/employee-readiness" component={EmployeeReadinessReport} />
+              <Route path="/reports/email-log" component={EmailLogReport} />
               <Route path="/general-ledger" component={GeneralLedgerIndex} />
               <Route path="/general-ledger/receivable" component={GeneralLedgerReceivable} />
               <Route path="/general-ledger/payable" component={GeneralLedgerPayable} />
