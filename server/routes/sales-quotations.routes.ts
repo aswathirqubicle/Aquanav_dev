@@ -5,6 +5,7 @@ import {
   requireAuth,
   requireRole,
 } from "../middleware/auth";
+import { checkCustomerDocumentCurrency } from "../lib/document-currency";
 import { salesQuotations } from "@shared/schema";
 import { storage } from "../storage";
 
@@ -55,6 +56,14 @@ salesQuotationsRoutes.post(
   async (req, res) => {
     try {
       const quotationData = { ...req.body };
+
+      const currencyError = await checkCustomerDocumentCurrency(
+        quotationData.customerId,
+        quotationData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
 
       // Auto-generate quotation number if not provided
       if (!quotationData.quotationNumber) {
@@ -110,6 +119,19 @@ salesQuotationsRoutes.put(
     try {
       const quotationId = parseInt(req.params.id);
       const quotationData = req.body;
+
+      // Checked against the customer on the payload where one is supplied, so
+      // that reassigning the quotation and setting the currency in one request
+      // is judged on where it ends up, not where it started. A quotation that
+      // no longer exists is left to the 404 below.
+      const existingQuotation = await storage.getSalesQuotation(quotationId);
+      const currencyError = await checkCustomerDocumentCurrency(
+        quotationData.customerId ?? existingQuotation?.customerId,
+        quotationData.currency ?? existingQuotation?.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
 
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
       // No conversion needed - Drizzle expects strings for timestamp({ mode: 'string' }) columns
@@ -378,6 +400,14 @@ salesQuotationsRoutes.post(
       console.log("Creating proforma invoice with data:", req.body);
       const proformaData = req.body;
 
+      const currencyError = await checkCustomerDocumentCurrency(
+        proformaData.customerId,
+        proformaData.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
+      }
+
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
       // No conversion needed - Drizzle expects strings for date() columns
 
@@ -401,9 +431,10 @@ salesQuotationsRoutes.put(
       const id = parseInt(req.params.id);
       console.log("Updating proforma invoice", id, "with data:", req.body);
 
+      const existingProforma = await storage.getProformaInvoice(id);
+
       // If this is a status update to approved, add some validation
       if (req.body.status === "approved") {
-        const existingProforma = await storage.getProformaInvoice(id);
         if (!existingProforma) {
           return res
             .status(404)
@@ -419,6 +450,18 @@ salesQuotationsRoutes.put(
             message: `Cannot approve proforma invoice from ${existingProforma.status} status`,
           });
         }
+      }
+
+      // Checked against the customer on the payload where one is supplied, so
+      // that reassigning the proforma and setting the currency in one request
+      // is judged on where it ends up, not where it started. A proforma that no
+      // longer exists is left to the 404 below.
+      const currencyError = await checkCustomerDocumentCurrency(
+        req.body.customerId ?? existingProforma?.customerId,
+        req.body.currency ?? existingProforma?.currency,
+      );
+      if (currencyError) {
+        return res.status(400).json({ message: currencyError });
       }
 
       const proformaInvoice = await storage.updateProformaInvoice(
