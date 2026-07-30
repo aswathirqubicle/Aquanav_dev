@@ -135,6 +135,7 @@ export default function PurchaseOrdersIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
+    subject: "",
     currency: "AED",
     exchangeRate: "1",
     orderDate: new Date().toISOString().split('T')[0],
@@ -528,6 +529,7 @@ export default function PurchaseOrdersIndex() {
   const resetForm = () => {
     setFormData({
       supplierId: "",
+    subject: "",
       orderDate: new Date().toISOString().split('T')[0],
       expectedDeliveryDate: "",
       paymentTerms: "",
@@ -559,6 +561,7 @@ export default function PurchaseOrdersIndex() {
     setEditingOrder(order);
     setFormData({
       supplierId: order.supplierId.toString(),
+      subject: order.subject || "",
       orderDate: order.orderDate.split('T')[0],
       expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.split('T')[0] : "",
       paymentTerms: order.paymentTerms || "",
@@ -734,6 +737,7 @@ export default function PurchaseOrdersIndex() {
     formDataInstance.append("orderDate", formData.orderDate);
     formDataInstance.append("expectedDeliveryDate", formData.expectedDeliveryDate || "");
     formDataInstance.append("paymentTerms", formData.paymentTerms || "");
+    formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("deliveryTerms", formData.deliveryTerms || "");
     formDataInstance.append("bankAccount", formData.bankAccount || "");
     formDataInstance.append("notes", formData.notes || "");
@@ -923,6 +927,7 @@ export default function PurchaseOrdersIndex() {
     if (invoiceData.supplierInvoiceNumber) formData.append("supplierInvoiceNumber", invoiceData.supplierInvoiceNumber);
     if (invoiceNotes) formData.append("notes", invoiceNotes);
     if (invoicePaymentTerms) formData.append("paymentTerms", invoicePaymentTerms);
+    formData.append("subject", viewingOrder.subject || "");
     formData.append("currency", viewingOrder.currency || viewingOrder.supplierCurrency || "AED");
     formData.append("exchangeRate", viewingOrder.exchangeRate || "1");
     formData.append("discountPercentage", invoiceData.discountPercentage);
@@ -1495,6 +1500,16 @@ export default function PurchaseOrdersIndex() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="mb-4">
+                  <Label htmlFor="subject">Subject Line</Label>
+                  <Input
+                    id="subject"
+                    value={formData.subject || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                    placeholder="e.g., Office Supplies Order"
+                    className="mt-1"
+                  />
+                </div>
                 <div>
                   <Label htmlFor="paymentTerms">Payment Terms</Label>
                   <Input
@@ -2094,6 +2109,12 @@ export default function PurchaseOrdersIndex() {
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
                         <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
                       </div>
+                      {viewingOrder.subject && (
+                        <div>
+                          <h3 className="text-gray-500 dark:text-gray-400 text-sm">Subject</h3>
+                          <p className="text-sm font-medium mt-1">{viewingOrder.subject}</p>
+                        </div>
+                      )}
                       {viewingOrder.paymentTerms && (
                         <div>
                           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Payment Terms</label>

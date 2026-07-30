@@ -30,6 +30,7 @@ import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 import { computeDocumentTotals } from "@shared/document-totals";
 
 const createCreditNoteSchema = insertCreditNoteSchema.extend({
+  subject: z.string().optional(),
   creditNoteDate: z.string(),
   items: z
     .array(
@@ -106,6 +107,7 @@ const CreditNoteForm = ({
   const [formData, setFormData] = useState<any>({
     salesInvoiceId: creditNote?.salesInvoiceId || selectedInvoiceId || 0,
     customerId: creditNote?.customerId || 0,
+    subject: creditNote?.subject || "",
     status: creditNote?.status || "draft",
     creditNoteDate: formatDateForInput(creditNote?.creditNoteDate) || formatDateForInput(new Date()),
     billingAddress: creditNote?.billingAddress || "",
@@ -445,6 +447,15 @@ const CreditNoteForm = ({
         </div>
       </div>
 
+      <div className="space-y-2 mb-4">
+        <Label htmlFor="subject">Subject Line</Label>
+        <Input
+          id="subject"
+          value={formData.subject || ""}
+          onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+          placeholder="e.g., Refund for damaged goods"
+        />
+      </div>
       <div className="space-y-2">
         <Label htmlFor="billingAddress">Billing Address</Label>
         <textarea
@@ -1191,6 +1202,7 @@ export default function CreditNotesIndex() {
             </DialogHeader>
             {editingCreditNote && (
               <CreditNoteForm
+                key={editingCreditNote.id}
                 creditNote={editingCreditNote}
                 onSubmit={(data) => updateCreditNoteMutation.mutate({ id: editingCreditNote.id, data })}
                 salesInvoices={salesInvoices}
@@ -1254,6 +1266,12 @@ export default function CreditNotesIndex() {
                   </div>
                 </div>
 
+                {viewingCreditNote.subject && (
+                  <div>
+                    <h3 className="font-semibold mb-2">Subject</h3>
+                    <p className="mt-1">{viewingCreditNote.subject}</p>
+                  </div>
+                )}
                 {viewingCreditNote.billingAddress && (
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Billing Address</label>

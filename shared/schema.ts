@@ -407,6 +407,7 @@ export const projectPhotos = pgTable("project_photos", {
 export const salesQuotations = pgTable("sales_quotations", {
   id: serial("id").primaryKey(),
   quotationNumber: text("quotation_number").notNull().unique(),
+  subject: text("subject"),
   customerId: integer("customer_id").references(() => customers.id),
   currency: text("currency").notNull().default("AED"),
   exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
@@ -467,6 +468,7 @@ export const salesQuotationItems = pgTable("sales_quotation_items", {
 export const salesInvoices = pgTable("sales_invoices", {
   id: serial("id").primaryKey(),
   invoiceNumber: text("invoice_number").unique(),
+  subject: text("subject"),
   customerId: integer("customer_id").references(() => customers.id),
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
@@ -769,6 +771,7 @@ export const reimbursements = pgTable("reimbursements", {
 export const proformaInvoices = pgTable("proforma_invoices", {
   id: serial("id").primaryKey(),
   proformaNumber: text("proforma_number").notNull().unique(),
+  subject: text("subject"),
   customerId: integer("customer_id").references(() => customers.id),
   projectId: integer("project_id").references(() => projects.id),
   quotationId: integer("quotation_id").references(() => salesQuotations.id),
@@ -822,6 +825,7 @@ export const proformaInvoices = pgTable("proforma_invoices", {
 export const creditNotes = pgTable("credit_notes", {
   id: serial("id").primaryKey(),
   creditNoteNumber: text("credit_note_number").notNull().unique(),
+  subject: text("subject"),
   salesInvoiceId: integer("sales_invoice_id").references(
     () => salesInvoices.id,
   ),
@@ -908,6 +912,7 @@ export const purchaseRequestItems = pgTable("purchase_request_items", {
 export const purchaseOrders = pgTable("purchase_orders", {
   id: serial("id").primaryKey(),
   poNumber: text("po_number").notNull().unique(),
+  subject: text("subject"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   status: text("status").notNull().default("draft"), // draft, sent, confirmed, received, cancelled
   orderDate: timestamp("order_date").notNull().defaultNow(),
@@ -992,6 +997,7 @@ export const purchaseInvoiceFiles = pgTable("purchase_invoice_files", {
 export const purchaseInvoices = pgTable("purchase_invoices", {
   id: serial("id").primaryKey(),
   invoiceNumber: text("invoice_number").notNull().unique(),
+  subject: text("subject"),
   supplierInvoiceNumber: text("supplier_invoice_number"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   poId: integer("po_id").references(() => purchaseOrders.id),
@@ -1664,6 +1670,7 @@ export const insertPurchaseRequestItemSchema = createInsertSchema(
 const purchaseOrdersTable = pgTable("purchase_orders", {
   id: serial("id").primaryKey(),
   poNumber: text("po_number").notNull().unique(),
+  subject: text("subject"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
   status: text("status").notNull().default("draft"), // draft, sent, confirmed, received, cancelled
   orderDate: timestamp("order_date").notNull().defaultNow(),

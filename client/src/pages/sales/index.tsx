@@ -224,6 +224,7 @@ export default function SalesIndex() {
     currency: "AED",
     exchangeRate: "1",
     remarks: "",
+    subject: "",
     paymentTerms: "",
     bankAccount: "",
     billingAddress: "",
@@ -248,6 +249,7 @@ export default function SalesIndex() {
       exchangeRate: "1",
       remarks: "",
       workOrderNumber: "",
+      subject: "",
       paymentTerms: "",
       bankAccount: "",
       billingAddress: "",
@@ -1208,6 +1210,7 @@ export default function SalesIndex() {
       currency: "AED",
       exchangeRate: "1",
       remarks: "",
+      subject: "",
       paymentTerms: "",
       bankAccount: "",
       billingAddress: "",
@@ -1245,6 +1248,7 @@ export default function SalesIndex() {
       totalAmount: "0",
       remarks: "",
       workOrderNumber: "",
+      subject: "",
       paymentTerms: "",
       bankAccount: "",
       billingAddress: "",
@@ -1758,6 +1762,7 @@ export default function SalesIndex() {
         subtotal: quotation.subtotal || "0",
         taxAmount: quotation.taxAmount || "0",
         totalAmount: quotation.totalAmount || "0",
+        subject: quotation.subject || "",
         paymentTerms: quotation.paymentTerms || "",
         bankAccount: quotation.bankAccount || "",
         billingAddress: quotation.billingAddress || "",
@@ -1784,6 +1789,7 @@ export default function SalesIndex() {
         subtotal: quotation.subtotal || "0",
         taxAmount: quotation.taxAmount || "0",
         totalAmount: quotation.totalAmount || "0",
+        subject: quotation.subject || "",
         paymentTerms: quotation.paymentTerms || "",
         bankAccount: quotation.bankAccount || "",
         billingAddress: quotation.billingAddress || "",
@@ -1893,6 +1899,7 @@ export default function SalesIndex() {
       exchangeRate: source.exchangeRate || "1",
       remarks: source.remarks || "",
       workOrderNumber: source.workOrderNumber || "",
+      subject: source.subject || "",
       paymentTerms: source.paymentTerms || "",
       bankAccount: source.bankAccount || "",
       billingAddress: source.billingAddress || "",
@@ -1954,6 +1961,7 @@ export default function SalesIndex() {
       exchangeRate: derivedExchangeRate,
       remarks: invoice.remarks || "",
       workOrderNumber: invoice.workOrderNumber || "",
+      subject: invoice.subject || "",
       paymentTerms: invoice.paymentTerms || "",
       bankAccount: invoice.bankAccount || "",
       billingAddress: invoice.billingAddress || "",
@@ -1975,6 +1983,7 @@ export default function SalesIndex() {
       // ✅ COPY FROM QUOTATION
       billingAddress: quotation.billingAddress || "",
       bankAccount: quotation.bankAccount || "",
+      subject: quotation.subject || "",
       paymentTerms: quotation.paymentTerms || "",
       termsAndConditions: quotation.termsAndConditions || "",
       remarks: quotation.remarks || "",
@@ -2182,6 +2191,23 @@ export default function SalesIndex() {
                         }
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="subject">Subject Line</Label>
+                    <Input
+                      id="subject"
+                      value={formData.subject || ""}
+                      onChange={(e) =>
+                        startTransition(() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            subject: e.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Enter quotation subject"
+                    />
                   </div>
 
                   {/* Payment Details Section */}
@@ -2876,6 +2902,23 @@ export default function SalesIndex() {
                         disabled
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="invoiceSubject">Subject Line</Label>
+                    <Input
+                      id="invoiceSubject"
+                      value={invoiceFormData.subject || ""}
+                      onChange={(e) =>
+                        startTransition(() =>
+                          setInvoiceFormData((prev) => ({
+                            ...prev,
+                            subject: e.target.value,
+                          })),
+                        )
+                      }
+                      placeholder="Enter invoice subject"
+                    />
                   </div>
 
                   {/* Payment Details Section */}
@@ -4537,12 +4580,20 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
+              {(selectedQuotation.subject || selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {selectedQuotation.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedQuotation.subject}
+                        </p>
+                      </div>
+                    )}
                     {selectedQuotation.paymentTerms && (
                       <div>
                         <span className="font-medium">Payment Terms:</span>
@@ -4933,12 +4984,20 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
+              {(selectedInvoice.subject || selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {selectedInvoice.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedInvoice.subject}
+                        </p>
+                      </div>
+                    )}
                     {selectedInvoice.paymentTerms && (
                       <div>
                         <span className="font-medium">Payment Terms:</span>

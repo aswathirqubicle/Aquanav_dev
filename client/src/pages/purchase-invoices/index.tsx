@@ -188,6 +188,7 @@ export default function PurchaseInvoicesIndex() {
 
   const [formData, setFormData] = useState({
     supplierId: "",
+    subject: "",
     supplierInvoiceNumber: "",
     currency: "AED",
     exchangeRate: "1",
@@ -467,6 +468,7 @@ export default function PurchaseInvoicesIndex() {
       setEditingInvoice(full);
       setFormData({
         supplierId: full.supplierId.toString(),
+        subject: full.subject || "",
         supplierInvoiceNumber: full.supplierInvoiceNumber || "",
         currency: derivedCurrency,
         exchangeRate: derivedExchangeRate,
@@ -706,6 +708,7 @@ export default function PurchaseInvoicesIndex() {
   const resetForm = () => {
     setFormData({
       supplierId: "",
+    subject: "",
       supplierInvoiceNumber: "",
       currency: "AED",
       exchangeRate: "1",
@@ -911,6 +914,7 @@ export default function PurchaseInvoicesIndex() {
     formDataInstance.append("invoiceDate", formData.invoiceDate);
     formDataInstance.append("dueDate", formData.dueDate);
     formDataInstance.append("paymentTerms", formData.paymentTerms);
+    formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("bankAccount", formData.bankAccount);
     formDataInstance.append("notes", formData.notes);
     formDataInstance.append("subtotal", subtotal.toFixed(2));
@@ -1716,6 +1720,16 @@ export default function PurchaseInvoicesIndex() {
                     </div>
 
                     <div className="space-y-4">
+                      <div className="space-y-2 mb-4">
+                        <Label htmlFor="subject" className="text-sm font-medium">Subject Line</Label>
+                        <Input
+                          id="subject"
+                          value={formData.subject || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                          placeholder="e.g., Software Subscriptions"
+                          className="h-10"
+                        />
+                      </div>
                       <div className="space-y-2">
                         <Label htmlFor="paymentTerms" className="text-sm font-medium">Payment Terms</Label>
                         <Input
@@ -2427,6 +2441,12 @@ export default function PurchaseInvoicesIndex() {
                         {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
                       </div>
                     </div>
+                    {viewingInvoice.subject && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-gray-500 dark:text-gray-400 print:text-gray-600 uppercase tracking-wider">Subject</span>
+                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.subject}</p>
+                      </div>
+                    )}
                     {viewingInvoice.paymentTerms && (
                       <div>
                         <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Payment Terms</p>

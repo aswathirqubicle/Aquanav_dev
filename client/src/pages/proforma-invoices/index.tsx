@@ -67,6 +67,7 @@ const createProformaInvoiceSchema = z.object({
   quotationId: z.number().optional(),
   invoiceDate: z.string().optional(),
   validUntil: z.string().optional(),
+  subject: z.string().optional(),
   paymentTerms: z.string().optional(),
   workOrderNumber: z.string().optional(),
   deliveryTerms: z.string().optional(),
@@ -162,6 +163,7 @@ export default function ProformaInvoicesIndex() {
     discountPercentage: "0",
     discount: "0",
     currency: "AED",
+    subject: "",
     workOrderNumber: "",
     exchangeRate: "1",
     paymentTerms: "",
@@ -468,6 +470,7 @@ export default function ProformaInvoicesIndex() {
 
   const resetForm = () => {
     setFormData({
+      subject: "",
       customerId: 0,
       invoiceDate: new Date().toISOString().split('T')[0],
       items: [],
@@ -475,7 +478,7 @@ export default function ProformaInvoicesIndex() {
       discount: "0",
       currency: "AED",
       exchangeRate: "1",
-      workOrderNumber: "",
+    workOrderNumber: "",
       paymentTerms: "",
       deliveryTerms: "",
       bankAccount: "",
@@ -741,6 +744,7 @@ export default function ProformaInvoicesIndex() {
     // Populate form with existing data
     setFormData({
       customerId: proforma.customerId,
+      subject: proforma.subject || "",
       projectId: proforma.projectId,
       quotationId: proforma.quotationId,
       invoiceDate: new Date().toISOString().split('T')[0],
@@ -941,6 +945,20 @@ export default function ProformaInvoicesIndex() {
                         disabled
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    <Label htmlFor="subject">Subject Line</Label>
+                    <Input
+                      id="subject"
+                      value={formData.subject || ""}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          subject: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g., Quotation for Web Development"
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -2063,6 +2081,7 @@ export default function ProformaInvoicesIndex() {
                       setSelectedProforma(selectedProforma);
                       setFormData({
                         customerId: selectedProforma.customerId,
+                        subject: selectedProforma.subject || "",
                         projectId: selectedProforma.projectId,
                         quotationId: selectedProforma.quotationId,
                         invoiceDate: toInputDate(selectedProforma.invoiceDate),
