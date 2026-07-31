@@ -23,7 +23,7 @@ import {
   PayrollEntryWithEmployeeDetails,
 } from "./types";
 import { accountCodeForCategory } from "@shared/payroll-types";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { db } from "../db";
 
 export class PayrollStorage extends PurchaseStorage {
@@ -340,7 +340,18 @@ export class PayrollStorage extends PurchaseStorage {
           }
         }
 
-        // Add approved reimbursements for this employee in this payroll period
+        // Add every approved reimbursement not yet carried by a payslip.
+        // `payrollMonth IS NULL` is the "not yet applied" marker — the stamp is
+        // written below, when the claim actually lands here, so a claim can
+        // never be applied twice and can never be stranded by a payroll that
+        // was already generated when it was approved.
+        //
+        // The approval-date bound stops a claim drifting BACKWARDS onto a
+        // period generated late: a claim approved in August must not appear on
+        // a June payslip generated in September. `firstOfNextMonth` is the
+        // first instant after the period being generated, so the claim lands on
+        // the first payroll run at or after its own approval month.
+        const firstOfNextMonth = new Date(year, month, 1);
         const employeeReimbursements = await db
           .select()
           .from(reimbursements)
@@ -348,8 +359,8 @@ export class PayrollStorage extends PurchaseStorage {
             and(
               eq(reimbursements.employeeId, employee.id),
               eq(reimbursements.status, "approved"),
-              eq(reimbursements.payrollMonth, month),
-              eq(reimbursements.payrollYear, year),
+              isNull(reimbursements.payrollMonth),
+              lt(reimbursements.approvalTimestamp, firstOfNextMonth),
             ),
           );
 
@@ -367,6 +378,17 @@ export class PayrollStorage extends PurchaseStorage {
               amount: reimbursementAmount.toFixed(2),
               note: `Original expense date: ${reimbursement.originalExpenseDate}`,
             });
+
+            // Claim the reimbursement for this period. This is what makes it
+            // invisible to the next run's `payrollMonth IS NULL` filter, and it
+            // is also what postPayrollAccrual reads to build the GL lines, so
+            // the stamp has to be written here — before the entry can be
+            // approved — not at reimbursement-approval time.
+            await db
+              .update(reimbursements)
+              .set({ payrollMonth: month, payrollYear: year })
+              .where(eq(reimbursements.id, reimbursement.id));
+
             totalReimbursementAmount += reimbursementAmount;
           }
         }
@@ -1165,6 +1187,21 @@ export class PayrollStorage extends PurchaseStorage {
       for (const payrollId of payrollIds) {
         deletedGLCount += await this.reversePayrollGLForEntry(payrollId, userId);
       }
+
+      // Release the reimbursements this period had claimed. Their addition rows
+      // die with the entries below, so leaving the stamp would strand them:
+      // generateMonthlyPayroll only picks up `payrollMonth IS NULL`, and they
+      // would sit approved but unpayable on every future run. Nulling the stamp
+      // returns them to the pool for whichever payroll is generated next.
+      await db
+        .update(reimbursements)
+        .set({ payrollMonth: null, payrollYear: null })
+        .where(
+          and(
+            eq(reimbursements.payrollMonth, month),
+            eq(reimbursements.payrollYear, year),
+          ),
+        );
 
       // Delete payroll entries (this will cascade to delete additions and deductions)
       const payrollDeleteCount = await this.clearPayrollEntriesByPeriod(
