@@ -737,6 +737,7 @@ export class PurchaseStorage extends SalesStorage {
           poNumber: purchaseOrders.poNumber,
           supplierId: purchaseOrders.supplierId,
           supplierName: suppliers.name,
+          subject: purchaseOrders.subject,
           status: purchaseOrders.status,
           orderDate: purchaseOrders.orderDate,
           expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
@@ -870,6 +871,7 @@ export class PurchaseStorage extends SalesStorage {
           poNumber: purchaseOrders.poNumber,
           supplierId: purchaseOrders.supplierId,
           supplierName: suppliers.name,
+          subject: purchaseOrders.subject,
           status: purchaseOrders.status,
           orderDate: purchaseOrders.orderDate,
           expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
@@ -975,6 +977,7 @@ export class PurchaseStorage extends SalesStorage {
         .values({
           poNumber,
           supplierId: orderData.supplierId,
+          subject: orderData.subject || null,
           status: orderData.status || "draft",
           orderDate: orderData.orderDate
             ? new Date(orderData.orderDate)
@@ -1049,7 +1052,22 @@ export class PurchaseStorage extends SalesStorage {
 
       if (data.supplierId !== undefined)
         updateData.supplierId = data.supplierId;
+      if (data.subject !== undefined) updateData.subject = data.subject || null;
       if (data.status !== undefined) updateData.status = data.status;
+      // Approval-trail fields. Written only by the edit route when an approved
+      // or rejected order is sent back to pending_approval, which clears the
+      // stale verdict and re-stamps the submitter. `|| null` is deliberately NOT
+      // used: these are cleared by passing an explicit null, and a falsy id is
+      // not a value any caller sends.
+      if (data.approvedById !== undefined)
+        updateData.approvedById = data.approvedById;
+      if (data.approvedAt !== undefined) updateData.approvedAt = data.approvedAt;
+      if (data.rejectionReason !== undefined)
+        updateData.rejectionReason = data.rejectionReason;
+      if (data.submittedById !== undefined)
+        updateData.submittedById = data.submittedById;
+      if (data.submittedAt !== undefined)
+        updateData.submittedAt = data.submittedAt;
       if (data.orderDate !== undefined) {
         updateData.orderDate = data.orderDate
           ? new Date(data.orderDate)
@@ -1510,6 +1528,7 @@ export class PurchaseStorage extends SalesStorage {
           supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
+          subject: purchaseInvoices.subject,
           poId: purchaseInvoices.poId,
           status: purchaseInvoices.status,
           paymentStatus: purchaseInvoices.paymentStatus,
@@ -1773,6 +1792,7 @@ export class PurchaseStorage extends SalesStorage {
           supplierInvoiceNumber: purchaseInvoices.supplierInvoiceNumber,
           supplierId: purchaseInvoices.supplierId,
           supplierName: suppliers.name,
+          subject: purchaseInvoices.subject,
           poId: purchaseInvoices.poId,
           status: purchaseInvoices.status,
           paymentStatus: purchaseInvoices.paymentStatus,
@@ -1969,6 +1989,7 @@ export class PurchaseStorage extends SalesStorage {
           invoiceNumber,
           supplierInvoiceNumber: invoiceData.supplierInvoiceNumber || null,
           supplierId: invoiceData.supplierId,
+          subject: invoiceData.subject || null,
           poId: invoiceData.poId || null,
           projectId: invoiceData.projectId || null,
           assetInventoryInstanceId:
@@ -2083,6 +2104,8 @@ export class PurchaseStorage extends SalesStorage {
       if (invoiceData.supplierInvoiceNumber !== undefined)
         updateData.supplierInvoiceNumber =
           invoiceData.supplierInvoiceNumber || null;
+      if (invoiceData.subject !== undefined)
+        updateData.subject = invoiceData.subject || null;
       if (invoiceData.invoiceDate !== undefined)
         updateData.invoiceDate = new Date(invoiceData.invoiceDate);
       if (invoiceData.dueDate !== undefined)
