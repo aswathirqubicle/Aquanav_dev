@@ -2171,6 +2171,27 @@ export default function PurchaseOrdersIndex() {
               </div>
               {viewingOrder && (
                 <div className="flex items-center gap-2">
+                  {/* Same gate as the list's Edit button: drafts for anyone who
+                      can edit, post-approval statuses for admin/finance only.
+                      Converted orders show no Edit, matching the list. */}
+                  {(viewingOrder.status === "draft" ||
+                    (["approved", "pending_approval", "rejected"].includes(viewingOrder.status) &&
+                      (user?.role === "admin" || user?.role === "finance"))) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const order = viewingOrder;
+                        setIsViewDialogOpen(false);
+                        handleEditOrder(order);
+                      }}
+                      className="gap-2"
+                      data-testid="button-edit-from-view"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
