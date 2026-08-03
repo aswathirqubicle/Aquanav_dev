@@ -119,7 +119,7 @@ export function generateInvoiceHTML(
         .inv-meta .k { color: #555; text-align: right; padding-right: 10px; white-space: nowrap; }
         .inv-meta .v { text-align: right; white-space: nowrap; font-weight: 600; }
         .inv-subject { font-size: 11px; margin: 6px 0 14px; }
-        .inv-subject .k { color: #555; }
+        .inv-subject .k { font-weight: 700; }
         table.inv-items { width: 100%; border-collapse: collapse; table-layout: fixed; }
         table.inv-items th { background: #33475b; color: #fff; font-size: 10px; font-weight: 600; padding: 7px 6px; text-align: right; }
         table.inv-items th.l { text-align: left; }
@@ -127,7 +127,7 @@ export function generateInvoiceHTML(
         table.inv-items td.l { text-align: left; white-space: pre-wrap; word-break: break-word; }
         table.inv-items td.c { text-align: center; }
         .inv-taxrate { display: block; font-size: 9px; color: #666; }
-        .inv-totals { width: 62%; margin-left: auto; border-collapse: collapse; border: none !important; margin-top: 4px; }
+        .inv-totals { width: 62%; margin-left: auto; border-collapse: collapse; border: none !important; margin-top: 4px; page-break-inside: avoid; break-inside: avoid; }
         .inv-totals td { border: none !important; font-size: 11px; padding: 4px 6px; }
         .inv-totals td.k { text-align: right; color: #444; }
         .inv-totals td.v { text-align: right; width: 130px; font-weight: 600; }
@@ -141,7 +141,7 @@ export function generateInvoiceHTML(
         .inv-taxsummary tr.tot td { font-weight: 700; border-top: 1px solid #333; }
         .inv-section-h { font-size: 12px; font-weight: 700; margin: 18px 0 4px; }
         .inv-block { font-size: 10.5px; white-space: pre-wrap; }
-        .inv-keep { page-break-inside: avoid; }
+        .inv-keep { page-break-inside: avoid; break-inside: avoid; }
       </style>
     </head>
     <body>
@@ -269,12 +269,6 @@ export function generateInvoiceHTML(
                 }
                 <tr class="due"><td class="k">Balance Due</td><td class="v">${money(balanceDue)}</td></tr>
               </table>
-
-              ${
-                currency !== "AED" && val(invoice.exchangeRate)
-                  ? `<p style="text-align:right; font-size:10px; color:#666; margin-top:4px;">Exchange Rate: 1 ${currency} = ${invoice.exchangeRate} AED</p>`
-                  : ""
-              }
 
               <div class="inv-keep">
                 <div class="inv-section-h">Tax Summary</div>
