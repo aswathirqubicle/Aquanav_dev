@@ -4867,10 +4867,56 @@ export default function SalesIndex() {
       >
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Invoice Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this sales invoice.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (submit, approve, pay, cancel) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Invoice Details</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this sales invoice.
+                </DialogDescription>
+              </div>
+              {selectedInvoice && (
+                <div className="flex flex-wrap gap-2">
+                  {(selectedInvoice.status === "draft" ||
+                    (["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) &&
+                      parseFloat(selectedInvoice.paidAmount || "0") === 0 &&
+                      user?.role === "admin")) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsInvoiceDetailsOpen(false);
+                        handleEditInvoice(selectedInvoice);
+                      }}
+                      data-testid="button-edit-invoice-header"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
+                    data-testid="button-duplicate-invoice-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintInvoice(selectedInvoice)}
+                    data-testid="button-print-invoice-header"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedInvoice ? (
             <div className="space-y-6">
@@ -5183,6 +5229,53 @@ export default function SalesIndex() {
                 </div>
               </div>
 
+              {/* Approval trail — submitted, approved, rejected. Mirrors the
+                  purchase order view. User IDs rather than names: this page has
+                  no users query, and /api/users is admin-only while finance can
+                  open this dialog, so resolving names here would 403 for them. */}
+              {((selectedInvoice as any).submittedAt || (selectedInvoice as any).approvedAt || (selectedInvoice as any).rejectionReason) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Approval Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(selectedInvoice as any).submittedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).submittedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).submittedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedInvoice as any).approvedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).approvedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).approvedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedInvoice as any).rejectionReason && (
+                      <div className="pt-1">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedInvoice as any).rejectionReason}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Payment History */}
               <div
                 id={`payment-history-${selectedInvoice.id}`}
@@ -5402,27 +5495,8 @@ export default function SalesIndex() {
               <div className="flex flex-col gap-3 pt-4 border-t">
                 {/* Primary Actions Row */}
                 <div className="flex flex-col sm:flex-row justify-end gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    Duplicate
-                  </Button>
                   {selectedInvoice.status === "draft" && (
                     <>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsInvoiceDetailsOpen(false);
-                          handleEditInvoice(selectedInvoice);
-                        }}
-                        className="w-full sm:w-auto"
-                      >
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
                       <Button
                         onClick={() =>
                           startTransition(() =>
@@ -5438,19 +5512,6 @@ export default function SalesIndex() {
                           : "Submit"}
                       </Button>
                     </>
-                  )}
-                  {["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) && parseFloat(selectedInvoice.paidAmount || "0") === 0 && user?.role === "admin" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsInvoiceDetailsOpen(false);
-                        handleEditInvoice(selectedInvoice);
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
                   )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "pending_approval" && (
@@ -5483,15 +5544,6 @@ export default function SalesIndex() {
                         </Button>
                       </>
                     )}
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => handlePrintInvoice(selectedInvoice)}
-                    data-testid="button-print-invoice-dialog"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Print Invoice
-                  </Button>
                   {(selectedInvoice.status === "unpaid" ||
                     selectedInvoice.status === "partially_paid" ||
                     selectedInvoice.status === "overdue" ||
@@ -5567,9 +5619,6 @@ export default function SalesIndex() {
                   >
                     View Payment History
                   </Button>
-                </div>
-                {/* Secondary Actions Row */}
-                <div className="flex justify-end">
                   <Button
                     variant="outline"
                     onClick={() => setIsInvoiceDetailsOpen(false)}

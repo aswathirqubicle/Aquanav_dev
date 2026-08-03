@@ -1082,6 +1082,13 @@ export class SalesStorage extends LedgerStorage {
           paidAmount: salesInvoices.paidAmount,
           currency: salesInvoices.currency,
           exchangeRate: salesInvoices.exchangeRate,
+          // The details dialog is fed from these rows, so the approval trail
+          // has to travel with them or it can never be displayed.
+          submittedById: salesInvoices.submittedById,
+          submittedAt: salesInvoices.submittedAt,
+          approvedById: salesInvoices.approvedById,
+          approvedAt: salesInvoices.approvedAt,
+          rejectionReason: salesInvoices.rejectionReason,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
