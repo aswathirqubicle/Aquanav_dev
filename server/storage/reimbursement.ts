@@ -197,23 +197,14 @@ export class ReimbursementStorage extends PayrollStorage {
         throw new Error("Reimbursement not found");
       }
 
-      // Calculate next upcoming payroll date
-      const now = new Date();
-      const dayOfMonth = now.getDate();
-      let payrollMonth: number;
-      let payrollYear: number;
-
-      // If today is before the 20th, assign to current month's payroll (end of month)
-      // Otherwise, assign to next month's payroll
-      if (dayOfMonth < 20) {
-        payrollMonth = now.getMonth() + 1; // 1-12
-        payrollYear = now.getFullYear();
-      } else {
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        payrollMonth = nextMonth.getMonth() + 1; // 1-12
-        payrollYear = nextMonth.getFullYear();
-      }
-
+      // payrollMonth/payrollYear are deliberately NOT set here. Approval no
+      // longer predicts which payroll will carry the claim — it used to stamp
+      // the current or next month off a 20th-of-month cutoff, which stranded
+      // claims both ways: approved after the 20th they skipped a payroll that
+      // had not run yet, and approved before it into a month already generated
+      // they were never picked up at all. The stamp is now applied by
+      // generateMonthlyPayroll when the claim actually lands on a payslip, so
+      // NULL means "approved, awaiting the next payroll run".
       // If a project is selected, trigger full cost recalculation (includes reimbursements)
       if (reimbursement.projectId) {
         await this.recalculateProjectCost(reimbursement.projectId);
@@ -225,8 +216,6 @@ export class ReimbursementStorage extends PayrollStorage {
           status: "approved",
           approvedById: approverId,
           approvalTimestamp: new Date(),
-          payrollMonth,
-          payrollYear,
         })
         .where(eq(reimbursements.id, id))
         .returning();

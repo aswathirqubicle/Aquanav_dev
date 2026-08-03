@@ -313,8 +313,10 @@ export default function ReimbursementsIndex() {
     }
   };
 
-  const getPayrollPeriod = (month: number | null, year: number | null) => {
-    if (!month || !year) return "—";
+  const getPayrollPeriod = (month: number | null, year: number | null, status?: string) => {
+    // An approved claim carries no period until a payroll run actually picks it
+    // up, so "—" would read as though it had been missed. It is queued, not lost.
+    if (!month || !year) return status === "approved" ? "Next payroll" : "—";
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return `${monthNames[month - 1]} ${year}`;
   };
@@ -478,7 +480,7 @@ export default function ReimbursementsIndex() {
                         <TableCell>{formatDisplayDate(reimbursement.originalExpenseDate)}</TableCell>
                         <TableCell>{formatDisplayDate(reimbursement.submissionTimestamp)}</TableCell>
                         <TableCell>{getStatusBadge(reimbursement.status)}</TableCell>
-                        <TableCell>{getPayrollPeriod(reimbursement.payrollMonth, reimbursement.payrollYear)}</TableCell>
+                        <TableCell>{getPayrollPeriod(reimbursement.payrollMonth, reimbursement.payrollYear, reimbursement.status)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
                             <Button
@@ -812,14 +814,15 @@ export default function ReimbursementsIndex() {
                     <p className="truncate text-sm font-medium sm:text-base">{new Date(selectedReimbursement.submissionTimestamp).toLocaleString()}</p>
                   </div>
                 </div>
-                {selectedReimbursement.payrollMonth && (
+                {(selectedReimbursement.payrollMonth ||
+                  selectedReimbursement.status === "approved") && (
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">Payroll Period</p>
-                      <p className="truncate text-sm font-medium sm:text-base">{getPayrollPeriod(selectedReimbursement.payrollMonth, selectedReimbursement.payrollYear)}</p>
+                      <p className="truncate text-sm font-medium sm:text-base">{getPayrollPeriod(selectedReimbursement.payrollMonth, selectedReimbursement.payrollYear, selectedReimbursement.status)}</p>
                     </div>
                   </div>
                 )}

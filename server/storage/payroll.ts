@@ -23,7 +23,7 @@ import {
   PayrollEntryWithEmployeeDetails,
 } from "./types";
 import { accountCodeForCategory } from "@shared/payroll-types";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db";
 
 export class PayrollStorage extends PurchaseStorage {
@@ -340,7 +340,24 @@ export class PayrollStorage extends PurchaseStorage {
           }
         }
 
-        // Add approved reimbursements for this employee in this payroll period
+        // Add every approved reimbursement not yet carried by a payslip.
+        // `payrollMonth IS NULL` is the "not yet applied" marker — the stamp is
+        // written below, when the claim actually lands here, so a claim can
+        // never be applied twice and can never be stranded by a payroll that
+        // was already generated when it was approved.
+        //
+        // A claim belongs to the period it was INCURRED, not the one it was
+        // approved in, so the bound is the expense date against this period's
+        // last date. An expense dated 5 May approved on 30 June still belongs
+        // to May, and lands there if May is generated after that approval —
+        // keying on the approval date instead would push it to June and
+        // misstate the month that actually bore the cost.
+        //
+        // The bound is still what stops a claim running away backwards: an
+        // expense dated 5 May can never appear on an April payslip, because
+        // April had not incurred it yet.
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const periodEndDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
         const employeeReimbursements = await db
           .select()
           .from(reimbursements)
@@ -348,8 +365,8 @@ export class PayrollStorage extends PurchaseStorage {
             and(
               eq(reimbursements.employeeId, employee.id),
               eq(reimbursements.status, "approved"),
-              eq(reimbursements.payrollMonth, month),
-              eq(reimbursements.payrollYear, year),
+              isNull(reimbursements.payrollMonth),
+              lte(reimbursements.originalExpenseDate, periodEndDate),
             ),
           );
 
@@ -367,6 +384,17 @@ export class PayrollStorage extends PurchaseStorage {
               amount: reimbursementAmount.toFixed(2),
               note: `Original expense date: ${reimbursement.originalExpenseDate}`,
             });
+
+            // Claim the reimbursement for this period. This is what makes it
+            // invisible to the next run's `payrollMonth IS NULL` filter, and it
+            // is also what postPayrollAccrual reads to build the GL lines, so
+            // the stamp has to be written here — before the entry can be
+            // approved — not at reimbursement-approval time.
+            await db
+              .update(reimbursements)
+              .set({ payrollMonth: month, payrollYear: year })
+              .where(eq(reimbursements.id, reimbursement.id));
+
             totalReimbursementAmount += reimbursementAmount;
           }
         }
@@ -1165,6 +1193,21 @@ export class PayrollStorage extends PurchaseStorage {
       for (const payrollId of payrollIds) {
         deletedGLCount += await this.reversePayrollGLForEntry(payrollId, userId);
       }
+
+      // Release the reimbursements this period had claimed. Their addition rows
+      // die with the entries below, so leaving the stamp would strand them:
+      // generateMonthlyPayroll only picks up `payrollMonth IS NULL`, and they
+      // would sit approved but unpayable on every future run. Nulling the stamp
+      // returns them to the pool for whichever payroll is generated next.
+      await db
+        .update(reimbursements)
+        .set({ payrollMonth: null, payrollYear: null })
+        .where(
+          and(
+            eq(reimbursements.payrollMonth, month),
+            eq(reimbursements.payrollYear, year),
+          ),
+        );
 
       // Delete payroll entries (this will cascade to delete additions and deductions)
       const payrollDeleteCount = await this.clearPayrollEntriesByPeriod(
