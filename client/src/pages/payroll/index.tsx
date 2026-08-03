@@ -1186,7 +1186,7 @@ export default function PayrollIndex() {
 
       <Tabs defaultValue="current" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="current">Current Payroll</TabsTrigger>
+          <TabsTrigger value="current">Payroll Details</TabsTrigger>
           <TabsTrigger value="history">Payroll History</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
@@ -1194,23 +1194,67 @@ export default function PayrollIndex() {
         <TabsContent value="current">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <CardTitle>
                   {getMonthName(selectedMonth)} {selectedYear} Payroll
                 </CardTitle>
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={generateAllPayslips}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Generate Slips
-                  </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  {/* Period picker. Bound to the same selectedMonth/selectedYear
+                      the payroll query already keys on, so choosing a period
+                      refetches on its own — and the Generate dialog opens on
+                      whatever period is on screen rather than always today's. */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                      Period
+                    </Label>
+                    <Select
+                      value={selectedMonth.toString()}
+                      onValueChange={(value) => setSelectedMonth(parseInt(value))}
+                    >
+                      <SelectTrigger className="w-[130px]" data-testid="select-payroll-month">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <SelectItem key={i + 1} value={(i + 1).toString()}>
+                            {getMonthName(i + 1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={selectedYear.toString()}
+                      onValueChange={(value) => setSelectedYear(parseInt(value))}
+                    >
+                      <SelectTrigger className="w-[100px]" data-testid="select-payroll-year">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 7 }, (_, i) => {
+                          const year = new Date().getFullYear() - 2 + i;
+                          return (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Excel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={generateAllPayslips}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Generate Slips
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardHeader>
