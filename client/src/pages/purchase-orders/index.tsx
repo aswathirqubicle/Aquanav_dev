@@ -2233,6 +2233,18 @@ export default function PurchaseOrdersIndex() {
                           <p className="text-sm font-medium mt-1">{viewingOrder.deliveryTerms}</p>
                         </div>
                       )}
+                      {viewingOrder.deliverTo && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deliver To</label>
+                          <p className="text-sm font-medium mt-1 whitespace-pre-wrap">{viewingOrder.deliverTo}</p>
+                        </div>
+                      )}
+                      {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exchange Rate</label>
+                          <p className="text-sm font-medium mt-1">1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -2328,6 +2340,21 @@ export default function PurchaseOrdersIndex() {
                       className="text-sm text-muted-foreground rich-text-content"
                       dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
                     />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Terms & Conditions */}
+              {viewingOrder.termsAndConditions && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Terms &amp; Conditions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
                   </CardContent>
                 </Card>
               )}
