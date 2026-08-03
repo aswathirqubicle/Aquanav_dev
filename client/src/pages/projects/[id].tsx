@@ -1,5 +1,5 @@
 import { formatDisplayDate } from "@/lib/utils";
-import { useEffect, useState, startTransition } from "react";
+import { useEffect, useRef, useState, startTransition } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,7 @@ import {
   ChevronDown,
   ChevronUp,
   Image,
+  X,
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
 import { Autocomplete } from "@/components/ui/autocomplete";
@@ -763,6 +764,13 @@ export default function ProjectDetail() {
     tasks: "",
   });
   const [isCustomCompletedLocation, setIsCustomCompletedLocation] = useState(false);
+  // Index of the completed activity being edited, or null when adding a new one.
+  // Distinct from editingActivityId, which is the daily-activity RECORD being
+  // edited — these are the rows inside it.
+  const [editingCompletedActivityIndex, setEditingCompletedActivityIndex] =
+    useState<number | null>(null);
+  const completedActivityFormRef = useRef<HTMLDivElement>(null);
+  const completedTasksRef = useRef<HTMLTextAreaElement>(null);
 
   const [isPlannedActivityDialogOpen, setIsPlannedActivityDialogOpen] = useState(false);
   const [plannedActivities, setPlannedActivities] = useState<Array<{
@@ -1143,6 +1151,7 @@ export default function ProjectDetail() {
       tasks: "",
     });
     setIsCustomCompletedLocation(true);
+    setEditingCompletedActivityIndex(null);
   };
 
   const handleActivitySubmit = async (e: React.FormEvent) => {
@@ -1237,13 +1246,57 @@ export default function ProjectDetail() {
       return;
     }
 
-    setCompletedActivities(prev => [...prev, { ...newCompletedActivity }]);
+    setCompletedActivities(prev =>
+      editingCompletedActivityIndex === null
+        ? [...prev, { ...newCompletedActivity }]
+        : prev.map((existing, i) =>
+            i === editingCompletedActivityIndex
+              ? { ...newCompletedActivity }
+              : existing,
+          ),
+    );
     setNewCompletedActivity({
       location: "",
       tasks: "",
     });
     setIsCustomCompletedLocation(true);
+    setEditingCompletedActivityIndex(null);
     setEditingActivityId(null);
+  };
+
+  // Load an added activity back into the form above the list. Saving then
+  // replaces that row rather than appending a new one.
+  const startEditCompletedActivity = (index: number) => {
+    const activity = completedActivities[index];
+    if (!activity) return;
+
+    setNewCompletedActivity({
+      location: activity.location || "",
+      tasks: activity.tasks || "",
+    });
+    // A location that is not one of the project's own is a custom entry, so the
+    // free-text field has to be shown or the value would be invisible and lost
+    // on save.
+    const isKnownLocation = !!activity.location &&
+      Array.isArray(project?.locations) &&
+      project.locations.includes(activity.location);
+    setIsCustomCompletedLocation(!isKnownLocation);
+
+    setEditingCompletedActivityIndex(index);
+    completedActivityFormRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+    window.setTimeout(() => completedTasksRef.current?.focus(), 0);
+  };
+
+  const cancelEditCompletedActivity = () => {
+    setNewCompletedActivity({
+      location: "",
+      tasks: "",
+    });
+    setIsCustomCompletedLocation(true);
+    setEditingCompletedActivityIndex(null);
   };
 
   const removeCompletedActivity = (index: number) => {
@@ -3412,7 +3465,7 @@ export default function ProjectDetail() {
                           </div>
 
                           {/* Add new completed activity */}
-                          <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 space-y-4">
+                          <div ref={completedActivityFormRef} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 space-y-4">
                             <div className="space-y-4">
                               <div className="space-y-2">
                                 <Label>Location</Label>
@@ -3461,6 +3514,7 @@ export default function ProjectDetail() {
                               <div className="space-y-2">
                                 <Label>Completed Tasks *</Label>
                                 <Textarea
+                                  ref={completedTasksRef}
                                   value={newCompletedActivity.tasks}
                                   onChange={(e) => setNewCompletedActivity(prev => ({ ...prev, tasks: e.target.value }))}
                                   placeholder="Describe what was completed..."
@@ -3469,10 +3523,32 @@ export default function ProjectDetail() {
                                 />
                               </div>
 
-                              <div className="flex justify-end">
+                              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                                {editingCompletedActivityIndex !== null && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={cancelEditCompletedActivity}
+                                    className="w-full sm:w-auto"
+                                    data-testid="button-cancel-edit-activity"
+                                  >
+                                    <X className="h-4 w-4 mr-1" />
+                                    Cancel
+                                  </Button>
+                                )}
                                 <Button type="button" onClick={addCompletedActivity} size="sm" className="w-full sm:w-auto">
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Add Activity
+                                  {editingCompletedActivityIndex === null ? (
+                                    <>
+                                      <Plus className="h-4 w-4 mr-1" />
+                                      Add Activity
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Pencil className="h-4 w-4 mr-1" />
+                                      Update Activity
+                                    </>
+                                  )}
                                 </Button>
                               </div>
                             </div>
@@ -3482,7 +3558,14 @@ export default function ProjectDetail() {
                           {completedActivities.length > 0 && (
                             <div className="space-y-2">
                               {completedActivities.map((activity, index) => (
-                                <div key={index} className="flex items-start justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800">
+                                <div
+                                  key={index}
+                                  className={`flex items-start justify-between p-3 border rounded-lg ${
+                                    editingCompletedActivityIndex === index
+                                      ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950"
+                                      : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                                  }`}
+                                >
                                   <div className="flex-1">
                                     <div className="flex items-center space-x-2 mb-1">
                                       {activity.location && (
@@ -3492,17 +3575,38 @@ export default function ProjectDetail() {
                                         </Badge>
                                       )}
                                     </div>
-                                    <p className="text-sm text-slate-700 dark:text-slate-300">{activity.tasks}</p>
+                                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{activity.tasks}</p>
                                   </div>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeCompletedActivity(index)}
-                                    className="text-red-500 hover:text-red-700"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => startEditCompletedActivity(index)}
+                                      title="Edit activity"
+                                      aria-label="Edit activity"
+                                      data-testid={`button-edit-activity-${index}`}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeCompletedActivity(index)}
+                                      className="text-red-500 hover:text-red-700"
+                                      title={
+                                        editingCompletedActivityIndex !== null
+                                          ? "Finish or cancel the current edit first"
+                                          : "Remove activity"
+                                      }
+                                      aria-label="Remove activity"
+                                      disabled={editingCompletedActivityIndex !== null}
+                                      data-testid={`button-remove-activity-${index}`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
