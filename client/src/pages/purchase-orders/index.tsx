@@ -112,11 +112,13 @@ export default function PurchaseOrdersIndex() {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
-  // An edit note is only required once the order is approved. draft,
-  // pending_approval and rejected are all still pre-commitment. Mirrors the
-  // server gate in purchase-orders.routes.ts — the server is the boundary,
-  // this just avoids showing a mandatory field that isn't.
-  const editRequiresNote = editingOrder?.status === "approved";
+  // An edit note is required once the order has been through approval, either
+  // way. draft and pending_approval are still being drafted, so they edit
+  // freely. This same set is what the server sends back to pending_approval on
+  // save. Mirrors the gate in purchase-orders.routes.ts — the server is the
+  // boundary, this just avoids showing a mandatory field that isn't.
+  const editRequiresNote =
+    editingOrder?.status === "approved" || editingOrder?.status === "rejected";
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);

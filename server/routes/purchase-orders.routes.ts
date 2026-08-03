@@ -159,16 +159,23 @@ purchaseOrdersRoutes.put(
         });
       }
 
-      const { editNote, ...orderDataBody } = req.body;
-      // An edit note and an edit-history entry are required only once the order
-      // has been approved. draft, pending_approval and rejected are all still
-      // pre-commitment, so they edit freely. Read from the PERSISTED row, never
-      // req.body, so a client cannot claim draft status to skip the note.
-      const requiresEditNote = existingOrder.status === "approved";
+      // `status` is stripped from the payload: an approved or rejected order is
+      // sent back to pending_approval below, and that transition is the server's
+      // to decide — a client-supplied status must not override it.
+      const { editNote, status: _status, ...orderDataBody } = req.body;
+      // An edit note and an edit-history entry are required once the order has
+      // been through approval, either way: an approved order is a commitment
+      // already made, and a rejected one carries a decision someone needs to see
+      // was revisited. draft and pending_approval are still being drafted, so
+      // they edit freely. Read from the PERSISTED row, never req.body, so a
+      // client cannot claim draft status to skip the note.
+      const requiresEditNote =
+        existingOrder.status === "approved" ||
+        existingOrder.status === "rejected";
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message:
-            "Edit note is required when updating an approved purchase order",
+            "Edit note is required when updating an approved or rejected purchase order",
         });
       }
 
@@ -184,6 +191,15 @@ purchaseOrdersRoutes.put(
       }
 
       const orderItems = JSON.parse(req.body.items || "[]");
+      // Editing an order that has already been through approval puts it back in
+      // the queue: the approval or rejection was made against a document that no
+      // longer exists in that form, so it has to be decided again. The stale
+      // trail goes with it — the view dialog renders "Approved By/Date" whenever
+      // approvedAt is set and the rejection reason whenever it is set, so
+      // leaving either behind would show a pending order carrying a verdict that
+      // no longer applies. The editor becomes the submitter, since the edit is
+      // what put it back in the queue.
+      const revertsToPending = requiresEditNote;
       const orderData = {
         ...orderDataBody,
         items: orderItems,
@@ -191,6 +207,16 @@ purchaseOrdersRoutes.put(
           ? JSON.parse(req.body.existingFiles)
           : undefined,
         files: req.files,
+        ...(revertsToPending
+          ? {
+              status: "pending_approval",
+              approvedById: null,
+              approvedAt: null,
+              rejectionReason: null,
+              submittedById: req.session.userId ?? null,
+              submittedAt: new Date(),
+            }
+          : {}),
       };
 
       // Fetch existing items BEFORE the update so the items diff sees the old set.
@@ -208,6 +234,8 @@ purchaseOrdersRoutes.put(
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
         "supplierId",
+        "subject",
+        "status",
         "totalAmount",
         "subtotal",
         "taxAmount",
@@ -249,8 +277,9 @@ purchaseOrdersRoutes.put(
         };
       }
 
-      // Only approved orders get a history row. Pre-approval edits are the
-      // document still being drafted, not changes to an approved record.
+      // Only orders that have been through approval get a history row — the same
+      // set that requires the note. Pre-approval edits are the document still
+      // being drafted, not changes to a decided record.
       if (requiresEditNote) {
         const user = await storage.getUser(req.session.userId!);
         await storage.createInvoiceEditHistory({

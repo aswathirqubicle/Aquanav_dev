@@ -243,6 +243,7 @@ purchaseInvoicesRoutes.put(
       const changes: Record<string, { old: any; new: any }> = {};
       const fieldsToTrack = [
         "supplierId",
+        "subject",
         "totalAmount",
         "subtotal",
         "taxAmount",
