@@ -987,6 +987,7 @@ export class PurchaseStorage extends SalesStorage {
             : null,
           paymentTerms: orderData.paymentTerms || null,
           deliveryTerms: orderData.deliveryTerms || null,
+          deliverTo: orderData.deliverTo || null,
           bankAccount: orderData.bankAccount || null,
           subtotal: orderData.subtotal || "0",
           discountPercentage: orderData.discountPercentage || "0",
@@ -994,6 +995,7 @@ export class PurchaseStorage extends SalesStorage {
           taxAmount: orderData.taxAmount || "0",
           totalAmount: orderData.totalAmount || "0",
           notes: orderData.notes || null,
+          termsAndConditions: orderData.termsAndConditions || null,
           currency: orderData.currency || "AED",
           exchangeRate: orderData.exchangeRate || "1",
         })
@@ -1082,6 +1084,10 @@ export class PurchaseStorage extends SalesStorage {
         updateData.paymentTerms = data.paymentTerms || null;
       if (data.deliveryTerms !== undefined)
         updateData.deliveryTerms = data.deliveryTerms || null;
+      if (data.deliverTo !== undefined)
+        updateData.deliverTo = data.deliverTo || null;
+      if (data.termsAndConditions !== undefined)
+        updateData.termsAndConditions = data.termsAndConditions || null;
       if (data.bankAccount !== undefined)
         updateData.bankAccount = data.bankAccount || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;

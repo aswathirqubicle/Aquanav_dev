@@ -19,13 +19,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Settings, Building, Database, Download, RefreshCw, Activity, Trash2, Loader2, CheckCircle, XCircle, AlertTriangle, DollarSign, Plus, Pencil, Trash, Save, X, Mail } from "lucide-react";
+import { Settings, Building, Database, Download, RefreshCw, Activity, Trash2, Loader2, CheckCircle, XCircle, AlertTriangle, DollarSign, Plus, Pencil, Trash, Save, X, Mail, FileText } from "lucide-react";
 import { Company, insertCompanySchema, ExchangeRate } from "@shared/schema";
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -153,6 +154,65 @@ export default function SettingsIndex() {
       });
     } finally {
       setIsSendingTest(false);
+    }
+  };
+
+  // ---- Per-document default Notes / Terms (CR) ----
+  // Starting text loaded into a new document of the chosen type. The user can
+  // edit or clear it per document, so nothing here is enforced.
+  const DOCUMENT_DEFAULT_TYPES = [
+    { value: "sales_quotation", label: "Sales Quotation" },
+    { value: "sales_invoice", label: "Sales Invoice" },
+    { value: "proforma_invoice", label: "Proforma Invoice" },
+    { value: "credit_note", label: "Credit Note" },
+    { value: "purchase_order", label: "Purchase Order" },
+    { value: "purchase_invoice", label: "Purchase Invoice" },
+  ];
+  const [docDefaults, setDocDefaults] = useState<any[]>([]);
+  const [docDefaultType, setDocDefaultType] = useState("purchase_order");
+  const [docDefaultForm, setDocDefaultForm] = useState({ notes: "", termsAndConditions: "" });
+  const [isSavingDocDefault, setIsSavingDocDefault] = useState(false);
+
+  const loadDocDefaults = async () => {
+    try {
+      const response = await apiRequest("/api/document-defaults");
+      setDocDefaults(await response.json());
+    } catch {
+      // Tab simply shows empty defaults; saving will surface any real error.
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) loadDocDefaults();
+  }, [isAdmin]);
+
+  // Seed the editor whenever the type changes or the rows arrive, so switching
+  // type always shows what is stored rather than the previous type's text.
+  useEffect(() => {
+    const row = docDefaults.find((d) => d.documentType === docDefaultType);
+    setDocDefaultForm({
+      notes: row?.notes || "",
+      termsAndConditions: row?.termsAndConditions || "",
+    });
+  }, [docDefaultType, docDefaults]);
+
+  const handleSaveDocDefault = async () => {
+    setIsSavingDocDefault(true);
+    try {
+      await apiRequest(`/api/document-defaults/${docDefaultType}`, {
+        method: "PUT",
+        body: docDefaultForm,
+      });
+      await loadDocDefaults();
+      toast({ title: "Saved", description: "Document defaults updated." });
+    } catch (error: any) {
+      toast({
+        title: "Could not save",
+        description: error.message || "Failed to save document defaults.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingDocDefault(false);
     }
   };
 
@@ -497,9 +557,10 @@ export default function SettingsIndex() {
       </div>
 
       <Tabs defaultValue={isFinance && !isAdmin ? "currency" : "company"} className="space-y-6">
-        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-4' : 'grid-cols-1'}`}>
+        <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : 'grid-cols-1'}`}>
           {isAdmin && <TabsTrigger value="company">Company</TabsTrigger>}
           <TabsTrigger value="currency">Currency Rates</TabsTrigger>
+          {isAdmin && <TabsTrigger value="documents">Documents Default</TabsTrigger>}
           {isAdmin && <TabsTrigger value="email">Email</TabsTrigger>}
           {isAdmin && <TabsTrigger value="system">System</TabsTrigger>}
         </TabsList>
@@ -1265,6 +1326,66 @@ export default function SettingsIndex() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="documents">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <FileText className="h-5 w-5 mr-2" />
+                Document Defaults
+              </CardTitle>
+              <CardDescription>
+                Standing Notes and Terms &amp; Conditions loaded into a new
+                document of each type as its starting text. Whoever creates the
+                document can still edit or remove them on that document.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2 max-w-sm">
+                <Label>Document Type</Label>
+                <Select value={docDefaultType} onValueChange={setDocDefaultType}>
+                  <SelectTrigger data-testid="select-doc-default-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DOCUMENT_DEFAULT_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="docDefaultNotes">Default Notes</Label>
+                <Textarea
+                  id="docDefaultNotes"
+                  rows={6}
+                  value={docDefaultForm.notes}
+                  onChange={(e) => setDocDefaultForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. * The copy of this PO should be attached along with the invoice."
+                  data-testid="textarea-doc-default-notes"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="docDefaultTerms">Default Terms &amp; Conditions</Label>
+                <Textarea
+                  id="docDefaultTerms"
+                  rows={8}
+                  value={docDefaultForm.termsAndConditions}
+                  onChange={(e) => setDocDefaultForm((prev) => ({ ...prev, termsAndConditions: e.target.value }))}
+                  placeholder="Standing terms printed on every document of this type"
+                  data-testid="textarea-doc-default-terms"
+                />
+              </div>
+              <Button
+                onClick={handleSaveDocDefault}
+                disabled={isSavingDocDefault}
+                data-testid="button-save-doc-default"
+              >
+                {isSavingDocDefault ? "Saving..." : "Save Defaults"}
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="email">

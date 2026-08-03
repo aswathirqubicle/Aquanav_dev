@@ -51,6 +51,8 @@ interface PurchaseOrder {
   expectedDeliveryDate?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
+  deliverTo?: string;
+  termsAndConditions?: string;
   bankAccount?: string;
   subtotal: string;
   taxAmount: string;
@@ -144,8 +146,10 @@ export default function PurchaseOrdersIndex() {
     expectedDeliveryDate: "",
     paymentTerms: "",
     deliveryTerms: "",
+    deliverTo: "",
     bankAccount: "",
     notes: "",
+    termsAndConditions: "",
     discountPercentage: "0",
     discountAmount: "0",
   });
@@ -296,6 +300,24 @@ export default function PurchaseOrdersIndex() {
     queryKey: ["/api/inventory"],
     enabled: isAuthenticated,
   });
+
+  // Company address seeds Deliver To on a new order; the purchase_order row of
+  // document_defaults seeds Notes and Terms. Seeds only — every field stays
+  // editable and validly empty on the order itself.
+  const { data: company } = useQuery<{ address?: string | null }>({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: documentDefaults } = useQuery<
+    Array<{ documentType: string; notes: string | null; termsAndConditions: string | null }>
+  >({
+    queryKey: ["/api/document-defaults"],
+    enabled: isAuthenticated,
+  });
+  const poDefaults = documentDefaults?.find(
+    (d) => d.documentType === "purchase_order",
+  );
 
   const { data: poEditHistory } = useQuery<any[]>({
     queryKey: ["/api/purchase-orders", viewingOrder?.id, "edit-history"],
@@ -536,8 +558,10 @@ export default function PurchaseOrdersIndex() {
       expectedDeliveryDate: "",
       paymentTerms: "",
       deliveryTerms: "",
+      deliverTo: "",
       bankAccount: "",
       notes: "",
+      termsAndConditions: "",
       discountPercentage: "0",
       discountAmount: "0",
     });
@@ -568,8 +592,10 @@ export default function PurchaseOrdersIndex() {
       expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.split('T')[0] : "",
       paymentTerms: order.paymentTerms || "",
       deliveryTerms: order.deliveryTerms || "",
+      deliverTo: order.deliverTo || "",
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
+      termsAndConditions: order.termsAndConditions || "",
       currency: order.currency || order.supplierCurrency || "AED",
       exchangeRate: order.exchangeRate || "1",
       discountPercentage: order.discountPercentage || "0",
@@ -594,6 +620,34 @@ export default function PurchaseOrdersIndex() {
     setExistingFiles(order.files || []);
     setEditNote("");
 
+    setIsDialogOpen(true);
+  };
+
+  // Open the dialog for a NEW order. A cancelled edit leaves editingOrder and
+  // its form state behind (resetForm only runs on a successful save), so
+  // without the reset "New" would reopen the abandoned edit. Defaults are then
+  // seeded into fields that are still EMPTY only: the dialog deliberately
+  // preserves a half-typed new order across close/reopen, and a seed must not
+  // overwrite what someone already wrote. Editing an existing order never
+  // seeds — its stored values are the record.
+  const openNewOrderDialog = () => {
+    if (editingOrder) {
+      resetForm();
+      setFormData(prev => ({
+        ...prev,
+        deliverTo: company?.address || "",
+        notes: poDefaults?.notes || "",
+        termsAndConditions: poDefaults?.termsAndConditions || "",
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        deliverTo: prev.deliverTo || company?.address || "",
+        notes: prev.notes || poDefaults?.notes || "",
+        termsAndConditions:
+          prev.termsAndConditions || poDefaults?.termsAndConditions || "",
+      }));
+    }
     setIsDialogOpen(true);
   };
 
@@ -741,6 +795,8 @@ export default function PurchaseOrdersIndex() {
     formDataInstance.append("paymentTerms", formData.paymentTerms || "");
     formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("deliveryTerms", formData.deliveryTerms || "");
+    formDataInstance.append("deliverTo", formData.deliverTo || "");
+    formDataInstance.append("termsAndConditions", formData.termsAndConditions || "");
     formDataInstance.append("bankAccount", formData.bankAccount || "");
     formDataInstance.append("notes", formData.notes || "");
 
@@ -1054,7 +1110,7 @@ export default function PurchaseOrdersIndex() {
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
           {canEdit && (
-            <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+            <Button onClick={openNewOrderDialog} className="gap-2">
               <Plus className="w-4 h-4" />
               New Purchase Order
             </Button>
@@ -1501,37 +1557,63 @@ export default function PurchaseOrdersIndex() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="mb-4">
-                  <Label htmlFor="subject">Subject Line</Label>
-                  <Input
-                    id="subject"
-                    value={formData.subject || ""}
-                    onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="e.g., Office Supplies Order"
-                    className="mt-1"
-                  />
+              <div>
+                <Label htmlFor="subject">Subject Line</Label>
+                <Input
+                  id="subject"
+                  value={formData.subject || ""}
+                  onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                  placeholder="e.g., Office Supplies Order"
+                  className="mt-1"
+                />
+              </div>
+
+              {/* Delivery — where and on what terms the goods arrive */}
+              <div className="border-t pt-4">
+                <Label className="text-lg font-semibold">Delivery</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+                  <div>
+                    <Label htmlFor="deliverTo">Deliver To</Label>
+                    <Textarea
+                      id="deliverTo"
+                      rows={4}
+                      value={formData.deliverTo}
+                      onChange={(e) => setFormData(prev => ({ ...prev, deliverTo: e.target.value }))}
+                      placeholder="Delivery address — office, vessel or work site. Leave blank if not applicable."
+                      className="mt-1"
+                      data-testid="textarea-deliver-to"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Pre-filled from the company address in Settings. Edit or clear it per order.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="deliveryTerms">Delivery Terms</Label>
+                      <Input
+                        id="deliveryTerms"
+                        value={formData.deliveryTerms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryTerms: e.target.value }))}
+                        placeholder="e.g., FOB, CIF, Ex Works"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="paymentTerms">Payment Terms</Label>
+                      <Input
+                        id="paymentTerms"
+                        value={formData.paymentTerms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                        placeholder="e.g., Net 30, Due on Receipt, 50% Advance"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="paymentTerms">Payment Terms</Label>
-                  <Input
-                    id="paymentTerms"
-                    value={formData.paymentTerms}
-                    onChange={(e) => setFormData(prev => ({ ...prev, paymentTerms: e.target.value }))}
-                    placeholder="e.g., Net 30, Due on Receipt, 50% Advance"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="deliveryTerms">Delivery Terms</Label>
-                  <Input
-                    id="deliveryTerms"
-                    value={formData.deliveryTerms}
-                    onChange={(e) => setFormData(prev => ({ ...prev, deliveryTerms: e.target.value }))}
-                    placeholder="e.g., FOB, CIF, Ex Works"
-                    className="mt-1"
-                  />
-                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
               </div>
 
               <div>
@@ -1600,6 +1682,19 @@ export default function PurchaseOrdersIndex() {
                     }}
                   />
                 </div>
+              </div>
+
+              <div>
+                <Label htmlFor="poTermsAndConditions">Terms &amp; Conditions</Label>
+                <Textarea
+                  id="poTermsAndConditions"
+                  rows={6}
+                  value={formData.termsAndConditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                  placeholder="Standing terms for this order. Pre-filled from Settings \u2192 Documents Default; edit or clear per order."
+                  className="mt-1"
+                  data-testid="textarea-po-terms"
+                />
               </div>
 
               <div className="space-y-2">
