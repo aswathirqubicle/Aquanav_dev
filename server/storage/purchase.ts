@@ -1472,6 +1472,7 @@ export class PurchaseStorage extends SalesStorage {
       endDate?: string;
       supplierId?: number;
       status?: string;
+      paymentStatus?: string;
       search?: string;
       projectId?: number;
     },
@@ -1508,6 +1509,17 @@ export class PurchaseStorage extends SalesStorage {
 
       if (filters?.status && filters.status !== "all") {
         queryConditions.push(eq(purchaseInvoices.status, filters.status));
+      }
+
+      // Separate from status: status is the approval lifecycle (draft ->
+      // approved), paymentStatus is settlement (unpaid / partial / paid). An
+      // invoice can be approved and unpaid, so filtering on one says nothing
+      // about the other. Note the stored value is "partial", not
+      // "partially_paid" — the sales side uses the longer spelling.
+      if (filters?.paymentStatus && filters.paymentStatus !== "all") {
+        queryConditions.push(
+          eq(purchaseInvoices.paymentStatus, filters.paymentStatus),
+        );
       }
 
       if (filters?.projectId) {

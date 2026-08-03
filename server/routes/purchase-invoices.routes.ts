@@ -80,12 +80,21 @@ purchaseInvoicesRoutes.get(
         ? parseInt(req.query.supplierId as string)
         : undefined;
       const status = req.query.status as string;
+      const paymentStatus = req.query.paymentStatus as string;
+      // The client has always sent projectId and the storage layer has always
+      // supported it, but this handler never read it — so the Project filter
+      // silently did nothing.
+      const projectId = req.query.projectId
+        ? parseInt(req.query.projectId as string)
+        : undefined;
 
       const result = await storage.getPurchaseInvoicesPaginated(page, limit, {
         startDate,
         endDate,
         supplierId,
         status,
+        paymentStatus,
+        projectId,
         search,
       });
       res.json(result);

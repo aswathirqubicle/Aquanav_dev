@@ -748,7 +748,10 @@ export interface IStorage {
       startDate?: string;
       endDate?: string;
       supplierId?: number;
+      /** Approval lifecycle: draft / pending_approval / approved / rejected / cancelled. */
       status?: string;
+      /** Settlement: unpaid / partial / paid. Independent of `status`. */
+      paymentStatus?: string;
       search?: string;
       projectId?: number;
     },
