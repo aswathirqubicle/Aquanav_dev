@@ -23,7 +23,7 @@ import {
   PayrollEntryWithEmployeeDetails,
 } from "./types";
 import { accountCodeForCategory } from "@shared/payroll-types";
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db";
 
 export class PayrollStorage extends PurchaseStorage {
@@ -346,12 +346,18 @@ export class PayrollStorage extends PurchaseStorage {
         // never be applied twice and can never be stranded by a payroll that
         // was already generated when it was approved.
         //
-        // The approval-date bound stops a claim drifting BACKWARDS onto a
-        // period generated late: a claim approved in August must not appear on
-        // a June payslip generated in September. `firstOfNextMonth` is the
-        // first instant after the period being generated, so the claim lands on
-        // the first payroll run at or after its own approval month.
-        const firstOfNextMonth = new Date(year, month, 1);
+        // A claim belongs to the period it was INCURRED, not the one it was
+        // approved in, so the bound is the expense date against this period's
+        // last date. An expense dated 5 May approved on 30 June still belongs
+        // to May, and lands there if May is generated after that approval —
+        // keying on the approval date instead would push it to June and
+        // misstate the month that actually bore the cost.
+        //
+        // The bound is still what stops a claim running away backwards: an
+        // expense dated 5 May can never appear on an April payslip, because
+        // April had not incurred it yet.
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const periodEndDate = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
         const employeeReimbursements = await db
           .select()
           .from(reimbursements)
@@ -360,7 +366,7 @@ export class PayrollStorage extends PurchaseStorage {
               eq(reimbursements.employeeId, employee.id),
               eq(reimbursements.status, "approved"),
               isNull(reimbursements.payrollMonth),
-              lt(reimbursements.approvalTimestamp, firstOfNextMonth),
+              lte(reimbursements.originalExpenseDate, periodEndDate),
             ),
           );
 

@@ -14,8 +14,9 @@
  *
  * The stamp is now written by generateMonthlyPayroll when a claim actually
  * lands on a payslip, and `payroll_month IS NULL` means "awaiting the next
- * payroll run". Both tiers above therefore need their stale stamp cleared or
- * generation will never see them again.
+ * payroll run" — the claim goes to the period it was incurred in, or the first
+ * one generated after that if those months are already done. Both tiers above
+ * therefore need their stale stamp cleared or generation will never see them.
  *
  * Tier 1 is decided by the absence of any payroll entry for the period.
  * Tier 2 has no FK to lean on — the only link is the addition row generation
@@ -43,7 +44,7 @@ async function main() {
 
   const stamped: any[] = await db`
     select r.id, r.employee_id, r.amount::numeric amount, r.description,
-           r.payroll_month, r.payroll_year, r.approval_timestamp,
+           r.payroll_month, r.payroll_year, r.original_expense_date,
            coalesce(concat(e.first_name, ' ', e.last_name), 'Unknown') employee_name
     from reimbursements r
     left join employees e on e.id = r.employee_id
@@ -57,11 +58,8 @@ async function main() {
   const tier1: any[] = [];
   const tier2: any[] = [];
   const applied: any[] = [];
-  const noTimestamp: any[] = [];
 
   for (const r of stamped) {
-    if (!r.approval_timestamp) noTimestamp.push(r);
-
     // Did the stamped period actually get generated for this employee?
     const entries: any[] = await db`
       select id from payroll_entries
@@ -96,17 +94,20 @@ async function main() {
     if (rows.length > 0) {
       console.log(
         "\n  " + "id".padStart(5) + "  " + "employee".padEnd(24) +
-          "amount".padStart(12) + "  " + "stamped".padEnd(10) + "approved",
+          "amount".padStart(12) + "  " + "stamped".padEnd(10) + "expense date  -> lands on",
       );
       for (const r of rows) {
+        // Where the new rule sends it: the period it was incurred in, or the
+        // first one generated after that if those months are already done.
+        const d = String(r.original_expense_date).slice(0, 10);
+        const [ey, em] = d.split("-");
         console.log(
           "  " + String(r.id).padStart(5) + "  " +
             String(r.employee_name).substring(0, 23).padEnd(24) +
             money(r.amount).padStart(12) + "  " +
             period(r.payroll_month, r.payroll_year).padEnd(10) +
-            (r.approval_timestamp
-              ? new Date(r.approval_timestamp).toISOString().slice(0, 10)
-              : "*** NULL ***"),
+            d.padEnd(14) + "-> " +
+            period(Number(em), Number(ey)) + " or later",
         );
       }
       const total = rows.reduce((s, r) => s + Number(r.amount), 0);
@@ -130,16 +131,6 @@ async function main() {
     applied,
     "LEAVE ALONE. These were genuinely paid; the stamp is now a truthful record.",
   );
-
-  if (noTimestamp.length > 0) {
-    console.log("─".repeat(78));
-    console.log(`*** WARNING: ${noTimestamp.length} approved row(s) have a NULL approval_timestamp.`);
-    console.log("    Generation now filters on approval_timestamp, and NULL fails that");
-    console.log("    comparison — these would never be picked up even after clearing the");
-    console.log("    stamp. The migration must also give them a timestamp (submission date");
-    console.log("    is the sensible fallback). Ids: " + noTimestamp.map((r) => r.id).join(", "));
-    console.log("");
-  }
 
   const toClear = [...tier1, ...tier2];
   console.log("═".repeat(78));
