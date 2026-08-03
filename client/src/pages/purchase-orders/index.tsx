@@ -1612,90 +1612,6 @@ export default function PurchaseOrdersIndex() {
                 </div>
               </div>
 
-              <div className="border-t pt-4">
-                <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
-              </div>
-
-              <div>
-                <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
-                <Select
-                  value={selectedBankId}
-                  onValueChange={(value) => {
-                    setSelectedBankId(value);
-                    const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
-                    if (selected) {
-                      const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
-                      setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select bank account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bankAccountOptions.map((detail, index) => (
-                      <React.Fragment key={detail.id}>
-                        <SelectItem value={detail.id.toString()}>
-                          <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
-                        </SelectItem>
-                        {index < bankAccountOptions.length - 1 && (
-                          <hr className="my-1" />
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="mt-2 border border-input rounded-md overflow-hidden">
-                  <ReactQuill
-                    theme="snow"
-                    value={formData.bankAccount}
-                    onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
-                    placeholder="Enter or customize bank account details..."
-                    modules={{
-                      toolbar: [
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        ['clean']
-                      ],
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <div className="mt-1 border border-input rounded-md overflow-hidden">
-                  <ReactQuill
-                    theme="snow"
-                    value={formData.notes}
-                    onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
-                    placeholder="Optional notes"
-                    modules={{
-                      toolbar: [
-                        [{ 'header': [1, 2, 3, false] }],
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        [{ 'color': [] }, { 'background': [] }],
-                        ['link'],
-                        ['clean']
-                      ],
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="poTermsAndConditions">Terms &amp; Conditions</Label>
-                <Textarea
-                  id="poTermsAndConditions"
-                  rows={6}
-                  value={formData.termsAndConditions}
-                  onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
-                  placeholder="Standing terms for this order. Pre-filled from Settings \u2192 Documents Default; edit or clear per order."
-                  className="mt-1"
-                  data-testid="textarea-po-terms"
-                />
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="attachments">Attach Files (Optional)</Label>
@@ -2111,6 +2027,91 @@ export default function PurchaseOrdersIndex() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="border-t pt-4">
+                <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
+              </div>
+
+              <div>
+                <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
+                <Select
+                  value={selectedBankId}
+                  onValueChange={(value) => {
+                    setSelectedBankId(value);
+                    const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                    if (selected) {
+                      const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                      setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccountOptions.map((detail, index) => (
+                      <React.Fragment key={detail.id}>
+                        <SelectItem value={detail.id.toString()}>
+                          <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
+                        </SelectItem>
+                        {index < bankAccountOptions.length - 1 && (
+                          <hr className="my-1" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="mt-2 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.bankAccount}
+                    onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                    placeholder="Enter or customize bank account details..."
+                    modules={{
+                      toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <div className="mt-1 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.notes}
+                    onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                    placeholder="Optional notes"
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        ['link'],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="poTermsAndConditions">Terms &amp; Conditions</Label>
+                <Textarea
+                  id="poTermsAndConditions"
+                  rows={6}
+                  value={formData.termsAndConditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                  placeholder="Standing terms for this order. Pre-filled from Settings \u2192 Documents Default; edit or clear per order."
+                  className="mt-1"
+                  data-testid="textarea-po-terms"
+                />
               </div>
 
               {editRequiresNote && (
