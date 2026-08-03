@@ -178,6 +178,9 @@ export default function PurchaseInvoicesIndex() {
     endDate: "",
     supplierId: undefined as number | undefined,
     status: undefined as string | undefined,
+    // Settlement, not approval. An invoice can be approved and still unpaid, so
+    // this is a separate axis from `status` rather than more values on it.
+    paymentStatus: undefined as string | undefined,
     search: "",
     projectId: undefined as number | undefined,
   });
@@ -305,7 +308,7 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const { data: paginatedData, isLoading } = useQuery<PaginatedResponse<PurchaseInvoice>>({
-    queryKey: ["/api/purchase-invoices", filters.startDate, filters.endDate, filters.supplierId, filters.status, filters.projectId, debouncedSearch, page, limit],
+    queryKey: ["/api/purchase-invoices", filters.startDate, filters.endDate, filters.supplierId, filters.status, filters.paymentStatus, filters.projectId, debouncedSearch, page, limit],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append("page", page.toString());
@@ -314,6 +317,7 @@ export default function PurchaseInvoicesIndex() {
       if (filters.endDate) params.append("endDate", filters.endDate);
       if (filters.supplierId) params.append("supplierId", filters.supplierId.toString());
       if (filters.status) params.append("status", filters.status);
+      if (filters.paymentStatus) params.append("paymentStatus", filters.paymentStatus);
       if (filters.projectId) params.append("projectId", filters.projectId.toString());
       if (debouncedSearch) params.append("search", debouncedSearch);
 
@@ -1029,6 +1033,7 @@ export default function PurchaseInvoicesIndex() {
       endDate: "",
       supplierId: undefined,
       status: undefined,
+      paymentStatus: undefined,
       search: "",
       projectId: undefined,
     });
@@ -1249,6 +1254,30 @@ export default function PurchaseInvoicesIndex() {
                       <SelectItem value="approved">Approved</SelectItem>
                       <SelectItem value="rejected">Rejected</SelectItem>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="paymentStatusFilter">Payment Status</Label>
+                  <Select
+                    value={filters.paymentStatus || "all"}
+                    onValueChange={(value) =>
+                      setFilters(prev => ({
+                        ...prev,
+                        paymentStatus: value === "all" ? undefined : value
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="paymentStatusFilter">
+                      <SelectValue placeholder="All Payment Statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Payment Statuses</SelectItem>
+                      <SelectItem value="unpaid">Unpaid</SelectItem>
+                      {/* Stored as "partial" — the sales side spells the same
+                          state "partially_paid", so this value is not shared. */}
+                      <SelectItem value="partial">Partially Paid</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
