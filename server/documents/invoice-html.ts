@@ -99,47 +99,81 @@ export function generateInvoiceHTML(
   const paid = parseFloat(invoice.paidAmount || "0") || 0;
   const balanceDue = totals.total - paid;
 
+  // Only an approved invoice is a tax invoice. Before approval it carries a
+  // throwaway INV-DRFT-<timestamp> number and has posted nothing to the ledger,
+  // so calling it a TAX INVOICE would present a working document as a VAT
+  // document a customer could act on. Rejected never reached approval either.
+  // draft/pending_approval matches how the edit-note gate defines pre-approval
+  // in sales-invoices.routes.ts, so the two cannot drift apart.
+  const status = String(invoice.status || "").toLowerCase();
+  const isApproved =
+    status !== "draft" && status !== "pending_approval" && status !== "rejected";
+  const documentTitle = isApproved ? "TAX INVOICE" : "DRAFT INVOICE";
+
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Invoice ${val(invoice.invoiceNumber)}</title>
+      <title>${isApproved ? "Invoice" : "Draft Invoice"} ${val(invoice.invoiceNumber)}</title>
       ${getCommonStyles()}
       <style>
-        .inv-title { font-size: 22px; letter-spacing: 3px; font-weight: 700; text-align: right; margin: 0; }
-        .inv-number { text-align: right; font-size: 12px; margin: 2px 0 14px; }
+        /* Palette. Kept as variables so a rebrand is one block to edit rather
+           than a hunt through the rules below.
+           --brand matches the shared letterhead in document-utils.ts, which was
+           moved off #0b4d78 at the same time. The two have to change together
+           or the page carries a letterhead in one blue and a body in another. */
+        :root {
+          --brand:      #1328B8;  /* title, invoice number */
+          --navy:       #0A175F;  /* headings, totals */
+          --tint:       #EAF0FF;  /* table header fill */
+          --stripe:     #F6F7FA;  /* alternate rows */
+          --rule:       #D8DEE8;  /* borders */
+          --ink:        #2C2C2C;  /* body text */
+          --ink-muted:  #5A6270;
+        }
+        body { color: var(--ink); }
+        .inv-title { font-size: 22px; letter-spacing: 3px; font-weight: 700; text-align: right; margin: 0; color: var(--brand); }
+        /* A draft is not a VAT document; it should not carry the brand colour
+           that signals one, so a reader skimming the page is not misled. */
+        .inv-title.inv-draft { color: var(--ink-muted); }
+        .inv-number { text-align: right; font-size: 12px; margin: 2px 0 14px; color: var(--brand); font-weight: 600; }
         .inv-balance-box { text-align: right; margin-bottom: 18px; }
-        .inv-balance-box .label { font-size: 11px; color: #555; }
-        .inv-balance-box .value { font-size: 16px; font-weight: 700; }
+        .inv-balance-box .label { font-size: 11px; color: var(--ink-muted); }
+        .inv-balance-box .value { font-size: 16px; font-weight: 700; color: var(--navy); }
         .inv-parties { width: 100%; border-collapse: collapse; border: none !important; margin-bottom: 14px; }
         .inv-parties td { border: none !important; vertical-align: top; padding: 0; font-size: 11px; }
         .inv-meta { width: 100%; border-collapse: collapse; border: none !important; }
         .inv-meta td { border: none !important; padding: 2px 0; font-size: 11px; }
-        .inv-meta .k { color: #555; text-align: right; padding-right: 10px; white-space: nowrap; }
-        .inv-meta .v { text-align: right; white-space: nowrap; font-weight: 600; }
+        .inv-meta .k { color: var(--ink-muted); text-align: right; padding-right: 10px; white-space: nowrap; }
+        .inv-meta .v { text-align: right; white-space: nowrap; font-weight: 600; color: var(--navy); }
         .inv-subject { font-size: 11px; margin: 6px 0 14px; }
-        .inv-subject .k { font-weight: 700; }
-        table.inv-items { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        table.inv-items th { background: #33475b; color: #fff; font-size: 10px; font-weight: 600; padding: 7px 6px; text-align: right; }
+        .inv-subject .k { font-weight: 700; color: var(--navy); }
+        .inv-billto-h { margin: 0 0 2px; font-size: 11px; font-weight: 700; color: var(--navy); }
+        table.inv-items { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid var(--rule); }
+        table.inv-items th { background: var(--tint); color: var(--navy); font-size: 10px; font-weight: 700; padding: 7px 6px; text-align: right; border-bottom: 1px solid var(--rule); }
         table.inv-items th.l { text-align: left; }
-        table.inv-items td { font-size: 10.5px; padding: 7px 6px; vertical-align: top; text-align: right; border-bottom: 1px solid #e6e6e6; }
+        table.inv-items td { font-size: 10.5px; padding: 7px 6px; vertical-align: top; text-align: right; border-bottom: 1px solid var(--rule); }
+        /* Zebra shading is a reading aid only — it carries no meaning, which
+           matters because these two tints are ~4 greyscale levels apart and
+           effectively vanish on a black-and-white printer. */
+        table.inv-items tbody tr:nth-child(even) td { background: var(--stripe); }
         table.inv-items td.l { text-align: left; white-space: pre-wrap; word-break: break-word; }
         table.inv-items td.c { text-align: center; }
-        .inv-taxrate { display: block; font-size: 9px; color: #666; }
-        .inv-totals { width: 62%; margin-left: auto; border-collapse: collapse; border: none !important; margin-top: 4px; page-break-inside: avoid; break-inside: avoid; }
+        .inv-taxrate { display: block; font-size: 9px; color: var(--ink-muted); }
+        .inv-totals { width: 62%; margin-left: auto; border-collapse: collapse; border: none !important; margin-top: 8px; page-break-inside: avoid; break-inside: avoid; }
         .inv-totals td { border: none !important; font-size: 11px; padding: 4px 6px; }
-        .inv-totals td.k { text-align: right; color: #444; }
-        .inv-totals td.v { text-align: right; width: 130px; font-weight: 600; }
-        .inv-totals tr.grand td { border-top: 1px solid #333 !important; font-size: 12.5px; font-weight: 700; }
-        .inv-totals tr.due td { background: #f3f5f7; font-weight: 700; }
-        .inv-taxsummary { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        .inv-taxsummary th { background: #f3f5f7; font-size: 10px; padding: 6px; text-align: right; border-bottom: 1px solid #ddd; }
+        .inv-totals td.k { text-align: right; color: var(--ink-muted); }
+        .inv-totals td.v { text-align: right; width: 130px; font-weight: 600; color: var(--navy); }
+        .inv-totals tr.grand td { border-top: 1px solid var(--rule) !important; font-size: 12.5px; font-weight: 700; color: var(--navy); }
+        .inv-totals tr.due td { background: var(--tint); font-weight: 700; color: var(--navy); }
+        .inv-taxsummary { width: 100%; border-collapse: collapse; margin-top: 6px; border: 1px solid var(--rule); }
+        .inv-taxsummary th { background: var(--tint); color: var(--navy); font-size: 10px; font-weight: 700; padding: 6px; text-align: right; border-bottom: 1px solid var(--rule); }
         .inv-taxsummary th.l { text-align: left; }
-        .inv-taxsummary td { font-size: 10.5px; padding: 6px; text-align: right; border-bottom: 1px solid #eee; }
+        .inv-taxsummary td { font-size: 10.5px; padding: 6px; text-align: right; border-bottom: 1px solid var(--rule); }
         .inv-taxsummary td.l { text-align: left; }
-        .inv-taxsummary tr.tot td { font-weight: 700; border-top: 1px solid #333; }
-        .inv-section-h { font-size: 12px; font-weight: 700; margin: 18px 0 4px; }
+        .inv-taxsummary tr.tot td { font-weight: 700; border-top: 1px solid var(--rule); color: var(--navy); }
+        .inv-section-h { font-size: 12px; font-weight: 700; margin: 18px 0 4px; color: var(--navy); }
         .inv-block { font-size: 10.5px; white-space: pre-wrap; }
         .inv-keep { page-break-inside: avoid; break-inside: avoid; }
       </style>
@@ -156,7 +190,7 @@ export function generateInvoiceHTML(
           <tr>
             <td class="report-content-cell">
 
-              <h1 class="inv-title">TAX INVOICE</h1>
+              <h1 class="inv-title${isApproved ? "" : " inv-draft"}">${documentTitle}</h1>
               <p class="inv-number"># ${val(invoice.invoiceNumber)}</p>
 
               <div class="inv-balance-box">
@@ -184,7 +218,7 @@ export function generateInvoiceHTML(
               </table>
 
               <div style="margin-bottom: 10px;">
-                <p style="margin:0 0 2px; font-size: 11px; font-weight: 700;">Bill To</p>
+                <p class="inv-billto-h">Bill To</p>
                 <p style="margin:0; font-size: 11px;"><strong>${val(customer.name)}</strong></p>
                 <p style="margin:0; font-size: 11px; white-space: pre-wrap;">${val(invoice.billingAddress) || val(customer.address) || ""}</p>
                 ${val(customer.phone) ? `<p style="margin:0; font-size: 11px;">PH: ${val(customer.phone)}</p>` : ""}
