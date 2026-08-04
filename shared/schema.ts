@@ -1691,32 +1691,15 @@ export const insertPurchaseRequestSchema = createInsertSchema(
 export const insertPurchaseRequestItemSchema = createInsertSchema(
   purchaseRequestItems,
 ).omit({ id: true });
-const purchaseOrdersTable = pgTable("purchase_orders", {
-  id: serial("id").primaryKey(),
-  poNumber: text("po_number").notNull().unique(),
-  subject: text("subject"),
-  supplierId: integer("supplier_id").references(() => suppliers.id),
-  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected, converted
-  orderDate: timestamp("order_date").notNull().defaultNow(),
-  expectedDeliveryDate: timestamp("expected_delivery_date"),
-  paymentTerms: text("payment_terms"),
-  deliveryTerms: text("delivery_terms"),
-  notes: text("notes"),
-  subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
-  taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
-  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
-  submittedById: integer("submitted_by_id").references(() => users.id),
-  submittedAt: timestamp("submitted_at"),
-  approvedById: integer("approved_by_id").references(() => users.id),
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"),
-  convertedInvoiceId: integer("converted_invoice_id").references(
-    () => purchaseInvoices.id,
-  ),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+// Built from `purchaseOrders` above — the definition every query actually
+// uses. A second, private pgTable("purchase_orders") used to sit here and back
+// this schema and the PurchaseOrder type. It was missing deliverTo,
+// bankAccount, termsAndConditions, currency, exchangeRate, discountPercentage
+// and discountAmount, so anything validating a create against it would have
+// silently stripped all seven. It also declared a foreign key on
+// converted_invoice_id that the database does not have.
 export const insertPurchaseOrderSchema = createInsertSchema(
-  purchaseOrdersTable,
+  purchaseOrders,
 ).omit({ id: true, poNumber: true, createdAt: true });
 export const insertPurchaseOrderItemSchema = createInsertSchema(
   purchaseOrderItems,
@@ -1890,7 +1873,7 @@ export type PurchaseRequestItem = typeof purchaseRequestItems.$inferSelect;
 export type InsertPurchaseRequestItem = z.infer<
   typeof insertPurchaseRequestItemSchema
 >;
-export type PurchaseOrder = typeof purchaseOrdersTable.$inferSelect;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 export type InsertPurchaseOrderItem = z.infer<
