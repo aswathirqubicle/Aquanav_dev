@@ -308,6 +308,7 @@ export default function SettingsIndex() {
       formData.append("bankAccount", data.bankAccount ?? "");
       formData.append("bankAccount2", data.bankAccount2 ?? "");
       formData.append("website", data.website ?? "");
+      formData.append("vatNumber", data.vatNumber ?? "");
 
       if (companyLogoFile) {
         formData.append("companyLogo", companyLogoFile); // ✅ fixed
