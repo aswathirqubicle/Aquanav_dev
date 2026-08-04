@@ -2400,8 +2400,11 @@ export default function PurchaseInvoicesIndex() {
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             {viewingInvoice && (
               <div className="space-y-6 print:space-y-4">
-                {/* Header with Icon Badge and Print Button */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 print:border-b-2 print:border-black">
+                {/* Header with Icon Badge and Document Actions. pr-8 keeps the
+                    buttons clear of the dialog's own X. Document actions (edit,
+                    duplicate, print) live up here; status-flow actions (submit,
+                    approve, pay, cancel) stay in the footer. */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 pr-8 print:border-b-2 print:border-black">
                   <div className="flex items-center gap-3 sm:gap-4">
                     <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900 rounded-lg print:bg-blue-100">
                       <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
@@ -2415,12 +2418,37 @@ export default function PurchaseInvoicesIndex() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 print:hidden">
+                  <div className="flex flex-wrap items-center gap-3 print:hidden">
                     <div className="flex items-center gap-2">
                       {getApprovalStatusBadge(viewingInvoice.status)}
                       {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
                     </div>
 
+                    {/* Same gates as the list's Edit buttons: drafts for
+                        admin/finance, approved invoices for admin only. */}
+                    {((viewingInvoice.status === "draft" && canEdit) ||
+                      (viewingInvoice.status === "approved" && user?.role === "admin")) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditInvoice(viewingInvoice)}
+                        data-testid="button-edit-invoice-header"
+                        className="flex items-center gap-2"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicateInvoice(viewingInvoice)}
+                      data-testid="button-duplicate-invoice-header"
+                      className="flex items-center gap-2"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Duplicate
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2731,6 +2759,53 @@ export default function PurchaseInvoicesIndex() {
                   </div>
                 </div>
 
+                {/* Approval Information — submitted, approved, rejected.
+                    Mirrors the purchase order view. User IDs rather than
+                    names: /api/users is admin-only while finance can open
+                    this dialog, so resolving names here would 403 for them. */}
+                {(viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason) && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Approval Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {viewingInvoice.submittedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingInvoice.submittedById}</p>
+                          </div>
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                            <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.submittedAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+                      {viewingInvoice.approvedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingInvoice.approvedById}</p>
+                          </div>
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                            <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.approvedAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+                      {viewingInvoice.rejectionReason && (
+                        <div className="pt-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                          <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{viewingInvoice.rejectionReason}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Edit History */}
                 {viewingInvoice.editHistory && viewingInvoice.editHistory.length > 0 && (
                   <Card>
@@ -2771,39 +2846,9 @@ export default function PurchaseInvoicesIndex() {
                   </Card>
                 )}
 
-                {/* Action Buttons */}
+                {/* Action Buttons — status-flow actions only; document
+                    actions (edit, duplicate, print) live in the header. */}
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
-                  {viewingInvoice.status === "draft" && canEdit && (
-                    <Button
-                      onClick={() => handleEditInvoice(viewingInvoice)}
-                      variant="outline"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Edit Invoice
-                    </Button>
-                  )}
-                  {viewingInvoice.status === "approved" && user?.role === "admin" && (
-                    <Button
-                      onClick={() => handleEditInvoice(viewingInvoice)}
-                      variant="outline"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Edit Invoice
-                    </Button>
-                  )}
-                  <Button
-                    onClick={() => handleDuplicateInvoice(viewingInvoice)}
-                    variant="outline"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <Copy className="w-4 h-4 mr-2" />
-                    Duplicate
-                  </Button>
                   {viewingInvoice.status === "draft" && (
                     <Button
                       onClick={() => {
@@ -2922,11 +2967,21 @@ export default function PurchaseInvoicesIndex() {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => setIsViewDialogOpen(false)}
+                    className="w-full sm:w-auto"
+                  >
+                    Close
+                  </Button>
                 </div>
               </div>
             )}
-            {/* Payment History */}
-            {viewingInvoice?.payments && viewingInvoice.payments.length > 0 && (
+            {/* Payment History — post-approval only; drafts and pending
+                invoices can have no payments to show. */}
+            {viewingInvoice?.payments && viewingInvoice.payments.length > 0 &&
+              ["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(viewingInvoice.status) && (
               <div className="mt-6">
                 <Card>
                   <CardHeader>

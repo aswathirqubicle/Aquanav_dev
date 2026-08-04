@@ -4494,10 +4494,50 @@ export default function SalesIndex() {
       >
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Quotation Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this sales quotation.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (submit, approve, convert) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Quotation Details</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this sales quotation.
+                </DialogDescription>
+              </div>
+              {selectedQuotation && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedQuotation.status === "draft" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditQuotation(selectedQuotation)}
+                      data-testid="button-edit-quotation-header"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateQuotation(selectedQuotation)}
+                    data-testid="button-duplicate-quotation-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintPDF(selectedQuotation)}
+                    data-testid="button-print-quotation-header"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedQuotation ? (
             <div className="space-y-6">
@@ -4762,54 +4802,69 @@ export default function SalesIndex() {
                 </div>
               </div>
 
+              {/* Approval trail — submitted, approved, rejected. Mirrors the
+                  sales invoice view. User IDs rather than names: this page has
+                  no users query, and /api/users is admin-only while finance can
+                  open this dialog, so resolving names here would 403 for them. */}
+              {((selectedQuotation as any).submittedAt || (selectedQuotation as any).approvedAt || (selectedQuotation as any).rejectionReason) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Approval Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(selectedQuotation as any).submittedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).submittedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).submittedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedQuotation as any).approvedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).approvedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).approvedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedQuotation as any).rejectionReason && (
+                      <div className="pt-1">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedQuotation as any).rejectionReason}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsQuotationDetailsOpen(false)}
-                  data-testid="button-close-quotation-details"
-                >
-                  Close
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handlePrintPDF(selectedQuotation)}
-                  data-testid="button-print-quotation-pdf"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Print PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDuplicateQuotation(selectedQuotation)}
-                  data-testid="button-duplicate-quotation"
-                >
-                  <Copy className="h-4 w-4 mr-1" />
-                  Duplicate
-                </Button>
                 {selectedQuotation.status === "draft" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEditQuotation(selectedQuotation)}
-                      data-testid="button-edit-quotation-dialog"
-                    >
-                      Edit Quotation
-                    </Button>
-                    <Button
-                      onClick={() =>
-                        startTransition(() =>
-                          submitQuotationMutation.mutate(selectedQuotation.id),
-                        )
-                      }
-                      disabled={submitQuotationMutation.isPending}
-                      data-testid="button-submit-quotation-dialog"
-                    >
-                      {submitQuotationMutation.isPending
-                        ? "Submitting..."
-                        : "Submit"}
-                    </Button>
-                  </>
+                  <Button
+                    onClick={() =>
+                      startTransition(() =>
+                        submitQuotationMutation.mutate(selectedQuotation.id),
+                      )
+                    }
+                    disabled={submitQuotationMutation.isPending}
+                    data-testid="button-submit-quotation-dialog"
+                  >
+                    {submitQuotationMutation.isPending
+                      ? "Submitting..."
+                      : "Submit"}
+                  </Button>
                 )}
                 {user?.role === "admin" &&
                   selectedQuotation.status === "pending_approval" && (
@@ -4852,6 +4907,13 @@ export default function SalesIndex() {
                     Convert to Invoice
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsQuotationDetailsOpen(false)}
+                  data-testid="button-close-quotation-details"
+                >
+                  Close
+                </Button>
               </div>
             </div>
           ) : (
@@ -5276,7 +5338,11 @@ export default function SalesIndex() {
                 </Card>
               )}
 
-              {/* Payment History */}
+              {/* Payment History — only meaningful once the invoice is past
+                  approval; drafts and pending invoices cannot hold payments. */}
+              {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
+                selectedInvoice.status,
+              ) && (
               <div
                 id={`payment-history-${selectedInvoice.id}`}
                 style={{ display: "none" }}
@@ -5450,6 +5516,7 @@ export default function SalesIndex() {
                   </CardContent>
                 </Card>
               </div>
+              )}
 
               {/* Edit History */}
               {invoiceEditHistory && invoiceEditHistory.length > 0 && (
@@ -5600,25 +5667,29 @@ export default function SalesIndex() {
                         </AlertDialogContent>
                       </AlertDialog>
                     )}
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      // Toggle the payment history section visibility
-                      const paymentHistorySection = document.getElementById(
-                        `payment-history-${selectedInvoice.id}`,
-                      );
-                      if (paymentHistorySection) {
-                        paymentHistorySection.style.display =
-                          paymentHistorySection.style.display === "none"
-                            ? "block"
-                            : "none";
-                      }
-                    }}
-                    className="w-full sm:w-auto"
-                    data-testid="button-view-payment-history"
-                  >
-                    View Payment History
-                  </Button>
+                  {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
+                    selectedInvoice.status,
+                  ) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        // Toggle the payment history section visibility
+                        const paymentHistorySection = document.getElementById(
+                          `payment-history-${selectedInvoice.id}`,
+                        );
+                        if (paymentHistorySection) {
+                          paymentHistorySection.style.display =
+                            paymentHistorySection.style.display === "none"
+                              ? "block"
+                              : "none";
+                        }
+                      }}
+                      className="w-full sm:w-auto"
+                      data-testid="button-view-payment-history"
+                    >
+                      View Payment History
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     onClick={() => setIsInvoiceDetailsOpen(false)}

@@ -99,6 +99,7 @@ type CreateProformaInvoiceData = z.infer<typeof createProformaInvoiceSchema>;
 interface ProformaInvoice {
   id: number;
   proformaNumber: string;
+  subject?: string;
   customerId: number;
   customerName?: string;
   projectId?: number;
@@ -1808,10 +1809,92 @@ export default function ProformaInvoicesIndex() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Proforma Invoice Details — {selectedProforma?.proformaNumber || ""}</DialogTitle>
-            <DialogDescription>
-              View detailed information about this proforma invoice.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (approve, convert) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Proforma Invoice Details — {selectedProforma?.proformaNumber || ""}</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this proforma invoice.
+                </DialogDescription>
+              </div>
+              {selectedProforma && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedProforma) {
+                        const selectedCustomer = customers?.find(
+                          (c) => c.id === selectedProforma.customerId
+                        );
+
+                        const vatTreatment = selectedCustomer?.vatTreatment || null;
+                        const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
+
+                        setCustomerVatTreatment(vatTreatment);
+                        // Populate form with existing data
+                        setSelectedProforma(selectedProforma);
+                        setFormData({
+                          customerId: selectedProforma.customerId,
+                          subject: selectedProforma.subject || "",
+                          projectId: selectedProforma.projectId,
+                          quotationId: selectedProforma.quotationId,
+                          invoiceDate: toInputDate(selectedProforma.invoiceDate),
+                          validUntil: toInputDate(selectedProforma.validUntil),
+                          paymentTerms: selectedProforma.paymentTerms || '',
+                          deliveryTerms: selectedProforma.deliveryTerms || '',
+                          bankAccount: selectedProforma.bankAccount || '',
+                          billingAddress: selectedProforma.billingAddress || '',
+                          termsAndConditions: selectedProforma.termsAndConditions || '',
+                          remarks: selectedProforma.remarks || '',
+                          items: selectedProforma.items || [],
+                          discountPercentage: selectedProforma.discountPercentage || '0',
+                          discount: selectedProforma.discount || '0',
+                          currency: selectedProforma.currency || 'AED',
+                          exchangeRate: selectedProforma.exchangeRate || '1',
+                          workOrderNumber: selectedProforma.workOrderNumber || '',
+                        });
+                        // 🔹 ensure new item uses correct tax
+                        setNewItem({
+                          description: "",
+                          quantity: 1,
+                          unitPrice: 0,
+                          taxRate: defaultTaxRate,
+                        });
+
+                        setIsEditingProforma(true);
+                        setIsDetailsOpen(false);
+                        setIsDialogOpen(true);
+                      }
+                    }}
+                    data-testid="button-edit-proforma-header"
+                  >
+                    <Edit className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateProforma(selectedProforma)}
+                    data-testid="button-duplicate-proforma-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintPDF(selectedProforma)}
+                    data-testid="button-print-proforma-header"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedProforma ? (
             <div className="space-y-6">
@@ -1846,6 +1929,14 @@ export default function ProformaInvoicesIndex() {
                       <div className="flex justify-between">
                         <span className="font-medium">Valid Until:</span>
                         <span>{formatDate(selectedProforma.validUntil)}</span>
+                      </div>
+                    )}
+                    {selectedProforma.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedProforma.subject}
+                        </p>
                       </div>
                     )}
                     {selectedProforma.paymentTerms && (
@@ -2056,73 +2147,9 @@ export default function ProformaInvoicesIndex() {
                 </Card>
               )}
 
-              {/* Action Buttons */}
+              {/* Action Buttons — status-flow only; document actions
+                  (edit, duplicate, print) live in the header. */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
-                  Close
-                </Button>
-                <Button variant="outline" onClick={() => handlePrintPDF(selectedProforma)}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Print PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (selectedProforma) {
-                      const selectedCustomer = customers?.find(
-                        (c) => c.id === selectedProforma.customerId
-                      );
-
-                      const vatTreatment = selectedCustomer?.vatTreatment || null;
-                      const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
-
-                      setCustomerVatTreatment(vatTreatment);
-                      // Populate form with existing data
-                      setSelectedProforma(selectedProforma);
-                      setFormData({
-                        customerId: selectedProforma.customerId,
-                        subject: selectedProforma.subject || "",
-                        projectId: selectedProforma.projectId,
-                        quotationId: selectedProforma.quotationId,
-                        invoiceDate: toInputDate(selectedProforma.invoiceDate),
-                        validUntil: toInputDate(selectedProforma.validUntil),
-                        paymentTerms: selectedProforma.paymentTerms || '',
-                        deliveryTerms: selectedProforma.deliveryTerms || '',
-                        bankAccount: selectedProforma.bankAccount || '',
-                        billingAddress: selectedProforma.billingAddress || '',
-                        termsAndConditions: selectedProforma.termsAndConditions || '',
-                        remarks: selectedProforma.remarks || '',
-                        items: selectedProforma.items || [],
-                        discountPercentage: selectedProforma.discountPercentage || '0',
-                        discount: selectedProforma.discount || '0',
-                        currency: selectedProforma.currency || 'AED',
-                        exchangeRate: selectedProforma.exchangeRate || '1',
-                        workOrderNumber: selectedProforma.workOrderNumber || '',
-                      });
-                      // 🔹 ensure new item uses correct tax
-                      setNewItem({
-                        description: "",
-                        quantity: 1,
-                        unitPrice: 0,
-                        taxRate: defaultTaxRate,
-                      });
-
-                      setIsEditingProforma(true);
-                      setIsDetailsOpen(false);
-                      setIsDialogOpen(true);
-                    }
-                  }}
-                >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDuplicateProforma(selectedProforma)}
-                >
-                  <Copy className="h-4 w-4 mr-1" />
-                  Duplicate
-                </Button>
                 {selectedProforma && (selectedProforma.status === "draft" || selectedProforma.status === "sent") && (
                   <Button
                     className="bg-green-600 hover:bg-green-700 text-white"
@@ -2143,6 +2170,9 @@ export default function ProformaInvoicesIndex() {
                     {convertToInvoiceMutation.isPending ? "Converting..." : "Convert to Invoice"}
                   </Button>
                 )}
+                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                  Close
+                </Button>
               </div>
             </div>
           ) : (

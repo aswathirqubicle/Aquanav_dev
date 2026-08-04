@@ -1224,10 +1224,44 @@ export default function CreditNotesIndex() {
         <Dialog open={!!viewingCreditNote} onOpenChange={() => setViewingCreditNote(null)}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Credit Note Details</DialogTitle>
-              <DialogDescription>
-                View credit note information.
-              </DialogDescription>
+              {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                  actions (edit, print) live up here; status-flow actions
+                  (cancel, delete) stay in the footer. */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+                <div>
+                  <DialogTitle>Credit Note Details</DialogTitle>
+                  <DialogDescription>
+                    View credit note information.
+                  </DialogDescription>
+                </div>
+                {viewingCreditNote && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setViewingCreditNote(null);
+                        setEditingCreditNote(viewingCreditNote);
+                      }}
+                      data-testid="button-edit-credit-note-header"
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        printByUrl(`/api/credit-notes/${viewingCreditNote.id}/pdf`);
+                      }}
+                      data-testid="button-print-credit-note-header"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Print
+                    </Button>
+                  </div>
+                )}
+              </div>
             </DialogHeader>
             {viewingCreditNote && (
               <div className="space-y-6">
@@ -1406,16 +1440,37 @@ export default function CreditNotesIndex() {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      printByUrl(`/api/credit-notes/${viewingCreditNote.id}/pdf`);
-                    }}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Print Credit Note
-                  </Button>
-                  <Button onClick={() => setViewingCreditNote(null)}>
+                  {viewingCreditNote.status === "draft" && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Draft
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {viewingCreditNote.creditNoteNumber} has not been issued and has
+                            posted nothing to the ledger, so it can be deleted outright.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Keep it</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              deleteCreditNoteMutation.mutate(viewingCreditNote.id);
+                              setViewingCreditNote(null);
+                            }}
+                          >
+                            Delete Draft
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                  <Button variant="outline" onClick={() => setViewingCreditNote(null)}>
                     Close
                   </Button>
                 </div>

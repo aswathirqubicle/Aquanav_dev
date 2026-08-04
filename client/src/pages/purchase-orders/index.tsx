@@ -2159,7 +2159,10 @@ export default function PurchaseOrdersIndex() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0 border-b pb-4">
-            <div className="flex items-center justify-between">
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, print) live up here; status-flow actions
+                (submit, approve, reject, convert) stay in the footer. */}
+            <div className="flex items-center justify-between gap-3 pr-8">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
                   <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -2170,7 +2173,7 @@ export default function PurchaseOrdersIndex() {
                 </div>
               </div>
               {viewingOrder && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Same gate as the list's Edit button: drafts for anyone who
                       can edit, post-approval statuses for admin/finance only.
                       Converted orders show no Edit, matching the list. */}
@@ -2227,6 +2230,10 @@ export default function PurchaseOrdersIndex() {
                       <div>
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
                         <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
+                        <p className="mt-1">{getStatusBadge(viewingOrder.status)}</p>
                       </div>
                       {viewingOrder.subject && (
                         <div>
@@ -2571,18 +2578,72 @@ export default function PurchaseOrdersIndex() {
                 </CardContent>
               </Card>
 
-              {/* Action Buttons */}
-              {canEdit && canCreateInvoice(viewingOrder) && (
-                <div className="flex justify-end gap-2 pt-4 border-t">
+              {/* Action Buttons — status-flow actions, mirroring the list
+                  row gates exactly. viewingOrder is plain state and goes
+                  stale after a mutation invalidates the list, so every
+                  action closes the view dialog first. */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+                {viewingOrder.status === "draft" && (
                   <Button
-                    onClick={() => openConvertDialog()}
-                    className="gap-2"
+                    onClick={() => {
+                      setIsViewDialogOpen(false);
+                      submitOrderMutation.mutate(viewingOrder.id);
+                    }}
+                    disabled={submitOrderMutation.isPending}
+                    className="w-full sm:w-auto"
+                    data-testid="button-submit-order-dialog"
+                  >
+                    {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
+                  </Button>
+                )}
+                {viewingOrder.status === "pending_approval" && user?.role === "admin" && (
+                  <>
+                    <Button
+                      onClick={() => {
+                        setIsViewDialogOpen(false);
+                        approveOrderMutation.mutate(viewingOrder.id);
+                      }}
+                      disabled={approveOrderMutation.isPending}
+                      className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                      data-testid="button-approve-order-dialog"
+                    >
+                      {approveOrderMutation.isPending ? "Approving..." : "Approve"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsViewDialogOpen(false);
+                        setIsRejectDialogOpen(true);
+                      }}
+                      disabled={rejectOrderMutation.isPending}
+                      className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
+                      data-testid="button-reject-order-dialog"
+                    >
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {canEdit && canCreateInvoice(viewingOrder) && (
+                  <Button
+                    onClick={() => {
+                      setIsViewDialogOpen(false);
+                      openConvertDialog();
+                    }}
+                    className="w-full sm:w-auto gap-2"
+                    data-testid="button-convert-order-dialog"
                   >
                     <FileText className="w-4 h-4" />
                     Convert to Invoice
                   </Button>
-                </div>
-              )}
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsViewDialogOpen(false)}
+                  className="w-full sm:w-auto"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

@@ -936,6 +936,13 @@ export class SalesStorage extends LedgerStorage {
           totalAmount: salesQuotations.totalAmount,
           currency: salesQuotations.currency,
           exchangeRate: salesQuotations.exchangeRate,
+          // The details dialog is fed from these rows, so the approval trail
+          // has to travel with them or it can never be displayed.
+          submittedById: salesQuotations.submittedById,
+          submittedAt: salesQuotations.submittedAt,
+          approvedById: salesQuotations.approvedById,
+          approvedAt: salesQuotations.approvedAt,
+          rejectionReason: salesQuotations.rejectionReason,
           isArchived: salesQuotations.isArchived,
           createdDate: salesQuotations.createdDate,
         })
