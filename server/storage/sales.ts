@@ -936,6 +936,13 @@ export class SalesStorage extends LedgerStorage {
           totalAmount: salesQuotations.totalAmount,
           currency: salesQuotations.currency,
           exchangeRate: salesQuotations.exchangeRate,
+          // The details dialog is fed from these rows, so the approval trail
+          // has to travel with them or it can never be displayed.
+          submittedById: salesQuotations.submittedById,
+          submittedAt: salesQuotations.submittedAt,
+          approvedById: salesQuotations.approvedById,
+          approvedAt: salesQuotations.approvedAt,
+          rejectionReason: salesQuotations.rejectionReason,
           isArchived: salesQuotations.isArchived,
           createdDate: salesQuotations.createdDate,
         })
@@ -1082,6 +1089,13 @@ export class SalesStorage extends LedgerStorage {
           paidAmount: salesInvoices.paidAmount,
           currency: salesInvoices.currency,
           exchangeRate: salesInvoices.exchangeRate,
+          // The details dialog is fed from these rows, so the approval trail
+          // has to travel with them or it can never be displayed.
+          submittedById: salesInvoices.submittedById,
+          submittedAt: salesInvoices.submittedAt,
+          approvedById: salesInvoices.approvedById,
+          approvedAt: salesInvoices.approvedAt,
+          rejectionReason: salesInvoices.rejectionReason,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
@@ -1486,6 +1500,9 @@ export class SalesStorage extends LedgerStorage {
           totalAmount: proformaInvoices.totalAmount,
           currency: proformaInvoices.currency,
           exchangeRate: proformaInvoices.exchangeRate,
+          rejectionReason: proformaInvoices.rejectionReason,
+          approvedById: proformaInvoices.approvedById,
+          approvedAt: proformaInvoices.approvedAt,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -1518,6 +1535,9 @@ export class SalesStorage extends LedgerStorage {
           workOrderNumber: proformaInvoices.workOrderNumber,
           status: proformaInvoices.status,
           createdDate: proformaInvoices.createdDate,
+          // Present on the list projection but missing here, so the printed
+          // proforma showed no date for a value the record had stored.
+          invoiceDate: proformaInvoices.invoiceDate,
           validUntil: proformaInvoices.validUntil,
           paymentTerms: proformaInvoices.paymentTerms,
           deliveryTerms: proformaInvoices.deliveryTerms,
@@ -1533,6 +1553,9 @@ export class SalesStorage extends LedgerStorage {
           totalAmount: proformaInvoices.totalAmount,
           currency: proformaInvoices.currency,
           exchangeRate: proformaInvoices.exchangeRate,
+          rejectionReason: proformaInvoices.rejectionReason,
+          approvedById: proformaInvoices.approvedById,
+          approvedAt: proformaInvoices.approvedAt,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -1650,6 +1673,15 @@ export class SalesStorage extends LedgerStorage {
         updateData.workOrderNumber = proformaData.workOrderNumber || null;
       if (proformaData.status !== undefined)
         updateData.status = proformaData.status;
+      // Carried alongside the status: a rejected proforma without its reason
+      // records the verdict and loses the explanation, and an approved one
+      // without an approver records that it was approved by nobody.
+      if (proformaData.rejectionReason !== undefined)
+        updateData.rejectionReason = proformaData.rejectionReason || null;
+      if (proformaData.approvedById !== undefined)
+        updateData.approvedById = proformaData.approvedById;
+      if (proformaData.approvedAt !== undefined)
+        updateData.approvedAt = proformaData.approvedAt;
       if (proformaData.invoiceDate !== undefined)
         updateData.invoiceDate = proformaData.invoiceDate
           ? new Date(proformaData.invoiceDate).toISOString()

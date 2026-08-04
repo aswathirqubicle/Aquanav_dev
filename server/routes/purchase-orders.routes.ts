@@ -247,8 +247,10 @@ purchaseOrdersRoutes.put(
         "exchangeRate",
         "paymentTerms",
         "deliveryTerms",
+        "deliverTo",
         "bankAccount",
         "notes",
+        "termsAndConditions",
       ];
 
       for (const field of fieldsToTrack) {

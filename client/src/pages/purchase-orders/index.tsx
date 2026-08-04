@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Eye, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
 
@@ -51,6 +51,8 @@ interface PurchaseOrder {
   expectedDeliveryDate?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
+  deliverTo?: string;
+  termsAndConditions?: string;
   bankAccount?: string;
   subtotal: string;
   taxAmount: string;
@@ -144,8 +146,10 @@ export default function PurchaseOrdersIndex() {
     expectedDeliveryDate: "",
     paymentTerms: "",
     deliveryTerms: "",
+    deliverTo: "",
     bankAccount: "",
     notes: "",
+    termsAndConditions: "",
     discountPercentage: "0",
     discountAmount: "0",
   });
@@ -161,14 +165,18 @@ export default function PurchaseOrdersIndex() {
     discountType?: "amount" | "percentage";
   }[]>([]);
 
+  // The staging form starts blank — quantity, unit price and discount carry
+  // their guidance in placeholders rather than as pre-filled values, so nothing
+  // can be saved by accident. taxRate is the exception: it is filled from the
+  // supplier's VAT treatment when a supplier is picked.
   const [newItem, setNewItem] = useState({
-    itemType: "product" as "product" | "service",
+    itemType: "service" as "product" | "service",
     inventoryItemId: "",
     description: "",
-    quantity: "1",
-    unitPrice: "0",
+    quantity: "",
+    unitPrice: "",
     taxRate: "0",
-    discount: "0" as string,
+    discount: "" as string,
     discountType: "amount" as "amount" | "percentage",
   });
 
@@ -186,15 +194,14 @@ export default function PurchaseOrdersIndex() {
     window.setTimeout(() => descriptionRef.current?.focus(), 0);
   };
 
-  // Never carry a half-finished line edit across a dialog open or close. This
-  // keys off the open state rather than the dialog's onOpenChange because Radix
-  // only fires that for its own triggers (Escape, overlay, close button) — the
-  // programmatic setIsDialogOpen calls in the new, edit and post-submit paths
-  // would otherwise leave the index pointing at a stale row.
+  // Backstop against a half-finished line edit crossing a dialog open or close.
+  // resetForm already clears the staging form on every dismissal and on every
+  // "New", but this keys off the open state rather than the dialog's
+  // onOpenChange because Radix only fires that for its own triggers (Escape,
+  // overlay, close button), so it also covers any programmatic open.
   useEffect(() => {
-    // Only when an edit was actually abandoned: clearing the index alone would
-    // leave that row's values sitting in the staging form, so the next "Add"
-    // would append a duplicate of it. A half-typed NEW item is left untouched.
+    // Clearing the index alone would leave that row's values sitting in the
+    // staging form, so the next "Add" would append a duplicate of it.
     if (editingItemIndex !== null) {
       cancelEditItem();
     }
@@ -296,6 +303,24 @@ export default function PurchaseOrdersIndex() {
     queryKey: ["/api/inventory"],
     enabled: isAuthenticated,
   });
+
+  // Company address seeds Deliver To on a new order; the purchase_order row of
+  // document_defaults seeds Notes and Terms. Seeds only — every field stays
+  // editable and validly empty on the order itself.
+  const { data: company } = useQuery<{ address?: string | null }>({
+    queryKey: ["/api/company"],
+    enabled: isAuthenticated,
+  });
+
+  const { data: documentDefaults } = useQuery<
+    Array<{ documentType: string; notes: string | null; termsAndConditions: string | null }>
+  >({
+    queryKey: ["/api/document-defaults"],
+    enabled: isAuthenticated,
+  });
+  const poDefaults = documentDefaults?.find(
+    (d) => d.documentType === "purchase_order",
+  );
 
   const { data: poEditHistory } = useQuery<any[]>({
     queryKey: ["/api/purchase-orders", viewingOrder?.id, "edit-history"],
@@ -531,30 +556,38 @@ export default function PurchaseOrdersIndex() {
   const resetForm = () => {
     setFormData({
       supplierId: "",
-    subject: "",
+      subject: "",
+      // This object REPLACES the form state, so every field has to be listed:
+      // omitting these left formData.currency undefined and the labels reading
+      // "Unit Price ()". Both are overwritten as soon as a supplier is picked.
+      currency: "AED",
+      exchangeRate: "1",
       orderDate: new Date().toISOString().split('T')[0],
       expectedDeliveryDate: "",
       paymentTerms: "",
       deliveryTerms: "",
+      deliverTo: "",
       bankAccount: "",
       notes: "",
+      termsAndConditions: "",
       discountPercentage: "0",
       discountAmount: "0",
     });
     setSelectedBankId("");
     setOrderItems([]);
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
     setSelectedFiles(null);
+    setExistingFiles([]);
     setEditingOrder(null);
     setEditNote("");
   };
@@ -568,8 +601,10 @@ export default function PurchaseOrdersIndex() {
       expectedDeliveryDate: order.expectedDeliveryDate ? order.expectedDeliveryDate.split('T')[0] : "",
       paymentTerms: order.paymentTerms || "",
       deliveryTerms: order.deliveryTerms || "",
+      deliverTo: order.deliverTo || "",
       bankAccount: order.bankAccount || "",
       notes: order.notes || "",
+      termsAndConditions: order.termsAndConditions || "",
       currency: order.currency || order.supplierCurrency || "AED",
       exchangeRate: order.exchangeRate || "1",
       discountPercentage: order.discountPercentage || "0",
@@ -594,6 +629,21 @@ export default function PurchaseOrdersIndex() {
     setExistingFiles(order.files || []);
     setEditNote("");
 
+    setIsDialogOpen(true);
+  };
+
+  // Open the dialog for a NEW order. Every dismissal runs resetForm, so the
+  // form is always clean here and the defaults can simply be seeded on top of
+  // it. Editing an existing order never comes through here — handleEditOrder
+  // loads the stored values, which are the record.
+  const openNewOrderDialog = () => {
+    resetForm();
+    setFormData(prev => ({
+      ...prev,
+      deliverTo: company?.address || "",
+      notes: poDefaults?.notes || "",
+      termsAndConditions: poDefaults?.termsAndConditions || "",
+    }));
     setIsDialogOpen(true);
   };
 
@@ -633,12 +683,15 @@ export default function PurchaseOrdersIndex() {
 
     const quantity = parseInt(newItem.quantity);
     const unitPrice = parseFloat(newItem.unitPrice);
-    const taxRate = parseFloat(newItem.taxRate);
+    // A blank or non-numeric tax rate means zero, the same as discount.
+    const taxRate = parseFloat(newItem.taxRate || "0") || 0;
 
-    if (quantity <= 0 || unitPrice < 0) {
+    // Both fields start blank, so a non-number has to be rejected here rather
+    // than reaching the totals as NaN.
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
       toast({
         title: "Error",
-        description: "Quantity must be greater than 0 and unit price cannot be negative",
+        description: "Quantity must be a number greater than 0 and unit price a number that is not negative",
         variant: "destructive",
       });
       return;
@@ -659,13 +712,13 @@ export default function PurchaseOrdersIndex() {
         : prev.map((existing, i) => (i === editingItemIndex ? { ...newItem } : existing))
     );
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -693,13 +746,13 @@ export default function PurchaseOrdersIndex() {
 
   const cancelEditItem = () => {
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -741,6 +794,8 @@ export default function PurchaseOrdersIndex() {
     formDataInstance.append("paymentTerms", formData.paymentTerms || "");
     formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("deliveryTerms", formData.deliveryTerms || "");
+    formDataInstance.append("deliverTo", formData.deliverTo || "");
+    formDataInstance.append("termsAndConditions", formData.termsAndConditions || "");
     formDataInstance.append("bankAccount", formData.bankAccount || "");
     formDataInstance.append("notes", formData.notes || "");
 
@@ -748,7 +803,7 @@ export default function PurchaseOrdersIndex() {
     const items = orderItems.map(item => {
       const quantity = parseInt(item.quantity);
       const unitPrice = parseFloat(item.unitPrice);
-      const taxRate = parseFloat(item.taxRate);
+      const taxRate = parseFloat(item.taxRate || "0") || 0;
       const lineSubtotal = quantity * unitPrice;
       const lineDiscountVal = parseFloat(item.discount || "0") || 0;
       const lineDiscount = item.discountType === "percentage"
@@ -847,7 +902,7 @@ export default function PurchaseOrdersIndex() {
       setInvoiceFormItems(target.items.map(item => {
         const qty = parseFloat(item.quantity.toString());
         const price = parseFloat(item.unitPrice);
-        const taxRate = parseFloat(item.taxRate || "0");
+        const taxRate = parseFloat(item.taxRate || "0") || 0;
         const discountVal = item.discount != null ? Number(item.discount) : 0;
         const discountType = item.discountType === "percentage" ? "percentage" : "amount";
         const lineSubtotal = qty * price;
@@ -1007,6 +1062,10 @@ export default function PurchaseOrdersIndex() {
     // Filters are applied automatically through filteredOrders
   };
 
+  // Collapsed by default, as on the sales page: the filters are occasional,
+  // and a permanently open panel pushes the list itself below the fold.
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
@@ -1054,7 +1113,7 @@ export default function PurchaseOrdersIndex() {
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
           {canEdit && (
-            <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+            <Button onClick={openNewOrderDialog} className="gap-2">
               <Plus className="w-4 h-4" />
               New Purchase Order
             </Button>
@@ -1137,11 +1196,39 @@ export default function PurchaseOrdersIndex() {
         </Card>
       </div>
 
-      {/* Advanced Filters */}
+      {/* Collapsible Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer select-none"
+          onClick={() => setFilterOpen((o) => !o)}
+        >
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+            <span className="font-medium text-sm">Filters</span>
+            {(() => {
+              const active = [
+                searchQuery,
+                statusFilter !== "all" ? statusFilter : "",
+                supplierFilter !== "all" ? supplierFilter : "",
+                startDateFilter,
+                endDateFilter,
+              ].filter(Boolean).length;
+              return active > 0 ? (
+                <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+              ) : null;
+            })()}
+          </div>
+          {filterOpen
+            ? <ChevronUp className="h-4 w-4 text-slate-400" />
+            : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        </div>
+
+        {filterOpen && (
+          <CardContent className="pt-0 pb-4 px-4 border-t">
+            {/* One grid rather than two: five fields and the clear action fill
+                three columns exactly, so nothing is left stranded on its own
+                row the way the old 4-then-3 split left the dates. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
               <div>
                 <Label htmlFor="searchFilter" className="text-sm font-medium">
                   Search
@@ -1191,14 +1278,6 @@ export default function PurchaseOrdersIndex() {
                   className="mt-1"
                 />
               </div>
-              <div className="flex items-end">
-                <Button onClick={clearFilters} variant="outline" className="w-full">
-                  Clear All Filters
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="startDate" className="text-sm font-medium">
                   Order Date From
@@ -1223,9 +1302,14 @@ export default function PurchaseOrdersIndex() {
                   className="mt-1"
                 />
               </div>
+              <div className="flex items-end">
+                <Button onClick={clearFilters} variant="outline" className="w-full">
+                  Clear All Filters
+                </Button>
+              </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* Order List */}
@@ -1263,7 +1347,7 @@ export default function PurchaseOrdersIndex() {
                 }
               </p>
               {(!searchQuery && statusFilter === "all" && supplierFilter === "all" && canEdit) && (
-                <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+                <Button onClick={openNewOrderDialog} className="gap-2">
                   <Plus className="w-4 h-4" />
                   Create Purchase Order
                 </Button>
@@ -1285,7 +1369,29 @@ export default function PurchaseOrdersIndex() {
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-muted/50">
+                    /* The whole row opens the detail dialog. role/tabIndex/
+                       onKeyDown keep it reachable without a mouse; every
+                       button inside stops propagation so acting on it does
+                       not also open the dialog. */
+                    <TableRow
+                      key={order.id}
+                      className="hover:bg-muted/50 cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => viewOrder(order)}
+                      onKeyDown={(e) => {
+                        // A keypress on an inline button bubbles to the row, so without
+                        // this an Enter on Approve would both approve and open the dialog.
+                        if (e.target !== e.currentTarget) {
+                          return;
+                        }
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          viewOrder(order);
+                        }
+                      }}
+                      data-testid={`row-order-${order.id}`}
+                    >
                       <TableCell className="font-medium">
                         {order.poNumber}
                       </TableCell>
@@ -1311,20 +1417,20 @@ export default function PurchaseOrdersIndex() {
                         }
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => viewOrder(order)} className="gap-1" data-testid={`button-view-order-${order.id}`}>
-                            <Eye className="w-4 h-4" />
-                            <span className="hidden sm:inline">View</span>
-                          </Button>
-
+                        <div className="flex items-center justify-end gap-1">
                           {/* Edit - Draft and Approved/Pending orders for admin/finance */}
                           {(order.status === "draft" || (["approved", "pending_approval", "rejected"].includes(order.status) && (user?.role === "admin" || user?.role === "finance"))) && (
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => handleEditOrder(order)}
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditOrder(order);
+                              }}
                               data-testid={`button-edit-order-${order.id}`}
                             >
+                              <Pencil className="h-4 w-4" />
                               Edit
                             </Button>
                           )}
@@ -1333,10 +1439,16 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "draft" && (
                             <Button
                               size="sm"
-                              onClick={() => submitOrderMutation.mutate(order.id)}
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                submitOrderMutation.mutate(order.id);
+                              }}
                               disabled={submitOrderMutation.isPending}
                               data-testid={`button-submit-order-${order.id}`}
                             >
+                              <Send className="h-4 w-4" />
                               {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
                             </Button>
                           )}
@@ -1345,12 +1457,16 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "pending_approval" && user?.role === "admin" && (
                             <Button
                               size="sm"
-                              variant="default"
-                              onClick={() => approveOrderMutation.mutate(order.id)}
+                              variant="ghost"
+                              className="h-8 px-2 gap-1 text-green-600 hover:text-green-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                approveOrderMutation.mutate(order.id);
+                              }}
                               disabled={approveOrderMutation.isPending}
                               data-testid={`button-approve-order-${order.id}`}
                             >
-                              <CheckCircle className="w-4 h-4 mr-1" />
+                              <CheckCircle className="h-4 w-4" />
                               {approveOrderMutation.isPending ? "Approving..." : "Approve"}
                             </Button>
                           )}
@@ -1359,14 +1475,16 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "pending_approval" && user?.role === "admin" && (
                             <Button
                               size="sm"
-                              variant="destructive"
-                              onClick={() => {
+                              variant="ghost"
+                              className="h-8 px-2 gap-1 text-red-600 hover:text-red-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setViewingOrder(order);
                                 setIsRejectDialogOpen(true);
                               }}
                               data-testid={`button-reject-order-${order.id}`}
                             >
-                              <XCircle className="w-4 h-4 mr-1" />
+                              <XCircle className="h-4 w-4" />
                               Reject
                             </Button>
                           )}
@@ -1375,10 +1493,15 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "approved" && (user?.role === "admin" || user?.role === "finance") && (
                             <Button
                               size="sm"
-                              onClick={() => openConvertDialog(order)}
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openConvertDialog(order);
+                              }}
                               data-testid={`button-convert-order-${order.id}`}
                             >
-                              <FileText className="w-4 h-4 mr-1" />
+                              <ArrowRightLeft className="h-4 w-4" />
                               Convert
                             </Button>
                           )}
@@ -1403,7 +1526,10 @@ export default function PurchaseOrdersIndex() {
       </Card>
 
       {/* Create Order Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      {/* Dismissing by any route — X, Escape, overlay click — clears the form.
+          Radix only fires onOpenChange for its own triggers, so the Cancel
+          button and the post-submit paths call resetForm themselves. */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0 border-b pb-4">
             <div className="flex items-center gap-3">
@@ -1501,106 +1627,61 @@ export default function PurchaseOrdersIndex() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="mb-4">
-                  <Label htmlFor="subject">Subject Line</Label>
-                  <Input
-                    id="subject"
-                    value={formData.subject || ""}
-                    onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="e.g., Office Supplies Order"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="paymentTerms">Payment Terms</Label>
-                  <Input
-                    id="paymentTerms"
-                    value={formData.paymentTerms}
-                    onChange={(e) => setFormData(prev => ({ ...prev, paymentTerms: e.target.value }))}
-                    placeholder="e.g., Net 30, Due on Receipt, 50% Advance"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="deliveryTerms">Delivery Terms</Label>
-                  <Input
-                    id="deliveryTerms"
-                    value={formData.deliveryTerms}
-                    onChange={(e) => setFormData(prev => ({ ...prev, deliveryTerms: e.target.value }))}
-                    placeholder="e.g., FOB, CIF, Ex Works"
-                    className="mt-1"
-                  />
+              <div>
+                <Label htmlFor="subject">Subject Line</Label>
+                <Input
+                  id="subject"
+                  value={formData.subject || ""}
+                  onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                  placeholder="e.g., Office Supplies Order"
+                  className="mt-1"
+                />
+              </div>
+
+              {/* Delivery — where and on what terms the goods arrive */}
+              <div className="border-t pt-4">
+                <Label className="text-lg font-semibold">Delivery</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+                  <div>
+                    <Label htmlFor="deliverTo">Deliver To</Label>
+                    <Textarea
+                      id="deliverTo"
+                      rows={4}
+                      value={formData.deliverTo}
+                      onChange={(e) => setFormData(prev => ({ ...prev, deliverTo: e.target.value }))}
+                      placeholder="Delivery address — office, vessel or work site. Leave blank if not applicable."
+                      className="mt-1"
+                      data-testid="textarea-deliver-to"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Pre-filled from the company address in Settings. Edit or clear it per order.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="deliveryTerms">Delivery Terms</Label>
+                      <Input
+                        id="deliveryTerms"
+                        value={formData.deliveryTerms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryTerms: e.target.value }))}
+                        placeholder="e.g., FOB, CIF, Ex Works"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="paymentTerms">Payment Terms</Label>
+                      <Input
+                        id="paymentTerms"
+                        value={formData.paymentTerms}
+                        onChange={(e) => setFormData(prev => ({ ...prev, paymentTerms: e.target.value }))}
+                        placeholder="e.g., Net 30, Due on Receipt, 50% Advance"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
-                <Select
-                  value={selectedBankId}
-                  onValueChange={(value) => {
-                    setSelectedBankId(value);
-                    const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
-                    if (selected) {
-                      const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
-                      setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select bank account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bankAccountOptions.map((detail, index) => (
-                      <React.Fragment key={detail.id}>
-                        <SelectItem value={detail.id.toString()}>
-                          <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
-                        </SelectItem>
-                        {index < bankAccountOptions.length - 1 && (
-                          <hr className="my-1" />
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="mt-2 border border-input rounded-md overflow-hidden">
-                  <ReactQuill
-                    theme="snow"
-                    value={formData.bankAccount}
-                    onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
-                    placeholder="Enter or customize bank account details..."
-                    modules={{
-                      toolbar: [
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        ['clean']
-                      ],
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <div className="mt-1 border border-input rounded-md overflow-hidden">
-                  <ReactQuill
-                    theme="snow"
-                    value={formData.notes}
-                    onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
-                    placeholder="Optional notes"
-                    modules={{
-                      toolbar: [
-                        [{ 'header': [1, 2, 3, false] }],
-                        ['bold', 'italic', 'underline', 'strike'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        [{ 'color': [] }, { 'background': [] }],
-                        ['link'],
-                        ['clean']
-                      ],
-                    }}
-                  />
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="attachments">Attach Files (Optional)</Label>
@@ -1685,7 +1766,7 @@ export default function PurchaseOrdersIndex() {
                           itemType: value,
                           inventoryItemId: "",
                           description: "",
-                          unitPrice: "0"
+                          unitPrice: ""
                         }))}
                       >
                         <SelectTrigger className="mt-1">
@@ -1693,7 +1774,7 @@ export default function PurchaseOrdersIndex() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="product">Product (from Inventory)</SelectItem>
-                          <SelectItem value="service">Service (Manual Entry)</SelectItem>
+                          <SelectItem value="service">Service</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1736,6 +1817,7 @@ export default function PurchaseOrdersIndex() {
                           min="1"
                           value={newItem.quantity}
                           onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
+                          placeholder="e.g. 1"
                           className="mt-1"
                         />
                       </div>
@@ -1747,6 +1829,7 @@ export default function PurchaseOrdersIndex() {
                           min="0"
                           value={newItem.unitPrice}
                           onChange={(e) => setNewItem(prev => ({ ...prev, unitPrice: e.target.value }))}
+                          placeholder="0.00"
                           className="mt-1"
                         />
                       </div>
@@ -1771,6 +1854,7 @@ export default function PurchaseOrdersIndex() {
                             min="0"
                             value={newItem.discount}
                             onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
+                            placeholder="0.00"
                           />
                           <select
                             className="border rounded px-2 text-sm bg-background"
@@ -1794,7 +1878,7 @@ export default function PurchaseOrdersIndex() {
                               </>
                             ) : (
                               <>
-                                <Pencil className="w-4 h-4" />
+                                <Pencil className="h-4 w-4" />
                                 Update Item
                               </>
                             )}
@@ -1896,7 +1980,7 @@ export default function PurchaseOrdersIndex() {
                                     {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
                                   </TableCell>
                                   <TableCell>{formatCurrency(item.unitPrice, formData.currency)}</TableCell>
-                                  <TableCell>{item.taxRate}%</TableCell>
+                                  <TableCell>{item.taxRate || "0"}%</TableCell>
                                   <TableCell>
                                     {lineDiscVal > 0
                                       ? (item.discountType === "percentage" ? `${lineDiscVal}%` : formatCurrency(lineDiscVal, formData.currency))
@@ -1915,7 +1999,7 @@ export default function PurchaseOrdersIndex() {
                                         data-testid={`button-edit-po-item-${index}`}
                                         onClick={() => startEditItem(index)}
                                       >
-                                        <Pencil className="w-4 h-4" />
+                                        <Pencil className="h-4 w-4" />
                                       </Button>
                                       <Button
                                         type="button"
@@ -2018,6 +2102,91 @@ export default function PurchaseOrdersIndex() {
                 )}
               </div>
 
+              <div className="border-t pt-4">
+                <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
+              </div>
+
+              <div>
+                <Label htmlFor="bankAccount">Bank Account Details (Optional)</Label>
+                <Select
+                  value={selectedBankId}
+                  onValueChange={(value) => {
+                    setSelectedBankId(value);
+                    const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                    if (selected) {
+                      const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                      setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bankAccountOptions.map((detail, index) => (
+                      <React.Fragment key={detail.id}>
+                        <SelectItem value={detail.id.toString()}>
+                          <div className="whitespace-pre-wrap">{detail.accountDetails}</div>
+                        </SelectItem>
+                        {index < bankAccountOptions.length - 1 && (
+                          <hr className="my-1" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="mt-2 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.bankAccount}
+                    onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                    placeholder="Enter or customize bank account details..."
+                    modules={{
+                      toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Notes</Label>
+                <div className="mt-1 border border-input rounded-md overflow-hidden">
+                  <ReactQuill
+                    theme="snow"
+                    value={formData.notes}
+                    onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                    placeholder="Optional notes"
+                    modules={{
+                      toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        ['link'],
+                        ['clean']
+                      ],
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="poTermsAndConditions">Terms &amp; Conditions</Label>
+                <Textarea
+                  id="poTermsAndConditions"
+                  rows={6}
+                  value={formData.termsAndConditions}
+                  onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                  placeholder="Standing terms for this order. Pre-filled from Settings → Documents Default; edit or clear per order."
+                  className="mt-1"
+                  data-testid="textarea-po-terms"
+                />
+              </div>
+
               {editRequiresNote && (
                 <div className="space-y-2 border-t pt-4">
                   <Label htmlFor="editNote" className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
@@ -2033,7 +2202,7 @@ export default function PurchaseOrdersIndex() {
               )}
 
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} className="w-full sm:w-auto">
                   Cancel
                 </Button>
                 <Button
@@ -2063,7 +2232,10 @@ export default function PurchaseOrdersIndex() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0 border-b pb-4">
-            <div className="flex items-center justify-between">
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, print) live up here; status-flow actions
+                (submit, approve, reject, convert) stay in the footer. */}
+            <div className="flex items-center justify-between gap-3 pr-8">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
                   <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -2074,7 +2246,28 @@ export default function PurchaseOrdersIndex() {
                 </div>
               </div>
               {viewingOrder && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Same gate as the list's Edit button: drafts for anyone who
+                      can edit, post-approval statuses for admin/finance only.
+                      Converted orders show no Edit, matching the list. */}
+                  {(viewingOrder.status === "draft" ||
+                    (["approved", "pending_approval", "rejected"].includes(viewingOrder.status) &&
+                      (user?.role === "admin" || user?.role === "finance"))) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const order = viewingOrder;
+                        setIsViewDialogOpen(false);
+                        handleEditOrder(order);
+                      }}
+                      className="gap-2"
+                      data-testid="button-edit-from-view"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -2111,6 +2304,10 @@ export default function PurchaseOrdersIndex() {
                         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
                         <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
                       </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
+                        <p className="mt-1">{getStatusBadge(viewingOrder.status)}</p>
+                      </div>
                       {viewingOrder.subject && (
                         <div>
                           <h3 className="text-gray-500 dark:text-gray-400 text-sm">Subject</h3>
@@ -2137,6 +2334,18 @@ export default function PurchaseOrdersIndex() {
                           <p className="text-sm font-medium mt-1">{viewingOrder.deliveryTerms}</p>
                         </div>
                       )}
+                      {viewingOrder.deliverTo && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deliver To</label>
+                          <p className="text-sm font-medium mt-1 whitespace-pre-wrap">{viewingOrder.deliverTo}</p>
+                        </div>
+                      )}
+                      {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exchange Rate</label>
+                          <p className="text-sm font-medium mt-1">1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -2147,7 +2356,7 @@ export default function PurchaseOrdersIndex() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="h-4 w-4" />
                       Approval Information
                     </CardTitle>
                   </CardHeader>
@@ -2232,6 +2441,21 @@ export default function PurchaseOrdersIndex() {
                       className="text-sm text-muted-foreground rich-text-content"
                       dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
                     />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Terms & Conditions */}
+              {viewingOrder.termsAndConditions && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Terms &amp; Conditions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
                   </CardContent>
                 </Card>
               )}
@@ -2427,18 +2651,75 @@ export default function PurchaseOrdersIndex() {
                 </CardContent>
               </Card>
 
-              {/* Action Buttons */}
-              {canEdit && canCreateInvoice(viewingOrder) && (
-                <div className="flex justify-end gap-2 pt-4 border-t">
+              {/* Action Buttons — status-flow actions, mirroring the list
+                  row gates exactly. viewingOrder is plain state and goes
+                  stale after a mutation invalidates the list, so every
+                  action closes the view dialog first. */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+                {viewingOrder.status === "draft" && (
                   <Button
-                    onClick={() => openConvertDialog()}
-                    className="gap-2"
+                    onClick={() => {
+                      setIsViewDialogOpen(false);
+                      submitOrderMutation.mutate(viewingOrder.id);
+                    }}
+                    disabled={submitOrderMutation.isPending}
+                    className="w-full sm:w-auto gap-2"
+                    data-testid="button-submit-order-dialog"
                   >
-                    <FileText className="w-4 h-4" />
-                    Convert to Invoice
+                    <Send className="h-4 w-4" />
+                    {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
                   </Button>
-                </div>
-              )}
+                )}
+                {viewingOrder.status === "pending_approval" && user?.role === "admin" && (
+                  <>
+                    <Button
+                      onClick={() => {
+                        setIsViewDialogOpen(false);
+                        approveOrderMutation.mutate(viewingOrder.id);
+                      }}
+                      disabled={approveOrderMutation.isPending}
+                      className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700"
+                      data-testid="button-approve-order-dialog"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      {approveOrderMutation.isPending ? "Approving..." : "Approve"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsViewDialogOpen(false);
+                        setIsRejectDialogOpen(true);
+                      }}
+                      disabled={rejectOrderMutation.isPending}
+                      className="w-full sm:w-auto gap-2 border-red-300 text-red-600 hover:bg-red-50"
+                      data-testid="button-reject-order-dialog"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {canEdit && canCreateInvoice(viewingOrder) && (
+                  <Button
+                    onClick={() => {
+                      setIsViewDialogOpen(false);
+                      openConvertDialog();
+                    }}
+                    className="w-full sm:w-auto gap-2"
+                    data-testid="button-convert-order-dialog"
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Convert
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsViewDialogOpen(false)}
+                  className="w-full sm:w-auto"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

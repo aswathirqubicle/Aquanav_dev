@@ -40,9 +40,8 @@ import {
   AlertTriangle,
   Archive,
   ArchiveRestore,
-  Download,
-  Eye,
-  Edit,
+  ArrowRightLeft,
+  Printer,
   Copy,
   Pencil,
   Trash2,
@@ -99,6 +98,8 @@ type CreateProformaInvoiceData = z.infer<typeof createProformaInvoiceSchema>;
 interface ProformaInvoice {
   id: number;
   proformaNumber: string;
+  subject?: string;
+  rejectionReason?: string | null;
   customerId: number;
   customerName?: string;
   projectId?: number;
@@ -153,6 +154,9 @@ export default function ProformaInvoicesIndex() {
   const [isEditingProforma, setIsEditingProforma] = useState(false);
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const [convertingProforma, setConvertingProforma] = useState<ProformaInvoice | null>(null);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectingProforma, setRejectingProforma] = useState<ProformaInvoice | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [archivedFilter, setArchivedFilter] = useState<string>("active");
   const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
@@ -175,12 +179,15 @@ export default function ProformaInvoicesIndex() {
     validUntil: new Date().toISOString().split('T')[0],
   });
 
+  // The staged line starts blank so nothing is pre-filled for the user to
+  // overwrite; the placeholders carry the guidance instead. Tax rate is the
+  // exception — it is derived from the customer's VAT treatment, not typed.
   const [newItem, setNewItem] = useState<ProformaItem>({
     description: "",
-    quantity: 1,
-    unitPrice: 0,
+    quantity: "",
+    unitPrice: "",
     taxRate: 0,
-    discount: 0,
+    discount: "",
     discountType: "amount",
   });
 
@@ -468,6 +475,34 @@ export default function ProformaInvoicesIndex() {
     },
   });
 
+  const rejectProformaMutation = useMutation({
+    mutationFn: async ({ proformaId, reason }: { proformaId: number; reason: string }) => {
+      const response = await apiRequest(`/api/proforma-invoices/${proformaId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "rejected", rejectionReason: reason }),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      toast({
+        title: "Success",
+        description: "Proforma invoice has been rejected.",
+      });
+      setIsRejectDialogOpen(false);
+      setRejectingProforma(null);
+      setRejectionReason("");
+      setIsDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject proforma invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       subject: "",
@@ -489,12 +524,15 @@ export default function ProformaInvoicesIndex() {
     });
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
+    // Clearing the index here makes resetForm self-sufficient: the effect on
+    // isDialogOpen below then finds nothing left to cancel.
+    setEditingItemIndex(null);
     setIsEditingProforma(false);
   };
 
@@ -529,9 +567,32 @@ export default function ProformaInvoicesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    // Quantity and unit price start blank, so they have to be entered rather
+    // than defaulted. Number.isFinite also catches a NaN that slipped past the
+    // number input, which would otherwise become a silently zero line.
+    const enteredQuantity = Number(newItem.quantity);
+    if (newItem.quantity === "" || !Number.isFinite(enteredQuantity) || enteredQuantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const enteredUnitPrice = Number(newItem.unitPrice);
+    if (newItem.unitPrice === "" || !Number.isFinite(enteredUnitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const quantity = enteredQuantity;
+    const unitPrice = enteredUnitPrice;
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
     const discount = newItem.discount === "" ? 0 : (newItem.discount || 0);
     const discountType = newItem.discountType || "amount";
 
@@ -556,13 +617,13 @@ export default function ProformaInvoicesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       // Reset these too. Leaving them undefined flips the Discount inputs from
       // controlled to uncontrolled, so they keep displaying the previous line's
-      // value while the staged item is actually 0.
-      discount: 0,
+      // value while the staged item is actually blank.
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -578,7 +639,7 @@ export default function ProformaInvoicesIndex() {
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
     });
@@ -589,13 +650,13 @@ export default function ProformaInvoicesIndex() {
   const cancelEditItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       // Reset these too. Leaving them undefined flips the Discount inputs from
       // controlled to uncontrolled, so they keep displaying the previous line's
-      // value while the staged item is actually 0.
-      discount: 0,
+      // value while the staged item is actually blank.
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -707,6 +768,34 @@ export default function ProformaInvoicesIndex() {
     }
   };
 
+  // Rejection needs a reason, so it goes through its own confirm dialog rather
+  // than firing straight away like approve does.
+  const handleRejectProforma = (proforma: ProformaInvoice) => {
+    if (proforma.status === "draft" || proforma.status === "sent") {
+      setRejectingProforma(proforma);
+      setRejectionReason("");
+      setIsRejectDialogOpen(true);
+    }
+  };
+
+  const confirmRejectProforma = () => {
+    if (!rejectingProforma) {
+      return;
+    }
+    if (!rejectionReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a reason for rejecting this proforma invoice",
+        variant: "destructive",
+      });
+      return;
+    }
+    rejectProformaMutation.mutate({
+      proformaId: rejectingProforma.id,
+      reason: rejectionReason.trim(),
+    });
+  };
+
   if (
     !isAuthenticated ||
     (user?.role !== "admin" &&
@@ -765,10 +854,10 @@ export default function ProformaInvoicesIndex() {
     // 🔹 ensure new item uses correct tax
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: defaultTaxRate,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
 
@@ -792,15 +881,30 @@ export default function ProformaInvoicesIndex() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            {/* Dismissing the dialog by any route — the X, Escape, a click on
+                the overlay or the Cancel button below — leaves nothing behind.
+                Radix only reports its own close triggers here, so the Cancel
+                button and the post-submit path call resetForm themselves. */}
+            <Dialog
+              open={isDialogOpen}
+              onOpenChange={(open) => {
+                setIsDialogOpen(open);
+                if (!open) resetForm();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={openNewProformaDialog}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Proforma Invoice
                 </Button>
               </DialogTrigger>
+              {/* No remount key here. It used to force a fresh mount per
+                  proforma, but resetForm now runs on every dismiss and clears
+                  the form, staged line, line-edit index and editing flag — so
+                  the remount is redundant. It was also actively harmful:
+                  resetForm flips isEditingProforma, which changed the key
+                  mid-close and snapped the dialog shut instead of fading. */}
               <DialogContent
-                key={isEditingProforma ? selectedProforma?.id : "new"}
                 className="sm:max-w-4xl max-h-[90vh] overflow-y-auto"
               >
 
@@ -1127,7 +1231,7 @@ export default function ProformaInvoicesIndex() {
                             <Label className="text-xs text-gray-600">Quantity</Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -1142,7 +1246,7 @@ export default function ProformaInvoicesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -1173,7 +1277,7 @@ export default function ProformaInvoicesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -1471,7 +1575,10 @@ export default function ProformaInvoicesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
+                      onClick={() => {
+                        setIsDialogOpen(false);
+                        resetForm();
+                      }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
@@ -1688,7 +1795,26 @@ export default function ProformaInvoicesIndex() {
       ) : (
         <div className="space-y-4">
           {paginatedProformas.map((proforma) => (
-            <Card key={proforma.id} className="hover:shadow-md transition-shadow">
+            /* The whole card opens the detail dialog. role/tabIndex/onKeyDown
+               keep it reachable without a mouse; every button inside stops
+               propagation so acting on it does not also open the dialog. */
+            <Card
+              key={proforma.id}
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onClick={() => openDetails(proforma)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) {
+                  return;
+                }
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openDetails(proforma);
+                }
+              }}
+              data-testid={`row-proforma-${proforma.id}`}
+            >
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div className="space-y-2">
@@ -1724,24 +1850,17 @@ export default function ProformaInvoicesIndex() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDetails(proforma)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-
-
                       {proforma.status === "approved" && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="text-green-600 hover:text-green-700"
-                          onClick={() => handleConvertToInvoice(proforma)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleConvertToInvoice(proforma);
+                          }}
                         >
-                          <FileText className="h-4 w-4 mr-1" />
+                          <ArrowRightLeft className="h-4 w-4 mr-1" />
                           Convert to Invoice
                         </Button>
                       )}
@@ -1808,10 +1927,97 @@ export default function ProformaInvoicesIndex() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Proforma Invoice Details — {selectedProforma?.proformaNumber || ""}</DialogTitle>
-            <DialogDescription>
-              View detailed information about this proforma invoice.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (approve, convert) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Proforma Invoice Details — {selectedProforma?.proformaNumber || ""}</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this proforma invoice.
+                </DialogDescription>
+              </div>
+              {selectedProforma && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (selectedProforma) {
+                        const selectedCustomer = customers?.find(
+                          (c) => c.id === selectedProforma.customerId
+                        );
+
+                        const vatTreatment = selectedCustomer?.vatTreatment || null;
+                        const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
+
+                        setCustomerVatTreatment(vatTreatment);
+                        // Populate form with existing data
+                        setSelectedProforma(selectedProforma);
+                        setFormData({
+                          customerId: selectedProforma.customerId,
+                          subject: selectedProforma.subject || "",
+                          projectId: selectedProforma.projectId,
+                          quotationId: selectedProforma.quotationId,
+                          invoiceDate: toInputDate(selectedProforma.invoiceDate),
+                          validUntil: toInputDate(selectedProforma.validUntil),
+                          paymentTerms: selectedProforma.paymentTerms || '',
+                          deliveryTerms: selectedProforma.deliveryTerms || '',
+                          bankAccount: selectedProforma.bankAccount || '',
+                          billingAddress: selectedProforma.billingAddress || '',
+                          termsAndConditions: selectedProforma.termsAndConditions || '',
+                          remarks: selectedProforma.remarks || '',
+                          items: selectedProforma.items || [],
+                          discountPercentage: selectedProforma.discountPercentage || '0',
+                          discount: selectedProforma.discount || '0',
+                          currency: selectedProforma.currency || 'AED',
+                          exchangeRate: selectedProforma.exchangeRate || '1',
+                          workOrderNumber: selectedProforma.workOrderNumber || '',
+                        });
+                        // 🔹 ensure new item uses correct tax
+                        setNewItem({
+                          description: "",
+                          quantity: "",
+                          unitPrice: "",
+                          taxRate: defaultTaxRate,
+                          // Without these the Discount inputs would flip from
+                          // controlled to uncontrolled and keep showing the
+                          // previous line's value.
+                          discount: "",
+                          discountType: "amount",
+                        });
+
+                        setIsEditingProforma(true);
+                        setIsDetailsOpen(false);
+                        setIsDialogOpen(true);
+                      }
+                    }}
+                    data-testid="button-edit-proforma-header"
+                  >
+                    <Pencil className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateProforma(selectedProforma)}
+                    data-testid="button-duplicate-proforma-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintPDF(selectedProforma)}
+                    data-testid="button-print-proforma-header"
+                  >
+                    <Printer className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedProforma ? (
             <div className="space-y-6">
@@ -1834,6 +2040,12 @@ export default function ProformaInvoicesIndex() {
                       <span className="font-medium">Status:</span>
                       <span>{getStatusBadge(selectedProforma.status)}</span>
                     </div>
+                    {selectedProforma.rejectionReason && (
+                      <div className="flex justify-between gap-4">
+                        <span className="font-medium whitespace-nowrap">Rejection Reason:</span>
+                        <span className="text-red-600 text-right whitespace-pre-wrap">{selectedProforma.rejectionReason}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="font-medium">Invoice Date:</span>
                       <span>{formatDate(selectedProforma.invoiceDate || selectedProforma.createdDate)}</span>
@@ -1846,6 +2058,14 @@ export default function ProformaInvoicesIndex() {
                       <div className="flex justify-between">
                         <span className="font-medium">Valid Until:</span>
                         <span>{formatDate(selectedProforma.validUntil)}</span>
+                      </div>
+                    )}
+                    {selectedProforma.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedProforma.subject}
+                        </p>
                       </div>
                     )}
                     {selectedProforma.paymentTerms && (
@@ -2056,73 +2276,9 @@ export default function ProformaInvoicesIndex() {
                 </Card>
               )}
 
-              {/* Action Buttons */}
+              {/* Action Buttons — status-flow only; document actions
+                  (edit, duplicate, print) live in the header. */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
-                  Close
-                </Button>
-                <Button variant="outline" onClick={() => handlePrintPDF(selectedProforma)}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Print PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    if (selectedProforma) {
-                      const selectedCustomer = customers?.find(
-                        (c) => c.id === selectedProforma.customerId
-                      );
-
-                      const vatTreatment = selectedCustomer?.vatTreatment || null;
-                      const defaultTaxRate = vatTreatment === "standard" ? 5 : 0;
-
-                      setCustomerVatTreatment(vatTreatment);
-                      // Populate form with existing data
-                      setSelectedProforma(selectedProforma);
-                      setFormData({
-                        customerId: selectedProforma.customerId,
-                        subject: selectedProforma.subject || "",
-                        projectId: selectedProforma.projectId,
-                        quotationId: selectedProforma.quotationId,
-                        invoiceDate: toInputDate(selectedProforma.invoiceDate),
-                        validUntil: toInputDate(selectedProforma.validUntil),
-                        paymentTerms: selectedProforma.paymentTerms || '',
-                        deliveryTerms: selectedProforma.deliveryTerms || '',
-                        bankAccount: selectedProforma.bankAccount || '',
-                        billingAddress: selectedProforma.billingAddress || '',
-                        termsAndConditions: selectedProforma.termsAndConditions || '',
-                        remarks: selectedProforma.remarks || '',
-                        items: selectedProforma.items || [],
-                        discountPercentage: selectedProforma.discountPercentage || '0',
-                        discount: selectedProforma.discount || '0',
-                        currency: selectedProforma.currency || 'AED',
-                        exchangeRate: selectedProforma.exchangeRate || '1',
-                        workOrderNumber: selectedProforma.workOrderNumber || '',
-                      });
-                      // 🔹 ensure new item uses correct tax
-                      setNewItem({
-                        description: "",
-                        quantity: 1,
-                        unitPrice: 0,
-                        taxRate: defaultTaxRate,
-                      });
-
-                      setIsEditingProforma(true);
-                      setIsDetailsOpen(false);
-                      setIsDialogOpen(true);
-                    }
-                  }}
-                >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDuplicateProforma(selectedProforma)}
-                >
-                  <Copy className="h-4 w-4 mr-1" />
-                  Duplicate
-                </Button>
                 {selectedProforma && (selectedProforma.status === "draft" || selectedProforma.status === "sent") && (
                   <Button
                     className="bg-green-600 hover:bg-green-700 text-white"
@@ -2133,16 +2289,30 @@ export default function ProformaInvoicesIndex() {
                     {approveProformaMutation.isPending ? "Approving..." : "Approve"}
                   </Button>
                 )}
+                {selectedProforma && (selectedProforma.status === "draft" || selectedProforma.status === "sent") && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleRejectProforma(selectedProforma)}
+                    disabled={rejectProformaMutation.isPending}
+                    data-testid="button-reject-proforma"
+                  >
+                    <XCircle className="h-4 w-4 mr-1" />
+                    Reject
+                  </Button>
+                )}
                 {selectedProforma && selectedProforma.status === "approved" && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleConvertToInvoice(selectedProforma)}
                     disabled={convertToInvoiceMutation.isPending}
                   >
-                    <FileText className="h-4 w-4 mr-1" />
+                    <ArrowRightLeft className="h-4 w-4 mr-1" />
                     {convertToInvoiceMutation.isPending ? "Converting..." : "Convert to Invoice"}
                   </Button>
                 )}
+                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                  Close
+                </Button>
               </div>
             </div>
           ) : (
@@ -2192,6 +2362,50 @@ export default function ProformaInvoicesIndex() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Proforma Invoice</DialogTitle>
+            <DialogDescription>
+              {rejectingProforma
+                ? `${rejectingProforma.proformaNumber} will be marked as rejected.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rejectionReason">Reason for Rejection</Label>
+              <Textarea
+                id="rejectionReason"
+                placeholder="Please provide a reason for rejecting this proforma invoice..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                data-testid="input-rejection-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsRejectDialogOpen(false)}
+                disabled={rejectProformaMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmRejectProforma}
+                disabled={rejectProformaMutation.isPending}
+                data-testid="button-confirm-reject-proforma"
+              >
+                <XCircle className="h-4 w-4 mr-1" />
+                {rejectProformaMutation.isPending ? "Rejecting..." : "Reject"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

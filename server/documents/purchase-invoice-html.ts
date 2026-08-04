@@ -1,225 +1,135 @@
 import {
-  getCommonStyles,
-  generateCommonHeader,
-  generateCommonFooter,
-} from "../document-utils";
-import { sanitize } from "./sanitize";
+  renderDocument,
+  documentTotalsFor,
+  formatDocumentDate,
+  moneyIn,
+  num,
+} from "./document-layout";
 
+/**
+ * Purchase invoice PDF, on the shared layout the sales invoice uses.
+ *
+ * The page itself lives in document-layout.ts; this file supplies only what
+ * makes a purchase invoice one — its title, the supplier's own invoice number,
+ * and the paid/balance figures.
+ *
+ * Figures now come from computeDocumentTotals rather than from the stored
+ * subtotal/taxAmount columns, so VAT sits on the discounted base. The old
+ * template printed `quantity × unitPrice + tax` per line, charging VAT on the
+ * gross and overstating it by the tax on any discount given.
+ *
+ * Only bank details print under Terms & Conditions: purchase_invoices has a
+ * bank_account column but no terms_and_conditions one — that column exists on
+ * purchase_orders (migration 0072) and the sales documents, not here.
+ */
 export function generatePurchaseInvoiceHTML(
   invoice: any,
   supplier: any,
   company: any,
-  project?: any,
+  /**
+   * Accepted but deliberately unprinted. A purchase invoice is not allocated
+   * to a project at the header — the project or asset is tagged per LINE, and
+   * drives project cost and asset maintenance expense rather than anything the
+   * supplier needs to read. The parameter stays because both callers pass it.
+   */
+  _project?: any,
 ): string {
   const val = (v: any) =>
     v === "null" || v === null || v === undefined ? "" : v;
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    const currency = supplier.currency || "AED";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      currencyDisplay: "code",
-    })
-      .format(num)
-      .replace(currency, currency + " ");
-  };
 
-  const formatDate = (date: string | Date | null | undefined) => {
-    if (!date) return "";
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, "0");
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day}-${month}-${year}`;
-  };
+  const currency = invoice.currency || supplier?.currency || "AED";
+  const money = moneyIn(currency);
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Purchase Invoice ${val(invoice.invoiceNumber)}</title>
-      ${getCommonStyles()}
-    </head>
-    <body>
-      ${generateCommonHeader({ company })}
-      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
-        <thead>
-          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
-            </td>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="report-content-cell">
-              <div class="document-info">
-                <h1>PURCHASE INVOICE</h1>
-                <p><strong>Invoice Number:</strong> ${val(invoice.invoiceNumber)}</p>
-                ${val(invoice.supplierInvoiceNumber) ? `<p><strong>Supplier Invoice Number:</strong> ${val(invoice.supplierInvoiceNumber)}</p>` : ""}
-                <p><strong>Date:</strong> ${formatDate(invoice.invoiceDate)}</p>
-                ${val(invoice.dueDate) ? `<p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>` : ""}
-                ${val(invoice.poNumber) ? `<p><strong>Linked PO:</strong> ${val(invoice.poNumber)}</p>` : val(invoice.poId) ? `<p><strong>Linked PO:</strong> PO-${val(invoice.poId)}</p>` : ""}
-                ${project ? `<p><strong>Project:</strong> ${val(project.title)}</p>` : ""}
-              </div>
+  // Items come from purchase_invoice_items, a child table, joined to
+  // inventory_items by the storage layer. A stocked line carries its name on
+  // the joined inventory item rather than in its own description column, so
+  // resolve the two into the one field the layout prints.
+  const items: any[] = (Array.isArray(invoice.items) ? invoice.items : []).map(
+    (item: any) => ({
+      ...item,
+      description:
+        item.itemType === "product"
+          ? [val(item.inventoryItemName), val(item.inventoryItemDescription)]
+              .filter(Boolean)
+              .join("\n") || val(item.description)
+          : val(item.description),
+      // The unit rides with the quantity, as the old template printed it. The
+      // layout treats quantity as a display value and takes every figure from
+      // the totals below, which are computed from the raw items.
+      quantity: val(item.inventoryItemUnit)
+        ? `${val(item.quantity)} ${val(item.inventoryItemUnit)}`
+        : val(item.quantity),
+    }),
+  );
+  const totals = documentTotalsFor(
+    invoice,
+    Array.isArray(invoice.items) ? invoice.items : [],
+  );
 
-              <div class="info-grid">
-                <div class="info-box">
-                  <h3>Supplier:</h3>
-                  <p><strong>${val(supplier.name)}</strong></p>
-                  ${val(supplier.address) ? `<p style="white-space: pre-wrap;">${val(supplier.address)}</p>` : ""}
-                  ${val(supplier.phone) ? `<p>Phone: ${val(supplier.phone)}</p>` : ""}
-                  ${val(supplier.email) ? `<p>Email: ${val(supplier.email)}</p>` : ""}
-                  ${val(supplier.vatNumber) ? `<p><strong>TRN:</strong> ${val(supplier.vatNumber)}</p>` : ""}
-                </div>
-                <div class="info-box">
-                  <h3>Bill To:</h3>
-                  <p><strong>${val(company.name)}</strong></p>
-                  <p style="white-space: pre-wrap;">${val(company.address) || ""}</p>
-                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
-                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
-                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
-                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
-                </div>
-              </div>
+  const paid = parseFloat(invoice.paidAmount || "0") || 0;
+  const balanceDue = totals.total - paid;
 
-              <div class="terms" style="margin-bottom: 20px;">
-                ${val(invoice.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(invoice.paymentTerms)}</p>` : ""}
-              </div>
+  // An invoice that has not been approved has posted nothing to the ledger and
+  // can still change. draft/pending_approval/rejected matches how the edit gate
+  // defines pre-approval in purchase-invoices.routes.ts.
+  const status = String(invoice.status || "").toLowerCase();
+  const isApproved =
+    status !== "draft" && status !== "pending_approval" && status !== "rejected";
 
-              <table>
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th class="text-right">Qty</th>
-                    <th class="text-right">Unit Price</th>
-                    <th class="text-right">Tax Rate</th>
-                    <th class="text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(invoice.items || [])
-                    .map((item: any) => {
-                      const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount = parseFloat(item.taxAmount || 0);
-                      const lineTotal = parseFloat(
-                        item.lineTotal || lineSubtotal + taxAmount,
-                      );
-                      const taxRate =
-                        item.taxRate ||
-                        (lineSubtotal > 0
-                          ? (taxAmount / lineSubtotal) * 100
-                          : 0);
-
-                      return `
-                    <tr>
-                      <td>
-                        <div style="font-weight: 500; white-space: pre-wrap;">${item.itemType === "product" ? val(item.inventoryItemName) : val(item.description)}</div>
-                        ${item.itemType === "product" && val(item.inventoryItemDescription) ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">${val(item.inventoryItemDescription)}</div>` : ""}
-                      </td>
-                      <td class="text-right">${val(item.quantity)} ${item.itemType === "product" ? val(item.inventoryItemUnit) : ""}</td>
-                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-                      <td class="text-right">${parseFloat(taxRate).toFixed(0)}%</td>
-                      <td class="text-right">${formatCurrency(lineTotal)}</td>
-                    </tr>
-                    `;
-                    })
-                    .join("")}
-                </tbody>
-              </table>
-
-              <div style="margin-top: 30px;">
-                <table style="width: 100%; border-collapse: collapse; border: none !important;">
-                  <tr>
-                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${
-                        invoice.bankAccount
-                          ? `
-                        <div style="font-size: 11px; color: #444;">
-                          <strong>Bank Account Details:</strong>
-                          <div class="rich-text-content">${sanitize(invoice.bankAccount)}</div>
-                        </div>
-                      `
-                          : ""
-                      }
-                    </td>
-                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
-                        <tr>
-                          <td><strong>Subtotal:</strong></td>
-                          <td class="text-right">${formatCurrency(invoice.subtotal || 0)}</td>
-                        </tr>
-                        ${(() => {
-                          // Total discount (header + line) derived from stored
-                          // fields; the discountAmount column holds only the header.
-                          const totalDiscount =
-                            parseFloat(invoice.subtotal || "0") +
-                            parseFloat(invoice.taxAmount || "0") -
-                            parseFloat(invoice.totalAmount || "0");
-                          return totalDiscount > 0.005
-                            ? `
-                        <tr>
-                          <td><strong>Discount:</strong></td>
-                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
-                        </tr>
-                        `
-                            : "";
-                        })()}
-                        <tr>
-                          <td><strong>Tax Amount:</strong></td>
-                          <td class="text-right">${formatCurrency(invoice.taxAmount || 0)}</td>
-                        </tr>
-                        <tr class="total-row">
-                          <td><strong>Total Amount:</strong></td>
-                          <td class="text-right">${formatCurrency(invoice.totalAmount || 0)}</td>
-                        </tr>
-                        ${
-                          parseFloat(invoice.paidAmount || 0) > 0
-                            ? `
-                        <tr>
-                          <td><strong>Paid Amount:</strong></td>
-                          <td class="text-right">${formatCurrency(invoice.paidAmount)}</td>
-                        </tr>
-                        <tr class="total-row" style="color: ${parseFloat(invoice.paidAmount) >= parseFloat(invoice.totalAmount) ? "green" : "red"};">
-                          <td><strong>Balance Due:</strong></td>
-                          <td class="text-right">${formatCurrency(parseFloat(invoice.totalAmount) - parseFloat(invoice.paidAmount))}</td>
-                        </tr>
-                        `
-                            : ""
-                        }
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              ${val(invoice.notes) ? `<div class="terms" style="margin-top: 20px;"><h3>Notes:</h3><div>${sanitize(invoice.notes)}</div></div>` : ""}
-            </td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-      ${generateCommonFooter({ company })}
-    </body>
-    </html>
-  `;
+  return renderDocument({
+    company,
+    title: isApproved ? "PURCHASE INVOICE" : "DRAFT PURCHASE INVOICE",
+    htmlTitle: `${isApproved ? "Purchase Invoice" : "Draft Purchase Invoice"} ${val(invoice.invoiceNumber)}`,
+    documentNumber: val(invoice.invoiceNumber),
+    draft: !isApproved,
+    currency,
+    highlight: { label: "Balance Due", value: money(balanceDue) },
+    parties: [
+      {
+        label: "Vendor",
+        name: val(supplier?.name),
+        address: val(supplier?.address),
+        phone: val(supplier?.phone),
+        // TRN falls back to Tax ID: the two fields both exist on the
+        // counterparty and most records carry only the latter, so printing
+        // vatNumber alone left the TRN off nearly every document.
+        vatNumber: val(supplier?.vatNumber) || val(supplier?.taxId),
+      },
+    ],
+    meta: [
+      { key: "Invoice Date", value: formatDocumentDate(invoice.invoiceDate) },
+      { key: "Due Date", value: formatDocumentDate(invoice.dueDate) },
+      {
+        key: "Supplier Invoice #",
+        value: val(invoice.supplierInvoiceNumber),
+      },
+      // The order this invoice bills against; the route resolves the number
+      // from poId before printing.
+      { key: "P.O.#", value: val(invoice.poNumber) },
+      { key: "Terms", value: val(invoice.paymentTerms) },
+      {
+        key: "Exchange Rate",
+        value:
+          currency !== "AED" && val(invoice.exchangeRate)
+            ? `1 ${currency} = ${val(invoice.exchangeRate)} AED`
+            : "",
+      },
+    ],
+    subject: val(invoice.subject),
+    items,
+    totals,
+    extraTotalRows: [
+      ...(paid > 0 ? [{ key: "Paid", value: `-${num(paid)}` }] : []),
+      { key: "Balance Due", value: money(balanceDue), emphasis: true },
+    ],
+    sections: [
+      { heading: "Notes", bodies: [invoice.notes] },
+      // Terms now have a column of their own (migration 0073); bank details
+      // ride under the same heading, as the sales invoice has them.
+      {
+        heading: "Terms &amp; Conditions",
+        bodies: [invoice.termsAndConditions, invoice.bankAccount],
+      },
+    ],
+  });
 }

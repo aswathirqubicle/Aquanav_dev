@@ -91,7 +91,7 @@ export function getCommonStyles(): string {
       .title {
         text-align: right;
         font-size: 12px;
-        color: #0b4d78;
+        color: #1328B8;
         line-height: 1.4;
       }
 
@@ -140,7 +140,7 @@ export function getCommonStyles(): string {
 
       .footer-item i {
         margin-right: 5px;
-        color: #0b4d78;
+        color: #1328B8;
       }
 
       .footer-item a {
@@ -160,7 +160,7 @@ export function getCommonStyles(): string {
       }
 
       .info-box h3 {
-        color: #0b4d78;
+        color: #1328B8;
         padding-bottom: 5px;
         margin-top: 0;
         margin-bottom: 12px;
@@ -182,7 +182,7 @@ export function getCommonStyles(): string {
       }
 
       .document-info h1 {
-        color: #0b4d78;
+        color: #1328B8;
         margin-bottom: 15px;
         font-size: 24px;
         margin-top: 0;
@@ -225,7 +225,7 @@ export function getCommonStyles(): string {
       }
       .rich-text-content h1, .rich-text-content h2 {
         margin: 12px 0 8px 0;
-        color: #0b4d78;
+        color: #1328B8;
       }
       .rich-text-content h1 { font-size: 18px; }
       .rich-text-content h2 { font-size: 16px; }

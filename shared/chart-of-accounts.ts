@@ -6,8 +6,16 @@
  * this list, and the ledger rebuild verifies the database AGAINST it. Importing
  * the seed script instead would run the seeder, which truncates the table.
  *
- * Kept in step with migrations/0062_fix_chart_of_accounts.sql and
- * migrations/0068_rename_2120_provident_fund.sql.
+ * Kept in step with migrations/0062_fix_chart_of_accounts.sql,
+ * migrations/0068_rename_2120_provident_fund.sql and
+ * migrations/0073_add_employee_reimbursement_account.sql.
+ *
+ * An account the posting code writes to but this list omits is worse than a
+ * missing migration: verifyChartOfAccounts cannot report it (it is not in the
+ * planned set), and reseedChartOfAccounts DELETES it, because anything outside
+ * this list is dropped by design. That is what happened to 6160 — added by
+ * migration 0063 the day before this file was written, and never picked up
+ * here. Add an account to BOTH a migration and this list, or neither.
  */
 export type SeedAccount = {
   accountCode: string;
@@ -114,6 +122,7 @@ export const accounts: SeedAccount[] = [
   { accountCode: "6130", accountName: "Training and Development", accountType: "expense", accountCategory: "operating_expenses", description: "Employee training costs" },
   { accountCode: "6140", accountName: "Bank Charges", accountType: "expense", accountCategory: "operating_expenses", description: "Bank fees and charges" },
   { accountCode: "6150", accountName: "Equipment Rental", accountType: "expense", accountCategory: "operating_expenses", description: "Expenses for renting equipment" },
+  { accountCode: "6160", accountName: "Employee Reimbursement", accountType: "expense", accountCategory: "operating_expenses", description: "Employee expense claims not falling under a specific expense category" },
   { accountCode: "6200", accountName: "Administrative Expenses", accountType: "expense", accountCategory: "administrative_expenses", description: "General administrative costs" },
   { accountCode: "6210", accountName: "Management Fees", accountType: "expense", accountCategory: "administrative_expenses", description: "Management and consulting fees" },
   { accountCode: "6220", accountName: "Audit and Legal Fees", accountType: "expense", accountCategory: "administrative_expenses", description: "Audit and legal expenses" },

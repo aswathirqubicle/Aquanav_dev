@@ -1,10 +1,24 @@
 import {
-  getCommonStyles,
-  generateCommonHeader,
-  generateCommonFooter,
-} from "../document-utils";
-import { sanitize } from "./sanitize";
+  renderDocument,
+  documentTotalsFor,
+  formatDocumentDate,
+  moneyIn,
+} from "./document-layout";
 
+/**
+ * Sales quotation PDF, on the shared layout the sales invoice uses.
+ *
+ * The page itself lives in document-layout.ts, shared with the other sales and
+ * purchase documents; this file supplies only what makes a quotation a
+ * quotation — its title, its meta rows, and the decision about whether it is a
+ * quotation anyone has been offered yet.
+ *
+ * Moving it onto that layout also corrected the figures. The old template
+ * computed `quantity × unitPrice + tax` per line, charging VAT on the gross, so
+ * a discounted quotation quoted VAT the customer would never be charged. Every
+ * figure now comes from computeDocumentTotals, the same engine the quotation
+ * form and the ledger use.
+ */
 export function generateQuotationHTML(
   quotation: any,
   customer: any,
@@ -12,198 +26,60 @@ export function generateQuotationHTML(
 ): string {
   const val = (v: any) =>
     v === "null" || v === null || v === undefined ? "" : v;
-  const formatCurrency = (amount: string | number) => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    const currency = customer.currency || "AED";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      currencyDisplay: "code",
-    })
-      .format(num)
-      .replace(currency, currency + " ");
-  };
 
-  const formatDate = (date: string | Date | null | undefined) => {
-    if (!date) return "";
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return "";
-    const day = String(d.getDate()).padStart(2, "0");
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day}-${month}-${year}`;
-  };
+  const currency = quotation.currency || customer?.currency || "AED";
+  const money = moneyIn(currency);
 
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Quotation ${val(quotation.quotationNumber)}</title>
-      ${getCommonStyles()}
-    </head>
-    <body>
-      ${generateCommonHeader({ company })}
-      <table class="report-wrapper" style="width: 100%; border-collapse: collapse; border: none !important;">
-        <thead>
-          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-header-space"></div>
-            </td>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="report-content-cell">
-              <div class="document-info">
-                <h1>SALES QUOTATION</h1>
-                <p><strong>Quotation Number:</strong> ${val(quotation.quotationNumber)}</p>
-                <p><strong>Date:</strong> ${formatDate(quotation.createdDate)}</p>
-                ${val(quotation.validUntil) ? `<p><strong>Valid Until:</strong> ${formatDate(quotation.validUntil)}</p>` : ""}
-                ${val(quotation.projectId) ? `<p><strong>Project:</strong> ${val(quotation.projectName) || val(quotation.projectId)}</p>` : ""}
-              </div>
+  const items: any[] = Array.isArray(quotation.items) ? quotation.items : [];
+  const totals = documentTotalsFor(quotation, items);
 
-              <div class="info-grid">
-                <div class="info-box">
-                  <h3>From:</h3>
-                  <p><strong>${val(company.name)}</strong></p>
-                  <p style="white-space: pre-wrap;">${val(company.address)}</p>
-                  ${val(company.phone) ? `<p>Phone: ${val(company.phone)}</p>` : ""}
-                  ${val(company.email) ? `<p>Email: ${val(company.email)}</p>` : ""}
-                  ${val(company.website) ? `<p>Website: ${val(company.website)}</p>` : ""}
-                  ${val(company.vatNumber) ? `<p><strong>TRN:</strong> ${val(company.vatNumber)}</p>` : ""}
-                </div>
-                <div class="info-box">
-                  <h3>Bill To:</h3>
-                  <p><strong>${val(customer.name)}</strong></p>
-                  ${val(customer.contactPerson) ? `<p>Contact: ${val(customer.contactPerson)}</p>` : ""}
-                  <p style="white-space: pre-wrap;">${val(quotation.billingAddress) || val(customer.address) || ""}</p>
-                </div>
-              </div>
+  // A quotation still being drafted has not been offered to anyone, so it
+  // should not present itself as one the customer can accept. draft and
+  // pending_approval are pre-approval and rejected never reached it; sent,
+  // approved and converted are all live offers.
+  const status = String(quotation.status || "").toLowerCase();
+  const isIssued =
+    status !== "draft" && status !== "pending_approval" && status !== "rejected";
 
-              <table>
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th class="text-right">Qty</th>
-                    <th class="text-right">Unit Price</th>
-                    <th class="text-right">Tax Rate</th>
-                    <th class="text-right">Tax Amount</th>
-                    <th class="text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${(quotation.items || [])
-                    .map((item: any) => {
-                      const lineSubtotal = item.quantity * item.unitPrice;
-                      const taxAmount =
-                        lineSubtotal * ((item.taxRate || 0) / 100);
-                      const lineTotal = lineSubtotal + taxAmount;
-                      return `
-                    <tr>
-                      <td style="white-space: pre-wrap;">${val(item.description)}</td>
-                      <td class="text-right">${val(item.quantity)}</td>
-                      <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-                      <td class="text-right">${item.taxRate || 0}%</td>
-                      <td class="text-right">${formatCurrency(taxAmount)}</td>
-                      <td class="text-right">${formatCurrency(lineTotal)}</td>
-                    </tr>
-                    `;
-                    })
-                    .join("")}
-                </tbody>
-              </table>
-
-              <div style="margin-top: 30px;">
-                <table style="width: 100%; border-collapse: collapse; border: none !important;">
-                  <tr>
-                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      ${
-                        quotation.bankAccount
-                          ? `
-                        <div style="font-size: 11px; color: #444;">
-                          <strong>Our Bank Details:</strong>
-                          <div class="rich-text-content">${sanitize(quotation.bankAccount)}</div>
-                        </div>
-                      `
-                          : ""
-                      }
-                    </td>
-                    <td style="vertical-align: bottom; border: none !important; padding: 0 !important;">
-                      <table style="width: 300px; margin-left: auto; margin-bottom: 0;">
-                        <tr>
-                          <td><strong>Subtotal:</strong></td>
-                          <td class="text-right">${formatCurrency(
-                            quotation.subtotal || 0,
-                          )}</td>
-                        </tr>
-                        ${(() => {
-                          // Total discount (header + line) derived from stored
-                          // fields; the `discount` column holds only the header.
-                          const totalDiscount =
-                            parseFloat(quotation.subtotal || "0") +
-                            parseFloat(quotation.taxAmount || "0") -
-                            parseFloat(quotation.totalAmount || "0");
-                          return totalDiscount > 0.005
-                            ? `
-                        <tr>
-                          <td><strong>Discount:</strong></td>
-                          <td class="text-right">-${formatCurrency(totalDiscount.toFixed(2))}</td>
-                        </tr>
-                        `
-                            : "";
-                        })()}
-                        <tr>
-                          <td><strong>Tax Amount:</strong></td>
-                          <td class="text-right">${formatCurrency(
-                            quotation.taxAmount || 0,
-                          )}</td>
-                        </tr>
-                        <tr class="total-row">
-                          <td><strong>Total Amount:</strong></td>
-                          <td class="text-right">${formatCurrency(
-                            quotation.totalAmount || 0,
-                          )}</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-              <div class="terms" style="margin-bottom: 20px;">
-                <h3>Terms and Conditions:</h3>
-                <p>This quotation is valid until ${
-                  val(quotation.validUntil)
-                    ? formatDate(quotation.validUntil)
-                    : "further notice"
-                }.</p>
-                ${val(quotation.paymentTerms) ? `<p><strong>Payment Terms:</strong> ${val(quotation.paymentTerms)}</p>` : "<p>Payment terms: Net 30 days</p>"}
-                ${val(quotation.termsAndConditions) ? `<h3>Additional Terms:</h3><div class="rich-text-content">${sanitize(quotation.termsAndConditions)}</div>` : ""}
-                ${val(quotation.remarks) ? `<h3>Notes:</h3><div class="rich-text-content">${sanitize(quotation.remarks)}</div>` : ""}
-              </div>
-            </td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr><td style="border: none !important; padding: 0 !important;"><div class="report-footer-space"></div>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-      ${generateCommonFooter({ company })}
-    </body>
-    </html>
-  `;
+  return renderDocument({
+    company,
+    title: isIssued ? "QUOTATION" : "DRAFT QUOTATION",
+    htmlTitle: `${isIssued ? "Quotation" : "Draft Quotation"} ${val(quotation.quotationNumber)}`,
+    documentNumber: val(quotation.quotationNumber),
+    draft: !isIssued,
+    currency,
+    highlight: { label: "Total", value: money(totals.total) },
+    parties: [
+      {
+        label: "Bill To",
+        name: val(customer?.name),
+        address: val(quotation.billingAddress) || val(customer?.address) || "",
+        phone: val(customer?.phone),
+        // TRN falls back to Tax ID: the two fields both exist on the
+        // counterparty and most records carry only the latter, so printing
+        // vatNumber alone left the TRN off nearly every document.
+        vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
+      },
+    ],
+    // sales_quotations carries no date column of its own — createdDate is the
+    // date the quotation bears — and stores no work order number, so there is
+    // no P.O.# row to print here as there is on an invoice or proforma.
+    meta: [
+      { key: "Quote Date", value: formatDocumentDate(quotation.createdDate) },
+      { key: "Valid Until", value: formatDocumentDate(quotation.validUntil) },
+      { key: "Terms", value: val(quotation.paymentTerms) },
+    ],
+    subject: val(quotation.subject),
+    items,
+    totals,
+    sections: [
+      { heading: "Notes", bodies: [quotation.remarks] },
+      // Bank details sit under Terms & Conditions rather than a heading of
+      // their own, as the approved invoice layout has them.
+      {
+        heading: "Terms &amp; Conditions",
+        bodies: [quotation.termsAndConditions, quotation.bankAccount],
+      },
+    ],
+  });
 }

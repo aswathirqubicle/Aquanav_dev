@@ -743,6 +743,8 @@ export class PurchaseStorage extends SalesStorage {
           expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
           paymentTerms: purchaseOrders.paymentTerms,
           deliveryTerms: purchaseOrders.deliveryTerms,
+          deliverTo: purchaseOrders.deliverTo,
+          termsAndConditions: purchaseOrders.termsAndConditions,
           bankAccount: purchaseOrders.bankAccount,
           subtotal: purchaseOrders.subtotal,
           discountPercentage: purchaseOrders.discountPercentage,
@@ -817,6 +819,8 @@ export class PurchaseStorage extends SalesStorage {
           expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
           paymentTerms: purchaseOrders.paymentTerms,
           deliveryTerms: purchaseOrders.deliveryTerms,
+          deliverTo: purchaseOrders.deliverTo,
+          termsAndConditions: purchaseOrders.termsAndConditions,
           bankAccount: purchaseOrders.bankAccount,
           subtotal: purchaseOrders.subtotal,
           discountPercentage: purchaseOrders.discountPercentage,
@@ -877,6 +881,8 @@ export class PurchaseStorage extends SalesStorage {
           expectedDeliveryDate: purchaseOrders.expectedDeliveryDate,
           paymentTerms: purchaseOrders.paymentTerms,
           deliveryTerms: purchaseOrders.deliveryTerms,
+          deliverTo: purchaseOrders.deliverTo,
+          termsAndConditions: purchaseOrders.termsAndConditions,
           bankAccount: purchaseOrders.bankAccount,
           subtotal: purchaseOrders.subtotal,
           discountPercentage: purchaseOrders.discountPercentage,
@@ -987,6 +993,7 @@ export class PurchaseStorage extends SalesStorage {
             : null,
           paymentTerms: orderData.paymentTerms || null,
           deliveryTerms: orderData.deliveryTerms || null,
+          deliverTo: orderData.deliverTo || null,
           bankAccount: orderData.bankAccount || null,
           subtotal: orderData.subtotal || "0",
           discountPercentage: orderData.discountPercentage || "0",
@@ -994,6 +1001,7 @@ export class PurchaseStorage extends SalesStorage {
           taxAmount: orderData.taxAmount || "0",
           totalAmount: orderData.totalAmount || "0",
           notes: orderData.notes || null,
+          termsAndConditions: orderData.termsAndConditions || null,
           currency: orderData.currency || "AED",
           exchangeRate: orderData.exchangeRate || "1",
         })
@@ -1082,9 +1090,15 @@ export class PurchaseStorage extends SalesStorage {
         updateData.paymentTerms = data.paymentTerms || null;
       if (data.deliveryTerms !== undefined)
         updateData.deliveryTerms = data.deliveryTerms || null;
+      if (data.deliverTo !== undefined)
+        updateData.deliverTo = data.deliverTo || null;
+      if (data.termsAndConditions !== undefined)
+        updateData.termsAndConditions = data.termsAndConditions || null;
       if (data.bankAccount !== undefined)
         updateData.bankAccount = data.bankAccount || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
+      if (data.termsAndConditions !== undefined)
+        updateData.termsAndConditions = data.termsAndConditions || null;
       if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
       if (data.discountPercentage !== undefined)
         updateData.discountPercentage = data.discountPercentage;
@@ -1553,6 +1567,7 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1693,6 +1708,7 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1769,6 +1785,7 @@ export class PurchaseStorage extends SalesStorage {
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1819,6 +1836,7 @@ export class PurchaseStorage extends SalesStorage {
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
           submittedById: purchaseInvoices.submittedById,
@@ -2024,6 +2042,7 @@ export class PurchaseStorage extends SalesStorage {
           currency: invoiceData.currency || "AED",
           exchangeRate: invoiceData.exchangeRate || "1",
           notes: invoiceData.notes || null,
+          termsAndConditions: invoiceData.termsAndConditions || null,
           createdBy: invoiceData.createdBy,
         })
         .returning();

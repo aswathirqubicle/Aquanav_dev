@@ -27,6 +27,7 @@ import { miscRoutes } from "./routes/misc.routes";
 import { errorLogsRoutes } from "./routes/error-logs.routes";
 import { profileRoutes } from "./routes/profile.routes";
 import { emailRoutes } from "./routes/email.routes";
+import { documentDefaultsRoutes } from "./routes/document-defaults.routes";
 
 declare module "express-session" {
   interface SessionData {
@@ -67,6 +68,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(employeesRoutes);
   app.use(profileRoutes);
   app.use(emailRoutes);
+  app.use(documentDefaultsRoutes);
   app.use(salesInvoicesRoutes);
   app.use(purchaseInvoicesRoutes);
   app.use(payrollRoutes);

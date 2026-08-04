@@ -60,6 +60,7 @@ import {
   Archive,
   ArchiveRestore,
   Download,
+  Printer,
   Copy,
   Pencil,
   Trash2,
@@ -68,6 +69,10 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
+  Send,
+  ArrowRightLeft,
+  Ban,
+  CreditCard,
 } from "lucide-react";
 import {
   SalesQuotation,
@@ -166,6 +171,18 @@ export default function SalesIndex() {
     useState<SalesQuotation | null>(null);
   const [isQuotationDetailsOpen, setIsQuotationDetailsOpen] = useState(false);
   const [isEditingQuotation, setIsEditingQuotation] = useState(false);
+  // Kept separate from the invoice's `editNote` above: the two dialogs have
+  // independent open state and neither closes the other, so one shared box
+  // could carry a half-typed invoice note into a quotation save.
+  const [quotationEditNote, setQuotationEditNote] = useState("");
+  // An edit note is only required once the quotation has been through approval;
+  // draft and pending_approval are still being drafted. This mirrors the server
+  // gate in sales-quotations.routes.ts — the server is the boundary, this just
+  // avoids showing a mandatory field that isn't.
+  const quotationEditRequiresNote =
+    isEditingQuotation &&
+    (selectedQuotation?.status === "approved" ||
+      selectedQuotation?.status === "rejected");
   const [selectedInvoice, setSelectedInvoice] = useState<SalesInvoice | null>(
     null,
   );
@@ -297,11 +314,14 @@ export default function SalesIndex() {
     discountType: "amount" | "percentage";
   }>({
     description: "",
-    quantity: 1,
-    unitPrice: 0,
+    // Quantity, unit price and discount start blank so the guidance sits in the
+    // placeholder rather than as a value someone has to clear. Tax rate is the
+    // exception — it is auto-filled from the customer's VAT treatment.
+    quantity: "",
+    unitPrice: "",
     taxRate: 0,
     taxAmount: 0,
-    discount: 0,
+    discount: "",
     discountType: "amount",
   });
 
@@ -660,6 +680,16 @@ export default function SalesIndex() {
     enabled: isAuthenticated && !!selectedInvoice && (user?.role === "admin" || user?.role === "finance"),
   });
 
+  const { data: quotationEditHistory } = useQuery<any[]>({
+    queryKey: ["/api/sales-quotations", selectedQuotation?.id, "edit-history"],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/sales-quotations/${selectedQuotation?.id}/edit-history`, { method: "GET" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: isAuthenticated && !!selectedQuotation && (user?.role === "admin" || user?.role === "finance"),
+  });
+
   const paymentFilesQueries = useQueries({
     queries: (invoicePayments || []).map((payment) => ({
       queryKey: [`/api/payments/${payment.id}/files`],
@@ -703,6 +733,12 @@ export default function SalesIndex() {
         totalAmount: totalAmount.toFixed(2),
         discountPercentage: data.discountPercentage || "0",
         discount: discountAmount.toFixed(2),
+        // The note rides on the update only — a brand new quotation has no
+        // prior version to explain, and the create route would carry the field
+        // straight into the insert.
+        ...(isEditingQuotation
+          ? { editNote: quotationEditNote.trim() }
+          : {}),
       };
 
       const url =
@@ -719,6 +755,7 @@ export default function SalesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations", selectedQuotation?.id, "edit-history"] });
       toast({
         title: isEditingQuotation ? "Quotation Updated" : "Quotation Created",
         description: `The sales quotation has been ${isEditingQuotation ? "updated" : "created"} successfully.`,
@@ -1219,17 +1256,18 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: 0,     // will be fixed by useEffect
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
 
     setEditingItemIndex(null);
     setIsEditingQuotation(false);
     setSelectedQuotation(null);
+    setQuotationEditNote("");
   };
 
   const resetInvoiceForm = () => {
@@ -1253,17 +1291,27 @@ export default function SalesIndex() {
       bankAccount: "",
       billingAddress: "",
       termsAndConditions: "",
+      // Both were missing while the declared initial state sets them, so a
+      // reset form carried currency undefined and the totals panel rendered
+      // its non-AED branch: "Exchange Rate: 1 undefined = undefined AED".
+      currency: "AED",
+      exchangeRate: "1",
     });
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
+    // The invoice dialog is reused for create and edit, so a dismissed edit must
+    // also drop the row it was editing and its note — otherwise the next "New
+    // Invoice" would save over that row.
+    setEditingInvoiceId(null);
+    setEditNote("");
   };
 
   const resetPaymentForm = () => {
@@ -1319,6 +1367,14 @@ export default function SalesIndex() {
       toast({
         title: "Error",
         description: "Please add at least one item to the quotation",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (quotationEditRequiresNote && !quotationEditNote.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide an edit note",
         variant: "destructive",
       });
       return;
@@ -1413,10 +1469,31 @@ export default function SalesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
-    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    // Quantity and unit price are required: the fields now start blank, so a
+    // missing one would otherwise be committed as a silent zero-value line.
+    const quantity = newItem.quantity === "" ? NaN : Number(newItem.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const unitPrice = newItem.unitPrice === "" ? NaN : Number(newItem.unitPrice);
+    if (!Number.isFinite(unitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tax rate and discount are optional — blank means zero.
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
+    const discount = newItem.discount === "" ? 0 : Number(newItem.discount) || 0;
     const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
@@ -1448,11 +1525,11 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -1468,7 +1545,7 @@ export default function SalesIndex() {
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       taxAmount: item.taxAmount ?? 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
@@ -1480,11 +1557,11 @@ export default function SalesIndex() {
   const cancelEditItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -1507,10 +1584,31 @@ export default function SalesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
-    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    // Quantity and unit price are required: the fields now start blank, so a
+    // missing one would otherwise be committed as a silent zero-value line.
+    const quantity = newItem.quantity === "" ? NaN : Number(newItem.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const unitPrice = newItem.unitPrice === "" ? NaN : Number(newItem.unitPrice);
+    if (!Number.isFinite(unitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tax rate and discount are optional — blank means zero.
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
+    const discount = newItem.discount === "" ? 0 : Number(newItem.discount) || 0;
     const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
@@ -1542,11 +1640,11 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
@@ -1560,7 +1658,7 @@ export default function SalesIndex() {
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       taxAmount: item.taxAmount ?? 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
@@ -1572,11 +1670,11 @@ export default function SalesIndex() {
   const cancelEditInvoiceItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
@@ -1771,6 +1869,7 @@ export default function SalesIndex() {
         currency: quotation.currency || "AED",
         exchangeRate: quotation.exchangeRate || "1",
       });
+      setQuotationEditNote("");
       setIsEditingQuotation(true);
       setIsQuotationDetailsOpen(false);
       setIsDialogOpen(true);
@@ -2088,7 +2187,7 @@ export default function SalesIndex() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button
                   className="w-full sm:w-auto"
@@ -2386,7 +2485,7 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -2403,7 +2502,7 @@ export default function SalesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -2438,7 +2537,7 @@ export default function SalesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -2728,11 +2827,22 @@ export default function SalesIndex() {
                   </div>
 
                   {/* Form Actions */}
+                  {quotationEditRequiresNote && (
+                    <div className="space-y-2 border-t pt-4 mt-4">
+                      <Label className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
+                      <Textarea
+                        value={quotationEditNote}
+                        onChange={(e) => setQuotationEditNote(e.target.value)}
+                        placeholder="Explain the reason for this edit..."
+                        className="min-h-[80px]"
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
+                      onClick={() => { setIsDialogOpen(false); resetForm(); }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
@@ -2757,7 +2867,7 @@ export default function SalesIndex() {
 
             <Dialog
               open={isInvoiceDialogOpen}
-              onOpenChange={(open) => { setIsInvoiceDialogOpen(open); if (!open) setEditingInvoiceId(null); }}
+              onOpenChange={(open) => { setIsInvoiceDialogOpen(open); if (!open) resetInvoiceForm(); }}
             >
               <DialogTrigger asChild>
                 <Button
@@ -3113,7 +3223,7 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -3130,7 +3240,7 @@ export default function SalesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -3165,7 +3275,7 @@ export default function SalesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -3476,7 +3586,7 @@ export default function SalesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => { setIsInvoiceDialogOpen(false); setEditingInvoiceId(null); }}
+                      onClick={() => { setIsInvoiceDialogOpen(false); resetInvoiceForm(); }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
@@ -3809,7 +3919,22 @@ export default function SalesIndex() {
               {paginatedQuotations.map((quotation) => (
                 <Card
                   key={quotation.id}
-                  className="hover:shadow-md transition-shadow"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openQuotationDetails(quotation)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openQuotationDetails(quotation);
+                    }
+                  }}
+                  className="cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid={`card-quotation-${quotation.id}`}
                 >
                   <CardContent className="p-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -3852,37 +3977,40 @@ export default function SalesIndex() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openQuotationDetails(quotation)}
-                            data-testid={`button-view-quotation-${quotation.id}`}
-                          >
-                            View Details
-                          </Button>
-                          {quotation.status === "draft" && (
+                          {/* Drafts for anyone who can reach this page,
+                              post-approval statuses for admin/finance only —
+                              those carry a mandatory edit note and a history
+                              entry. Converted and expired quotations show no
+                              Edit at all. */}
+                          {(quotation.status === "draft" ||
+                            (["pending_approval", "approved", "rejected"].includes(quotation.status) &&
+                              (user?.role === "admin" || user?.role === "finance"))) && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleEditQuotation(quotation);
                               }}
                               data-testid={`button-edit-quotation-${quotation.id}`}
                             >
+                              <Pencil className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
                           )}
                           {quotation.status === "draft" && (
                             <Button
                               size="sm"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 startTransition(() =>
                                   submitQuotationMutation.mutate(quotation.id),
-                                )
-                              }
+                                );
+                              }}
                               disabled={submitQuotationMutation.isPending}
                               data-testid={`button-submit-quotation-${quotation.id}`}
                             >
+                              <Send className="h-4 w-4 mr-1" />
                               {submitQuotationMutation.isPending
                                 ? "Submitting..."
                                 : "Submit"}
@@ -3893,17 +4021,19 @@ export default function SalesIndex() {
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     startTransition(() =>
                                       approveQuotationMutation.mutate(
                                         quotation.id,
                                       ),
-                                    )
-                                  }
+                                    );
+                                  }}
                                   disabled={approveQuotationMutation.isPending}
                                   data-testid={`button-approve-quotation-${quotation.id}`}
                                   className="bg-green-600 hover:bg-green-700"
                                 >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
                                   {approveQuotationMutation.isPending
                                     ? "Approving..."
                                     : "Approve"}
@@ -3911,7 +4041,8 @@ export default function SalesIndex() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedQuotation(quotation);
                                     setIsQuotationRejectDialogOpen(true);
                                   }}
@@ -3919,6 +4050,7 @@ export default function SalesIndex() {
                                   data-testid={`button-reject-quotation-${quotation.id}`}
                                   className="border-red-300 text-red-600 hover:bg-red-50"
                                 >
+                                  <XCircle className="h-4 w-4 mr-1" />
                                   Reject
                                 </Button>
                               </>
@@ -3928,13 +4060,14 @@ export default function SalesIndex() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     unarchiveQuotationMutation.mutate(
                                       quotation.id,
                                     ),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={unarchiveQuotationMutation.isPending}
                                 data-testid={`button-unarchive-quotation-${quotation.id}`}
                               >
@@ -3947,13 +4080,14 @@ export default function SalesIndex() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     archiveQuotationMutation.mutate(
                                       quotation.id,
                                     ),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={archiveQuotationMutation.isPending}
                                 data-testid={`button-archive-quotation-${quotation.id}`}
                               >
@@ -3966,9 +4100,13 @@ export default function SalesIndex() {
                           {quotation.status === "approved" && (
                             <Button
                               size="sm"
-                              onClick={() => handleConvertToInvoice(quotation)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConvertToInvoice(quotation);
+                              }}
                               data-testid={`button-convert-quotation-${quotation.id}`}
                             >
+                              <ArrowRightLeft className="h-4 w-4 mr-1" />
                               Convert to Invoice
                             </Button>
                           )}
@@ -4256,7 +4394,22 @@ export default function SalesIndex() {
               {paginatedInvoices.map((invoice) => (
                 <Card
                   key={invoice.id}
-                  className="hover:shadow-md transition-shadow"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openInvoiceDetails(invoice)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openInvoiceDetails(invoice);
+                    }
+                  }}
+                  className="cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid={`card-invoice-${invoice.id}`}
                 >
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex flex-col gap-4">
@@ -4300,21 +4453,15 @@ export default function SalesIndex() {
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openInvoiceDetails(invoice)}
-                            className="w-full sm:w-auto"
-                            data-testid={`button-view-invoice-${invoice.id}`}
-                          >
-                            View Details
-                          </Button>
                           {invoice.status === "draft" && (
                             <>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleEditInvoice(invoice)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditInvoice(invoice);
+                                }}
                                 className="w-full sm:w-auto"
                               >
                                 <Pencil className="h-4 w-4 mr-1" />
@@ -4322,15 +4469,17 @@ export default function SalesIndex() {
                               </Button>
                               <Button
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     submitInvoiceMutation.mutate(invoice.id),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={submitInvoiceMutation.isPending}
                                 className="w-full sm:w-auto"
                                 data-testid={`button-submit-invoice-${invoice.id}`}
                               >
+                                <Send className="h-4 w-4 mr-1" />
                                 {submitInvoiceMutation.isPending
                                   ? "Submitting..."
                                   : "Submit"}
@@ -4341,7 +4490,10 @@ export default function SalesIndex() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditInvoice(invoice)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditInvoice(invoice);
+                              }}
                               className="w-full sm:w-auto"
                             >
                               <Pencil className="h-4 w-4 mr-1" />
@@ -4353,15 +4505,17 @@ export default function SalesIndex() {
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     startTransition(() =>
                                       approveInvoiceMutation.mutate(invoice.id),
-                                    )
-                                  }
+                                    );
+                                  }}
                                   disabled={approveInvoiceMutation.isPending}
                                   className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                                   data-testid={`button-approve-invoice-${invoice.id}`}
                                 >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
                                   {approveInvoiceMutation.isPending
                                     ? "Approving..."
                                     : "Approve"}
@@ -4369,7 +4523,8 @@ export default function SalesIndex() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedInvoice(invoice);
                                     setIsInvoiceRejectDialogOpen(true);
                                   }}
@@ -4377,6 +4532,7 @@ export default function SalesIndex() {
                                   className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
                                   data-testid={`button-reject-invoice-${invoice.id}`}
                                 >
+                                  <XCircle className="h-4 w-4 mr-1" />
                                   Reject
                                 </Button>
                               </>
@@ -4388,10 +4544,14 @@ export default function SalesIndex() {
                             invoice.invoiceNumber && (
                               <Button
                                 size="sm"
-                                onClick={() => openPaymentDialog(invoice)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPaymentDialog(invoice);
+                                }}
                                 className="w-full sm:w-auto"
                                 data-testid={`button-record-payment-${invoice.id}`}
                               >
+                                <CreditCard className="h-4 w-4 mr-1" />
                                 Record Payment
                               </Button>
                             )}
@@ -4399,15 +4559,17 @@ export default function SalesIndex() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 window.open(
                                   `/credit-notes?invoiceId=${invoice.id}`,
                                   "_blank",
-                                )
-                              }
+                                );
+                              }}
                               className="w-full sm:w-auto"
                               data-testid={`button-credit-note-${invoice.id}`}
                             >
+                              <FileText className="h-4 w-4 mr-1" />
                               Credit Note
                             </Button>
                           )}
@@ -4494,10 +4656,95 @@ export default function SalesIndex() {
       >
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Quotation Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this sales quotation.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (submit, approve, convert) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Quotation Details</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this sales quotation.
+                </DialogDescription>
+              </div>
+              {selectedQuotation && (
+                <div className="flex flex-wrap gap-2">
+                  {/* Same gate as the list's Edit button. */}
+                  {(selectedQuotation.status === "draft" ||
+                    (["pending_approval", "approved", "rejected"].includes(selectedQuotation.status) &&
+                      (user?.role === "admin" || user?.role === "finance"))) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditQuotation(selectedQuotation)}
+                      data-testid="button-edit-quotation-header"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateQuotation(selectedQuotation)}
+                    data-testid="button-duplicate-quotation-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintPDF(selectedQuotation)}
+                    data-testid="button-print-quotation-header"
+                  >
+                    <Printer className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                  {user?.role === "admin" &&
+                    (selectedQuotation.isArchived ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsQuotationDetailsOpen(false);
+                          startTransition(() =>
+                            unarchiveQuotationMutation.mutate(
+                              selectedQuotation.id,
+                            ),
+                          );
+                        }}
+                        disabled={unarchiveQuotationMutation.isPending}
+                        data-testid="button-unarchive-quotation-header"
+                      >
+                        <ArchiveRestore className="h-4 w-4 mr-1" />
+                        {unarchiveQuotationMutation.isPending
+                          ? "Unarchiving..."
+                          : "Unarchive"}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsQuotationDetailsOpen(false);
+                          startTransition(() =>
+                            archiveQuotationMutation.mutate(
+                              selectedQuotation.id,
+                            ),
+                          );
+                        }}
+                        disabled={archiveQuotationMutation.isPending}
+                        data-testid="button-archive-quotation-header"
+                      >
+                        <Archive className="h-4 w-4 mr-1" />
+                        {archiveQuotationMutation.isPending
+                          ? "Archiving..."
+                          : "Archive"}
+                      </Button>
+                    ))}
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedQuotation ? (
             <div className="space-y-6">
@@ -4762,54 +5009,110 @@ export default function SalesIndex() {
                 </div>
               </div>
 
+              {/* Approval trail — submitted, approved, rejected. Mirrors the
+                  sales invoice view. User IDs rather than names: this page has
+                  no users query, and /api/users is admin-only while finance can
+                  open this dialog, so resolving names here would 403 for them. */}
+              {((selectedQuotation as any).submittedAt || (selectedQuotation as any).approvedAt || (selectedQuotation as any).rejectionReason) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Approval Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(selectedQuotation as any).submittedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).submittedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).submittedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedQuotation as any).approvedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).approvedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).approvedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedQuotation as any).rejectionReason && (
+                      <div className="pt-1">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedQuotation as any).rejectionReason}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Edit History */}
+              {quotationEditHistory && quotationEditHistory.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Edit History ({quotationEditHistory.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {quotationEditHistory.map((entry: any) => (
+                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
+                          {entry.changes && Object.keys(entry.changes).length > 0 && (
+                            <div className="text-xs space-y-1">
+                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                field !== "items" ? (
+                                  <div key={field} className="flex gap-2">
+                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
+                                    <span className="text-green-600">{String(change.new || "—")}</span>
+                                  </div>
+                                ) : (
+                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsQuotationDetailsOpen(false)}
-                  data-testid="button-close-quotation-details"
-                >
-                  Close
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handlePrintPDF(selectedQuotation)}
-                  data-testid="button-print-quotation-pdf"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Print PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleDuplicateQuotation(selectedQuotation)}
-                  data-testid="button-duplicate-quotation"
-                >
-                  <Copy className="h-4 w-4 mr-1" />
-                  Duplicate
-                </Button>
                 {selectedQuotation.status === "draft" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEditQuotation(selectedQuotation)}
-                      data-testid="button-edit-quotation-dialog"
-                    >
-                      Edit Quotation
-                    </Button>
-                    <Button
-                      onClick={() =>
-                        startTransition(() =>
-                          submitQuotationMutation.mutate(selectedQuotation.id),
-                        )
-                      }
-                      disabled={submitQuotationMutation.isPending}
-                      data-testid="button-submit-quotation-dialog"
-                    >
-                      {submitQuotationMutation.isPending
-                        ? "Submitting..."
-                        : "Submit"}
-                    </Button>
-                  </>
+                  <Button
+                    onClick={() =>
+                      startTransition(() =>
+                        submitQuotationMutation.mutate(selectedQuotation.id),
+                      )
+                    }
+                    disabled={submitQuotationMutation.isPending}
+                    data-testid="button-submit-quotation-dialog"
+                  >
+                    <Send className="h-4 w-4 mr-1" />
+                    {submitQuotationMutation.isPending
+                      ? "Submitting..."
+                      : "Submit"}
+                  </Button>
                 )}
                 {user?.role === "admin" &&
                   selectedQuotation.status === "pending_approval" && (
@@ -4826,6 +5129,7 @@ export default function SalesIndex() {
                         data-testid="button-approve-quotation-dialog"
                         className="bg-green-600 hover:bg-green-700"
                       >
+                        <CheckCircle className="h-4 w-4 mr-1" />
                         {approveQuotationMutation.isPending
                           ? "Approving..."
                           : "Approve"}
@@ -4840,6 +5144,7 @@ export default function SalesIndex() {
                         data-testid="button-reject-quotation-dialog"
                         className="border-red-300 text-red-600 hover:bg-red-50"
                       >
+                        <XCircle className="h-4 w-4 mr-1" />
                         Reject
                       </Button>
                     </>
@@ -4849,9 +5154,17 @@ export default function SalesIndex() {
                     onClick={() => handleConvertToInvoice(selectedQuotation)}
                     data-testid="button-convert-quotation-dialog"
                   >
+                    <ArrowRightLeft className="h-4 w-4 mr-1" />
                     Convert to Invoice
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={() => setIsQuotationDetailsOpen(false)}
+                  data-testid="button-close-quotation-details"
+                >
+                  Close
+                </Button>
               </div>
             </div>
           ) : (
@@ -4867,10 +5180,56 @@ export default function SalesIndex() {
       >
         <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Invoice Details</DialogTitle>
-            <DialogDescription>
-              View detailed information about this sales invoice.
-            </DialogDescription>
+            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                actions (edit, duplicate, print) live up here; status-flow
+                actions (submit, approve, pay, cancel) stay in the footer. */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+              <div>
+                <DialogTitle>Invoice Details</DialogTitle>
+                <DialogDescription>
+                  View detailed information about this sales invoice.
+                </DialogDescription>
+              </div>
+              {selectedInvoice && (
+                <div className="flex flex-wrap gap-2">
+                  {(selectedInvoice.status === "draft" ||
+                    (["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) &&
+                      parseFloat(selectedInvoice.paidAmount || "0") === 0 &&
+                      user?.role === "admin")) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsInvoiceDetailsOpen(false);
+                        handleEditInvoice(selectedInvoice);
+                      }}
+                      data-testid="button-edit-invoice-header"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
+                    data-testid="button-duplicate-invoice-header"
+                  >
+                    <Copy className="h-4 w-4 mr-1" />
+                    Duplicate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePrintInvoice(selectedInvoice)}
+                    data-testid="button-print-invoice-header"
+                  >
+                    <Printer className="h-4 w-4 mr-1" />
+                    Print
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           {selectedInvoice ? (
             <div className="space-y-6">
@@ -5183,7 +5542,58 @@ export default function SalesIndex() {
                 </div>
               </div>
 
-              {/* Payment History */}
+              {/* Approval trail — submitted, approved, rejected. Mirrors the
+                  purchase order view. User IDs rather than names: this page has
+                  no users query, and /api/users is admin-only while finance can
+                  open this dialog, so resolving names here would 403 for them. */}
+              {((selectedInvoice as any).submittedAt || (selectedInvoice as any).approvedAt || (selectedInvoice as any).rejectionReason) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Approval Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {(selectedInvoice as any).submittedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).submittedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).submittedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedInvoice as any).approvedAt && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).approvedById}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).approvedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedInvoice as any).rejectionReason && (
+                      <div className="pt-1">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedInvoice as any).rejectionReason}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Payment History — only meaningful once the invoice is past
+                  approval; drafts and pending invoices cannot hold payments. */}
+              {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
+                selectedInvoice.status,
+              ) && (
               <div
                 id={`payment-history-${selectedInvoice.id}`}
                 style={{ display: "none" }}
@@ -5357,6 +5767,7 @@ export default function SalesIndex() {
                   </CardContent>
                 </Card>
               </div>
+              )}
 
               {/* Edit History */}
               {invoiceEditHistory && invoiceEditHistory.length > 0 && (
@@ -5402,27 +5813,8 @@ export default function SalesIndex() {
               <div className="flex flex-col gap-3 pt-4 border-t">
                 {/* Primary Actions Row */}
                 <div className="flex flex-col sm:flex-row justify-end gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
-                    className="w-full sm:w-auto"
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    Duplicate
-                  </Button>
                   {selectedInvoice.status === "draft" && (
                     <>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsInvoiceDetailsOpen(false);
-                          handleEditInvoice(selectedInvoice);
-                        }}
-                        className="w-full sm:w-auto"
-                      >
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
                       <Button
                         onClick={() =>
                           startTransition(() =>
@@ -5433,24 +5825,12 @@ export default function SalesIndex() {
                         className="w-full sm:w-auto"
                         data-testid="button-submit-invoice-dialog"
                       >
+                        <Send className="h-4 w-4 mr-1" />
                         {submitInvoiceMutation.isPending
                           ? "Submitting..."
                           : "Submit"}
                       </Button>
                     </>
-                  )}
-                  {["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) && parseFloat(selectedInvoice.paidAmount || "0") === 0 && user?.role === "admin" && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsInvoiceDetailsOpen(false);
-                        handleEditInvoice(selectedInvoice);
-                      }}
-                      className="w-full sm:w-auto"
-                    >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
                   )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "pending_approval" && (
@@ -5465,6 +5845,7 @@ export default function SalesIndex() {
                           className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                           data-testid="button-approve-invoice-dialog"
                         >
+                          <CheckCircle className="h-4 w-4 mr-1" />
                           {approveInvoiceMutation.isPending
                             ? "Approving..."
                             : "Approve"}
@@ -5479,19 +5860,29 @@ export default function SalesIndex() {
                           className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
                           data-testid="button-reject-invoice-dialog"
                         >
+                          <XCircle className="h-4 w-4 mr-1" />
                           Reject
                         </Button>
                       </>
                     )}
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => handlePrintInvoice(selectedInvoice)}
-                    data-testid="button-print-invoice-dialog"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Print Invoice
-                  </Button>
+                  {selectedInvoice.invoiceNumber &&
+                    (selectedInvoice.status === "unpaid" ||
+                      selectedInvoice.status === "partially_paid") && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          window.open(
+                            `/credit-notes?invoiceId=${selectedInvoice.id}`,
+                            "_blank",
+                          )
+                        }
+                        className="w-full sm:w-auto"
+                        data-testid="button-credit-note-dialog"
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        Credit Note
+                      </Button>
+                    )}
                   {(selectedInvoice.status === "unpaid" ||
                     selectedInvoice.status === "partially_paid" ||
                     selectedInvoice.status === "overdue" ||
@@ -5505,9 +5896,34 @@ export default function SalesIndex() {
                         className="w-full sm:w-auto"
                         data-testid="button-record-payment-dialog"
                       >
+                        <CreditCard className="h-4 w-4 mr-1" />
                         Record Payment
                       </Button>
                     )}
+                  {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
+                    selectedInvoice.status,
+                  ) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        // Toggle the payment history section visibility
+                        const paymentHistorySection = document.getElementById(
+                          `payment-history-${selectedInvoice.id}`,
+                        );
+                        if (paymentHistorySection) {
+                          paymentHistorySection.style.display =
+                            paymentHistorySection.style.display === "none"
+                              ? "block"
+                              : "none";
+                        }
+                      }}
+                      className="w-full sm:w-auto"
+                      data-testid="button-view-payment-history"
+                    >
+                      <History className="h-4 w-4 mr-1" />
+                      Payment History
+                    </Button>
+                  )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
@@ -5518,6 +5934,7 @@ export default function SalesIndex() {
                             disabled={cancelInvoiceMutation.isPending}
                             className="w-full sm:w-auto"
                           >
+                            <Ban className="h-4 w-4 mr-1" />
                             {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
                           </Button>
                         </AlertDialogTrigger>
@@ -5550,30 +5967,9 @@ export default function SalesIndex() {
                     )}
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      // Toggle the payment history section visibility
-                      const paymentHistorySection = document.getElementById(
-                        `payment-history-${selectedInvoice.id}`,
-                      );
-                      if (paymentHistorySection) {
-                        paymentHistorySection.style.display =
-                          paymentHistorySection.style.display === "none"
-                            ? "block"
-                            : "none";
-                      }
-                    }}
-                    className="w-full sm:w-auto"
-                    data-testid="button-view-payment-history"
-                  >
-                    View Payment History
-                  </Button>
-                </div>
-                {/* Secondary Actions Row */}
-                <div className="flex justify-end">
-                  <Button
-                    variant="outline"
                     onClick={() => setIsInvoiceDetailsOpen(false)}
                     className="w-full sm:w-auto"
+                    data-testid="button-close-invoice-details"
                   >
                     Close
                   </Button>

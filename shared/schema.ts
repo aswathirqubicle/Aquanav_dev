@@ -36,6 +36,9 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   email: text("email"),
   website: text("website"),
+  // The company's own TRN. Named to match customers and suppliers, which store
+  // the same thing; the UI and the documents label it TRN, the UAE term.
+  vatNumber: text("vat_number"),
   financialYearStartDay: integer("financial_year_start_day").default(1),
   financialYearStartMonth: integer("financial_year_start_month").default(1),
   financialYearEndDay: integer("financial_year_end_day").default(31),
@@ -919,8 +922,13 @@ export const purchaseOrders = pgTable("purchase_orders", {
   expectedDeliveryDate: timestamp("expected_delivery_date"),
   paymentTerms: text("payment_terms"),
   deliveryTerms: text("delivery_terms"),
+  // Where the goods go — free text, since deliveries land on vessels and work
+  // sites as often as at the office. Pre-filled from the company address on a
+  // new order, editable, and validly empty.
+  deliverTo: text("deliver_to"),
   bankAccount: text("bank_account"),
   notes: text("notes"),
+  termsAndConditions: text("terms_and_conditions"),
   currency: text("currency").notNull().default("AED"),
   exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
     .notNull()
@@ -1010,6 +1018,7 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   paymentTerms: text("payment_terms"),
   bankAccount: text("bank_account"),
   notes: text("notes"),
+  termsAndConditions: text("terms_and_conditions"),
   currency: text("currency").notNull().default("AED"),
   exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
     .notNull()
@@ -1350,6 +1359,21 @@ export const emailSendLog = pgTable("email_send_log", {
   relatedId: integer("related_id"),
   sentAt: timestamp("sent_at").notNull().defaultNow(),
 });
+
+// Standing boilerplate loaded into a NEW document of the given type as its
+// starting Notes and Terms & Conditions. One row per type — sales_quotation,
+// sales_invoice, proforma_invoice, credit_note, purchase_order,
+// purchase_invoice — so a new document type needs a row, not a migration.
+// Starting text only: the user can edit or clear it per document.
+export const documentDefaults = pgTable("document_defaults", {
+  id: serial("id").primaryKey(),
+  documentType: text("document_type").notNull().unique(),
+  notes: text("notes"),
+  termsAndConditions: text("terms_and_conditions"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedById: integer("updated_by_id").references(() => users.id),
+});
+export type DocumentDefault = typeof documentDefaults.$inferSelect;
 
 export type EmailSettings = typeof emailSettings.$inferSelect;
 export type NotificationLog = typeof notificationLog.$inferSelect;

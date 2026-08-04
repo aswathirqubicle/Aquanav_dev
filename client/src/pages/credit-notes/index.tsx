@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Eye, FileText, Ban, Pencil, X } from "lucide-react";
+import { Plus, Trash2, FileText, Printer, Ban, Pencil, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,13 +66,17 @@ interface CreditNoteItem {
   discountType: "amount" | "percentage";
 }
 
+// The staged line starts blank so nothing is pre-filled for the user to
+// overwrite; the placeholders on the inputs carry the guidance instead. Tax
+// rate is the exception — it follows the customer's VAT treatment rather than
+// being typed, so it keeps a real value.
 const emptyCreditNoteItem: CreditNoteItem = {
   description: "",
-  quantity: 1,
-  unitPrice: 0,
+  quantity: "",
+  unitPrice: "",
   taxRate: 0,
   taxAmount: 0,
-  discount: 0,
+  discount: "",
   discountType: "amount",
 };
 
@@ -231,11 +235,34 @@ const CreditNoteForm = ({
       return;
     }
 
+    // Quantity and unit price start blank, so they have to be entered rather
+    // than defaulted. Number.isFinite also catches a NaN that slipped past the
+    // number input, which would otherwise become a silently zero line.
+    const enteredQuantity = Number(newItem.quantity);
+    if (newItem.quantity === "" || !Number.isFinite(enteredQuantity) || enteredQuantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const enteredUnitPrice = Number(newItem.unitPrice);
+    if (newItem.unitPrice === "" || !Number.isFinite(enteredUnitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const item = {
       ...newItem,
-      quantity: newItem.quantity === "" ? 0 : newItem.quantity,
-      unitPrice: newItem.unitPrice === "" ? 0 : newItem.unitPrice,
-      taxRate: newItem.taxRate === "" ? 0 : newItem.taxRate,
+      quantity: enteredQuantity,
+      unitPrice: enteredUnitPrice,
+      taxRate: newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0,
       discount: newItem.discount === "" ? 0 : (newItem.discount || 0),
       discountType: newItem.discountType || "amount",
     };
@@ -264,7 +291,7 @@ const CreditNoteForm = ({
       description: item.description || "",
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       taxAmount: Number(item.taxAmount) || 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
@@ -496,7 +523,7 @@ const CreditNoteForm = ({
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="Qty"
+                  placeholder="e.g. 1"
                   value={newItem.quantity}
                   onChange={(e) =>
                     setNewItem((prev) => ({
@@ -512,7 +539,7 @@ const CreditNoteForm = ({
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="Unit price"
+                  placeholder="0.00"
                   value={newItem.unitPrice}
                   onChange={(e) =>
                     setNewItem((prev) => ({
@@ -546,7 +573,7 @@ const CreditNoteForm = ({
                     type="number"
                     min="0"
                     step="any"
-                    placeholder="0"
+                    placeholder="0.00"
                     value={newItem.discount}
                     onChange={(e) =>
                       setNewItem((prev) => ({
@@ -853,6 +880,22 @@ export default function CreditNotesIndex() {
   const [viewingCreditNote, setViewingCreditNote] = useState<any>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
+  // Dismissing either dialog by any route — the X, Escape, a click on the
+  // overlay, or the form's Cancel button — must leave nothing behind for the
+  // next one. CreditNoteForm is unmounted along with its dialog, so its own
+  // state (the fields, the staged line and the line-edit index) goes with it;
+  // what survives is the parent's. Clearing editingCreditNote also re-runs the
+  // form's line-edit effect while the form is still mounted, so a half-finished
+  // line edit is cancelled by that effect rather than by anything here.
+  // selectedInvoiceId is seeded once from the ?invoiceId= URL param and would
+  // otherwise stay pre-selected on every later Create.
+  // Radix only reports its own close triggers through onOpenChange, so the
+  // Cancel and post-submit paths call this too.
+  const resetDialogState = () => {
+    setEditingCreditNote(null);
+    setSelectedInvoiceId(null);
+  };
+
   // Check for invoice ID in URL params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -917,6 +960,7 @@ export default function CreditNotesIndex() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
       setIsCreateOpen(false);
+      resetDialogState();
       toast({
         title: "Success",
         description: "Credit note created successfully",
@@ -944,7 +988,7 @@ export default function CreditNotesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
-      setEditingCreditNote(null);
+      resetDialogState();
       toast({
         title: "Success",
         description: "Credit note updated successfully",
@@ -1035,7 +1079,13 @@ export default function CreditNotesIndex() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Credit Notes</h1>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <Dialog
+            open={isCreateOpen}
+            onOpenChange={(open) => {
+              setIsCreateOpen(open);
+              if (!open) resetDialogState();
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1059,7 +1109,7 @@ export default function CreditNotesIndex() {
                 isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
                 onCancel={() => {
                   setIsCreateOpen(false);
-                  setEditingCreditNote(null);
+                  resetDialogState();
                 }}
               />
             </DialogContent>
@@ -1086,7 +1136,35 @@ export default function CreditNotesIndex() {
               </TableHeader>
               <TableBody>
                 {creditNotes.map((creditNote: any) => (
-                  <TableRow key={creditNote.id}>
+                  /* The whole row opens the detail dialog. role/tabIndex/
+                     onKeyDown keep it reachable without a mouse; every button
+                     inside stops propagation so acting on it does not also
+                     open the dialog. */
+                  <TableRow
+                    key={creditNote.id}
+                    className="hover:bg-muted/50 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      // The confirm dialogs below are portalled out of the row
+                      // but still bubble through React's tree, so ignore any
+                      // click that did not land inside the row itself.
+                      if (!e.currentTarget.contains(e.target as Node)) {
+                        return;
+                      }
+                      setViewingCreditNote(creditNote);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) {
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setViewingCreditNote(creditNote);
+                      }
+                    }}
+                    data-testid={`row-credit-note-${creditNote.id}`}
+                  >
                     <TableCell className="font-medium">{creditNote.creditNoteNumber}</TableCell>
                     <TableCell>{creditNote.invoiceNumber}</TableCell>
                     <TableCell>{creditNote.customerName}</TableCell>
@@ -1097,35 +1175,47 @@ export default function CreditNotesIndex() {
                     <TableCell>{formatCurrency(creditNote.totalAmount || 0, creditNote.currency)}</TableCell>
                     <TableCell>{getStatusBadge(creditNote.status)}</TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {/* Drafts only, matching the server. Issuing posts the
+                            ledger entries and settles the invoice, and an edit
+                            recomputes none of it — correcting an issued note
+                            means cancelling it, which reverses those entries,
+                            and raising a new one. */}
+                        {creditNote.status === "draft" && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setViewingCreditNote(creditNote)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCreditNote(creditNote);
+                          }}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
                         </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setEditingCreditNote(creditNote)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             printByUrl(`/api/credit-notes/${creditNote.id}/pdf`);
                           }}
                         >
-                          <FileText className="h-4 w-4" />
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
                         </Button>
                         {creditNote.status === "issued" && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" title="Cancel credit note">
-                                <Ban className="h-4 w-4" />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Cancel credit note"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Ban className="h-4 w-4 mr-1" />
+                                Cancel
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1153,8 +1243,14 @@ export default function CreditNotesIndex() {
                         {creditNote.status === "draft" && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" title="Delete draft">
-                                <Trash2 className="h-4 w-4" />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Delete draft"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1192,7 +1288,12 @@ export default function CreditNotesIndex() {
         </Card>
 
         {/* Edit Dialog */}
-        <Dialog open={!!editingCreditNote} onOpenChange={() => setEditingCreditNote(null)}>
+        <Dialog
+          open={!!editingCreditNote}
+          onOpenChange={(open) => {
+            if (!open) resetDialogState();
+          }}
+        >
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Credit Note</DialogTitle>
@@ -1213,7 +1314,7 @@ export default function CreditNotesIndex() {
                 isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
                 onCancel={() => {
                   setIsCreateOpen(false);
-                  setEditingCreditNote(null);
+                  resetDialogState();
                 }}
               />
             )}
@@ -1224,10 +1325,46 @@ export default function CreditNotesIndex() {
         <Dialog open={!!viewingCreditNote} onOpenChange={() => setViewingCreditNote(null)}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Credit Note Details</DialogTitle>
-              <DialogDescription>
-                View credit note information.
-              </DialogDescription>
+              {/* pr-8 keeps the buttons clear of the dialog's own X. Document
+                  actions (edit, print) live up here; status-flow actions
+                  (cancel, delete) stay in the footer. */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
+                <div>
+                  <DialogTitle>Credit Note Details</DialogTitle>
+                  <DialogDescription>
+                    View credit note information.
+                  </DialogDescription>
+                </div>
+                {viewingCreditNote && (
+                  <div className="flex flex-wrap gap-2">
+                    {viewingCreditNote.status === "draft" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setViewingCreditNote(null);
+                        setEditingCreditNote(viewingCreditNote);
+                      }}
+                      data-testid="button-edit-credit-note-header"
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        printByUrl(`/api/credit-notes/${viewingCreditNote.id}/pdf`);
+                      }}
+                      data-testid="button-print-credit-note-header"
+                    >
+                      <Printer className="h-4 w-4 mr-1" />
+                      Print
+                    </Button>
+                  </div>
+                )}
+              </div>
             </DialogHeader>
             {viewingCreditNote && (
               <div className="space-y-6">
@@ -1377,8 +1514,8 @@ export default function CreditNotesIndex() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="destructive">
-                          <Ban className="h-4 w-4 mr-2" />
-                          Cancel Credit Note
+                          <Ban className="h-4 w-4 mr-1" />
+                          Cancel
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -1406,16 +1543,37 @@ export default function CreditNotesIndex() {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      printByUrl(`/api/credit-notes/${viewingCreditNote.id}/pdf`);
-                    }}
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Print Credit Note
-                  </Button>
-                  <Button onClick={() => setViewingCreditNote(null)}>
+                  {viewingCreditNote.status === "draft" && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive">
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {viewingCreditNote.creditNoteNumber} has not been issued and has
+                            posted nothing to the ledger, so it can be deleted outright.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Keep it</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              deleteCreditNoteMutation.mutate(viewingCreditNote.id);
+                              setViewingCreditNote(null);
+                            }}
+                          >
+                            Delete Draft
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                  <Button variant="outline" onClick={() => setViewingCreditNote(null)}>
                     Close
                   </Button>
                 </div>

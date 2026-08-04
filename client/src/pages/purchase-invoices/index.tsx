@@ -31,7 +31,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
 
@@ -200,6 +200,7 @@ export default function PurchaseInvoicesIndex() {
     paymentTerms: "Net 30 days",
     bankAccount: "",
     notes: "",
+    termsAndConditions: "",
     discountPercentage: "0",
     discountAmount: "0",
   });
@@ -217,14 +218,17 @@ export default function PurchaseInvoicesIndex() {
     assetInstanceId?: string;
   }[]>([]);
 
+  // The staging form starts blank — quantity, unit price and discount carry
+  // their guidance in placeholders rather than as pre-filled values, so nothing
+  // can be saved by accident. taxRate keeps its default.
   const [newItem, setNewItem] = useState({
-    itemType: "product" as "product" | "service",
+    itemType: "service" as "product" | "service",
     inventoryItemId: "",
     description: "",
-    quantity: "1" as string,
-    unitPrice: "0" as string,
+    quantity: "" as string,
+    unitPrice: "" as string,
     taxRate: "0" as string,
-    discount: "0" as string,
+    discount: "" as string,
     discountType: "amount" as "amount" | "percentage",
     projectId: "",
     assetInstanceId: "",
@@ -355,6 +359,19 @@ export default function PurchaseInvoicesIndex() {
     enabled: isAuthenticated,
   });
 
+  // The purchase_invoice row of document_defaults seeds Notes and Terms on a
+  // new invoice. Seeds only — both fields stay editable and validly empty on
+  // the invoice itself.
+  const { data: documentDefaults } = useQuery<
+    Array<{ documentType: string; notes: string | null; termsAndConditions: string | null }>
+  >({
+    queryKey: ["/api/document-defaults"],
+    enabled: isAuthenticated,
+  });
+  const invoiceDefaults = documentDefaults?.find(
+    (d) => d.documentType === "purchase_invoice",
+  );
+
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
 
   const bankAccountOptions = React.useMemo(() => {
@@ -481,6 +498,7 @@ export default function PurchaseInvoicesIndex() {
         paymentTerms: full.paymentTerms || "",
         bankAccount: full.bankAccount || "",
         notes: full.notes || "",
+        termsAndConditions: full.termsAndConditions || "",
         discountPercentage: full.discountPercentage || "0",
         discountAmount: full.discountAmount || "0",
       });
@@ -525,6 +543,10 @@ export default function PurchaseInvoicesIndex() {
     setFormData({
       supplierId: source.supplierId?.toString() || "",
       supplierInvoiceNumber: source.supplierInvoiceNumber || "",
+      // This object REPLACES the form state rather than merging into it,
+      // so any field left out silently becomes undefined — which is how
+      // the subject went missing from every duplicated invoice.
+      subject: source.subject || "",
       currency: source.currency || "AED",
       exchangeRate: source.exchangeRate || "1",
       invoiceDate: new Date().toISOString().split("T")[0],
@@ -532,6 +554,7 @@ export default function PurchaseInvoicesIndex() {
       paymentTerms: source.paymentTerms || "Net 30 days",
       bankAccount: source.bankAccount || "",
       notes: source.notes || "",
+      termsAndConditions: source.termsAndConditions || "",
       discountPercentage: source.discountPercentage || "0",
       discountAmount: source.discountAmount || "0",
     });
@@ -721,19 +744,20 @@ export default function PurchaseInvoicesIndex() {
       paymentTerms: "Net 30 days",
       bankAccount: "",
       notes: "",
+      termsAndConditions: "",
       discountPercentage: "0",
       discountAmount: "0",
     });
     setSelectedBankId("");
     setInvoiceItems([]);
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -742,6 +766,32 @@ export default function PurchaseInvoicesIndex() {
     setEditingInvoice(null);
     setSelectedInvoiceFiles(null);
     setExistingInvoiceFiles([]);
+    setEditNote("");
+  };
+
+  // Open the dialog for a NEW invoice. Defaults are seeded into fields that are
+  // still EMPTY only, so a seed can never overwrite what someone already wrote.
+  // Editing an existing invoice never seeds — its stored values are the record.
+  // Every dismissal already runs resetForm, so the editingInvoice branch is a
+  // belt-and-braces guard: should an abandoned edit ever survive, "New" must
+  // not reopen it.
+  const openNewInvoiceDialog = () => {
+    if (editingInvoice) {
+      resetForm();
+      setFormData(prev => ({
+        ...prev,
+        notes: invoiceDefaults?.notes || "",
+        termsAndConditions: invoiceDefaults?.termsAndConditions || "",
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        notes: prev.notes || invoiceDefaults?.notes || "",
+        termsAndConditions:
+          prev.termsAndConditions || invoiceDefaults?.termsAndConditions || "",
+      }));
+    }
+    setIsDialogOpen(true);
   };
 
   const resetPaymentForm = () => {
@@ -789,19 +839,33 @@ export default function PurchaseInvoicesIndex() {
       }
     }
 
+    const quantity = parseInt(newItem.quantity);
+    const unitPrice = parseFloat(newItem.unitPrice);
+
+    // Both fields start blank, so a non-number has to be rejected here rather
+    // than reaching the totals as NaN.
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      toast({
+        title: "Error",
+        description: "Quantity must be a number greater than 0 and unit price a number that is not negative",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setInvoiceItems(prev =>
       editingItemIndex === null
         ? [...prev, { ...newItem }]
         : prev.map((existing, i) => (i === editingItemIndex ? { ...newItem } : existing))
     );
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -833,13 +897,13 @@ export default function PurchaseInvoicesIndex() {
 
   const cancelEditItem = () => {
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -887,14 +951,16 @@ export default function PurchaseInvoicesIndex() {
       const lineDiscount = item.discountType === "percentage"
         ? lineSubtotal * (lineDiscountVal / 100)
         : Math.min(lineDiscountVal, lineSubtotal);
-      const lineTaxAmount = (lineSubtotal - lineDiscount) * (parseFloat(item.taxRate) / 100);
+      // A blank or non-numeric tax rate means zero, the same as discount.
+      const lineTaxRate = parseFloat(item.taxRate || "0") || 0;
+      const lineTaxAmount = (lineSubtotal - lineDiscount) * (lineTaxRate / 100);
       return {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
         description: item.description || null,
         quantity: parseInt(item.quantity),
         unitPrice: parseFloat(item.unitPrice),
-        taxRate: parseFloat(item.taxRate),
+        taxRate: lineTaxRate,
         taxAmount: lineTaxAmount,
         discount: lineDiscountVal,
         discountType: item.discountType || "amount",
@@ -921,6 +987,7 @@ export default function PurchaseInvoicesIndex() {
     formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("bankAccount", formData.bankAccount);
     formDataInstance.append("notes", formData.notes);
+    formDataInstance.append("termsAndConditions", formData.termsAndConditions || "");
     formDataInstance.append("subtotal", subtotal.toFixed(2));
     formDataInstance.append("taxAmount", calculatedTaxAmount.toFixed(2));
     formDataInstance.append("discountPercentage", discountPct.toString());
@@ -1026,6 +1093,10 @@ export default function PurchaseInvoicesIndex() {
     queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
     setIsFilterOpen(false);
   };
+
+  // Collapsed by default, as on the sales page: filters are occasional, and a
+  // permanently open panel pushes the invoice list below the fold.
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const clearFilters = () => {
     setFilters({
@@ -1152,7 +1223,7 @@ export default function PurchaseInvoicesIndex() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {canEdit && (
-              <Button onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
+              <Button onClick={openNewInvoiceDialog} className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
                 New Invoice
               </Button>
@@ -1219,11 +1290,41 @@ export default function PurchaseInvoicesIndex() {
           </Card>
         </div>
 
-        {/* Filters Section */}
+        {/* Collapsible Filters */}
         <Card>
-          <CardContent className="p-4">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            className="flex items-center justify-between p-4 cursor-pointer select-none"
+            onClick={() => setFilterOpen((o) => !o)}
+          >
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+              <span className="font-medium text-sm">Filters</span>
+              {(() => {
+                const active = [
+                  filters.search,
+                  filters.status,
+                  filters.paymentStatus,
+                  filters.supplierId,
+                  filters.projectId,
+                  filters.startDate,
+                  filters.endDate,
+                ].filter(Boolean).length;
+                return active > 0 ? (
+                  <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+                ) : null;
+              })()}
+            </div>
+            {filterOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400" />
+              : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </div>
+
+          {filterOpen && (
+            <CardContent className="pt-0 pb-4 px-4 border-t">
+              {/* One grid rather than two: seven fields and the clear action
+                  fill four columns exactly, so the dates no longer sit alone
+                  on a second row of different width. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
                 <div>
                   <Label htmlFor="search">Search</Label>
                   <Input
@@ -1323,9 +1424,6 @@ export default function PurchaseInvoicesIndex() {
                     placeholder="Select project..."
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="startDate">Invoice Date From</Label>
                   <Input
@@ -1350,8 +1448,8 @@ export default function PurchaseInvoicesIndex() {
                   </Button>
                 </div>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
 
         {/* Invoice List */}
@@ -1369,7 +1467,7 @@ export default function PurchaseInvoicesIndex() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No purchase invoices found</h3>
               <p className="text-gray-500 mb-4">Get started by creating your first purchase invoice.</p>
               {canEdit && (
-                <Button onClick={() => setIsDialogOpen(true)}>
+                <Button onClick={openNewInvoiceDialog}>
                   <Plus className="w-4 h-4 mr-2" />
                   Create Purchase Invoice
                 </Button>
@@ -1398,9 +1496,28 @@ export default function PurchaseInvoicesIndex() {
                       </thead>
                       <tbody>
                         {invoices.map((invoice) => (
+                          /* The whole row opens the detail dialog. role/
+                             tabIndex/onKeyDown keep it reachable without a
+                             mouse; every button inside stops propagation so
+                             acting on it does not also open the dialog. */
                           <tr
                             key={invoice.id}
-                            className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                            className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => viewInvoice(invoice)}
+                            onKeyDown={(e) => {
+                              // A keypress on an inline button bubbles to the row, so without
+                              // this an Enter on Approve would both approve and open the dialog.
+                              if (e.target !== e.currentTarget) {
+                                return;
+                              }
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                viewInvoice(invoice);
+                              }
+                            }}
+                            data-testid={`row-invoice-${invoice.id}`}
                           >
                             <td className="p-4">
                               <div className="font-medium">{invoice.invoiceNumber}</div>
@@ -1424,38 +1541,47 @@ export default function PurchaseInvoicesIndex() {
                               <div className="font-medium text-green-600">{formatCurrency(invoice.paidAmount, invoice.supplierCurrency)}</div>
                             </td>
                             <td className="p-4 text-center">
-                              {getApprovalStatusBadge(invoice.status)}{" "}
-                              {getPaymentStatusBadge(invoice.paymentStatus)}
+                              {/* Payment status sits under the approval status,
+                                  and only once approved: a draft or rejected
+                                  invoice has nothing to pay, so "unpaid" there
+                                  states a balance that does not exist yet. */}
+                              <div className="flex flex-col items-center gap-1">
+                                <span>{getApprovalStatusBadge(invoice.status)}</span>
+                                {invoice.status === "approved" && (
+                                  <span>{getPaymentStatusBadge(invoice.paymentStatus)}</span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => viewInvoice(invoice)}
-                                  className="h-8 w-8 p-0"
-                                  data-testid={`button-view-invoice-${invoice.id}`}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
                                 {invoice.status === "draft" && canEdit && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                     data-testid={`button-edit-invoice-${invoice.id}`}
                                   >
+                                    <Pencil className="h-4 w-4" />
                                     Edit
                                   </Button>
                                 )}
-                                {invoice.status === "approved" && user?.role === "admin" && (
+                                {invoice.status === "approved" &&
+                                  user?.role === "admin" &&
+                                  parseFloat(invoice.paidAmount || "0") === 0 && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                   >
+                                    <Pencil className="h-4 w-4" />
                                     Edit
                                   </Button>
                                 )}
@@ -1463,10 +1589,14 @@ export default function PurchaseInvoicesIndex() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => viewInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      viewInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                     data-testid={`button-submit-invoice-${invoice.id}`}
                                   >
+                                    <Send className="h-4 w-4" />
                                     Submit
                                   </Button>
                                 )}
@@ -1475,23 +1605,29 @@ export default function PurchaseInvoicesIndex() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        approveInvoiceMutation.mutate(invoice.id);
+                                      }}
                                       disabled={approveInvoiceMutation.isPending}
-                                      className="h-8 px-2 text-green-600 hover:text-green-700"
+                                      className="h-8 px-2 gap-1 text-green-600 hover:text-green-700"
                                       data-testid={`button-approve-invoice-${invoice.id}`}
                                     >
+                                      <CheckCircle className="h-4 w-4" />
                                       Approve
                                     </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setViewingInvoice(invoice);
                                         setIsRejectDialogOpen(true);
                                       }}
-                                      className="h-8 px-2 text-red-600 hover:text-red-700"
+                                      className="h-8 px-2 gap-1 text-red-600 hover:text-red-700"
                                       data-testid={`button-reject-invoice-${invoice.id}`}
                                     >
+                                      <XCircle className="h-4 w-4" />
                                       Reject
                                     </Button>
                                   </>
@@ -1510,10 +1646,26 @@ export default function PurchaseInvoicesIndex() {
             {/* Mobile Cards */}
             <div className="grid gap-4 md:hidden">
               {invoices.map((invoice) => (
+                /* Mobile twin of the desktop row: the whole card opens the
+                   detail dialog, with the same keyboard affordance. */
                 <Card
                   key={invoice.id}
                   className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => viewInvoice(invoice)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      viewInvoice(invoice);
+                    }
+                  }}
+                  data-testid={`card-invoice-${invoice.id}`}
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium truncate">
@@ -1549,24 +1701,18 @@ export default function PurchaseInvoicesIndex() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewInvoice(invoice)}
-                          className="flex-1"
-                          data-testid={`button-view-invoice-${invoice.id}`}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
                         {invoice.status === "draft" && (
                           <Button
                             variant="default"
                             size="sm"
-                            onClick={() => viewInvoice(invoice)}
-                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              viewInvoice(invoice);
+                            }}
+                            className="flex-1 gap-1"
                             data-testid={`button-submit-invoice-${invoice.id}`}
                           >
+                            <Send className="h-4 w-4" />
                             Submit
                           </Button>
                         )}
@@ -1575,23 +1721,29 @@ export default function PurchaseInvoicesIndex() {
                             <Button
                               variant="default"
                               size="sm"
-                              onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                approveInvoiceMutation.mutate(invoice.id);
+                              }}
                               disabled={approveInvoiceMutation.isPending}
-                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              className="flex-1 gap-1 bg-green-600 hover:bg-green-700"
                               data-testid={`button-approve-invoice-${invoice.id}`}
                             >
+                              <CheckCircle className="h-4 w-4" />
                               Approve
                             </Button>
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setViewingInvoice(invoice);
                                 setIsRejectDialogOpen(true);
                               }}
-                              className="flex-1"
+                              className="flex-1 gap-1"
                               data-testid={`button-reject-invoice-${invoice.id}`}
                             >
+                              <XCircle className="h-4 w-4" />
                               Reject
                             </Button>
                           </>
@@ -1771,79 +1923,6 @@ export default function PurchaseInvoicesIndex() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
-                        <Select
-                          value={selectedBankId}
-                          onValueChange={(value) => {
-                            setSelectedBankId(value);
-                            const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
-                            if (selected) {
-                              const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
-                              setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
-                            }
-                          }}
-                          disabled={!formData.supplierId || bankAccountOptions.length === 0}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue
-                              placeholder={
-                                !formData.supplierId
-                                  ? "Select supplier first"
-                                  : "Select bank account"
-                              }
-                            />
-                          </SelectTrigger>
-
-                          <SelectContent>
-                            {bankAccountOptions.map((bank, index) => (
-                              <SelectItem key={bank.id} value={bank.id.toString()}>
-                                <div className="whitespace-pre-wrap text-sm leading-snug">
-                                  {bank.accountDetails}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="mt-2 border border-input rounded-md overflow-hidden">
-                          <ReactQuill
-                            theme="snow"
-                            value={formData.bankAccount}
-                            onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
-                            placeholder="Enter or customize bank account details..."
-                            modules={{
-                              toolbar: [
-                                ['bold', 'italic', 'underline', 'strike'],
-                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                ['clean']
-                              ],
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
-                        <div className="mt-1 border border-input rounded-md overflow-hidden">
-                          <ReactQuill
-                            theme="snow"
-                            value={formData.notes}
-                            onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
-                            placeholder="Additional notes or comments..."
-                            modules={{
-                              toolbar: [
-                                [{ 'header': [1, 2, 3, false] }],
-                                ['bold', 'italic', 'underline', 'strike'],
-                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                [{ 'color': [] }, { 'background': [] }],
-                                ['link'],
-                                ['clean']
-                              ],
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
                         <Label htmlFor="attachments">Attach Files (Optional)</Label>
                         <Input
                           id="attachments"
@@ -1942,7 +2021,7 @@ export default function PurchaseInvoicesIndex() {
                               itemType: value,
                               inventoryItemId: "",
                               description: "",
-                              unitPrice: "0"
+                              unitPrice: ""
                             }))}
                           >
                             <SelectTrigger className="h-9">
@@ -1950,7 +2029,7 @@ export default function PurchaseInvoicesIndex() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="product">Product (from Inventory)</SelectItem>
-                              <SelectItem value="service">Service (Manual Entry)</SelectItem>
+                              <SelectItem value="service">Service</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1992,7 +2071,7 @@ export default function PurchaseInvoicesIndex() {
                               min="1"
                               value={newItem.quantity}
                               onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
-                              placeholder="0"
+                              placeholder="e.g. 1"
                               className="h-9"
                             />
                           </div>
@@ -2033,7 +2112,7 @@ export default function PurchaseInvoicesIndex() {
                                 min="0"
                                 value={newItem.discount}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
-                                placeholder="0"
+                                placeholder="0.00"
                                 className="h-9"
                               />
                               <select
@@ -2129,7 +2208,7 @@ export default function PurchaseInvoicesIndex() {
                             ? lineSubtotal * (lineDiscVal / 100)
                             : Math.min(lineDiscVal, lineSubtotal);
                           const taxable = lineSubtotal - lineDiscount;
-                          const lineTax = taxable * (parseFloat(item.taxRate) / 100);
+                          const lineTax = taxable * ((parseFloat(item.taxRate || "0") || 0) / 100);
                           const lineTotal = taxable + lineTax;
 
                           return (
@@ -2174,7 +2253,7 @@ export default function PurchaseInvoicesIndex() {
                                 <span className="font-medium">{formatCurrency(item.unitPrice, formData.currency)}</span>
                               </div>
                               <div className="col-span-1 text-center">
-                                <Badge variant="outline" className="text-xs">{item.taxRate}%</Badge>
+                                <Badge variant="outline" className="text-xs">{item.taxRate || "0"}%</Badge>
                               </div>
                               <div className="col-span-1 text-center">
                                 <span className="text-xs">
@@ -2314,6 +2393,95 @@ export default function PurchaseInvoicesIndex() {
                   </CardContent>
                 </Card>
 
+                <div className="border-t pt-4">
+                  <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
+                  <Select
+                    value={selectedBankId}
+                    onValueChange={(value) => {
+                      setSelectedBankId(value);
+                      const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                      if (selected) {
+                        const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                        setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                      }
+                    }}
+                    disabled={!formData.supplierId || bankAccountOptions.length === 0}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue
+                        placeholder={
+                          !formData.supplierId
+                            ? "Select supplier first"
+                            : "Select bank account"
+                        }
+                      />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {bankAccountOptions.map((bank, index) => (
+                        <SelectItem key={bank.id} value={bank.id.toString()}>
+                          <div className="whitespace-pre-wrap text-sm leading-snug">
+                            {bank.accountDetails}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2 border border-input rounded-md overflow-hidden">
+                    <ReactQuill
+                      theme="snow"
+                      value={formData.bankAccount}
+                      onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                      placeholder="Enter or customize bank account details..."
+                      modules={{
+                        toolbar: [
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
+                  <div className="mt-1 border border-input rounded-md overflow-hidden">
+                    <ReactQuill
+                      theme="snow"
+                      value={formData.notes}
+                      onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                      placeholder="Additional notes or comments..."
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          [{ 'color': [] }, { 'background': [] }],
+                          ['link'],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="invoiceTermsAndConditions" className="text-sm font-medium">Terms &amp; Conditions</Label>
+                  <Textarea
+                    id="invoiceTermsAndConditions"
+                    rows={6}
+                    value={formData.termsAndConditions}
+                    onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                    placeholder="Standing terms for this invoice. Pre-filled from Settings → Documents Default; edit or clear per invoice."
+                    data-testid="textarea-invoice-terms"
+                  />
+                </div>
+
                 {/* Edit Note - INSIDE SCROLL */}
                 {editRequiresNote && (
                   <div className="space-y-2 border-t pt-4 mt-4">
@@ -2400,8 +2568,11 @@ export default function PurchaseInvoicesIndex() {
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             {viewingInvoice && (
               <div className="space-y-6 print:space-y-4">
-                {/* Header with Icon Badge and Print Button */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 print:border-b-2 print:border-black">
+                {/* Header with Icon Badge and Document Actions. pr-8 keeps the
+                    buttons clear of the dialog's own X. Document actions (edit,
+                    duplicate, print) live up here; status-flow actions (submit,
+                    approve, pay, cancel) stay in the footer. */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 pr-8 print:border-b-2 print:border-black">
                   <div className="flex items-center gap-3 sm:gap-4">
                     <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900 rounded-lg print:bg-blue-100">
                       <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
@@ -2415,12 +2586,42 @@ export default function PurchaseInvoicesIndex() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 print:hidden">
+                  <div className="flex flex-wrap items-center gap-3 print:hidden">
                     <div className="flex items-center gap-2">
                       {getApprovalStatusBadge(viewingInvoice.status)}
                       {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
                     </div>
 
+                    {/* Same gates as the list's Edit buttons: drafts for
+                        admin/finance, approved invoices for admin only. */}
+                    {((viewingInvoice.status === "draft" && canEdit) ||
+                      (viewingInvoice.status === "approved" &&
+                        user?.role === "admin" &&
+                        // Once any payment or credit note is recorded the
+                        // server refuses the edit outright, so offering the
+                        // button here only produces a 400. Mirrors sales.
+                        parseFloat(viewingInvoice.paidAmount || "0") === 0)) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditInvoice(viewingInvoice)}
+                        data-testid="button-edit-invoice-header"
+                        className="flex items-center gap-2"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicateInvoice(viewingInvoice)}
+                      data-testid="button-duplicate-invoice-header"
+                      className="flex items-center gap-2"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Duplicate
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -2731,6 +2932,53 @@ export default function PurchaseInvoicesIndex() {
                   </div>
                 </div>
 
+                {/* Approval Information — submitted, approved, rejected.
+                    Mirrors the purchase order view. User IDs rather than
+                    names: /api/users is admin-only while finance can open
+                    this dialog, so resolving names here would 403 for them. */}
+                {(viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason) && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Approval Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {viewingInvoice.submittedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingInvoice.submittedById}</p>
+                          </div>
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
+                            <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.submittedAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+                      {viewingInvoice.approvedAt && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
+                            <p className="text-sm font-medium mt-1">User ID: {viewingInvoice.approvedById}</p>
+                          </div>
+                          <div>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
+                            <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.approvedAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+                      {viewingInvoice.rejectionReason && (
+                        <div className="pt-1">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
+                          <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{viewingInvoice.rejectionReason}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Edit History */}
                 {viewingInvoice.editHistory && viewingInvoice.editHistory.length > 0 && (
                   <Card>
@@ -2771,39 +3019,9 @@ export default function PurchaseInvoicesIndex() {
                   </Card>
                 )}
 
-                {/* Action Buttons */}
+                {/* Action Buttons — status-flow actions only; document
+                    actions (edit, duplicate, print) live in the header. */}
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
-                  {viewingInvoice.status === "draft" && canEdit && (
-                    <Button
-                      onClick={() => handleEditInvoice(viewingInvoice)}
-                      variant="outline"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Edit Invoice
-                    </Button>
-                  )}
-                  {viewingInvoice.status === "approved" && user?.role === "admin" && (
-                    <Button
-                      onClick={() => handleEditInvoice(viewingInvoice)}
-                      variant="outline"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Edit Invoice
-                    </Button>
-                  )}
-                  <Button
-                    onClick={() => handleDuplicateInvoice(viewingInvoice)}
-                    variant="outline"
-                    size="lg"
-                    className="w-full sm:w-auto"
-                  >
-                    <Copy className="w-4 h-4 mr-2" />
-                    Duplicate
-                  </Button>
                   {viewingInvoice.status === "draft" && (
                     <Button
                       onClick={() => {
@@ -2822,8 +3040,8 @@ export default function PurchaseInvoicesIndex() {
                         </>
                       ) : (
                         <>
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Submit for Approval
+                          <Send className="w-4 h-4 mr-2" />
+                          Submit
                         </>
                       )}
                     </Button>
@@ -2847,8 +3065,8 @@ export default function PurchaseInvoicesIndex() {
                           </>
                         ) : (
                           <>
-                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Approve Invoice
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Approve
                           </>
                         )}
                       </Button>
@@ -2860,7 +3078,7 @@ export default function PurchaseInvoicesIndex() {
                         data-testid={`button-reject-invoice-${viewingInvoice.id}`}
                       >
                         <XCircle className="w-4 h-4 mr-2" />
-                        Reject Invoice
+                        Reject
                       </Button>
                     </>
                   )}
@@ -2892,7 +3110,7 @@ export default function PurchaseInvoicesIndex() {
                           ) : (
                             <>
                               <Ban className="w-4 h-4 mr-2" />
-                              Cancel Invoice
+                              Cancel
                             </>
                           )}
                         </Button>
@@ -2922,11 +3140,21 @@ export default function PurchaseInvoicesIndex() {
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => setIsViewDialogOpen(false)}
+                    className="w-full sm:w-auto"
+                  >
+                    Close
+                  </Button>
                 </div>
               </div>
             )}
-            {/* Payment History */}
-            {viewingInvoice?.payments && viewingInvoice.payments.length > 0 && (
+            {/* Payment History — post-approval only; drafts and pending
+                invoices can have no payments to show. */}
+            {viewingInvoice?.payments && viewingInvoice.payments.length > 0 &&
+              ["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(viewingInvoice.status) && (
               <div className="mt-6">
                 <Card>
                   <CardHeader>

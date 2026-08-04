@@ -448,6 +448,34 @@ salesInvoicesRoutes.post(
       // No conversion needed - Drizzle expects strings for date() columns
 
       const invoice = await storage.createSalesInvoice(invoiceData);
+
+      // An invoice raised from a quotation converts it. Nothing did this
+      // before, so the Converted status was unreachable and a single
+      // quotation could be billed any number of times with no trace — one
+      // in this database carries five invoices and still reads approved.
+      //
+      // Marked here rather than when the Convert button is pressed, because
+      // that button only pre-fills the form: an abandoned draft never became
+      // an invoice and must leave the quotation usable. Failing to mark it
+      // must not fail the invoice, which already exists by this point.
+      if (invoice && invoiceData.quotationId) {
+        try {
+          const quotation = await storage.getSalesQuotation(
+            Number(invoiceData.quotationId),
+          );
+          if (quotation && quotation.status !== "converted") {
+            await storage.updateSalesQuotation(Number(invoiceData.quotationId), {
+              status: "converted",
+            });
+          }
+        } catch (conversionError) {
+          console.error(
+            "Failed to mark quotation as converted:",
+            conversionError,
+          );
+        }
+      }
+
       res.status(201).json(invoice);
     } catch (error) {
       console.error("Sales invoice creation error:", error);
@@ -664,6 +692,24 @@ salesInvoicesRoutes.put(
       // judged on where it ends up, not where it started. A note that no longer
       // exists is left to the 404 below.
       const existingCreditNote = await storage.getCreditNote(id);
+      if (!existingCreditNote) {
+        return res.status(404).json({ message: "Credit note not found" });
+      }
+
+      // Only a draft may be edited. Issuing a credit note posts its ledger
+      // entries and settles the invoice it credits, and none of that is
+      // recomputed on a later edit — the note would say one figure while the
+      // ledger, the customer's balance and the payment history all still
+      // carried the original. Correcting an issued note means cancelling it,
+      // which reverses those entries properly, and raising a new one. This is
+      // the same line the delete route already draws.
+      if (existingCreditNote.status !== "draft") {
+        return res.status(400).json({
+          message:
+            "Only a draft credit note can be edited. Cancel this one and raise a new note instead.",
+        });
+      }
+
       const currencyError = await checkCreditNoteCurrency(
         req.body.salesInvoiceId ?? existingCreditNote?.salesInvoiceId,
         req.body.currency ?? existingCreditNote?.currency,
@@ -757,6 +803,17 @@ salesInvoicesRoutes.get(
     try {
       const creditNoteId = parseInt(req.params.id);
       const creditNote = await storage.getCreditNote(creditNoteId);
+      // A UAE tax credit note must carry enough to identify the original tax
+      // invoice. getCreditNote returns the bare row, so resolve the invoice
+      // number and date here — the same shape the purchase invoice route uses
+      // to resolve its purchase order number.
+      if (creditNote?.salesInvoiceId) {
+        const original = await storage.getSalesInvoice(
+          creditNote.salesInvoiceId,
+        );
+        (creditNote as any).invoiceNumber = original?.invoiceNumber;
+        (creditNote as any).invoiceDate = original?.invoiceDate;
+      }
       const customer = await storage.getCustomer(creditNote?.customerId);
       const company = await storage.getCompany();
 
