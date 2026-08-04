@@ -1443,8 +1443,16 @@ export default function PurchaseInvoicesIndex() {
                               <div className="font-medium text-green-600">{formatCurrency(invoice.paidAmount, invoice.supplierCurrency)}</div>
                             </td>
                             <td className="p-4 text-center">
-                              {getApprovalStatusBadge(invoice.status)}{" "}
-                              {getPaymentStatusBadge(invoice.paymentStatus)}
+                              {/* Payment status sits under the approval status,
+                                  and only once approved: a draft or rejected
+                                  invoice has nothing to pay, so "unpaid" there
+                                  states a balance that does not exist yet. */}
+                              <div className="flex flex-col items-center gap-1">
+                                <span>{getApprovalStatusBadge(invoice.status)}</span>
+                                {invoice.status === "approved" && (
+                                  <span>{getPaymentStatusBadge(invoice.paymentStatus)}</span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1">

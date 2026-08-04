@@ -1389,20 +1389,20 @@ export default function PurchaseOrdersIndex() {
                         }
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
                           {/* Edit - Draft and Approved/Pending orders for admin/finance */}
                           {(order.status === "draft" || (["approved", "pending_approval", "rejected"].includes(order.status) && (user?.role === "admin" || user?.role === "finance"))) && (
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="gap-1"
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleEditOrder(order);
                               }}
                               data-testid={`button-edit-order-${order.id}`}
                             >
-                              <Pencil className="w-4 h-4" />
+                              <Pencil className="h-4 w-4" />
                               Edit
                             </Button>
                           )}
@@ -1411,7 +1411,8 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "draft" && (
                             <Button
                               size="sm"
-                              className="gap-1"
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 submitOrderMutation.mutate(order.id);
@@ -1419,7 +1420,7 @@ export default function PurchaseOrdersIndex() {
                               disabled={submitOrderMutation.isPending}
                               data-testid={`button-submit-order-${order.id}`}
                             >
-                              <Send className="w-4 h-4" />
+                              <Send className="h-4 w-4" />
                               {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
                             </Button>
                           )}
@@ -1428,8 +1429,8 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "pending_approval" && user?.role === "admin" && (
                             <Button
                               size="sm"
-                              variant="default"
-                              className="gap-1"
+                              variant="ghost"
+                              className="h-8 px-2 gap-1 text-green-600 hover:text-green-700"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 approveOrderMutation.mutate(order.id);
@@ -1437,7 +1438,7 @@ export default function PurchaseOrdersIndex() {
                               disabled={approveOrderMutation.isPending}
                               data-testid={`button-approve-order-${order.id}`}
                             >
-                              <CheckCircle className="w-4 h-4" />
+                              <CheckCircle className="h-4 w-4" />
                               {approveOrderMutation.isPending ? "Approving..." : "Approve"}
                             </Button>
                           )}
@@ -1446,8 +1447,8 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "pending_approval" && user?.role === "admin" && (
                             <Button
                               size="sm"
-                              variant="destructive"
-                              className="gap-1"
+                              variant="ghost"
+                              className="h-8 px-2 gap-1 text-red-600 hover:text-red-700"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setViewingOrder(order);
@@ -1455,7 +1456,7 @@ export default function PurchaseOrdersIndex() {
                               }}
                               data-testid={`button-reject-order-${order.id}`}
                             >
-                              <XCircle className="w-4 h-4" />
+                              <XCircle className="h-4 w-4" />
                               Reject
                             </Button>
                           )}
@@ -1464,14 +1465,15 @@ export default function PurchaseOrdersIndex() {
                           {order.status === "approved" && (user?.role === "admin" || user?.role === "finance") && (
                             <Button
                               size="sm"
-                              className="gap-1"
+                              variant="ghost"
+                              className="h-8 px-2 gap-1"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openConvertDialog(order);
                               }}
                               data-testid={`button-convert-order-${order.id}`}
                             >
-                              <ArrowRightLeft className="w-4 h-4" />
+                              <ArrowRightLeft className="h-4 w-4" />
                               Convert
                             </Button>
                           )}
@@ -1842,7 +1844,7 @@ export default function PurchaseOrdersIndex() {
                               </>
                             ) : (
                               <>
-                                <Pencil className="w-4 h-4" />
+                                <Pencil className="h-4 w-4" />
                                 Update Item
                               </>
                             )}
@@ -1963,7 +1965,7 @@ export default function PurchaseOrdersIndex() {
                                         data-testid={`button-edit-po-item-${index}`}
                                         onClick={() => startEditItem(index)}
                                       >
-                                        <Pencil className="w-4 h-4" />
+                                        <Pencil className="h-4 w-4" />
                                       </Button>
                                       <Button
                                         type="button"
@@ -2228,7 +2230,7 @@ export default function PurchaseOrdersIndex() {
                       className="gap-2"
                       data-testid="button-edit-from-view"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <Pencil className="h-4 w-4" />
                       Edit
                     </Button>
                   )}
@@ -2320,7 +2322,7 @@ export default function PurchaseOrdersIndex() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="h-4 w-4" />
                       Approval Information
                     </CardTitle>
                   </CardHeader>
@@ -2630,7 +2632,7 @@ export default function PurchaseOrdersIndex() {
                     className="w-full sm:w-auto gap-2"
                     data-testid="button-submit-order-dialog"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="h-4 w-4" />
                     {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
                   </Button>
                 )}
@@ -2645,7 +2647,7 @@ export default function PurchaseOrdersIndex() {
                       className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700"
                       data-testid="button-approve-order-dialog"
                     >
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="h-4 w-4" />
                       {approveOrderMutation.isPending ? "Approving..." : "Approve"}
                     </Button>
                     <Button
@@ -2658,7 +2660,7 @@ export default function PurchaseOrdersIndex() {
                       className="w-full sm:w-auto gap-2 border-red-300 text-red-600 hover:bg-red-50"
                       data-testid="button-reject-order-dialog"
                     >
-                      <XCircle className="w-4 h-4" />
+                      <XCircle className="h-4 w-4" />
                       Reject
                     </Button>
                   </>
@@ -2672,7 +2674,7 @@ export default function PurchaseOrdersIndex() {
                     className="w-full sm:w-auto gap-2"
                     data-testid="button-convert-order-dialog"
                   >
-                    <ArrowRightLeft className="w-4 h-4" />
+                    <ArrowRightLeft className="h-4 w-4" />
                     Convert
                   </Button>
                 )}
