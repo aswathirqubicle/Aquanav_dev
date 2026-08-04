@@ -692,6 +692,24 @@ salesInvoicesRoutes.put(
       // judged on where it ends up, not where it started. A note that no longer
       // exists is left to the 404 below.
       const existingCreditNote = await storage.getCreditNote(id);
+      if (!existingCreditNote) {
+        return res.status(404).json({ message: "Credit note not found" });
+      }
+
+      // Only a draft may be edited. Issuing a credit note posts its ledger
+      // entries and settles the invoice it credits, and none of that is
+      // recomputed on a later edit — the note would say one figure while the
+      // ledger, the customer's balance and the payment history all still
+      // carried the original. Correcting an issued note means cancelling it,
+      // which reverses those entries properly, and raising a new one. This is
+      // the same line the delete route already draws.
+      if (existingCreditNote.status !== "draft") {
+        return res.status(400).json({
+          message:
+            "Only a draft credit note can be edited. Cancel this one and raise a new note instead.",
+        });
+      }
+
       const currencyError = await checkCreditNoteCurrency(
         req.body.salesInvoiceId ?? existingCreditNote?.salesInvoiceId,
         req.body.currency ?? existingCreditNote?.currency,

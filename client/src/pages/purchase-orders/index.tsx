@@ -683,7 +683,8 @@ export default function PurchaseOrdersIndex() {
 
     const quantity = parseInt(newItem.quantity);
     const unitPrice = parseFloat(newItem.unitPrice);
-    const taxRate = parseFloat(newItem.taxRate);
+    // A blank or non-numeric tax rate means zero, the same as discount.
+    const taxRate = parseFloat(newItem.taxRate || "0") || 0;
 
     // Both fields start blank, so a non-number has to be rejected here rather
     // than reaching the totals as NaN.
@@ -802,7 +803,7 @@ export default function PurchaseOrdersIndex() {
     const items = orderItems.map(item => {
       const quantity = parseInt(item.quantity);
       const unitPrice = parseFloat(item.unitPrice);
-      const taxRate = parseFloat(item.taxRate);
+      const taxRate = parseFloat(item.taxRate || "0") || 0;
       const lineSubtotal = quantity * unitPrice;
       const lineDiscountVal = parseFloat(item.discount || "0") || 0;
       const lineDiscount = item.discountType === "percentage"
@@ -901,7 +902,7 @@ export default function PurchaseOrdersIndex() {
       setInvoiceFormItems(target.items.map(item => {
         const qty = parseFloat(item.quantity.toString());
         const price = parseFloat(item.unitPrice);
-        const taxRate = parseFloat(item.taxRate || "0");
+        const taxRate = parseFloat(item.taxRate || "0") || 0;
         const discountVal = item.discount != null ? Number(item.discount) : 0;
         const discountType = item.discountType === "percentage" ? "percentage" : "amount";
         const lineSubtotal = qty * price;
@@ -1346,7 +1347,7 @@ export default function PurchaseOrdersIndex() {
                 }
               </p>
               {(!searchQuery && statusFilter === "all" && supplierFilter === "all" && canEdit) && (
-                <Button onClick={() => setIsDialogOpen(true)} className="gap-2">
+                <Button onClick={openNewOrderDialog} className="gap-2">
                   <Plus className="w-4 h-4" />
                   Create Purchase Order
                 </Button>
@@ -1979,7 +1980,7 @@ export default function PurchaseOrdersIndex() {
                                     {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
                                   </TableCell>
                                   <TableCell>{formatCurrency(item.unitPrice, formData.currency)}</TableCell>
-                                  <TableCell>{item.taxRate}%</TableCell>
+                                  <TableCell>{item.taxRate || "0"}%</TableCell>
                                   <TableCell>
                                     {lineDiscVal > 0
                                       ? (item.discountType === "percentage" ? `${lineDiscVal}%` : formatCurrency(lineDiscVal, formData.currency))

@@ -592,7 +592,7 @@ export default function ProformaInvoicesIndex() {
 
     const quantity = enteredQuantity;
     const unitPrice = enteredUnitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
     const discount = newItem.discount === "" ? 0 : (newItem.discount || 0);
     const discountType = newItem.discountType || "amount";
 
@@ -639,7 +639,7 @@ export default function ProformaInvoicesIndex() {
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
     });
@@ -898,8 +898,13 @@ export default function ProformaInvoicesIndex() {
                   New Proforma Invoice
                 </Button>
               </DialogTrigger>
+              {/* No remount key here. It used to force a fresh mount per
+                  proforma, but resetForm now runs on every dismiss and clears
+                  the form, staged line, line-edit index and editing flag — so
+                  the remount is redundant. It was also actively harmful:
+                  resetForm flips isEditingProforma, which changed the key
+                  mid-close and snapped the dialog shut instead of fading. */}
               <DialogContent
-                key={isEditingProforma ? selectedProforma?.id : "new"}
                 className="sm:max-w-4xl max-h-[90vh] overflow-y-auto"
               >
 

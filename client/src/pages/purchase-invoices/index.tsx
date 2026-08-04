@@ -951,14 +951,16 @@ export default function PurchaseInvoicesIndex() {
       const lineDiscount = item.discountType === "percentage"
         ? lineSubtotal * (lineDiscountVal / 100)
         : Math.min(lineDiscountVal, lineSubtotal);
-      const lineTaxAmount = (lineSubtotal - lineDiscount) * (parseFloat(item.taxRate) / 100);
+      // A blank or non-numeric tax rate means zero, the same as discount.
+      const lineTaxRate = parseFloat(item.taxRate || "0") || 0;
+      const lineTaxAmount = (lineSubtotal - lineDiscount) * (lineTaxRate / 100);
       return {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
         description: item.description || null,
         quantity: parseInt(item.quantity),
         unitPrice: parseFloat(item.unitPrice),
-        taxRate: parseFloat(item.taxRate),
+        taxRate: lineTaxRate,
         taxAmount: lineTaxAmount,
         discount: lineDiscountVal,
         discountType: item.discountType || "amount",
@@ -2206,7 +2208,7 @@ export default function PurchaseInvoicesIndex() {
                             ? lineSubtotal * (lineDiscVal / 100)
                             : Math.min(lineDiscVal, lineSubtotal);
                           const taxable = lineSubtotal - lineDiscount;
-                          const lineTax = taxable * (parseFloat(item.taxRate) / 100);
+                          const lineTax = taxable * ((parseFloat(item.taxRate || "0") || 0) / 100);
                           const lineTotal = taxable + lineTax;
 
                           return (
@@ -2251,7 +2253,7 @@ export default function PurchaseInvoicesIndex() {
                                 <span className="font-medium">{formatCurrency(item.unitPrice, formData.currency)}</span>
                               </div>
                               <div className="col-span-1 text-center">
-                                <Badge variant="outline" className="text-xs">{item.taxRate}%</Badge>
+                                <Badge variant="outline" className="text-xs">{item.taxRate || "0"}%</Badge>
                               </div>
                               <div className="col-span-1 text-center">
                                 <span className="text-xs">

@@ -262,7 +262,7 @@ const CreditNoteForm = ({
       ...newItem,
       quantity: enteredQuantity,
       unitPrice: enteredUnitPrice,
-      taxRate: newItem.taxRate === "" ? 0 : newItem.taxRate,
+      taxRate: newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0,
       discount: newItem.discount === "" ? 0 : (newItem.discount || 0),
       discountType: newItem.discountType || "amount",
     };
@@ -291,7 +291,7 @@ const CreditNoteForm = ({
       description: item.description || "",
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      taxRate: item.taxRate ?? 0,
+      taxRate: Number(item.taxRate) || 0,
       taxAmount: Number(item.taxAmount) || 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
@@ -1176,6 +1176,12 @@ export default function CreditNotesIndex() {
                     <TableCell>{getStatusBadge(creditNote.status)}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
+                        {/* Drafts only, matching the server. Issuing posts the
+                            ledger entries and settles the invoice, and an edit
+                            recomputes none of it — correcting an issued note
+                            means cancelling it, which reverses those entries,
+                            and raising a new one. */}
+                        {creditNote.status === "draft" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1187,6 +1193,7 @@ export default function CreditNotesIndex() {
                           <Pencil className="h-4 w-4 mr-1" />
                           Edit
                         </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -1330,6 +1337,7 @@ export default function CreditNotesIndex() {
                 </div>
                 {viewingCreditNote && (
                   <div className="flex flex-wrap gap-2">
+                    {viewingCreditNote.status === "draft" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1342,6 +1350,7 @@ export default function CreditNotesIndex() {
                       <Pencil className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
