@@ -36,6 +36,9 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   email: text("email"),
   website: text("website"),
+  // The company's own TRN. Named to match customers and suppliers, which store
+  // the same thing; the UI and the documents label it TRN, the UAE term.
+  vatNumber: text("vat_number"),
   financialYearStartDay: integer("financial_year_start_day").default(1),
   financialYearStartMonth: integer("financial_year_start_month").default(1),
   financialYearEndDay: integer("financial_year_end_day").default(31),

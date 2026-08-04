@@ -54,6 +54,7 @@ export default function SettingsIndex() {
     phone: "",
     email: "",
     website: "",
+    vatNumber: "",
     financialYearStartDay: 1,
     financialYearStartMonth: 1,
     financialYearEndDay: 31,
@@ -283,6 +284,7 @@ export default function SettingsIndex() {
         phone: company.phone || "",
         email: company.email || "",
         website: company.website || "",
+        vatNumber: company.vatNumber || "",
         financialYearStartDay: company.financialYearStartDay || 1,
         financialYearStartMonth: company.financialYearStartMonth || 1,
         financialYearEndDay: company.financialYearEndDay || 31,
@@ -600,6 +602,25 @@ export default function SettingsIndex() {
                         onChange={(e) => handleCompanyChange("website", e.target.value)}
                         placeholder="https://www.yourcompany.com"
                       />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyTrn">TRN</Label>
+                      <Input
+                        id="companyTrn"
+                        value={companyData.vatNumber ?? ""}
+                        onChange={(e) => handleCompanyChange("vatNumber", e.target.value)}
+                        placeholder="100000000000003"
+                        data-testid="input-company-trn"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Tax Registration Number. Printed on tax invoices and tax
+                        credit notes, which UAE VAT requires it on. Leave blank
+                        if the company is not VAT-registered and it stays off
+                        the document entirely.
+                      </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
