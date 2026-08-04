@@ -803,6 +803,17 @@ salesInvoicesRoutes.get(
     try {
       const creditNoteId = parseInt(req.params.id);
       const creditNote = await storage.getCreditNote(creditNoteId);
+      // A UAE tax credit note must carry enough to identify the original tax
+      // invoice. getCreditNote returns the bare row, so resolve the invoice
+      // number and date here — the same shape the purchase invoice route uses
+      // to resolve its purchase order number.
+      if (creditNote?.salesInvoiceId) {
+        const original = await storage.getSalesInvoice(
+          creditNote.salesInvoiceId,
+        );
+        (creditNote as any).invoiceNumber = original?.invoiceNumber;
+        (creditNote as any).invoiceDate = original?.invoiceDate;
+      }
       const customer = await storage.getCustomer(creditNote?.customerId);
       const company = await storage.getCompany();
 

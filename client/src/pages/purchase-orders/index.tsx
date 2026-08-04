@@ -170,7 +170,7 @@ export default function PurchaseOrdersIndex() {
   // can be saved by accident. taxRate is the exception: it is filled from the
   // supplier's VAT treatment when a supplier is picked.
   const [newItem, setNewItem] = useState({
-    itemType: "product" as "product" | "service",
+    itemType: "service" as "product" | "service",
     inventoryItemId: "",
     description: "",
     quantity: "",
@@ -576,7 +576,7 @@ export default function PurchaseOrdersIndex() {
     setSelectedBankId("");
     setOrderItems([]);
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -712,7 +712,7 @@ export default function PurchaseOrdersIndex() {
         : prev.map((existing, i) => (i === editingItemIndex ? { ...newItem } : existing))
     );
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -746,7 +746,7 @@ export default function PurchaseOrdersIndex() {
 
   const cancelEditItem = () => {
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -1774,7 +1774,7 @@ export default function PurchaseOrdersIndex() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="product">Product (from Inventory)</SelectItem>
-                          <SelectItem value="service">Service (Manual Entry)</SelectItem>
+                          <SelectItem value="service">Service</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

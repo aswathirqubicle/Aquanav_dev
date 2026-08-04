@@ -222,7 +222,7 @@ export default function PurchaseInvoicesIndex() {
   // their guidance in placeholders rather than as pre-filled values, so nothing
   // can be saved by accident. taxRate keeps its default.
   const [newItem, setNewItem] = useState({
-    itemType: "product" as "product" | "service",
+    itemType: "service" as "product" | "service",
     inventoryItemId: "",
     description: "",
     quantity: "" as string,
@@ -751,7 +751,7 @@ export default function PurchaseInvoicesIndex() {
     setSelectedBankId("");
     setInvoiceItems([]);
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -859,7 +859,7 @@ export default function PurchaseInvoicesIndex() {
         : prev.map((existing, i) => (i === editingItemIndex ? { ...newItem } : existing))
     );
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -897,7 +897,7 @@ export default function PurchaseInvoicesIndex() {
 
   const cancelEditItem = () => {
     setNewItem({
-      itemType: "product",
+      itemType: "service",
       inventoryItemId: "",
       description: "",
       quantity: "",
@@ -2029,7 +2029,7 @@ export default function PurchaseInvoicesIndex() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="product">Product (from Inventory)</SelectItem>
-                              <SelectItem value="service">Service (Manual Entry)</SelectItem>
+                              <SelectItem value="service">Service</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

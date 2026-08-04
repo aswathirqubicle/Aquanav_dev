@@ -47,8 +47,12 @@ export function generateCreditNoteHTML(
   const status = String(creditNote.status || "").toLowerCase();
   const isIssued = status === "issued";
   const isCancelled = status === "cancelled";
+  // "Tax Credit Note" is the wording UAE VAT requires on the document itself,
+  // and only an issued note is one: a draft has posted nothing and a cancelled
+  // one has been reversed, so neither may present itself as a tax document the
+  // customer can reclaim against.
   const label = isIssued
-    ? "Credit Note"
+    ? "Tax Credit Note"
     : isCancelled
       ? "Cancelled Credit Note"
       : "Draft Credit Note";
@@ -80,11 +84,24 @@ export function generateCreditNoteHTML(
       // field, carried by some callers and not others. A bare row id would tell
       // the customer nothing, so the row is dropped rather than printed when
       // the number is absent.
-      { key: "Against Invoice", value: val(creditNote.invoiceNumber) },
+      // Identifying the original tax invoice is a UAE requirement, not a
+      // convenience: the credited amounts mean nothing without the supply they
+      // adjust. Both rows drop when the caller has not resolved them rather
+      // than printing a bare row id, which would tell the customer nothing.
+      { key: "Against Tax Invoice", value: val(creditNote.invoiceNumber) },
+      {
+        key: "Original Invoice Date",
+        value: formatDocumentDate(creditNote.invoiceDate),
+      },
     ],
     subject: val(creditNote.subject),
     items,
     totals,
-    sections: [{ heading: "Notes", bodies: [creditNote.reason] }],
+    // UAE VAT requires a brief explanation of the circumstances giving rise
+    // to the adjustment, which is exactly what `reason` holds — so it is
+    // headed as such rather than as generic notes.
+    sections: [
+      { heading: "Reason for Adjustment", bodies: [creditNote.reason] },
+    ],
   });
 }
