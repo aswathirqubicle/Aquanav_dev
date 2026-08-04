@@ -452,6 +452,36 @@ salesQuotationsRoutes.put(
         }
       }
 
+      // Rejection is gated exactly as approval is — the two are the same
+      // decision with opposite outcomes, so a proforma that cannot be approved
+      // from its current status cannot be rejected from it either. The reason
+      // is mandatory: a rejection nobody can explain is not reviewable.
+      if (req.body.status === "rejected") {
+        if (!existingProforma) {
+          return res
+            .status(404)
+            .json({ message: "Proforma invoice not found" });
+        }
+
+        if (
+          existingProforma.status !== "draft" &&
+          existingProforma.status !== "sent"
+        ) {
+          return res.status(400).json({
+            message: `Cannot reject proforma invoice from ${existingProforma.status} status`,
+          });
+        }
+
+        if (
+          !req.body.rejectionReason ||
+          !String(req.body.rejectionReason).trim()
+        ) {
+          return res
+            .status(400)
+            .json({ message: "A reason is required to reject a proforma invoice" });
+        }
+      }
+
       // Checked against the customer on the payload where one is supplied, so
       // that reassigning the proforma and setting the currency in one request
       // is judged on where it ends up, not where it started. A proforma that no

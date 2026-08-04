@@ -31,7 +31,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Eye, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
 
@@ -1398,9 +1398,28 @@ export default function PurchaseInvoicesIndex() {
                       </thead>
                       <tbody>
                         {invoices.map((invoice) => (
+                          /* The whole row opens the detail dialog. role/
+                             tabIndex/onKeyDown keep it reachable without a
+                             mouse; every button inside stops propagation so
+                             acting on it does not also open the dialog. */
                           <tr
                             key={invoice.id}
-                            className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                            className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => viewInvoice(invoice)}
+                            onKeyDown={(e) => {
+                              // A keypress on an inline button bubbles to the row, so without
+                              // this an Enter on Approve would both approve and open the dialog.
+                              if (e.target !== e.currentTarget) {
+                                return;
+                              }
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                viewInvoice(invoice);
+                              }
+                            }}
+                            data-testid={`row-invoice-${invoice.id}`}
                           >
                             <td className="p-4">
                               <div className="font-medium">{invoice.invoiceNumber}</div>
@@ -1429,23 +1448,18 @@ export default function PurchaseInvoicesIndex() {
                             </td>
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => viewInvoice(invoice)}
-                                  className="h-8 w-8 p-0"
-                                  data-testid={`button-view-invoice-${invoice.id}`}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
                                 {invoice.status === "draft" && canEdit && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                     data-testid={`button-edit-invoice-${invoice.id}`}
                                   >
+                                    <Pencil className="h-4 w-4" />
                                     Edit
                                   </Button>
                                 )}
@@ -1453,9 +1467,13 @@ export default function PurchaseInvoicesIndex() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                   >
+                                    <Pencil className="h-4 w-4" />
                                     Edit
                                   </Button>
                                 )}
@@ -1463,10 +1481,14 @@ export default function PurchaseInvoicesIndex() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => viewInvoice(invoice)}
-                                    className="h-8 px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      viewInvoice(invoice);
+                                    }}
+                                    className="h-8 px-2 gap-1"
                                     data-testid={`button-submit-invoice-${invoice.id}`}
                                   >
+                                    <Send className="h-4 w-4" />
                                     Submit
                                   </Button>
                                 )}
@@ -1475,23 +1497,29 @@ export default function PurchaseInvoicesIndex() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        approveInvoiceMutation.mutate(invoice.id);
+                                      }}
                                       disabled={approveInvoiceMutation.isPending}
-                                      className="h-8 px-2 text-green-600 hover:text-green-700"
+                                      className="h-8 px-2 gap-1 text-green-600 hover:text-green-700"
                                       data-testid={`button-approve-invoice-${invoice.id}`}
                                     >
+                                      <CheckCircle className="h-4 w-4" />
                                       Approve
                                     </Button>
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setViewingInvoice(invoice);
                                         setIsRejectDialogOpen(true);
                                       }}
-                                      className="h-8 px-2 text-red-600 hover:text-red-700"
+                                      className="h-8 px-2 gap-1 text-red-600 hover:text-red-700"
                                       data-testid={`button-reject-invoice-${invoice.id}`}
                                     >
+                                      <XCircle className="h-4 w-4" />
                                       Reject
                                     </Button>
                                   </>
@@ -1510,10 +1538,26 @@ export default function PurchaseInvoicesIndex() {
             {/* Mobile Cards */}
             <div className="grid gap-4 md:hidden">
               {invoices.map((invoice) => (
+                /* Mobile twin of the desktop row: the whole card opens the
+                   detail dialog, with the same keyboard affordance. */
                 <Card
                   key={invoice.id}
                   className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => viewInvoice(invoice)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      viewInvoice(invoice);
+                    }
+                  }}
+                  data-testid={`card-invoice-${invoice.id}`}
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium truncate">
@@ -1549,24 +1593,18 @@ export default function PurchaseInvoicesIndex() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewInvoice(invoice)}
-                          className="flex-1"
-                          data-testid={`button-view-invoice-${invoice.id}`}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
                         {invoice.status === "draft" && (
                           <Button
                             variant="default"
                             size="sm"
-                            onClick={() => viewInvoice(invoice)}
-                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              viewInvoice(invoice);
+                            }}
+                            className="flex-1 gap-1"
                             data-testid={`button-submit-invoice-${invoice.id}`}
                           >
+                            <Send className="h-4 w-4" />
                             Submit
                           </Button>
                         )}
@@ -1575,23 +1613,29 @@ export default function PurchaseInvoicesIndex() {
                             <Button
                               variant="default"
                               size="sm"
-                              onClick={() => approveInvoiceMutation.mutate(invoice.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                approveInvoiceMutation.mutate(invoice.id);
+                              }}
                               disabled={approveInvoiceMutation.isPending}
-                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              className="flex-1 gap-1 bg-green-600 hover:bg-green-700"
                               data-testid={`button-approve-invoice-${invoice.id}`}
                             >
+                              <CheckCircle className="h-4 w-4" />
                               Approve
                             </Button>
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setViewingInvoice(invoice);
                                 setIsRejectDialogOpen(true);
                               }}
-                              className="flex-1"
+                              className="flex-1 gap-1"
                               data-testid={`button-reject-invoice-${invoice.id}`}
                             >
+                              <XCircle className="h-4 w-4" />
                               Reject
                             </Button>
                           </>
@@ -2867,8 +2911,8 @@ export default function PurchaseInvoicesIndex() {
                         </>
                       ) : (
                         <>
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Submit for Approval
+                          <Send className="w-4 h-4 mr-2" />
+                          Submit
                         </>
                       )}
                     </Button>
@@ -2892,8 +2936,8 @@ export default function PurchaseInvoicesIndex() {
                           </>
                         ) : (
                           <>
-                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Approve Invoice
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Approve
                           </>
                         )}
                       </Button>
@@ -2905,7 +2949,7 @@ export default function PurchaseInvoicesIndex() {
                         data-testid={`button-reject-invoice-${viewingInvoice.id}`}
                       >
                         <XCircle className="w-4 h-4 mr-2" />
-                        Reject Invoice
+                        Reject
                       </Button>
                     </>
                   )}
@@ -2937,7 +2981,7 @@ export default function PurchaseInvoicesIndex() {
                           ) : (
                             <>
                               <Ban className="w-4 h-4 mr-2" />
-                              Cancel Invoice
+                              Cancel
                             </>
                           )}
                         </Button>

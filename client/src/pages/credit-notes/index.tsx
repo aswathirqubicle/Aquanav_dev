@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit, Trash2, Eye, FileText, Ban, Pencil, X } from "lucide-react";
+import { Plus, Trash2, FileText, Printer, Ban, Pencil, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1086,7 +1086,35 @@ export default function CreditNotesIndex() {
               </TableHeader>
               <TableBody>
                 {creditNotes.map((creditNote: any) => (
-                  <TableRow key={creditNote.id}>
+                  /* The whole row opens the detail dialog. role/tabIndex/
+                     onKeyDown keep it reachable without a mouse; every button
+                     inside stops propagation so acting on it does not also
+                     open the dialog. */
+                  <TableRow
+                    key={creditNote.id}
+                    className="hover:bg-muted/50 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      // The confirm dialogs below are portalled out of the row
+                      // but still bubble through React's tree, so ignore any
+                      // click that did not land inside the row itself.
+                      if (!e.currentTarget.contains(e.target as Node)) {
+                        return;
+                      }
+                      setViewingCreditNote(creditNote);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) {
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setViewingCreditNote(creditNote);
+                      }
+                    }}
+                    data-testid={`row-credit-note-${creditNote.id}`}
+                  >
                     <TableCell className="font-medium">{creditNote.creditNoteNumber}</TableCell>
                     <TableCell>{creditNote.invoiceNumber}</TableCell>
                     <TableCell>{creditNote.customerName}</TableCell>
@@ -1097,35 +1125,40 @@ export default function CreditNotesIndex() {
                     <TableCell>{formatCurrency(creditNote.totalAmount || 0, creditNote.currency)}</TableCell>
                     <TableCell>{getStatusBadge(creditNote.status)}</TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setViewingCreditNote(creditNote)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCreditNote(creditNote);
+                          }}
                         >
-                          <Eye className="h-4 w-4" />
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setEditingCreditNote(creditNote)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             printByUrl(`/api/credit-notes/${creditNote.id}/pdf`);
                           }}
                         >
-                          <FileText className="h-4 w-4" />
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
                         </Button>
                         {creditNote.status === "issued" && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" title="Cancel credit note">
-                                <Ban className="h-4 w-4" />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Cancel credit note"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Ban className="h-4 w-4 mr-1" />
+                                Cancel
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1153,8 +1186,14 @@ export default function CreditNotesIndex() {
                         {creditNote.status === "draft" && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm" title="Delete draft">
-                                <Trash2 className="h-4 w-4" />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Delete draft"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1245,7 +1284,7 @@ export default function CreditNotesIndex() {
                       }}
                       data-testid="button-edit-credit-note-header"
                     >
-                      <Edit className="h-4 w-4 mr-1" />
+                      <Pencil className="h-4 w-4 mr-1" />
                       Edit
                     </Button>
                     <Button
@@ -1256,7 +1295,7 @@ export default function CreditNotesIndex() {
                       }}
                       data-testid="button-print-credit-note-header"
                     >
-                      <FileText className="h-4 w-4 mr-1" />
+                      <Printer className="h-4 w-4 mr-1" />
                       Print
                     </Button>
                   </div>
@@ -1411,8 +1450,8 @@ export default function CreditNotesIndex() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="destructive">
-                          <Ban className="h-4 w-4 mr-2" />
-                          Cancel Credit Note
+                          <Ban className="h-4 w-4 mr-1" />
+                          Cancel
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -1444,8 +1483,8 @@ export default function CreditNotesIndex() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="destructive">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Draft
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>

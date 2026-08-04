@@ -60,6 +60,7 @@ import {
   Archive,
   ArchiveRestore,
   Download,
+  Printer,
   Copy,
   Pencil,
   Trash2,
@@ -68,6 +69,10 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
+  Send,
+  ArrowRightLeft,
+  Ban,
+  CreditCard,
 } from "lucide-react";
 import {
   SalesQuotation,
@@ -3809,7 +3814,22 @@ export default function SalesIndex() {
               {paginatedQuotations.map((quotation) => (
                 <Card
                   key={quotation.id}
-                  className="hover:shadow-md transition-shadow"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openQuotationDetails(quotation)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openQuotationDetails(quotation);
+                    }
+                  }}
+                  className="cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid={`card-quotation-${quotation.id}`}
                 >
                   <CardContent className="p-6">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -3852,37 +3872,33 @@ export default function SalesIndex() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openQuotationDetails(quotation)}
-                            data-testid={`button-view-quotation-${quotation.id}`}
-                          >
-                            View Details
-                          </Button>
                           {quotation.status === "draft" && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleEditQuotation(quotation);
                               }}
                               data-testid={`button-edit-quotation-${quotation.id}`}
                             >
+                              <Pencil className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
                           )}
                           {quotation.status === "draft" && (
                             <Button
                               size="sm"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 startTransition(() =>
                                   submitQuotationMutation.mutate(quotation.id),
-                                )
-                              }
+                                );
+                              }}
                               disabled={submitQuotationMutation.isPending}
                               data-testid={`button-submit-quotation-${quotation.id}`}
                             >
+                              <Send className="h-4 w-4 mr-1" />
                               {submitQuotationMutation.isPending
                                 ? "Submitting..."
                                 : "Submit"}
@@ -3893,17 +3909,19 @@ export default function SalesIndex() {
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     startTransition(() =>
                                       approveQuotationMutation.mutate(
                                         quotation.id,
                                       ),
-                                    )
-                                  }
+                                    );
+                                  }}
                                   disabled={approveQuotationMutation.isPending}
                                   data-testid={`button-approve-quotation-${quotation.id}`}
                                   className="bg-green-600 hover:bg-green-700"
                                 >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
                                   {approveQuotationMutation.isPending
                                     ? "Approving..."
                                     : "Approve"}
@@ -3911,7 +3929,8 @@ export default function SalesIndex() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedQuotation(quotation);
                                     setIsQuotationRejectDialogOpen(true);
                                   }}
@@ -3919,6 +3938,7 @@ export default function SalesIndex() {
                                   data-testid={`button-reject-quotation-${quotation.id}`}
                                   className="border-red-300 text-red-600 hover:bg-red-50"
                                 >
+                                  <XCircle className="h-4 w-4 mr-1" />
                                   Reject
                                 </Button>
                               </>
@@ -3928,13 +3948,14 @@ export default function SalesIndex() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     unarchiveQuotationMutation.mutate(
                                       quotation.id,
                                     ),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={unarchiveQuotationMutation.isPending}
                                 data-testid={`button-unarchive-quotation-${quotation.id}`}
                               >
@@ -3947,13 +3968,14 @@ export default function SalesIndex() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     archiveQuotationMutation.mutate(
                                       quotation.id,
                                     ),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={archiveQuotationMutation.isPending}
                                 data-testid={`button-archive-quotation-${quotation.id}`}
                               >
@@ -3966,9 +3988,13 @@ export default function SalesIndex() {
                           {quotation.status === "approved" && (
                             <Button
                               size="sm"
-                              onClick={() => handleConvertToInvoice(quotation)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConvertToInvoice(quotation);
+                              }}
                               data-testid={`button-convert-quotation-${quotation.id}`}
                             >
+                              <ArrowRightLeft className="h-4 w-4 mr-1" />
                               Convert to Invoice
                             </Button>
                           )}
@@ -4256,7 +4282,22 @@ export default function SalesIndex() {
               {paginatedInvoices.map((invoice) => (
                 <Card
                   key={invoice.id}
-                  className="hover:shadow-md transition-shadow"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openInvoiceDetails(invoice)}
+                  onKeyDown={(e) => {
+                    // A keypress on an inline button bubbles to the row, so without
+                    // this an Enter on Approve would both approve and open the dialog.
+                    if (e.target !== e.currentTarget) {
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openInvoiceDetails(invoice);
+                    }
+                  }}
+                  className="cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid={`card-invoice-${invoice.id}`}
                 >
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex flex-col gap-4">
@@ -4300,21 +4341,15 @@ export default function SalesIndex() {
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openInvoiceDetails(invoice)}
-                            className="w-full sm:w-auto"
-                            data-testid={`button-view-invoice-${invoice.id}`}
-                          >
-                            View Details
-                          </Button>
                           {invoice.status === "draft" && (
                             <>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleEditInvoice(invoice)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditInvoice(invoice);
+                                }}
                                 className="w-full sm:w-auto"
                               >
                                 <Pencil className="h-4 w-4 mr-1" />
@@ -4322,15 +4357,17 @@ export default function SalesIndex() {
                               </Button>
                               <Button
                                 size="sm"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   startTransition(() =>
                                     submitInvoiceMutation.mutate(invoice.id),
-                                  )
-                                }
+                                  );
+                                }}
                                 disabled={submitInvoiceMutation.isPending}
                                 className="w-full sm:w-auto"
                                 data-testid={`button-submit-invoice-${invoice.id}`}
                               >
+                                <Send className="h-4 w-4 mr-1" />
                                 {submitInvoiceMutation.isPending
                                   ? "Submitting..."
                                   : "Submit"}
@@ -4341,7 +4378,10 @@ export default function SalesIndex() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditInvoice(invoice)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditInvoice(invoice);
+                              }}
                               className="w-full sm:w-auto"
                             >
                               <Pencil className="h-4 w-4 mr-1" />
@@ -4353,15 +4393,17 @@ export default function SalesIndex() {
                               <>
                                 <Button
                                   size="sm"
-                                  onClick={() =>
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     startTransition(() =>
                                       approveInvoiceMutation.mutate(invoice.id),
-                                    )
-                                  }
+                                    );
+                                  }}
                                   disabled={approveInvoiceMutation.isPending}
                                   className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                                   data-testid={`button-approve-invoice-${invoice.id}`}
                                 >
+                                  <CheckCircle className="h-4 w-4 mr-1" />
                                   {approveInvoiceMutation.isPending
                                     ? "Approving..."
                                     : "Approve"}
@@ -4369,7 +4411,8 @@ export default function SalesIndex() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setSelectedInvoice(invoice);
                                     setIsInvoiceRejectDialogOpen(true);
                                   }}
@@ -4377,6 +4420,7 @@ export default function SalesIndex() {
                                   className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
                                   data-testid={`button-reject-invoice-${invoice.id}`}
                                 >
+                                  <XCircle className="h-4 w-4 mr-1" />
                                   Reject
                                 </Button>
                               </>
@@ -4388,10 +4432,14 @@ export default function SalesIndex() {
                             invoice.invoiceNumber && (
                               <Button
                                 size="sm"
-                                onClick={() => openPaymentDialog(invoice)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPaymentDialog(invoice);
+                                }}
                                 className="w-full sm:w-auto"
                                 data-testid={`button-record-payment-${invoice.id}`}
                               >
+                                <CreditCard className="h-4 w-4 mr-1" />
                                 Record Payment
                               </Button>
                             )}
@@ -4399,15 +4447,17 @@ export default function SalesIndex() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 window.open(
                                   `/credit-notes?invoiceId=${invoice.id}`,
                                   "_blank",
-                                )
-                              }
+                                );
+                              }}
                               className="w-full sm:w-auto"
                               data-testid={`button-credit-note-${invoice.id}`}
                             >
+                              <FileText className="h-4 w-4 mr-1" />
                               Credit Note
                             </Button>
                           )}
@@ -4532,9 +4582,51 @@ export default function SalesIndex() {
                     onClick={() => handlePrintPDF(selectedQuotation)}
                     data-testid="button-print-quotation-header"
                   >
-                    <Download className="h-4 w-4 mr-1" />
+                    <Printer className="h-4 w-4 mr-1" />
                     Print
                   </Button>
+                  {user?.role === "admin" &&
+                    (selectedQuotation.isArchived ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsQuotationDetailsOpen(false);
+                          startTransition(() =>
+                            unarchiveQuotationMutation.mutate(
+                              selectedQuotation.id,
+                            ),
+                          );
+                        }}
+                        disabled={unarchiveQuotationMutation.isPending}
+                        data-testid="button-unarchive-quotation-header"
+                      >
+                        <ArchiveRestore className="h-4 w-4 mr-1" />
+                        {unarchiveQuotationMutation.isPending
+                          ? "Unarchiving..."
+                          : "Unarchive"}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsQuotationDetailsOpen(false);
+                          startTransition(() =>
+                            archiveQuotationMutation.mutate(
+                              selectedQuotation.id,
+                            ),
+                          );
+                        }}
+                        disabled={archiveQuotationMutation.isPending}
+                        data-testid="button-archive-quotation-header"
+                      >
+                        <Archive className="h-4 w-4 mr-1" />
+                        {archiveQuotationMutation.isPending
+                          ? "Archiving..."
+                          : "Archive"}
+                      </Button>
+                    ))}
                 </div>
               )}
             </div>
@@ -4861,6 +4953,7 @@ export default function SalesIndex() {
                     disabled={submitQuotationMutation.isPending}
                     data-testid="button-submit-quotation-dialog"
                   >
+                    <Send className="h-4 w-4 mr-1" />
                     {submitQuotationMutation.isPending
                       ? "Submitting..."
                       : "Submit"}
@@ -4881,6 +4974,7 @@ export default function SalesIndex() {
                         data-testid="button-approve-quotation-dialog"
                         className="bg-green-600 hover:bg-green-700"
                       >
+                        <CheckCircle className="h-4 w-4 mr-1" />
                         {approveQuotationMutation.isPending
                           ? "Approving..."
                           : "Approve"}
@@ -4895,6 +4989,7 @@ export default function SalesIndex() {
                         data-testid="button-reject-quotation-dialog"
                         className="border-red-300 text-red-600 hover:bg-red-50"
                       >
+                        <XCircle className="h-4 w-4 mr-1" />
                         Reject
                       </Button>
                     </>
@@ -4904,6 +4999,7 @@ export default function SalesIndex() {
                     onClick={() => handleConvertToInvoice(selectedQuotation)}
                     data-testid="button-convert-quotation-dialog"
                   >
+                    <ArrowRightLeft className="h-4 w-4 mr-1" />
                     Convert to Invoice
                   </Button>
                 )}
@@ -4973,7 +5069,7 @@ export default function SalesIndex() {
                     onClick={() => handlePrintInvoice(selectedInvoice)}
                     data-testid="button-print-invoice-header"
                   >
-                    <Download className="h-4 w-4 mr-1" />
+                    <Printer className="h-4 w-4 mr-1" />
                     Print
                   </Button>
                 </div>
@@ -5574,6 +5670,7 @@ export default function SalesIndex() {
                         className="w-full sm:w-auto"
                         data-testid="button-submit-invoice-dialog"
                       >
+                        <Send className="h-4 w-4 mr-1" />
                         {submitInvoiceMutation.isPending
                           ? "Submitting..."
                           : "Submit"}
@@ -5593,6 +5690,7 @@ export default function SalesIndex() {
                           className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                           data-testid="button-approve-invoice-dialog"
                         >
+                          <CheckCircle className="h-4 w-4 mr-1" />
                           {approveInvoiceMutation.isPending
                             ? "Approving..."
                             : "Approve"}
@@ -5607,9 +5705,28 @@ export default function SalesIndex() {
                           className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
                           data-testid="button-reject-invoice-dialog"
                         >
+                          <XCircle className="h-4 w-4 mr-1" />
                           Reject
                         </Button>
                       </>
+                    )}
+                  {selectedInvoice.invoiceNumber &&
+                    (selectedInvoice.status === "unpaid" ||
+                      selectedInvoice.status === "partially_paid") && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          window.open(
+                            `/credit-notes?invoiceId=${selectedInvoice.id}`,
+                            "_blank",
+                          )
+                        }
+                        className="w-full sm:w-auto"
+                        data-testid="button-credit-note-dialog"
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        Credit Note
+                      </Button>
                     )}
                   {(selectedInvoice.status === "unpaid" ||
                     selectedInvoice.status === "partially_paid" ||
@@ -5624,9 +5741,34 @@ export default function SalesIndex() {
                         className="w-full sm:w-auto"
                         data-testid="button-record-payment-dialog"
                       >
+                        <CreditCard className="h-4 w-4 mr-1" />
                         Record Payment
                       </Button>
                     )}
+                  {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
+                    selectedInvoice.status,
+                  ) && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        // Toggle the payment history section visibility
+                        const paymentHistorySection = document.getElementById(
+                          `payment-history-${selectedInvoice.id}`,
+                        );
+                        if (paymentHistorySection) {
+                          paymentHistorySection.style.display =
+                            paymentHistorySection.style.display === "none"
+                              ? "block"
+                              : "none";
+                        }
+                      }}
+                      className="w-full sm:w-auto"
+                      data-testid="button-view-payment-history"
+                    >
+                      <History className="h-4 w-4 mr-1" />
+                      Payment History
+                    </Button>
+                  )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
@@ -5637,6 +5779,7 @@ export default function SalesIndex() {
                             disabled={cancelInvoiceMutation.isPending}
                             className="w-full sm:w-auto"
                           >
+                            <Ban className="h-4 w-4 mr-1" />
                             {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
                           </Button>
                         </AlertDialogTrigger>
@@ -5667,33 +5810,11 @@ export default function SalesIndex() {
                         </AlertDialogContent>
                       </AlertDialog>
                     )}
-                  {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
-                    selectedInvoice.status,
-                  ) && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        // Toggle the payment history section visibility
-                        const paymentHistorySection = document.getElementById(
-                          `payment-history-${selectedInvoice.id}`,
-                        );
-                        if (paymentHistorySection) {
-                          paymentHistorySection.style.display =
-                            paymentHistorySection.style.display === "none"
-                              ? "block"
-                              : "none";
-                        }
-                      }}
-                      className="w-full sm:w-auto"
-                      data-testid="button-view-payment-history"
-                    >
-                      View Payment History
-                    </Button>
-                  )}
                   <Button
                     variant="outline"
                     onClick={() => setIsInvoiceDetailsOpen(false)}
                     className="w-full sm:w-auto"
+                    data-testid="button-close-invoice-details"
                   >
                     Close
                   </Button>

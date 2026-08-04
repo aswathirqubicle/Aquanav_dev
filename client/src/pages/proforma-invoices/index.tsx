@@ -40,9 +40,8 @@ import {
   AlertTriangle,
   Archive,
   ArchiveRestore,
-  Download,
-  Eye,
-  Edit,
+  ArrowRightLeft,
+  Printer,
   Copy,
   Pencil,
   Trash2,
@@ -100,6 +99,7 @@ interface ProformaInvoice {
   id: number;
   proformaNumber: string;
   subject?: string;
+  rejectionReason?: string | null;
   customerId: number;
   customerName?: string;
   projectId?: number;
@@ -154,6 +154,9 @@ export default function ProformaInvoicesIndex() {
   const [isEditingProforma, setIsEditingProforma] = useState(false);
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const [convertingProforma, setConvertingProforma] = useState<ProformaInvoice | null>(null);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectingProforma, setRejectingProforma] = useState<ProformaInvoice | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [archivedFilter, setArchivedFilter] = useState<string>("active");
   const [customerVatTreatment, setCustomerVatTreatment] = useState<string | null>(null);
@@ -469,6 +472,34 @@ export default function ProformaInvoicesIndex() {
     },
   });
 
+  const rejectProformaMutation = useMutation({
+    mutationFn: async ({ proformaId, reason }: { proformaId: number; reason: string }) => {
+      const response = await apiRequest(`/api/proforma-invoices/${proformaId}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "rejected", rejectionReason: reason }),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/proforma-invoices"] });
+      toast({
+        title: "Success",
+        description: "Proforma invoice has been rejected.",
+      });
+      setIsRejectDialogOpen(false);
+      setRejectingProforma(null);
+      setRejectionReason("");
+      setIsDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject proforma invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       subject: "",
@@ -706,6 +737,34 @@ export default function ProformaInvoicesIndex() {
     if (proforma.status === "draft" || proforma.status === "sent") {
       approveProformaMutation.mutate(proforma.id);
     }
+  };
+
+  // Rejection needs a reason, so it goes through its own confirm dialog rather
+  // than firing straight away like approve does.
+  const handleRejectProforma = (proforma: ProformaInvoice) => {
+    if (proforma.status === "draft" || proforma.status === "sent") {
+      setRejectingProforma(proforma);
+      setRejectionReason("");
+      setIsRejectDialogOpen(true);
+    }
+  };
+
+  const confirmRejectProforma = () => {
+    if (!rejectingProforma) {
+      return;
+    }
+    if (!rejectionReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a reason for rejecting this proforma invoice",
+        variant: "destructive",
+      });
+      return;
+    }
+    rejectProformaMutation.mutate({
+      proformaId: rejectingProforma.id,
+      reason: rejectionReason.trim(),
+    });
   };
 
   if (
@@ -1689,7 +1748,26 @@ export default function ProformaInvoicesIndex() {
       ) : (
         <div className="space-y-4">
           {paginatedProformas.map((proforma) => (
-            <Card key={proforma.id} className="hover:shadow-md transition-shadow">
+            /* The whole card opens the detail dialog. role/tabIndex/onKeyDown
+               keep it reachable without a mouse; every button inside stops
+               propagation so acting on it does not also open the dialog. */
+            <Card
+              key={proforma.id}
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onClick={() => openDetails(proforma)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) {
+                  return;
+                }
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openDetails(proforma);
+                }
+              }}
+              data-testid={`row-proforma-${proforma.id}`}
+            >
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div className="space-y-2">
@@ -1725,24 +1803,17 @@ export default function ProformaInvoicesIndex() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDetails(proforma)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-
-
                       {proforma.status === "approved" && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="text-green-600 hover:text-green-700"
-                          onClick={() => handleConvertToInvoice(proforma)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleConvertToInvoice(proforma);
+                          }}
                         >
-                          <FileText className="h-4 w-4 mr-1" />
+                          <ArrowRightLeft className="h-4 w-4 mr-1" />
                           Convert to Invoice
                         </Button>
                       )}
@@ -1871,7 +1942,7 @@ export default function ProformaInvoicesIndex() {
                     }}
                     data-testid="button-edit-proforma-header"
                   >
-                    <Edit className="h-4 w-4 mr-1" />
+                    <Pencil className="h-4 w-4 mr-1" />
                     Edit
                   </Button>
                   <Button
@@ -1889,7 +1960,7 @@ export default function ProformaInvoicesIndex() {
                     onClick={() => handlePrintPDF(selectedProforma)}
                     data-testid="button-print-proforma-header"
                   >
-                    <Download className="h-4 w-4 mr-1" />
+                    <Printer className="h-4 w-4 mr-1" />
                     Print
                   </Button>
                 </div>
@@ -1917,6 +1988,12 @@ export default function ProformaInvoicesIndex() {
                       <span className="font-medium">Status:</span>
                       <span>{getStatusBadge(selectedProforma.status)}</span>
                     </div>
+                    {selectedProforma.rejectionReason && (
+                      <div className="flex justify-between gap-4">
+                        <span className="font-medium whitespace-nowrap">Rejection Reason:</span>
+                        <span className="text-red-600 text-right whitespace-pre-wrap">{selectedProforma.rejectionReason}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="font-medium">Invoice Date:</span>
                       <span>{formatDate(selectedProforma.invoiceDate || selectedProforma.createdDate)}</span>
@@ -2160,13 +2237,24 @@ export default function ProformaInvoicesIndex() {
                     {approveProformaMutation.isPending ? "Approving..." : "Approve"}
                   </Button>
                 )}
+                {selectedProforma && (selectedProforma.status === "draft" || selectedProforma.status === "sent") && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleRejectProforma(selectedProforma)}
+                    disabled={rejectProformaMutation.isPending}
+                    data-testid="button-reject-proforma"
+                  >
+                    <XCircle className="h-4 w-4 mr-1" />
+                    Reject
+                  </Button>
+                )}
                 {selectedProforma && selectedProforma.status === "approved" && (
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() => handleConvertToInvoice(selectedProforma)}
                     disabled={convertToInvoiceMutation.isPending}
                   >
-                    <FileText className="h-4 w-4 mr-1" />
+                    <ArrowRightLeft className="h-4 w-4 mr-1" />
                     {convertToInvoiceMutation.isPending ? "Converting..." : "Convert to Invoice"}
                   </Button>
                 )}
@@ -2222,6 +2310,50 @@ export default function ProformaInvoicesIndex() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Proforma Invoice</DialogTitle>
+            <DialogDescription>
+              {rejectingProforma
+                ? `${rejectingProforma.proformaNumber} will be marked as rejected.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rejectionReason">Reason for Rejection</Label>
+              <Textarea
+                id="rejectionReason"
+                placeholder="Please provide a reason for rejecting this proforma invoice..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                data-testid="input-rejection-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsRejectDialogOpen(false)}
+                disabled={rejectProformaMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmRejectProforma}
+                disabled={rejectProformaMutation.isPending}
+                data-testid="button-confirm-reject-proforma"
+              >
+                <XCircle className="h-4 w-4 mr-1" />
+                {rejectProformaMutation.isPending ? "Rejecting..." : "Reject"}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
