@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, AlertCircle } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, AlertCircle, Building2, AlignLeft } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
 
@@ -1203,6 +1203,28 @@ export default function PurchaseOrdersIndex() {
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
+  };
+
+  // The status chip that sits beside the PO number in the view dialog's header.
+  // Deliberately a second helper rather than a change to getStatusBadge above:
+  // that one is shared with the list rows and the other dialogs, and the stamp
+  // treatment here (mono, letter-spaced, uppercase) is specific to this header.
+  const getStatusStamp = (status: string) => {
+    const tones: Record<string, string> = {
+      draft: "text-[#5B6472] bg-[#F1F3F7] border-[#E3E7EE]",
+      pending_approval: "text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]",
+      approved: "text-[#027A48] bg-[#ECFDF3] border-[#A6F4C5]",
+      rejected: "text-[#B42318] bg-[#FEF3F2] border-[#F0C5C1]",
+      converted: "text-[#6941C6] bg-[#F4F3FF] border-[#D9D6FE]",
+    };
+    return (
+      <span
+        className={`font-mono text-[11px] font-semibold tracking-[0.09em] uppercase px-[9px] py-[3px] rounded-[5px] border ${tones[status] || tones.draft}`}
+        data-testid="stamp-order-status"
+      >
+        {status.replace(/_/g, " ")}
+      </span>
+    );
   };
 
   const canCreateInvoice = (order: PurchaseOrder) => {
@@ -2383,632 +2405,835 @@ export default function PurchaseOrdersIndex() {
         </DialogContent>
       </Dialog>
 
-      {/* View Order Dialog */}
+      {/* View Order Dialog — laid out to the approved redesign reference:
+          a full-bleed header band, a key-facts strip, a two-column body and a
+          fixed action footer. The dialog's own padding is removed (p-0 gap-0)
+          so each band can carry its own padding and edge-to-edge rule, and the
+          body scrolls on its own while the header and footer stay put.
+          Colours are the reference's literal palette rather than the app's
+          semantic tokens, so this dialog can be lifted wholesale onto the
+          purchase invoice and sales documents later without dragging theme
+          changes along with it. Dark-mode variants are deliberately absent —
+          nothing in the app ever sets the `dark` class. */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          {viewingOrder && (
-            <div className="space-y-6 print:space-y-4">
-              {/* Header with Icon Badge and Document Actions, matching the
-                  purchase invoice view. pr-8 keeps the buttons clear of the
-                  dialog's own X. Document actions (edit, duplicate, print) live
-                  up here; status-flow actions (submit, approve, reject,
-                  convert) stay in the footer. DialogTitle rather than a plain
-                  h2 so the dialog has an accessible name. */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 pr-8 print:border-b-2 print:border-black">
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900 rounded-lg print:bg-blue-100">
-                    <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
+        <DialogContent className="max-w-6xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+          {viewingOrder && (() => {
+            // Every amount on the document is in this one currency. currency is
+            // NOT NULL with an "AED" default in the schema, so the supplier
+            // fallback only matters for rows written before that default landed.
+            const orderCurrency =
+              viewingOrder.currency || viewingOrder.supplierCurrency || "AED";
+            const showExchangeRate =
+              orderCurrency !== "AED" && !!viewingOrder.exchangeRate;
+
+            // Commercial terms is dropped entirely when every one of its rows is
+            // empty, and the supplier card then takes the whole row. Empty
+            // optional fields stay hidden throughout, as they do today.
+            const hasCommercialTerms = !!(
+              viewingOrder.paymentTerms ||
+              viewingOrder.deliveryTerms ||
+              viewingOrder.supplierVatTreatment ||
+              showExchangeRate
+            );
+
+            // The sidebar carries only the bank account. Without one there is
+            // nothing to put in it, so the main column runs full width instead
+            // of leaving a 316px gutter. Both class strings are written out in
+            // full so Tailwind's scanner picks them up.
+            const hasSidebar = !!viewingOrder.bankAccount;
+            const bodyGridCls = hasSidebar
+              ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_316px] gap-5 p-5 sm:p-6"
+              : "grid grid-cols-1 gap-5 p-5 sm:p-6";
+            const spanFull = hasSidebar ? "lg:col-span-2" : "";
+
+            // Shared chrome. Kept as constants rather than repeated inline so
+            // the card/table/ledger treatment stays identical across every
+            // block and is easy to lift into a shared component later.
+            const cardCls =
+              "bg-white border border-[#E3E7EE] rounded-[10px] overflow-hidden print:border-gray-300";
+            const cardHeadCls =
+              "flex items-center gap-2.5 px-[18px] py-3 border-b border-[#EDF0F5]";
+            const cardTitleCls = "text-sm font-semibold text-[#171B23] print:text-black";
+            const cardIconCls = "w-[15px] h-[15px] shrink-0 text-[#8A93A3]";
+            const cardBodyCls = "px-[18px] py-4";
+            const kvRowCls =
+              "flex justify-between gap-3.5 py-2 text-[13.5px] border-b border-dashed border-[#EDF0F5] last:border-b-0 first:pt-0 last:pb-0";
+            const kvLabelCls = "shrink-0 text-[#5B6472]";
+            const kvValCls = "min-w-0 text-right font-medium break-words print:text-black";
+            const metaLabelCls =
+              "text-[10.5px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] mb-[3px]";
+            const metaValueCls = "text-[14.5px] font-semibold text-[#171B23] print:text-black";
+            const metaCellCls =
+              "flex-1 min-w-[160px] px-5 sm:px-6 py-3.5 border-r border-[#E3E7EE] last:border-r-0";
+            const thCls =
+              "h-auto px-3.5 py-2.5 bg-[#F7F9FC] text-[10.5px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3] whitespace-nowrap print:bg-white";
+            const tdCls = "px-3.5 py-3 align-top print:text-black";
+            const tdNumCls =
+              "px-3.5 py-3 align-top text-right font-mono tabular-nums text-[13px] print:text-black";
+            const tRowCls = "flex justify-between items-baseline gap-4 py-[5px]";
+            const tLabelCls = "text-[#5B6472]";
+            const tValCls = "font-mono tabular-nums font-medium print:text-black";
+            const headBtnCls =
+              "h-auto gap-[7px] rounded-lg border-[#E3E7EE] px-[13px] py-[7px] text-[13.5px] font-medium text-[#171B23] hover:bg-[#F7F9FC] hover:border-[#D4DAE3]";
+            const sectionLabelCls =
+              "text-[10.5px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] mt-3.5 mb-1.5 first:mt-0";
+            const emptyCls = "text-[13px] text-[#8A93A3]";
+
+            return (
+              <>
+                {/* ===== HEADER ===== */}
+                <header className="flex flex-col sm:flex-row sm:items-center gap-4 shrink-0 border-b border-[#E3E7EE] py-4 pl-5 sm:pl-6 pr-5 sm:pr-14 print:border-b-2 print:border-black">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                    <div className="grid place-items-center w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#EEF2FE] border border-[#DCE4FB] print:bg-blue-100">
+                      <FileText className="w-5 h-5 text-[#2B4ACB] print:text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3]">
+                        Purchase order
+                      </div>
+                      <div className="flex items-center flex-wrap gap-2.5 mt-px">
+                        <DialogTitle className="font-mono text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
+                          {viewingOrder.poNumber}
+                        </DialogTitle>
+                        {getStatusStamp(viewingOrder.status)}
+                        {/* Document lineage reads best next to the status it
+                            explains, so the converted invoice is a second chip
+                            rather than a field further down. */}
+                        {viewingOrder.convertedInvoiceId && (
+                          <span
+                            className="font-mono text-[11px] font-semibold tracking-[0.06em] px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]"
+                            data-testid="chip-converted-invoice"
+                          >
+                            →{" "}
+                            {viewingOrder.convertedInvoiceNumber ||
+                              `Invoice #${viewingOrder.convertedInvoiceId}`}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[13px] text-[#5B6472] mt-0.5 break-words print:text-gray-700">
+                        <strong className="font-semibold text-[#171B23] print:text-black">
+                          {viewingOrder.supplierName}
+                        </strong>
+                        {viewingOrder.createdAt && (
+                          <> &nbsp;·&nbsp; Created {formatDisplayDate(viewingOrder.createdAt)}</>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white print:text-black">
-                      {viewingOrder.poNumber}
-                    </DialogTitle>
-                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700">
-                      Purchase Order
-                    </p>
-                  </div>
-                </div>
-                {/* Status is not repeated here — it has its own labelled field
-                    in Order Information. */}
-                <div className="flex flex-wrap items-center gap-3 print:hidden">
-                  {/* Same gate as the list's Edit button: drafts for anyone who
-                      can edit, post-approval statuses for admin/finance only.
-                      Converted orders show no Edit, matching the list. */}
-                  {(viewingOrder.status === "draft" ||
-                    (["approved", "pending_approval", "rejected"].includes(viewingOrder.status) &&
-                      (user?.role === "admin" || user?.role === "finance"))) && (
+                  {/* Document actions. Status-flow actions (submit, approve,
+                      reject, convert) stay in the footer, as before. */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 print:hidden">
+                    {/* Same gate as the list's Edit button: drafts for anyone who
+                        can edit, post-approval statuses for admin/finance only.
+                        Converted orders show no Edit, matching the list. */}
+                    {(viewingOrder.status === "draft" ||
+                      (["approved", "pending_approval", "rejected"].includes(viewingOrder.status) &&
+                        (user?.role === "admin" || user?.role === "finance"))) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const order = viewingOrder;
+                          setIsViewDialogOpen(false);
+                          handleEditOrder(order);
+                        }}
+                        className={headBtnCls}
+                        data-testid="button-edit-from-view"
+                      >
+                        <Pencil className="w-[15px] h-[15px] text-[#5B6472]" />
+                        Edit
+                      </Button>
+                    )}
+                    {/* Duplicate is offered once an order is past drafting —
+                        approved, rejected and converted orders are the ones worth
+                        reissuing, and none of them can be edited in place. */}
+                    {["approved", "rejected", "converted"].includes(viewingOrder.status) && canEdit && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDuplicateOrder(viewingOrder)}
+                        className={headBtnCls}
+                        data-testid="button-duplicate-order-header"
+                      >
+                        <Copy className="w-[15px] h-[15px] text-[#5B6472]" />
+                        Duplicate
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        const order = viewingOrder;
-                        setIsViewDialogOpen(false);
-                        handleEditOrder(order);
-                      }}
-                      className="flex items-center gap-2"
-                      data-testid="button-edit-from-view"
+                      onClick={() => handlePrintPDF(viewingOrder)}
+                      className={headBtnCls}
+                      data-testid="button-print-order"
                     >
-                      <Pencil className="h-4 w-4" />
-                      Edit
+                      <Printer className="w-[15px] h-[15px] text-[#5B6472]" />
+                      Print
                     </Button>
-                  )}
-                  {/* Duplicate is offered once an order is past drafting —
-                      approved, rejected and converted orders are the ones worth
-                      reissuing, and none of them can be edited in place. */}
-                  {["approved", "rejected", "converted"].includes(viewingOrder.status) && canEdit && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDuplicateOrder(viewingOrder)}
-                      className="flex items-center gap-2"
-                      data-testid="button-duplicate-order-header"
-                    >
-                      <Copy className="w-4 h-4" />
-                      Duplicate
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePrintPDF(viewingOrder)}
-                    className="flex items-center gap-2"
-                    data-testid="button-print-order"
-                  >
-                    <Printer className="w-4 h-4" />
-                    Print
-                  </Button>
-                </div>
-              </div>
+                  </div>
+                </header>
 
-              {/* Order Information Card */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Order Information
-                </h3>
-                {/* One uniform grid rather than two hand-balanced columns, so
-                    a field can be added without re-splitting the layout. */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</label>
-                      <p className="text-sm font-semibold mt-1 break-words">{viewingOrder.supplierName}</p>
-                    </div>
-                    {viewingOrder.subject && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject</label>
-                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.subject}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
-                      <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
-                    </div>
-                    {viewingOrder.expectedDeliveryDate && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Delivery</label>
-                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.expectedDeliveryDate)}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
-                      {/* div, not p: the badge renders a div, which is invalid
-                          nesting inside a paragraph and warned in the console. */}
-                      <div className="mt-1">{getStatusBadge(viewingOrder.status)}</div>
-                    </div>
-                    {viewingOrder.paymentTerms && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Payment Terms</label>
-                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.paymentTerms}</p>
-                      </div>
-                    )}
-                    {viewingOrder.deliveryTerms && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Delivery Terms</label>
-                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.deliveryTerms}</p>
-                      </div>
-                    )}
-                    {viewingOrder.deliverTo && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deliver To</label>
-                        <p className="text-sm font-medium mt-1 whitespace-pre-wrap break-words">{viewingOrder.deliverTo}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Currency</label>
-                      <p className="text-sm font-medium mt-1">{viewingOrder.currency || viewingOrder.supplierCurrency || "AED"}</p>
-                    </div>
-                    {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exchange Rate</label>
-                        <p className="text-sm font-medium mt-1 break-words">1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED</p>
-                      </div>
-                    )}
-                    {viewingOrder.supplierVatTreatment && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">VAT Treatment</label>
-                        <p className="text-sm font-medium mt-1 capitalize">{viewingOrder.supplierVatTreatment.replace(/_/g, " ")}</p>
-                      </div>
-                    )}
-                    {viewingOrder.createdAt && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Created On</label>
-                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.createdAt)}</p>
-                      </div>
-                    )}
-                    {viewingOrder.convertedInvoiceId && (
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Converted To</label>
-                        <p className="text-sm font-medium mt-1 break-words">
-                          {viewingOrder.convertedInvoiceNumber || `Invoice #${viewingOrder.convertedInvoiceId}`}
-                        </p>
-                      </div>
-                    )}
-                </div>
-              </div>
-
-              {/* Bank Account Details Card */}
-              {viewingOrder.bankAccount && (
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Bank Account Details
-                  </h3>
+                {/* ===== REJECTION BANNER =====
+                    The reason is surfaced at the top for a rejected order so it
+                    is not missed; it also stays in Activity → Approval below. */}
+                {viewingOrder.status === "rejected" && viewingOrder.rejectionReason && (
                   <div
-                    className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
-                    dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
-                  />
-                </div>
-              )}
+                    className="flex items-start gap-3 shrink-0 px-5 sm:px-6 py-3.5 bg-[#FEF3F2] border-b border-[#F0C5C1] text-[13.5px] text-[#912018] print:hidden"
+                    data-testid="banner-order-rejected"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-px text-[#B42318]" />
+                    <div className="flex-1 min-w-0">
+                      <strong className="font-semibold">This purchase order was rejected.</strong>
+                      <div className="text-[12.5px] text-[#A6584F] mt-px whitespace-pre-wrap break-words">
+                        {viewingOrder.rejectionReason}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-              {/* Order Items Table */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Order Items
-                  <Badge variant="secondary" className="ml-2">
-                    {viewingOrder.items?.length || 0} items
-                  </Badge>
-                </h3>
-                <div>
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">#</TableHead>
-                          <TableHead>Item Description</TableHead>
-                          <TableHead className="text-right">Quantity</TableHead>
-                          {/* No currency in the headers or the cells — every
-                              line is in the document's one currency, which the
-                              Financial Summary below states once. */}
-                          <TableHead className="text-right">Unit Price</TableHead>
-                          <TableHead className="text-right">Tax Rate</TableHead>
-                          <TableHead className="text-right">Tax</TableHead>
-                          <TableHead className="text-right">Discount</TableHead>
-                          <TableHead className="text-right">Line Total</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {viewingOrder.items?.map((item, index) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="font-medium">{index + 1}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {item.itemType === "product" && (
-                                  <Badge variant="default" className="text-xs">
-                                    Product
-                                  </Badge>
-                                )}
-                                <div className="flex flex-col">
-                                  <span className="font-medium whitespace-pre-wrap break-words">
-                                    {item.itemType === "product" ? item.inventoryItemName : item.description}
-                                  </span>
-                                  {item.itemType === "product" && item.inventoryItemId && (() => {
-                                    const description = getItemDescription(item.inventoryItemId);
-                                    return description && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {description}
-                                      </span>
-                                    );
-                                  })()}
+                {/* ===== KEY FACTS STRIP =====
+                    flex rather than a fixed 4-column grid so the remaining cells
+                    still spread evenly when Expected delivery is absent. */}
+                <div className="flex flex-wrap shrink-0 border-b border-[#E3E7EE] bg-[#F7F9FC] print:bg-white">
+                  <div className={metaCellCls}>
+                    <div className={metaLabelCls}>Order date</div>
+                    <div className={metaValueCls}>{formatDisplayDate(viewingOrder.orderDate)}</div>
+                  </div>
+                  {viewingOrder.expectedDeliveryDate && (
+                    <div className={metaCellCls}>
+                      <div className={metaLabelCls}>Expected delivery</div>
+                      <div className={metaValueCls}>
+                        {formatDisplayDate(viewingOrder.expectedDeliveryDate)}
+                      </div>
+                    </div>
+                  )}
+                  <div className={metaCellCls}>
+                    <div className={metaLabelCls}>Currency</div>
+                    <div className={metaValueCls}>
+                      {orderCurrency}
+                      {viewingOrder.supplierVatTreatment && (
+                        <span className="text-[13px] font-medium text-[#5B6472] capitalize">
+                          {" "}
+                          · {viewingOrder.supplierVatTreatment.replace(/_/g, " ")} VAT
+                        </span>
+                      )}
+                    </div>
+                    {showExchangeRate && (
+                      <div className="font-mono text-[12px] text-[#8A93A3] mt-px">
+                        1 {orderCurrency} = {viewingOrder.exchangeRate} AED
+                      </div>
+                    )}
+                  </div>
+                  <div className={metaCellCls}>
+                    <div className={metaLabelCls}>Total amount</div>
+                    <div className={`${metaValueCls} font-mono tabular-nums`}>
+                      {formatCurrency(viewingOrder.totalAmount, orderCurrency)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ===== BODY ===== */}
+                <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFCFE] print:bg-white">
+                  <div className={bodyGridCls}>
+
+                    {/* --- Top row: Supplier & Commercial terms --- */}
+                    <div
+                      className={`grid grid-cols-1 ${hasCommercialTerms ? "md:grid-cols-2" : ""} gap-4 ${spanFull}`}
+                    >
+                      <section className={cardCls}>
+                        <div className={cardHeadCls}>
+                          <Building2 className={cardIconCls} />
+                          <span className={cardTitleCls}>Supplier</span>
+                        </div>
+                        <div className={cardBodyCls}>
+                          <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
+                            {viewingOrder.supplierName}
+                          </div>
+                          {viewingOrder.deliverTo && (
+                            <>
+                              <div className={sectionLabelCls}>Deliver to</div>
+                              <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                {viewingOrder.deliverTo}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </section>
+
+                      {hasCommercialTerms && (
+                        <section className={cardCls}>
+                          <div className={cardHeadCls}>
+                            <DollarSign className={cardIconCls} />
+                            <span className={cardTitleCls}>Commercial terms</span>
+                          </div>
+                          <div className={cardBodyCls}>
+                            <div className="flex flex-col">
+                              {viewingOrder.paymentTerms && (
+                                <div className={kvRowCls}>
+                                  <span className={kvLabelCls}>Payment terms</span>
+                                  <span className={kvValCls}>{viewingOrder.paymentTerms}</span>
                                 </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
-                            </TableCell>
-                            <TableCell className="text-right">{formatAmount(item.unitPrice)}</TableCell>
-                            <TableCell className="text-right">{item.taxRate || "0"}%</TableCell>
-                            <TableCell className="text-right">{formatAmount(item.taxAmount || "0.00")}</TableCell>
-                            <TableCell className="text-right">
-                              {Number(item.discount) > 0
-                                ? (item.discountType === "percentage" ? `${item.discount}%` : formatAmount(item.discount as any))
-                                : "-"}
-                            </TableCell>
-                            <TableCell className="text-right font-semibold">{formatAmount(item.lineTotal)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </div>
-
-              {/* Financial Summary — its own panel rather than a block nested
-                  at the bottom of the items table, so Notes and Terms can sit
-                  below the totals as they do on the purchase invoice. */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
-                  Financial Summary
-                </h3>
-                  <div className="space-y-2 sm:space-y-3">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">Subtotal ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                      <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-muted-foreground">Tax ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                      <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                    </div>
-                    {/* The header discount as stored, shown alongside the
-                        derived total so a reader can tell the header portion
-                        from the line-level one. discountPercentage and
-                        discountAmount are mutually exclusive on save: a
-                        percentage is used when non-zero, else the fixed
-                        amount. */}
-                    {parseFloat(viewingOrder.discountPercentage || "0") > 0 && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Header Discount</span>
-                        <span className="font-medium">{viewingOrder.discountPercentage}%</span>
-                      </div>
-                    )}
-                    {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Discount Amount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                        <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      // Total discount (header + line) derived from stored fields;
-                      // the discountAmount column holds only the header portion.
-                      const totalDiscount =
-                        parseFloat(viewingOrder.subtotal || "0") +
-                        parseFloat(viewingOrder.taxAmount || "0") -
-                        parseFloat(viewingOrder.totalAmount || "0");
-                      return totalDiscount > 0.005 ? (
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-muted-foreground">Total Discount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                          <span className="font-medium text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-base font-semibold">Total Amount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                        <span className="text-xl font-bold text-primary">{formatCurrency(viewingOrder.totalAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                      </div>
-                    </div>
-                    {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
-                      <div className="text-xs text-muted-foreground text-right">
-                        Exchange Rate: 1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED
-                      </div>
-                    )}
-                  </div>
-              </div>
-
-              {/* Notes and Terms & Conditions sit below the totals and are
-                  collapsed by default — they are reference text, not something
-                  a reader needs on opening the document. */}
-              {(viewingOrder.notes || viewingOrder.termsAndConditions) && (
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg px-4 sm:px-6 print:bg-white print:border print:border-gray-300">
-                    <Accordion type="multiple" className="w-full">
-                      {viewingOrder.notes && (
-                        <AccordionItem value="notes" className="border-b-0">
-                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
-                            <span className="flex items-center gap-2">
-                              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                              Notes
-                            </span>
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <div
-                              className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
-                              dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
-                            />
-                          </AccordionContent>
-                        </AccordionItem>
-                      )}
-                      {viewingOrder.termsAndConditions && (
-                        <AccordionItem value="terms" className="border-b-0">
-                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
-                            <span className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-                              Terms &amp; Conditions
-                            </span>
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
-                          </AccordionContent>
-                        </AccordionItem>
-                      )}
-                    </Accordion>
-                </div>
-              )}
-
-              {/* Attachments Card */}
-              {viewingOrder.files && viewingOrder.files.length > 0 && (
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                    <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Attachments ({viewingOrder.files.length})
-                  </h3>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {viewingOrder.files.map((file) => (
-                        <li
-                          key={file.id}
-                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            {getFileIcon((file as any).mimeType)}
-                            <div className="flex flex-col overflow-hidden">
-                              <span className="text-sm truncate" title={file.originalName}>
-                                {file.originalName}
-                              </span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatFileSize(file.fileSize)}
-                                {(file as any).uploadedAt && ` · ${formatDisplayDate((file as any).uploadedAt)}`}
-                              </span>
+                              )}
+                              {viewingOrder.deliveryTerms && (
+                                <div className={kvRowCls}>
+                                  <span className={kvLabelCls}>Delivery terms</span>
+                                  <span className={kvValCls}>{viewingOrder.deliveryTerms}</span>
+                                </div>
+                              )}
+                              {viewingOrder.supplierVatTreatment && (
+                                <div className={kvRowCls}>
+                                  <span className={kvLabelCls}>VAT treatment</span>
+                                  <span className={`${kvValCls} capitalize`}>
+                                    {viewingOrder.supplierVatTreatment.replace(/_/g, " ")}
+                                  </span>
+                                </div>
+                              )}
+                              {showExchangeRate && (
+                                <div className={kvRowCls}>
+                                  <span className={kvLabelCls}>Exchange rate</span>
+                                  <span className={`${kvValCls} font-mono text-[12.5px] tabular-nums`}>
+                                    1 {orderCurrency} = {viewingOrder.exchangeRate} AED
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <Button variant="ghost" size="sm" asChild className="h-8 ml-2">
-                            <a
-                              href={`/${file.filePath}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Download
-                            </a>
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                </div>
-              )}
-
-              {/* Activity — approval trail and edit history in one tabbed block
-                  rather than two stacked cards. A purchase order has no
-                  payments, so there are two tabs. Approval opens first because
-                  its data is already on the order; edit history fetches on
-                  first click. That endpoint is admin/finance only, so its tab
-                  is hidden for project_manager rather than firing a 403. */}
-              <Card className="print:hidden">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <History className="w-4 h-4" />
-                    Activity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Tabs value={activityTab} onValueChange={setActivityTab}>
-                    <TabsList>
-                      <TabsTrigger value="approval" data-testid="tab-approval">
-                        Approval
-                      </TabsTrigger>
-                      {canSeeEditHistory && (
-                        <TabsTrigger value="history" data-testid="tab-edit-history">
-                          Edit History
-                          {poEditHistory ? ` (${poEditHistory.length})` : ""}
-                        </TabsTrigger>
+                        </section>
                       )}
-                    </TabsList>
+                    </div>
 
-                    <TabsContent value="approval" className="mt-4">
-                      {viewingOrder.submittedAt || viewingOrder.approvedAt || viewingOrder.rejectionReason ? (
-                        <div className="space-y-3">
-                          {viewingOrder.submittedAt && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
-                              <div>
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</label>
-                                <p className="text-sm font-medium mt-1">{viewingOrder.submittedByName || "—"}</p>
-                              </div>
-                              <div>
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</label>
-                                <p className="text-sm font-medium mt-1">{new Date(viewingOrder.submittedAt).toLocaleString()}</p>
-                              </div>
-                            </div>
-                          )}
-                          {viewingOrder.approvedAt && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</label>
-                                <p className="text-sm font-medium mt-1">{viewingOrder.approvedByName || "—"}</p>
-                              </div>
-                              <div>
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</label>
-                                <p className="text-sm font-medium mt-1">{new Date(viewingOrder.approvedAt).toLocaleString()}</p>
-                              </div>
-                            </div>
-                          )}
-                          {viewingOrder.rejectionReason && (
-                            <div className="pt-1">
-                              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
-                              <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
-                                <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
-                                  {viewingOrder.rejectionReason}
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                    {/* --- Main column --- */}
+                    <div className="flex flex-col gap-4 min-w-0">
+
+                      {/* Order items + ledger totals */}
+                      <section className={cardCls}>
+                        <div className={cardHeadCls}>
+                          <Package className={cardIconCls} />
+                          <span className={cardTitleCls}>Order items</span>
+                          <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
+                            {viewingOrder.items?.length || 0}{" "}
+                            {viewingOrder.items?.length === 1 ? "item" : "items"}
+                          </span>
                         </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground italic">
-                          This order has not been submitted for approval yet.
-                        </p>
-                      )}
-                    </TabsContent>
-
-                    {canSeeEditHistory && (
-                      <TabsContent value="history" className="mt-4">
-                        {isLoadingEditHistory ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                            Loading edit history…
-                          </div>
-                        ) : poEditHistory && poEditHistory.length > 0 ? (
-                          <div className="space-y-3">
-                            {poEditHistory.map((entry: any) => {
-                              const changedFields = entry.changes ? Object.keys(entry.changes) : [];
-                              return (
-                                <div key={entry.id} className="border rounded-lg overflow-hidden">
-                                  <div
-                                    className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                    onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                                          <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
-                                        </div>
-                                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 break-words">{entry.editNote}</p>
-                                        {changedFields.length > 0 && (
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
-                                          </p>
-                                        )}
-                                      </div>
-                                      {changedFields.length > 0 && (
-                                        <ChevronDown
-                                          className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
-                                        />
-                                      )}
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="border-b border-[#E3E7EE] hover:bg-transparent">
+                              <TableHead className={`${thCls} w-9`}>#</TableHead>
+                              <TableHead className={thCls}>Item</TableHead>
+                              <TableHead className={`${thCls} text-right`}>Qty</TableHead>
+                              {/* No currency in the headers or the cells — every
+                                  line is in the document's one currency, which the
+                                  ledger below and the facts strip above state. */}
+                              <TableHead className={`${thCls} text-right`}>Unit price</TableHead>
+                              <TableHead className={`${thCls} text-right`}>Tax rate</TableHead>
+                              <TableHead className={`${thCls} text-right`}>Tax</TableHead>
+                              <TableHead className={`${thCls} text-right`}>Discount</TableHead>
+                              <TableHead className={`${thCls} text-right`}>Amount</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {viewingOrder.items?.map((item, index) => (
+                              <TableRow
+                                key={item.id}
+                                className="border-b border-[#EDF0F5] last:border-b-0 hover:bg-[#F7F9FC]"
+                              >
+                                <TableCell className={`${tdCls} font-mono text-[12.5px] text-[#8A93A3]`}>
+                                  {index + 1}
+                                </TableCell>
+                                <TableCell className={tdCls}>
+                                  <div className="flex items-start gap-2">
+                                    {item.itemType === "product" && (
+                                      <Badge variant="default" className="text-xs shrink-0">
+                                        Product
+                                      </Badge>
+                                    )}
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words">
+                                        {item.itemType === "product"
+                                          ? item.inventoryItemName
+                                          : item.description}
+                                      </span>
+                                      {item.itemType === "product" && item.inventoryItemId && (() => {
+                                        const description = getItemDescription(item.inventoryItemId);
+                                        return description && (
+                                          <span className="text-[12.5px] text-[#5B6472] mt-px break-words">
+                                            {description}
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
-                                  {expandedEditEntry === entry.id && changedFields.length > 0 && (
-                                    <div className="px-3 pb-3 pt-3 border-t bg-gray-50 dark:bg-gray-800/50">
-                                      <div className="text-xs space-y-2">
-                                        {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                          field !== "items" ? (
-                                            <div key={field} className="flex flex-col gap-1">
-                                              <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                              {/* notes and bankAccount are ReactQuill fields, so their
-                                                  stored value is HTML and printing it raw showed markup
-                                                  to the reader. Every other tracked field is plain text
-                                                  and stays escaped. */}
-                                              {isRichTextField(field) ? (
-                                                <>
-                                                  <div
-                                                    className="text-red-500 line-through break-words rich-text-content"
-                                                    dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
-                                                  />
-                                                  <div
-                                                    className="text-green-600 break-words rich-text-content"
-                                                    dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
-                                                  />
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                                  <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
-                                                </>
+                                </TableCell>
+                                <TableCell className={tdNumCls}>
+                                  {item.quantity}{" "}
+                                  {item.itemType === "product" ? item.inventoryItemUnit : ""}
+                                </TableCell>
+                                <TableCell className={tdNumCls}>{formatAmount(item.unitPrice)}</TableCell>
+                                <TableCell className={tdNumCls}>{item.taxRate || "0"}%</TableCell>
+                                <TableCell className={tdNumCls}>
+                                  {formatAmount(item.taxAmount || "0.00")}
+                                </TableCell>
+                                <TableCell className={`${tdNumCls} ${Number(item.discount) > 0 ? "text-[#B42318]" : ""}`}>
+                                  {Number(item.discount) > 0
+                                    ? (item.discountType === "percentage"
+                                        ? `−${item.discount}%`
+                                        : `−${formatAmount(item.discount as any)}`)
+                                    : "—"}
+                                </TableCell>
+                                <TableCell className={`${tdNumCls} font-semibold`}>
+                                  {formatAmount(item.lineTotal)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+
+                        {/* Ledger totals, at the foot of the items card rather
+                            than in a panel of their own. Every row the previous
+                            Financial Summary carried is here, under the same
+                            conditions; discounts sit above tax as the reference
+                            orders them. */}
+                        <div className="flex justify-end px-[18px] pt-3.5 pb-4 bg-[#F7F9FC] border-t border-[#EDF0F5] print:bg-white">
+                          <div className="w-full sm:w-[300px] text-[13.5px]">
+                            <div className={tRowCls}>
+                              <span className={tLabelCls}>Subtotal</span>
+                              <span className={tValCls}>{formatAmount(viewingOrder.subtotal || "0")}</span>
+                            </div>
+                            {/* The header discount as stored, shown alongside the
+                                derived total so a reader can tell the header portion
+                                from the line-level one. discountPercentage and
+                                discountAmount are mutually exclusive on save: a
+                                percentage is used when non-zero, else the fixed
+                                amount. */}
+                            {parseFloat(viewingOrder.discountPercentage || "0") > 0 && (
+                              <div className={tRowCls}>
+                                <span className={tLabelCls}>Header discount</span>
+                                <span className={tValCls}>{viewingOrder.discountPercentage}%</span>
+                              </div>
+                            )}
+                            {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
+                              <div className={tRowCls}>
+                                <span className={tLabelCls}>Discount amount</span>
+                                <span className={`${tValCls} text-[#B42318]`}>
+                                  −{formatAmount(viewingOrder.discountAmount || "0")}
+                                </span>
+                              </div>
+                            )}
+                            {(() => {
+                              // Total discount (header + line) derived from stored fields;
+                              // the discountAmount column holds only the header portion.
+                              const totalDiscount =
+                                parseFloat(viewingOrder.subtotal || "0") +
+                                parseFloat(viewingOrder.taxAmount || "0") -
+                                parseFloat(viewingOrder.totalAmount || "0");
+                              return totalDiscount > 0.005 ? (
+                                <div className={tRowCls}>
+                                  <span className={tLabelCls}>Total discount</span>
+                                  <span className={`${tValCls} text-[#B42318]`}>
+                                    −{formatAmount(totalDiscount.toFixed(2))}
+                                  </span>
+                                </div>
+                              ) : null;
+                            })()}
+                            <div className={tRowCls}>
+                              <span className={tLabelCls}>Tax</span>
+                              <span className={tValCls}>{formatAmount(viewingOrder.taxAmount || "0")}</span>
+                            </div>
+                            <div className={`${tRowCls} mt-[7px] pt-[9px] border-t-[3px] border-double border-[#171B23]`}>
+                              <span className="text-sm font-semibold text-[#171B23] print:text-black">
+                                Total ({orderCurrency})
+                              </span>
+                              <span className="font-mono tabular-nums text-[17px] font-semibold text-[#2B4ACB] print:text-black">
+                                {formatCurrency(viewingOrder.totalAmount, orderCurrency)}
+                              </span>
+                            </div>
+                            {showExchangeRate && (
+                              <div className="text-right font-mono text-[11.5px] text-[#8A93A3] mt-2.5">
+                                Exchange rate 1 {orderCurrency} = {viewingOrder.exchangeRate} AED
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* Subject */}
+                      {viewingOrder.subject && (
+                        <section className={cardCls}>
+                          <div className={cardHeadCls}>
+                            <AlignLeft className={cardIconCls} />
+                            <span className={cardTitleCls}>Subject</span>
+                          </div>
+                          <div className={`${cardBodyCls} text-[13.5px] leading-[1.65] text-[#333B47] break-words print:text-black`}>
+                            {viewingOrder.subject}
+                          </div>
+                        </section>
+                      )}
+
+                      {/* Notes and Terms & Conditions stay collapsed by default —
+                          they are reference text, not something a reader needs on
+                          opening the document. One accordion each, so they read as
+                          the two separate collapsible cards the reference shows. */}
+                      {viewingOrder.notes && (
+                        <section className={cardCls}>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="notes" className="border-b-0">
+                              <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                <span className="flex items-center gap-2.5">
+                                  <Pencil className={cardIconCls} />
+                                  <span className={cardTitleCls}>Notes</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                <div
+                                  className="rich-text-content text-[13.5px] leading-[1.65] text-[#333B47] break-words print:text-black"
+                                  dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
+                                />
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </section>
+                      )}
+
+                      {viewingOrder.termsAndConditions && (
+                        <section className={cardCls}>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="terms" className="border-b-0">
+                              <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                <span className="flex items-center gap-2.5">
+                                  <FileText className={cardIconCls} />
+                                  <span className={cardTitleCls}>Terms &amp; conditions</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                <p className="text-[13.5px] leading-[1.65] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                  {viewingOrder.termsAndConditions}
+                                </p>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </section>
+                      )}
+
+                      {/* Attachments — same treatment as the payment-history
+                          attachments on the purchase invoice: icon by type, name,
+                          size · upload date, and a Download action. The link target
+                          is unchanged from before this redesign. */}
+                      {viewingOrder.files && viewingOrder.files.length > 0 && (
+                        <section className={cardCls}>
+                          <div className={cardHeadCls}>
+                            <Paperclip className={cardIconCls} />
+                            <span className={cardTitleCls}>Attachments</span>
+                            <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
+                              {viewingOrder.files.length}
+                            </span>
+                          </div>
+                          <div className={cardBodyCls}>
+                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {viewingOrder.files.map((file) => (
+                                <li
+                                  key={file.id}
+                                  className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
+                                >
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    {getFileIcon((file as any).mimeType)}
+                                    <div className="flex flex-col overflow-hidden">
+                                      <span className="text-[13px] truncate" title={file.originalName}>
+                                        {file.originalName}
+                                      </span>
+                                      <span className="text-[11.5px] text-[#8A93A3]">
+                                        {formatFileSize(file.fileSize)}
+                                        {(file as any).uploadedAt &&
+                                          ` · ${formatDisplayDate((file as any).uploadedAt)}`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
+                                    <a
+                                      href={`/${file.filePath}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      Download
+                                    </a>
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </section>
+                      )}
+                    </div>
+
+                    {/* --- Sidebar --- */}
+                    {hasSidebar && (
+                      <aside className="flex flex-col gap-4 min-w-0">
+                        <section className={cardCls}>
+                          <div className={cardHeadCls}>
+                            <CreditCard className={cardIconCls} />
+                            <span className={cardTitleCls}>Bank account</span>
+                          </div>
+                          <div className={cardBodyCls}>
+                            {/* Stored as one rich-text field rather than discrete
+                                beneficiary/IBAN/SWIFT columns, so it renders as
+                                prose here. */}
+                            <div
+                              className="rich-text-content text-[13px] leading-[1.6] text-[#333B47] break-words print:text-black"
+                              dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
+                            />
+                          </div>
+                        </section>
+                      </aside>
+                    )}
+
+                    {/* --- Activity: approval trail and edit history in one tabbed
+                        block. Full width rather than in the sidebar, because the
+                        edit-history diffs show old and new values of long fields
+                        and would wrap badly in a 316px column. A purchase order has
+                        no payments, so there are two tabs. Approval opens first
+                        because its data is already on the order; edit history
+                        fetches on first click. That endpoint is admin/finance only,
+                        so its tab is hidden for project_manager rather than firing
+                        a 403. --- */}
+                    <section className={`${cardCls} ${spanFull} print:hidden`}>
+                      <div className={cardHeadCls}>
+                        <History className={cardIconCls} />
+                        <span className={cardTitleCls}>Activity</span>
+                      </div>
+                      <div className={cardBodyCls}>
+                        <Tabs value={activityTab} onValueChange={setActivityTab}>
+                          <TabsList>
+                            <TabsTrigger value="approval" data-testid="tab-approval">
+                              Approval
+                            </TabsTrigger>
+                            {canSeeEditHistory && (
+                              <TabsTrigger value="history" data-testid="tab-edit-history">
+                                Edit History
+                                {poEditHistory ? ` (${poEditHistory.length})` : ""}
+                              </TabsTrigger>
+                            )}
+                          </TabsList>
+
+                          <TabsContent value="approval" className="mt-4">
+                            {viewingOrder.submittedAt || viewingOrder.approvedAt || viewingOrder.rejectionReason ? (
+                              <ul className="relative list-none pl-5 before:content-[''] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-[#EDF0F5]">
+                                {viewingOrder.submittedAt && (
+                                  <li className="relative pb-4 last:pb-0">
+                                    <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#8A93A3]" />
+                                    <div className="text-[13.5px] font-semibold">Submitted for approval</div>
+                                    <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                      {viewingOrder.submittedByName || "—"} ·{" "}
+                                      {new Date(viewingOrder.submittedAt).toLocaleString()}
+                                    </div>
+                                  </li>
+                                )}
+                                {viewingOrder.approvedAt && (
+                                  <li className="relative pb-4 last:pb-0">
+                                    <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#12B76A]" />
+                                    <div className="text-[13.5px] font-semibold">Approved</div>
+                                    <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                      {viewingOrder.approvedByName || "—"} ·{" "}
+                                      {new Date(viewingOrder.approvedAt).toLocaleString()}
+                                    </div>
+                                  </li>
+                                )}
+                                {viewingOrder.rejectionReason && (
+                                  <li className="relative pb-4 last:pb-0">
+                                    <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#B42318]" />
+                                    <div className="text-[13.5px] font-semibold">Rejected</div>
+                                    <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                      {viewingOrder.rejectionReason}
+                                    </div>
+                                  </li>
+                                )}
+                                {viewingOrder.submittedAt &&
+                                  !viewingOrder.approvedAt &&
+                                  !viewingOrder.rejectionReason && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#E3E7EE]" />
+                                      <div className="text-[13.5px] font-semibold text-[#5B6472]">
+                                        Awaiting approval
+                                      </div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">Pending review</div>
+                                    </li>
+                                  )}
+                              </ul>
+                            ) : (
+                              <p className={emptyCls}>This order has not been submitted for approval yet.</p>
+                            )}
+                          </TabsContent>
+
+                          {canSeeEditHistory && (
+                            <TabsContent value="history" className="mt-4">
+                              {isLoadingEditHistory ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                  Loading edit history…
+                                </div>
+                              ) : poEditHistory && poEditHistory.length > 0 ? (
+                                <div className="space-y-3">
+                                  {poEditHistory.map((entry: any) => {
+                                    const changedFields = entry.changes ? Object.keys(entry.changes) : [];
+                                    return (
+                                      <div key={entry.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
+                                        <div
+                                          className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
+                                          onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                                                <span className="text-xs text-[#8A93A3]">{new Date(entry.editedAt).toLocaleString()}</span>
+                                              </div>
+                                              <p className="text-sm text-[#333B47] mt-1 break-words">{entry.editNote}</p>
+                                              {changedFields.length > 0 && (
+                                                <p className="text-xs text-[#8A93A3] mt-1">
+                                                  {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
+                                                </p>
                                               )}
                                             </div>
-                                          ) : (
-                                            <div key={field} className="text-gray-500 italic">Line items were modified</div>
-                                          )
-                                        ))}
+                                            {changedFields.length > 0 && (
+                                              <ChevronDown
+                                                className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
+                                              />
+                                            )}
+                                          </div>
+                                        </div>
+                                        {expandedEditEntry === entry.id && changedFields.length > 0 && (
+                                          <div className="px-3 pb-3 pt-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
+                                            <div className="text-xs space-y-2">
+                                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                                field !== "items" ? (
+                                                  <div key={field} className="flex flex-col gap-1">
+                                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                                    {/* notes and bankAccount are ReactQuill fields, so their
+                                                        stored value is HTML and printing it raw showed markup
+                                                        to the reader. Every other tracked field is plain text
+                                                        and stays escaped. */}
+                                                    {isRichTextField(field) ? (
+                                                      <>
+                                                        <div
+                                                          className="text-red-500 line-through break-words rich-text-content"
+                                                          dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
+                                                        />
+                                                        <div
+                                                          className="text-green-600 break-words rich-text-content"
+                                                          dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
+                                                        />
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
+                                                        <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
+                                                )
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
-                                    </div>
-                                  )}
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground italic">No edits recorded.</p>
-                        )}
-                      </TabsContent>
-                    )}
-                  </Tabs>
-                </CardContent>
-              </Card>
+                              ) : (
+                                <p className={emptyCls}>No edits recorded.</p>
+                              )}
+                            </TabsContent>
+                          )}
+                        </Tabs>
+                      </div>
+                    </section>
+                  </div>
+                </div>
 
-              {/* Action Buttons — status-flow actions, mirroring the list
-                  row gates exactly. viewingOrder is plain state and goes
-                  stale after a mutation invalidates the list, so every
-                  action closes the view dialog first. */}
-              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
-                {viewingOrder.status === "draft" && (
-                  <Button
-                    onClick={() => {
-                      setIsViewDialogOpen(false);
-                      submitOrderMutation.mutate(viewingOrder.id);
-                    }}
-                    disabled={submitOrderMutation.isPending}
-                    size="lg"
-                    className="w-full sm:w-auto gap-2"
-                    data-testid="button-submit-order-dialog"
-                  >
-                    <Send className="h-4 w-4" />
-                    {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
-                  </Button>
-                )}
-                {viewingOrder.status === "pending_approval" && user?.role === "admin" && (
-                  <>
-                    <Button
-                      onClick={() => {
-                        setIsViewDialogOpen(false);
-                        approveOrderMutation.mutate(viewingOrder.id);
-                      }}
-                      disabled={approveOrderMutation.isPending}
-                      size="lg"
-                      className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700"
-                      data-testid="button-approve-order-dialog"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      {approveOrderMutation.isPending ? "Approving..." : "Approve"}
-                    </Button>
+                {/* ===== FOOTER =====
+                    Status-flow actions, mirroring the list row gates exactly.
+                    viewingOrder is plain state and goes stale after a mutation
+                    invalidates the list, so every action closes the view dialog
+                    first. Submit, Approve and Convert are mutually exclusive by
+                    status, so at most one primary button shows at a time. */}
+                <footer className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 px-5 sm:px-6 py-3.5 border-t border-[#E3E7EE] bg-white print:hidden">
+                  <div className="text-[12.5px] text-[#8A93A3]">
+                    <span className="font-mono">{viewingOrder.poNumber}</span>
+                    {viewingOrder.createdAt && <> · Created {formatDisplayDate(viewingOrder.createdAt)}</>}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2.5">
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        setIsViewDialogOpen(false);
-                        setIsRejectDialogOpen(true);
-                      }}
-                      disabled={rejectOrderMutation.isPending}
-                      size="lg"
-                      className="w-full sm:w-auto gap-2 border-red-300 text-red-600 hover:bg-red-50"
-                      data-testid="button-reject-order-dialog"
+                      size="sm"
+                      onClick={() => setIsViewDialogOpen(false)}
+                      className={headBtnCls}
                     >
-                      <XCircle className="h-4 w-4" />
-                      Reject
+                      Close
                     </Button>
-                  </>
-                )}
-                {canEdit && canCreateInvoice(viewingOrder) && (
-                  <Button
-                    onClick={() => {
-                      setIsViewDialogOpen(false);
-                      openConvertDialog();
-                    }}
-                    size="lg"
-                    className="w-full sm:w-auto gap-2"
-                    data-testid="button-convert-order-dialog"
-                  >
-                    <ArrowRightLeft className="h-4 w-4" />
-                    Convert
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => setIsViewDialogOpen(false)}
-                  className="w-full sm:w-auto"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          )}
+                    {viewingOrder.status === "pending_approval" && user?.role === "admin" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsViewDialogOpen(false);
+                          setIsRejectDialogOpen(true);
+                        }}
+                        disabled={rejectOrderMutation.isPending}
+                        className={`${headBtnCls} text-[#B42318] border-[#F0C5C1] hover:bg-[#FEF3F2] hover:border-[#F0C5C1] hover:text-[#B42318]`}
+                        data-testid="button-reject-order-dialog"
+                      >
+                        <XCircle className="w-[14px] h-[14px]" />
+                        Reject
+                      </Button>
+                    )}
+                    {viewingOrder.status === "draft" && (
+                      <Button
+                        onClick={() => {
+                          setIsViewDialogOpen(false);
+                          submitOrderMutation.mutate(viewingOrder.id);
+                        }}
+                        disabled={submitOrderMutation.isPending}
+                        size="sm"
+                        className="h-auto gap-[7px] rounded-lg px-[13px] py-[7px] text-[13.5px] font-semibold bg-[#2B4ACB] hover:bg-[#20389B] text-white"
+                        data-testid="button-submit-order-dialog"
+                      >
+                        <Send className="w-[14px] h-[14px]" />
+                        {submitOrderMutation.isPending ? "Submitting..." : "Submit"}
+                      </Button>
+                    )}
+                    {viewingOrder.status === "pending_approval" && user?.role === "admin" && (
+                      <Button
+                        onClick={() => {
+                          setIsViewDialogOpen(false);
+                          approveOrderMutation.mutate(viewingOrder.id);
+                        }}
+                        disabled={approveOrderMutation.isPending}
+                        size="sm"
+                        className="h-auto gap-[7px] rounded-lg px-[13px] py-[7px] text-[13.5px] font-semibold bg-[#2B4ACB] hover:bg-[#20389B] text-white"
+                        data-testid="button-approve-order-dialog"
+                      >
+                        <CheckCircle className="w-[14px] h-[14px]" />
+                        {approveOrderMutation.isPending ? "Approving..." : "Approve"}
+                      </Button>
+                    )}
+                    {canEdit && canCreateInvoice(viewingOrder) && (
+                      <Button
+                        onClick={() => {
+                          setIsViewDialogOpen(false);
+                          openConvertDialog();
+                        }}
+                        size="sm"
+                        className="h-auto gap-[7px] rounded-lg px-[13px] py-[7px] text-[13.5px] font-semibold bg-[#2B4ACB] hover:bg-[#20389B] text-white"
+                        data-testid="button-convert-order-dialog"
+                      >
+                        <ArrowRightLeft className="w-[14px] h-[14px]" />
+                        Convert
+                      </Button>
+                    )}
+                  </div>
+                </footer>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
