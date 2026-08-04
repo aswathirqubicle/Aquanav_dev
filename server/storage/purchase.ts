@@ -869,6 +869,18 @@ export class PurchaseStorage extends SalesStorage {
 
   async getPurchaseOrder(id: number): Promise<any> {
     try {
+      // Resolve submitter / approver to a person's name in SQL, same as
+      // getPurchaseInvoice. /api/users is admin-only while finance and
+      // project_manager can both open this document, so the client cannot look
+      // these ids up itself and the view fell back to "User ID: n". Employee
+      // name where the login is linked to an employee row, else the username.
+      // purchase_orders has no created_by column, so there are only two pairs.
+      const submitter = alias(users, "poSubmitter");
+      const submitterEmp = alias(employees, "poSubmitterEmp");
+      const approver = alias(users, "poApprover");
+      const approverEmp = alias(employees, "poApproverEmp");
+      const convertedInvoice = alias(purchaseInvoices, "convertedInvoice");
+
       const [order] = await db
         .select({
           id: purchaseOrders.id,
@@ -896,13 +908,27 @@ export class PurchaseStorage extends SalesStorage {
           supplierCurrency: suppliers.currency,
           supplierVatTreatment: suppliers.vatTreatment,
           submittedById: purchaseOrders.submittedById,
+          submittedByName: sql<string>`COALESCE(NULLIF(CONCAT(${submitterEmp.firstName}, ' ', ${submitterEmp.lastName}), ' '), ${submitter.username}, '')`,
           submittedAt: purchaseOrders.submittedAt,
           approvedById: purchaseOrders.approvedById,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: purchaseOrders.approvedAt,
           rejectionReason: purchaseOrders.rejectionReason,
+          // Where a converted order ended up. The id alone was never selected,
+          // so the view could not tell the reader which invoice it became.
+          convertedInvoiceId: purchaseOrders.convertedInvoiceId,
+          convertedInvoiceNumber: convertedInvoice.invoiceNumber,
         })
         .from(purchaseOrders)
         .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+        .leftJoin(submitter, eq(purchaseOrders.submittedById, submitter.id))
+        .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
+        .leftJoin(approver, eq(purchaseOrders.approvedById, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .leftJoin(
+          convertedInvoice,
+          eq(purchaseOrders.convertedInvoiceId, convertedInvoice.id),
+        )
         .where(eq(purchaseOrders.id, id));
 
       if (!order) return null;

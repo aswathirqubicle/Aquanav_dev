@@ -11,6 +11,13 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Textarea } from "@/components/ui/textarea";
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -63,11 +70,17 @@ interface PurchaseOrder {
   items?: PurchaseOrderItem[];
   files?: PurchaseOrderFile[];
   submittedById?: number;
+  submittedByName?: string;
   submittedAt?: string;
   approvedById?: number;
+  approvedByName?: string;
   approvedAt?: string;
   rejectionReason?: string;
   convertedInvoiceId?: number;
+  convertedInvoiceNumber?: string;
+  subject?: string;
+  createdAt?: string;
+  supplierVatTreatment?: "standard" | "zero_rated" | "exempt";
 }
 
 interface PaginatedResponse<T> {
@@ -123,6 +136,12 @@ export default function PurchaseOrdersIndex() {
     editingOrder?.status === "approved" || editingOrder?.status === "rejected";
   const [viewingOrder, setViewingOrder] = useState<PurchaseOrder | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  // Which Activity tab is open. Drives the lazy edit-history query below, so
+  // it is not fetched until its tab is actually selected.
+  const [activityTab, setActivityTab] = useState("approval");
+  // One expanded edit-history entry at a time: a single entry's changes can
+  // run to hundreds of lines, which buried the rest of the list.
+  const [expandedEditEntry, setExpandedEditEntry] = useState<number | null>(null);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -322,13 +341,23 @@ export default function PurchaseOrdersIndex() {
     (d) => d.documentType === "purchase_order",
   );
 
-  const { data: poEditHistory } = useQuery<any[]>({
+  // The edit-history endpoint is admin/finance only, while project_manager can
+  // open the order itself — so the tab this feeds is hidden for anyone else and
+  // the query stays disabled rather than firing a request that would 403.
+  const canSeeEditHistory = user?.role === "admin" || user?.role === "finance";
+
+  const { data: poEditHistory, isLoading: isLoadingEditHistory } = useQuery<any[]>({
     queryKey: ["/api/purchase-orders", viewingOrder?.id, "edit-history"],
     queryFn: async () => {
       const response = await apiRequest(`/api/purchase-orders/${viewingOrder?.id}/edit-history`);
       return response.json();
     },
-    enabled: isAuthenticated && !!viewingOrder && (user?.role === "admin" || user?.role === "finance"),
+    enabled:
+      isAuthenticated &&
+      isViewDialogOpen &&
+      !!viewingOrder &&
+      canSeeEditHistory &&
+      activityTab === "history",
   });
 
 
@@ -862,9 +891,30 @@ export default function PurchaseOrdersIndex() {
     }
   };
 
-  const viewOrder = (order: PurchaseOrder) => {
-    setViewingOrder(order);
-    setIsViewDialogOpen(true);
+  // Fetch the order by id rather than reusing the list row. The paginated list
+  // does not select submittedById/At, approvedById/At, rejectionReason or
+  // convertedInvoiceId, so the Approval section below could never render from a
+  // list row. Fetching here keeps those columns off every list row — the list
+  // already carries items and files per row — and mirrors the purchase invoice
+  // dialog. Edit history still loads separately, on first click of its tab.
+  const viewOrder = async (order: PurchaseOrder) => {
+    try {
+      const response = await apiRequest(`/api/purchase-orders/${order.id}`, { method: "GET" });
+      if (!response.ok) {
+        throw new Error("Failed to load purchase order details");
+      }
+      const fullOrder = await response.json();
+      setActivityTab("approval");
+      setExpandedEditEntry(null);
+      setViewingOrder(fullOrder);
+      setIsViewDialogOpen(true);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load purchase order details",
+        variant: "destructive",
+      });
+    }
   };
 
   const handlePrintPDF = async (order: PurchaseOrder) => {
@@ -1031,6 +1081,32 @@ export default function PurchaseOrdersIndex() {
   const getItemUnit = (itemId: string) => {
     const item = inventoryItems.find(item => item.id === parseInt(itemId));
     return item ? item.unit : "";
+  };
+
+  // Line items are all in the document's one currency, so repeating the code on
+  // every cell just adds noise. The Financial Summary below the table carries
+  // the currency for the document.
+  const formatAmount = (amount: number | string) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return num.toFixed(2);
+  };
+
+  // Same implementation as DocumentManager's local helper — it isn't exported.
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return "N/A";
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + " " + sizes[i];
+  };
+
+  const getFileIcon = (mimeType?: string) => {
+    if (mimeType?.startsWith("image/")) {
+      return <Paperclip className="h-4 w-4 flex-shrink-0 text-purple-600" />;
+    }
+    if (mimeType === "application/pdf") {
+      return <FileText className="h-4 w-4 flex-shrink-0 text-red-600" />;
+    }
+    return <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />;
   };
 
   const getStatusBadge = (status: string) => {
@@ -2277,7 +2353,8 @@ export default function PurchaseOrdersIndex() {
                     <Printer className="w-4 h-4" />
                     Print
                   </Button>
-                  {getStatusBadge(viewingOrder.status)}
+                  {/* Status is not repeated here — it has its own labelled
+                      field in Order Information. */}
                 </div>
               )}
             </div>
@@ -2294,120 +2371,86 @@ export default function PurchaseOrdersIndex() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</label>
-                        <p className="text-sm font-semibold mt-1">{viewingOrder.supplierName}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
-                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
-                        <p className="mt-1">{getStatusBadge(viewingOrder.status)}</p>
-                      </div>
-                      {viewingOrder.subject && (
-                        <div>
-                          <h3 className="text-gray-500 dark:text-gray-400 text-sm">Subject</h3>
-                          <p className="text-sm font-medium mt-1">{viewingOrder.subject}</p>
-                        </div>
-                      )}
-                      {viewingOrder.paymentTerms && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Payment Terms</label>
-                          <p className="text-sm font-medium mt-1">{viewingOrder.paymentTerms}</p>
-                        </div>
-                      )}
+                  {/* One uniform grid rather than two hand-balanced columns, so
+                      a field can be added without re-splitting the layout. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</label>
+                      <p className="text-sm font-semibold mt-1 break-words">{viewingOrder.supplierName}</p>
                     </div>
-                    <div className="space-y-3">
-                      {viewingOrder.expectedDeliveryDate && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Delivery</label>
-                          <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.expectedDeliveryDate)}</p>
-                        </div>
-                      )}
-                      {viewingOrder.deliveryTerms && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Delivery Terms</label>
-                          <p className="text-sm font-medium mt-1">{viewingOrder.deliveryTerms}</p>
-                        </div>
-                      )}
-                      {viewingOrder.deliverTo && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deliver To</label>
-                          <p className="text-sm font-medium mt-1 whitespace-pre-wrap">{viewingOrder.deliverTo}</p>
-                        </div>
-                      )}
-                      {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
-                        <div>
-                          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exchange Rate</label>
-                          <p className="text-sm font-medium mt-1">1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED</p>
-                        </div>
-                      )}
+                    {viewingOrder.subject && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject</label>
+                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.subject}</p>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Date</label>
+                      <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.orderDate)}</p>
                     </div>
+                    {viewingOrder.expectedDeliveryDate && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Delivery</label>
+                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.expectedDeliveryDate)}</p>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
+                      {/* div, not p: the badge renders a div, which is invalid
+                          nesting inside a paragraph and warned in the console. */}
+                      <div className="mt-1">{getStatusBadge(viewingOrder.status)}</div>
+                    </div>
+                    {viewingOrder.paymentTerms && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Payment Terms</label>
+                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.paymentTerms}</p>
+                      </div>
+                    )}
+                    {viewingOrder.deliveryTerms && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Delivery Terms</label>
+                        <p className="text-sm font-medium mt-1 break-words">{viewingOrder.deliveryTerms}</p>
+                      </div>
+                    )}
+                    {viewingOrder.deliverTo && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deliver To</label>
+                        <p className="text-sm font-medium mt-1 whitespace-pre-wrap break-words">{viewingOrder.deliverTo}</p>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Currency</label>
+                      <p className="text-sm font-medium mt-1">{viewingOrder.currency || viewingOrder.supplierCurrency || "AED"}</p>
+                    </div>
+                    {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Exchange Rate</label>
+                        <p className="text-sm font-medium mt-1 break-words">1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED</p>
+                      </div>
+                    )}
+                    {viewingOrder.supplierVatTreatment && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">VAT Treatment</label>
+                        <p className="text-sm font-medium mt-1 capitalize">{viewingOrder.supplierVatTreatment.replace(/_/g, " ")}</p>
+                      </div>
+                    )}
+                    {viewingOrder.createdAt && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Created On</label>
+                        <p className="text-sm font-medium mt-1">{formatDisplayDate(viewingOrder.createdAt)}</p>
+                      </div>
+                    )}
+                    {viewingOrder.convertedInvoiceId && (
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Converted To</label>
+                        <p className="text-sm font-medium mt-1 break-words">
+                          {viewingOrder.convertedInvoiceNumber || `Invoice #${viewingOrder.convertedInvoiceId}`}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Approval Information */}
-              {(viewingOrder.submittedAt || viewingOrder.approvedAt || viewingOrder.rejectionReason) && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4" />
-                      Approval Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {viewingOrder.submittedAt && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</label>
-                            <p className="text-sm font-medium mt-1">User ID: {viewingOrder.submittedById}</p>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</label>
-                            <p className="text-sm font-medium mt-1">
-                              {new Date(viewingOrder.submittedAt).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {viewingOrder.approvedAt && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3">
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</label>
-                            <p className="text-sm font-medium mt-1">User ID: {viewingOrder.approvedById}</p>
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</label>
-                            <p className="text-sm font-medium mt-1">
-                              {new Date(viewingOrder.approvedAt).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {viewingOrder.rejectionReason && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3">
-                          <div>
-                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
-                            <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
-                              <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
-                                {viewingOrder.rejectionReason}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Bank Account Details */}
               {viewingOrder.bankAccount && (
@@ -2423,126 +2466,6 @@ export default function PurchaseOrdersIndex() {
                       className="text-sm bg-muted/50 p-3 rounded-lg rich-text-content"
                       dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
                     />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Notes */}
-              {viewingOrder.notes && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Notes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div 
-                      className="text-sm text-muted-foreground rich-text-content"
-                      dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Terms & Conditions */}
-              {viewingOrder.termsAndConditions && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Terms &amp; Conditions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Attachments */}
-              {viewingOrder.files && viewingOrder.files.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Paperclip className="w-4 h-4" />
-                      Attachments
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {viewingOrder.files.map((file) => (
-                        <li
-                          key={file.id}
-                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
-                            <span className="text-sm truncate" title={file.originalName}>
-                              {file.originalName}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="h-8 ml-2"
-                          >
-                            <a
-                              href={`/${file.filePath}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Download
-                              <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                                ({(file.fileSize / 1024).toFixed(2)} KB)
-                              </span>
-                            </a>
-                          </Button>
-
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Edit History */}
-              {poEditHistory && poEditHistory.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <History className="w-4 h-4" />
-                      Edit History ({poEditHistory.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {poEditHistory.map((entry: any) => (
-                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
-                          </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
-                          {entry.changes && Object.keys(entry.changes).length > 0 && (
-                            <div className="text-xs space-y-1">
-                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                field !== "items" ? (
-                                  <div key={field} className="flex gap-2">
-                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
-                                    <span className="text-green-600">{String(change.new || "—")}</span>
-                                  </div>
-                                ) : (
-                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
-                                )
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -2566,10 +2489,14 @@ export default function PurchaseOrdersIndex() {
                           <TableHead className="w-12">#</TableHead>
                           <TableHead>Item Description</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
-                          <TableHead className="text-right">Unit Price ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
+                          {/* No currency in the headers or the cells — every
+                              line is in the document's one currency, which the
+                              Financial Summary below states once. */}
+                          <TableHead className="text-right">Unit Price</TableHead>
                           <TableHead className="text-right">Tax Rate</TableHead>
+                          <TableHead className="text-right">Tax</TableHead>
                           <TableHead className="text-right">Discount</TableHead>
-                          <TableHead className="text-right">Line Total ({viewingOrder.currency || viewingOrder.supplierCurrency})</TableHead>
+                          <TableHead className="text-right">Line Total</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2601,53 +2528,312 @@ export default function PurchaseOrdersIndex() {
                             <TableCell className="text-right">
                               {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                             </TableCell>
-                            <TableCell className="text-right">{formatCurrency(item.unitPrice, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
+                            <TableCell className="text-right">{formatAmount(item.unitPrice)}</TableCell>
                             <TableCell className="text-right">{item.taxRate || "0"}%</TableCell>
+                            <TableCell className="text-right">{formatAmount(item.taxAmount || "0.00")}</TableCell>
                             <TableCell className="text-right">
                               {Number(item.discount) > 0
-                                ? (item.discountType === "percentage" ? `${item.discount}%` : formatCurrency(item.discount as any, viewingOrder.currency || viewingOrder.supplierCurrency))
+                                ? (item.discountType === "percentage" ? `${item.discount}%` : formatAmount(item.discount as any))
                                 : "-"}
                             </TableCell>
-                            <TableCell className="text-right font-semibold">{formatCurrency(item.lineTotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatAmount(item.lineTotal)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
 
-                  {/* Financial Summary */}
-                  <div className="mt-6 space-y-3">
-                    <div className="border-t pt-4">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-muted-foreground">Subtotal ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                        <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm mt-2">
-                        <span className="text-muted-foreground">Tax ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                        <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                      </div>
-                      {(() => {
-                        // Total discount (header + line) derived from stored fields;
-                        // the discountAmount column holds only the header portion.
-                        const totalDiscount =
-                          parseFloat(viewingOrder.subtotal || "0") +
-                          parseFloat(viewingOrder.taxAmount || "0") -
-                          parseFloat(viewingOrder.totalAmount || "0");
-                        return totalDiscount > 0.005 ? (
-                          <div className="flex justify-between items-center text-sm mt-2">
-                            <span className="text-muted-foreground">Total Discount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
-                            <span className="font-medium text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
-                          </div>
-                        ) : null;
-                      })()}
+                </CardContent>
+              </Card>
+
+              {/* Financial Summary — its own card rather than a block nested at
+                  the bottom of the items table, so Notes and Terms can sit
+                  below the totals as they do on the purchase invoice. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Financial Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Subtotal ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                      <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                     </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Tax ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                      <span className="font-medium">{formatCurrency(viewingOrder.taxAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
+                    </div>
+                    {/* The header discount as stored, shown alongside the
+                        derived total so a reader can tell the header portion
+                        from the line-level one. discountPercentage and
+                        discountAmount are mutually exclusive on save: a
+                        percentage is used when non-zero, else the fixed
+                        amount. */}
+                    {parseFloat(viewingOrder.discountPercentage || "0") > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Header Discount</span>
+                        <span className="font-medium">{viewingOrder.discountPercentage}%</span>
+                      </div>
+                    )}
+                    {parseFloat(viewingOrder.discountAmount || "0") > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Discount Amount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                        <span className="font-medium text-red-600">- {formatCurrency(viewingOrder.discountAmount || "0", viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      // Total discount (header + line) derived from stored fields;
+                      // the discountAmount column holds only the header portion.
+                      const totalDiscount =
+                        parseFloat(viewingOrder.subtotal || "0") +
+                        parseFloat(viewingOrder.taxAmount || "0") -
+                        parseFloat(viewingOrder.totalAmount || "0");
+                      return totalDiscount > 0.005 ? (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-muted-foreground">Total Discount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
+                          <span className="font-medium text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="border-t pt-3">
                       <div className="flex justify-between items-center">
                         <span className="text-base font-semibold">Total Amount ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
                         <span className="text-xl font-bold text-primary">{formatCurrency(viewingOrder.totalAmount, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
                       </div>
                     </div>
+                    {(viewingOrder.currency || viewingOrder.supplierCurrency) !== "AED" && viewingOrder.exchangeRate && (
+                      <div className="text-xs text-muted-foreground text-right">
+                        Exchange Rate: 1 {viewingOrder.currency || viewingOrder.supplierCurrency} = {viewingOrder.exchangeRate} AED
+                      </div>
+                    )}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Notes and Terms & Conditions sit below the totals and are
+                  collapsed by default — they are reference text, not something
+                  a reader needs on opening the document. */}
+              {(viewingOrder.notes || viewingOrder.termsAndConditions) && (
+                <Card>
+                  <CardContent className="py-0">
+                    <Accordion type="multiple" className="w-full">
+                      {viewingOrder.notes && (
+                        <AccordionItem value="notes" className="border-b-0">
+                          <AccordionTrigger className="text-base font-semibold hover:no-underline">
+                            <span className="flex items-center gap-2">
+                              <FileText className="w-4 h-4" />
+                              Notes
+                            </span>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div
+                              className="text-sm text-muted-foreground rich-text-content"
+                              dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
+                            />
+                          </AccordionContent>
+                        </AccordionItem>
+                      )}
+                      {viewingOrder.termsAndConditions && (
+                        <AccordionItem value="terms" className="border-b-0">
+                          <AccordionTrigger className="text-base font-semibold hover:no-underline">
+                            <span className="flex items-center gap-2">
+                              <FileText className="w-4 h-4" />
+                              Terms &amp; Conditions
+                            </span>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
+                          </AccordionContent>
+                        </AccordionItem>
+                      )}
+                    </Accordion>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Attachments */}
+              {viewingOrder.files && viewingOrder.files.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Paperclip className="w-4 h-4" />
+                      Attachments ({viewingOrder.files.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {viewingOrder.files.map((file) => (
+                        <li
+                          key={file.id}
+                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            {getFileIcon((file as any).mimeType)}
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="text-sm truncate" title={file.originalName}>
+                                {file.originalName}
+                              </span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatFileSize(file.fileSize)}
+                                {(file as any).uploadedAt && ` · ${formatDisplayDate((file as any).uploadedAt)}`}
+                              </span>
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="sm" asChild className="h-8 ml-2">
+                            <a
+                              href={`/${file.filePath}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Download
+                            </a>
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Activity — approval trail and edit history in one tabbed block
+                  rather than two stacked cards. A purchase order has no
+                  payments, so there are two tabs. Approval opens first because
+                  its data is already on the order; edit history fetches on
+                  first click. That endpoint is admin/finance only, so its tab
+                  is hidden for project_manager rather than firing a 403. */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <History className="w-4 h-4" />
+                    Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Tabs value={activityTab} onValueChange={setActivityTab}>
+                    <TabsList>
+                      <TabsTrigger value="approval" data-testid="tab-approval">
+                        Approval
+                      </TabsTrigger>
+                      {canSeeEditHistory && (
+                        <TabsTrigger value="history" data-testid="tab-edit-history">
+                          Edit History
+                          {poEditHistory ? ` (${poEditHistory.length})` : ""}
+                        </TabsTrigger>
+                      )}
+                    </TabsList>
+
+                    <TabsContent value="approval" className="mt-4">
+                      {viewingOrder.submittedAt || viewingOrder.approvedAt || viewingOrder.rejectionReason ? (
+                        <div className="space-y-3">
+                          {viewingOrder.submittedAt && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</label>
+                                <p className="text-sm font-medium mt-1">{viewingOrder.submittedByName || "—"}</p>
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</label>
+                                <p className="text-sm font-medium mt-1">{new Date(viewingOrder.submittedAt).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          )}
+                          {viewingOrder.approvedAt && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</label>
+                                <p className="text-sm font-medium mt-1">{viewingOrder.approvedByName || "—"}</p>
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</label>
+                                <p className="text-sm font-medium mt-1">{new Date(viewingOrder.approvedAt).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          )}
+                          {viewingOrder.rejectionReason && (
+                            <div className="pt-1">
+                              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</label>
+                              <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
+                                <p className="text-sm text-red-900 dark:text-red-100 whitespace-pre-wrap">
+                                  {viewingOrder.rejectionReason}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">
+                          This order has not been submitted for approval yet.
+                        </p>
+                      )}
+                    </TabsContent>
+
+                    {canSeeEditHistory && (
+                      <TabsContent value="history" className="mt-4">
+                        {isLoadingEditHistory ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                            Loading edit history…
+                          </div>
+                        ) : poEditHistory && poEditHistory.length > 0 ? (
+                          <div className="space-y-3">
+                            {poEditHistory.map((entry: any) => {
+                              const changedFields = entry.changes ? Object.keys(entry.changes) : [];
+                              return (
+                                <div key={entry.id} className="border rounded-lg overflow-hidden">
+                                  <div
+                                    className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                    onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                                          <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 break-words">{entry.editNote}</p>
+                                        {changedFields.length > 0 && (
+                                          <p className="text-xs text-muted-foreground mt-1">
+                                            {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
+                                          </p>
+                                        )}
+                                      </div>
+                                      {changedFields.length > 0 && (
+                                        <ChevronDown
+                                          className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                  {expandedEditEntry === entry.id && changedFields.length > 0 && (
+                                    <div className="px-3 pb-3 pt-3 border-t bg-gray-50 dark:bg-gray-800/50">
+                                      <div className="text-xs space-y-2">
+                                        {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                          field !== "items" ? (
+                                            <div key={field} className="flex flex-col gap-1">
+                                              <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                              <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
+                                              <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                            </div>
+                                          ) : (
+                                            <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                          )
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic">No edits recorded.</p>
+                        )}
+                      </TabsContent>
+                    )}
+                  </Tabs>
                 </CardContent>
               </Card>
 
