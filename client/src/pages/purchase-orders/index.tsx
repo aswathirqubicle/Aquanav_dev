@@ -40,6 +40,10 @@ interface Supplier {
   contactPerson?: string;
   email?: string;
   phone?: string;
+  // The supplier's own address. /api/suppliers/all selects every supplier
+  // column, so this already arrives with the list the page loads — the order
+  // itself does not carry it, deliverTo is the delivery address, not this.
+  address?: string;
   currency?: string;
   vatTreatment?: string;
   bankAccountDetails?: SupplierBankDetails[];
@@ -1219,7 +1223,7 @@ export default function PurchaseOrdersIndex() {
     };
     return (
       <span
-        className={`font-mono text-[11px] font-semibold tracking-[0.09em] uppercase px-[9px] py-[3px] rounded-[5px] border ${tones[status] || tones.draft}`}
+        className={`text-[11px] font-semibold tracking-[0.09em] uppercase px-[9px] py-[3px] rounded-[5px] border ${tones[status] || tones.draft}`}
         data-testid="stamp-order-status"
       >
         {status.replace(/_/g, " ")}
@@ -2426,6 +2430,15 @@ export default function PurchaseOrdersIndex() {
             const showExchangeRate =
               orderCurrency !== "AED" && !!viewingOrder.exchangeRate;
 
+            // The supplier's own address, which the order does not carry —
+            // /api/suppliers/all is already loaded for the create form and
+            // selects every supplier column, so this is a local lookup rather
+            // than another request. Distinct from deliverTo, which is where the
+            // goods go and lives with the delivery terms below.
+            const supplierAddress = suppliers.find(
+              (s) => s.id === viewingOrder.supplierId
+            )?.address;
+
             // Commercial terms is dropped entirely when every one of its rows is
             // empty, and the supplier card then takes the whole row. Empty
             // optional fields stay hidden throughout, as they do today.
@@ -2433,14 +2446,18 @@ export default function PurchaseOrdersIndex() {
               viewingOrder.paymentTerms ||
               viewingOrder.deliveryTerms ||
               viewingOrder.supplierVatTreatment ||
-              showExchangeRate
+              showExchangeRate ||
+              viewingOrder.deliverTo
             );
 
-            // The sidebar carries only the bank account. Without one there is
-            // nothing to put in it, so the main column runs full width instead
-            // of leaving a 316px gutter. Both class strings are written out in
-            // full so Tailwind's scanner picks them up.
-            const hasSidebar = !!viewingOrder.bankAccount;
+            // The sidebar carries the bank account and the attachments. With
+            // neither there is nothing to put in it, so the main column runs
+            // full width instead of leaving a 316px gutter. Both class strings
+            // are written out in full so Tailwind's scanner picks them up.
+            const hasSidebar = !!(
+              viewingOrder.bankAccount ||
+              (viewingOrder.files && viewingOrder.files.length > 0)
+            );
             const bodyGridCls = hasSidebar
               ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_316px] gap-5 p-5 sm:p-6"
               : "grid grid-cols-1 gap-5 p-5 sm:p-6";
@@ -2469,10 +2486,10 @@ export default function PurchaseOrdersIndex() {
               "h-auto px-3.5 py-2.5 bg-[#F7F9FC] text-[10.5px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3] whitespace-nowrap print:bg-white";
             const tdCls = "px-3.5 py-3 align-top print:text-black";
             const tdNumCls =
-              "px-3.5 py-3 align-top text-right font-mono tabular-nums text-[13px] print:text-black";
+              "px-3.5 py-3 align-top text-right text-[13px] print:text-black";
             const tRowCls = "flex justify-between items-baseline gap-4 py-[5px]";
             const tLabelCls = "text-[#5B6472]";
-            const tValCls = "font-mono tabular-nums font-medium print:text-black";
+            const tValCls = "font-medium print:text-black";
             const headBtnCls =
               "h-auto gap-[7px] rounded-lg border-[#E3E7EE] px-[13px] py-[7px] text-[13.5px] font-medium text-[#171B23] hover:bg-[#F7F9FC] hover:border-[#D4DAE3]";
             const sectionLabelCls =
@@ -2492,7 +2509,7 @@ export default function PurchaseOrdersIndex() {
                         Purchase order
                       </div>
                       <div className="flex items-center flex-wrap gap-2.5 mt-px">
-                        <DialogTitle className="font-mono text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
+                        <DialogTitle className="text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
                           {viewingOrder.poNumber}
                         </DialogTitle>
                         {getStatusStamp(viewingOrder.status)}
@@ -2501,7 +2518,7 @@ export default function PurchaseOrdersIndex() {
                             rather than a field further down. */}
                         {viewingOrder.convertedInvoiceId && (
                           <span
-                            className="font-mono text-[11px] font-semibold tracking-[0.06em] px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]"
+                            className="text-[11px] font-semibold tracking-[0.06em] px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]"
                             data-testid="chip-converted-invoice"
                           >
                             →{" "}
@@ -2618,14 +2635,14 @@ export default function PurchaseOrdersIndex() {
                       )}
                     </div>
                     {showExchangeRate && (
-                      <div className="font-mono text-[12px] text-[#8A93A3] mt-px">
+                      <div className="text-[12px] text-[#8A93A3] mt-px">
                         1 {orderCurrency} = {viewingOrder.exchangeRate} AED
                       </div>
                     )}
                   </div>
                   <div className={metaCellCls}>
                     <div className={metaLabelCls}>Total amount</div>
-                    <div className={`${metaValueCls} font-mono tabular-nums`}>
+                    <div className={metaValueCls}>
                       {formatCurrency(viewingOrder.totalAmount, orderCurrency)}
                     </div>
                   </div>
@@ -2648,13 +2665,10 @@ export default function PurchaseOrdersIndex() {
                           <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
                             {viewingOrder.supplierName}
                           </div>
-                          {viewingOrder.deliverTo && (
-                            <>
-                              <div className={sectionLabelCls}>Deliver to</div>
-                              <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
-                                {viewingOrder.deliverTo}
-                              </div>
-                            </>
+                          {supplierAddress && (
+                            <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                              {supplierAddress}
+                            </div>
                           )}
                         </div>
                       </section>
@@ -2690,12 +2704,25 @@ export default function PurchaseOrdersIndex() {
                               {showExchangeRate && (
                                 <div className={kvRowCls}>
                                   <span className={kvLabelCls}>Exchange rate</span>
-                                  <span className={`${kvValCls} font-mono text-[12.5px] tabular-nums`}>
+                                  <span className={`${kvValCls} text-[12.5px]`}>
                                     1 {orderCurrency} = {viewingOrder.exchangeRate} AED
                                   </span>
                                 </div>
                               )}
                             </div>
+                            {/* Where the goods go. It sits with the delivery
+                                terms rather than under the supplier, where it
+                                read as the supplier's own address. Given as a
+                                block, not a row, because it is a multi-line
+                                address. */}
+                            {viewingOrder.deliverTo && (
+                              <>
+                                <div className={sectionLabelCls}>Deliver to</div>
+                                <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                  {viewingOrder.deliverTo}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </section>
                       )}
@@ -2703,6 +2730,30 @@ export default function PurchaseOrdersIndex() {
 
                     {/* --- Main column --- */}
                     <div className="flex flex-col gap-4 min-w-0">
+
+                      {/* Subject — above the items, and collapsible like Notes
+                          and Terms. Open by default: unlike those two it is a
+                          one-line description of what the order is for, so it
+                          is worth seeing on opening. */}
+                      {viewingOrder.subject && (
+                        <section className={cardCls}>
+                          <Accordion type="single" collapsible defaultValue="subject" className="w-full">
+                            <AccordionItem value="subject" className="border-b-0">
+                              <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                <span className="flex items-center gap-2.5">
+                                  <AlignLeft className={cardIconCls} />
+                                  <span className={cardTitleCls}>Subject</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                <div className="text-[13.5px] leading-[1.65] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                  {viewingOrder.subject}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </section>
+                      )}
 
                       {/* Order items + ledger totals */}
                       <section className={cardCls}>
@@ -2736,7 +2787,7 @@ export default function PurchaseOrdersIndex() {
                                 key={item.id}
                                 className="border-b border-[#EDF0F5] last:border-b-0 hover:bg-[#F7F9FC]"
                               >
-                                <TableCell className={`${tdCls} font-mono text-[12.5px] text-[#8A93A3]`}>
+                                <TableCell className={`${tdCls} text-[12.5px] text-[#8A93A3]`}>
                                   {index + 1}
                                 </TableCell>
                                 <TableCell className={tdCls}>
@@ -2842,31 +2893,18 @@ export default function PurchaseOrdersIndex() {
                               <span className="text-sm font-semibold text-[#171B23] print:text-black">
                                 Total ({orderCurrency})
                               </span>
-                              <span className="font-mono tabular-nums text-[17px] font-semibold text-[#2B4ACB] print:text-black">
+                              <span className="text-[17px] font-semibold text-[#2B4ACB] print:text-black">
                                 {formatCurrency(viewingOrder.totalAmount, orderCurrency)}
                               </span>
                             </div>
                             {showExchangeRate && (
-                              <div className="text-right font-mono text-[11.5px] text-[#8A93A3] mt-2.5">
+                              <div className="text-right text-[11.5px] text-[#8A93A3] mt-2.5">
                                 Exchange rate 1 {orderCurrency} = {viewingOrder.exchangeRate} AED
                               </div>
                             )}
                           </div>
                         </div>
                       </section>
-
-                      {/* Subject */}
-                      {viewingOrder.subject && (
-                        <section className={cardCls}>
-                          <div className={cardHeadCls}>
-                            <AlignLeft className={cardIconCls} />
-                            <span className={cardTitleCls}>Subject</span>
-                          </div>
-                          <div className={`${cardBodyCls} text-[13.5px] leading-[1.65] text-[#333B47] break-words print:text-black`}>
-                            {viewingOrder.subject}
-                          </div>
-                        </section>
-                      )}
 
                       {/* Notes and Terms & Conditions stay collapsed by default —
                           they are reference text, not something a reader needs on
@@ -2913,74 +2951,85 @@ export default function PurchaseOrdersIndex() {
                         </section>
                       )}
 
-                      {/* Attachments — same treatment as the payment-history
-                          attachments on the purchase invoice: icon by type, name,
-                          size · upload date, and a Download action. The link target
-                          is unchanged from before this redesign. */}
-                      {viewingOrder.files && viewingOrder.files.length > 0 && (
-                        <section className={cardCls}>
-                          <div className={cardHeadCls}>
-                            <Paperclip className={cardIconCls} />
-                            <span className={cardTitleCls}>Attachments</span>
-                            <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
-                              {viewingOrder.files.length}
-                            </span>
-                          </div>
-                          <div className={cardBodyCls}>
-                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {viewingOrder.files.map((file) => (
-                                <li
-                                  key={file.id}
-                                  className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
-                                >
-                                  <div className="flex items-center gap-2 overflow-hidden">
-                                    {getFileIcon((file as any).mimeType)}
-                                    <div className="flex flex-col overflow-hidden">
-                                      <span className="text-[13px] truncate" title={file.originalName}>
-                                        {file.originalName}
-                                      </span>
-                                      <span className="text-[11.5px] text-[#8A93A3]">
-                                        {formatFileSize(file.fileSize)}
-                                        {(file as any).uploadedAt &&
-                                          ` · ${formatDisplayDate((file as any).uploadedAt)}`}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
-                                    <a
-                                      href={`/${file.filePath}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      Download
-                                    </a>
-                                  </Button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </section>
-                      )}
                     </div>
 
                     {/* --- Sidebar --- */}
                     {hasSidebar && (
                       <aside className="flex flex-col gap-4 min-w-0">
-                        <section className={cardCls}>
-                          <div className={cardHeadCls}>
-                            <CreditCard className={cardIconCls} />
-                            <span className={cardTitleCls}>Bank account</span>
-                          </div>
-                          <div className={cardBodyCls}>
-                            {/* Stored as one rich-text field rather than discrete
-                                beneficiary/IBAN/SWIFT columns, so it renders as
-                                prose here. */}
-                            <div
-                              className="rich-text-content text-[13px] leading-[1.6] text-[#333B47] break-words print:text-black"
-                              dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
-                            />
-                          </div>
-                        </section>
+                        {viewingOrder.bankAccount && (
+                          <section className={cardCls}>
+                            <div className={cardHeadCls}>
+                              <CreditCard className={cardIconCls} />
+                              <span className={cardTitleCls}>Bank account</span>
+                            </div>
+                            <div className={cardBodyCls}>
+                              {/* Stored as one rich-text field rather than discrete
+                                  beneficiary/IBAN/SWIFT columns, so it renders as
+                                  prose here. */}
+                              <div
+                                className="rich-text-content text-[13px] leading-[1.6] text-[#333B47] break-words print:text-black"
+                                dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
+                              />
+                            </div>
+                          </section>
+                        )}
+
+                        {/* Attachments — below the bank account, collapsible like
+                            Subject and Notes. Same treatment as the payment-history
+                            attachments on the purchase invoice: icon by type, name,
+                            size · upload date, and a Download action. The link
+                            target is unchanged from before this redesign. One
+                            column, since the sidebar is narrow. */}
+                        {viewingOrder.files && viewingOrder.files.length > 0 && (
+                          <section className={cardCls}>
+                            <Accordion type="single" collapsible defaultValue="attachments" className="w-full">
+                              <AccordionItem value="attachments" className="border-b-0">
+                                <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                  <span className="flex items-center gap-2.5">
+                                    <Paperclip className={cardIconCls} />
+                                    <span className={cardTitleCls}>Attachments</span>
+                                    <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
+                                      {viewingOrder.files.length}
+                                    </span>
+                                  </span>
+                                </AccordionTrigger>
+                                <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                  <ul className="flex flex-col gap-2">
+                                    {viewingOrder.files.map((file) => (
+                                      <li
+                                        key={file.id}
+                                        className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
+                                      >
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          {getFileIcon((file as any).mimeType)}
+                                          <div className="flex flex-col overflow-hidden">
+                                            <span className="text-[13px] truncate" title={file.originalName}>
+                                              {file.originalName}
+                                            </span>
+                                            <span className="text-[11.5px] text-[#8A93A3]">
+                                              {formatFileSize(file.fileSize)}
+                                              {(file as any).uploadedAt &&
+                                                ` · ${formatDisplayDate((file as any).uploadedAt)}`}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
+                                          <a
+                                            href={`/${file.filePath}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Download
+                                          </a>
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          </section>
+                        )}
                       </aside>
                     )}
 
@@ -3157,7 +3206,7 @@ export default function PurchaseOrdersIndex() {
                     status, so at most one primary button shows at a time. */}
                 <footer className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 px-5 sm:px-6 py-3.5 border-t border-[#E3E7EE] bg-white print:hidden">
                   <div className="text-[12.5px] text-[#8A93A3]">
-                    <span className="font-mono">{viewingOrder.poNumber}</span>
+                    <span className="font-medium">{viewingOrder.poNumber}</span>
                     {viewingOrder.createdAt && <> · Created {formatDisplayDate(viewingOrder.createdAt)}</>}
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2.5">
