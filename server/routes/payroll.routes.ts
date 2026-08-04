@@ -212,9 +212,16 @@ payrollRoutes.put(
       // GL entries are now handled in the storage layer's updatePayrollEntry method
 
       res.json(entry);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Update payroll entry error:", error);
-      res.status(500).json({ message: "Failed to update payroll entry" });
+      // Surface the storage message rather than a flat "failed". The GL
+      // pre-flight refuses the status change when an account it must post to is
+      // missing from the chart, and that reason is the whole value of the
+      // refusal — swallowed, the user sees an unexplained failure and the books
+      // stay wrong.
+      res.status(500).json({
+        message: error?.message || "Failed to update payroll entry",
+      });
     }
   },
 );

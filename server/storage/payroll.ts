@@ -485,6 +485,99 @@ export class PayrollStorage extends PurchaseStorage {
   private readonly PAYROLL_ACCRUAL_REF = "payroll";
 
   /**
+   * Every account the payroll GL will post to, checked against the chart BEFORE
+   * the status change that triggers the posting. Throws naming what is missing.
+   *
+   * The posting logic writes account NAMES with no foreign key, so an account
+   * absent from the chart produces ledger rows no report can find: the P&L
+   * inner-joins the chart and drops them silently, and only the trial balance
+   * shows them, flagged "not in chart of accounts". That is exactly how
+   * reimbursements of category 'other' ended up outside the chart — 6160 was
+   * never created and the posting fell back to the literal name anyway — and
+   * how 2120 did before it (P8/0068).
+   *
+   * Checked here rather than at posting time because the status update and the
+   * GL are NOT in one transaction: failing while posting would leave an entry
+   * approved with no ledger behind it, and the re-post is gated on the status
+   * TRANSITION, which cannot happen a second time. Refusing before anything is
+   * written leaves the entry exactly as it was, so approving again after the
+   * chart is fixed posts normally.
+   *
+   * The fixed names are required whether or not their line turns out to be
+   * non-zero. A chart missing any of them has drifted, and every later payroll
+   * would post outside it — stopping on the first one is the point.
+   */
+  private async assertPayrollPostingAccounts(
+    entryId: number,
+    posts: { accrual: boolean; payment: boolean },
+  ): Promise<void> {
+    const chart = await db
+      .select({
+        code: chartOfAccounts.accountCode,
+        name: chartOfAccounts.accountName,
+      })
+      .from(chartOfAccounts);
+    // Matched the way the reports match — lower/trim on both sides — so the
+    // check cannot pass where the P&L join would fail.
+    const names = new Set(chart.map((a) => (a.name || "").trim().toLowerCase()));
+    const codes = new Set(chart.map((a) => a.code));
+
+    const required = new Set<string>();
+    if (posts.accrual) {
+      required.add("Salary Expense");
+      required.add("Salary Payable");
+      required.add("Provident Fund Contribution");
+      required.add("Employee Advances");
+    }
+    if (posts.payment) {
+      required.add("Salary Payable");
+      required.add("Cash/Bank");
+    }
+
+    const missing: string[] = [];
+    for (const name of Array.from(required)) {
+      if (!names.has(name.trim().toLowerCase())) missing.push(`"${name}"`);
+    }
+
+    // Reimbursements resolve by CODE, not by name — the accrual reads the name
+    // back off the chart — so they are checked against the codes.
+    if (posts.accrual) {
+      const entry = await this.getPayrollEntry(entryId);
+      const employeeId = entry?.employeeId ?? undefined;
+      if (entry && employeeId !== undefined) {
+        const claims = await db
+          .select({ category: reimbursements.category })
+          .from(reimbursements)
+          .where(
+            and(
+              eq(reimbursements.employeeId, employeeId),
+              eq(reimbursements.payrollMonth, entry.month),
+              eq(reimbursements.payrollYear, entry.year),
+              eq(reimbursements.status, "approved"),
+            ),
+          );
+        const checked = new Set<string>();
+        for (const c of claims) {
+          const code = accountCodeForCategory(c.category);
+          if (checked.has(code)) continue;
+          checked.add(code);
+          if (!codes.has(code)) {
+            missing.push(`${code} (reimbursement category "${c.category}")`);
+          }
+        }
+      }
+    }
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot post this payroll entry to the general ledger: the chart of ` +
+          `accounts is missing ${missing.join(", ")}. Nothing has been changed. ` +
+          `Add the account(s) under Settings, then try again.`,
+      );
+    }
+  }
+
+  /**
    * Post the payroll accrual for one entry, at APPROVAL (D7). Idempotent — if the
    * accrual is already in the ledger it does nothing, so approving twice, or a
    * direct generated→paid jump that posts it on the way, is safe.
@@ -651,9 +744,23 @@ export class PayrollStorage extends PurchaseStorage {
           .from(chartOfAccounts)
           .where(eq(chartOfAccounts.accountCode, code))
           .limit(1);
+        // No fallback to a literal name. Posting under a name the chart does
+        // not carry succeeds silently and hides the amount from every report
+        // that joins the chart — the P&L among them. Throwing inside the
+        // transaction rolls back every line of the accrual, so the ledger is
+        // never left one-sided. assertPayrollPostingAccounts normally catches
+        // this before the entry is touched at all; this is the backstop for
+        // callers that post directly.
+        if (!acct?.name) {
+          throw new Error(
+            `Cannot post the reimbursement for ${employeeName}: account ${code} ` +
+              `(category "${r.category}") is not in the chart of accounts. ` +
+              `Add it, then approve the payroll entry again.`,
+          );
+        }
         await this.createGeneralLedgerEntry(
           line({
-            accountName: acct?.name || "Employee Reimbursement",
+            accountName: acct.name,
             description: `Reimbursement (${r.category}) for ${employeeName} - ${monthName} ${entry.year}`,
             debitAmount: amt.toFixed(2),
             projectId: r.projectId || undefined,
@@ -873,6 +980,19 @@ export class PayrollStorage extends PurchaseStorage {
         return undefined;
       }
       const oldStatus = currentPayrollEntry.status;
+
+      // The same two transitions that post GL below, decided BEFORE anything is
+      // written so the chart can be checked while the entry is still untouched.
+      const willAccrue =
+        (data.status === "approved" && oldStatus !== "approved") ||
+        (data.status === "paid" && oldStatus !== "paid");
+      const willPay = data.status === "paid" && oldStatus !== "paid";
+      if (willAccrue || willPay) {
+        await this.assertPayrollPostingAccounts(id, {
+          accrual: willAccrue,
+          payment: willPay,
+        });
+      }
 
       const result = await db
         .update(payrollEntries)
