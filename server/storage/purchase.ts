@@ -1097,6 +1097,8 @@ export class PurchaseStorage extends SalesStorage {
       if (data.bankAccount !== undefined)
         updateData.bankAccount = data.bankAccount || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
+      if (data.termsAndConditions !== undefined)
+        updateData.termsAndConditions = data.termsAndConditions || null;
       if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
       if (data.discountPercentage !== undefined)
         updateData.discountPercentage = data.discountPercentage;
@@ -1565,6 +1567,7 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1705,6 +1708,7 @@ export class PurchaseStorage extends SalesStorage {
           paymentTerms: purchaseInvoices.paymentTerms,
           bankAccount: purchaseInvoices.bankAccount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1781,6 +1785,7 @@ export class PurchaseStorage extends SalesStorage {
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           submittedById: purchaseInvoices.submittedById,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
@@ -1831,6 +1836,7 @@ export class PurchaseStorage extends SalesStorage {
           totalAmount: purchaseInvoices.totalAmount,
           paidAmount: purchaseInvoices.paidAmount,
           notes: purchaseInvoices.notes,
+          termsAndConditions: purchaseInvoices.termsAndConditions,
           createdBy: purchaseInvoices.createdBy,
           createdAt: purchaseInvoices.createdAt,
           submittedById: purchaseInvoices.submittedById,
@@ -2036,6 +2042,7 @@ export class PurchaseStorage extends SalesStorage {
           currency: invoiceData.currency || "AED",
           exchangeRate: invoiceData.exchangeRate || "1",
           notes: invoiceData.notes || null,
+          termsAndConditions: invoiceData.termsAndConditions || null,
           createdBy: invoiceData.createdBy,
         })
         .returning();

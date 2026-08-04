@@ -23,7 +23,12 @@ export function generateProformaHTML(
   proforma: any,
   customer: any,
   company: any,
-  project: any,
+  /**
+   * Accepted but deliberately unprinted, as on the purchase invoice: the
+   * project drives internal cost allocation, not anything the customer needs
+   * to read. The parameter stays because both callers pass it.
+   */
+  _project?: any,
 ): string {
   const val = (v: any) =>
     v === "null" || v === null || v === undefined ? "" : v;
@@ -66,7 +71,6 @@ export function generateProformaHTML(
       { key: "Delivery Terms", value: val(proforma.deliveryTerms) },
       // The route looks the project up for this row alone; it is the only use
       // the fourth argument has.
-      { key: "Project", value: val(project?.title) },
       { key: "P.O.#", value: val(proforma.workOrderNumber) },
     ],
     subject: val(proforma.subject),

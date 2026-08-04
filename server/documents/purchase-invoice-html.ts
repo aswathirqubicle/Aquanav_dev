@@ -26,7 +26,13 @@ export function generatePurchaseInvoiceHTML(
   invoice: any,
   supplier: any,
   company: any,
-  project?: any,
+  /**
+   * Accepted but deliberately unprinted. A purchase invoice is not allocated
+   * to a project at the header — the project or asset is tagged per LINE, and
+   * drives project cost and asset maintenance expense rather than anything the
+   * supplier needs to read. The parameter stays because both callers pass it.
+   */
+  _project?: any,
 ): string {
   const val = (v: any) =>
     v === "null" || v === null || v === undefined ? "" : v;
@@ -99,10 +105,6 @@ export function generatePurchaseInvoiceHTML(
       { key: "P.O.#", value: val(invoice.poNumber) },
       { key: "Terms", value: val(invoice.paymentTerms) },
       {
-        key: "Project",
-        value: val(project?.title) || val(invoice.projectName),
-      },
-      {
         key: "Exchange Rate",
         value:
           currency !== "AED" && val(invoice.exchangeRate)
@@ -119,7 +121,12 @@ export function generatePurchaseInvoiceHTML(
     ],
     sections: [
       { heading: "Notes", bodies: [invoice.notes] },
-      { heading: "Terms &amp; Conditions", bodies: [invoice.bankAccount] },
+      // Terms now have a column of their own (migration 0073); bank details
+      // ride under the same heading, as the sales invoice has them.
+      {
+        heading: "Terms &amp; Conditions",
+        bodies: [invoice.termsAndConditions, invoice.bankAccount],
+      },
     ],
   });
 }

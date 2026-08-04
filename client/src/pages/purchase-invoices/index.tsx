@@ -200,6 +200,7 @@ export default function PurchaseInvoicesIndex() {
     paymentTerms: "Net 30 days",
     bankAccount: "",
     notes: "",
+    termsAndConditions: "",
     discountPercentage: "0",
     discountAmount: "0",
   });
@@ -355,6 +356,19 @@ export default function PurchaseInvoicesIndex() {
     enabled: isAuthenticated,
   });
 
+  // The purchase_invoice row of document_defaults seeds Notes and Terms on a
+  // new invoice. Seeds only — both fields stay editable and validly empty on
+  // the invoice itself.
+  const { data: documentDefaults } = useQuery<
+    Array<{ documentType: string; notes: string | null; termsAndConditions: string | null }>
+  >({
+    queryKey: ["/api/document-defaults"],
+    enabled: isAuthenticated,
+  });
+  const invoiceDefaults = documentDefaults?.find(
+    (d) => d.documentType === "purchase_invoice",
+  );
+
   const suppliers = Array.isArray(suppliersResponse?.data) ? suppliersResponse.data : [];
 
   const bankAccountOptions = React.useMemo(() => {
@@ -481,6 +495,7 @@ export default function PurchaseInvoicesIndex() {
         paymentTerms: full.paymentTerms || "",
         bankAccount: full.bankAccount || "",
         notes: full.notes || "",
+        termsAndConditions: full.termsAndConditions || "",
         discountPercentage: full.discountPercentage || "0",
         discountAmount: full.discountAmount || "0",
       });
@@ -532,6 +547,7 @@ export default function PurchaseInvoicesIndex() {
       paymentTerms: source.paymentTerms || "Net 30 days",
       bankAccount: source.bankAccount || "",
       notes: source.notes || "",
+      termsAndConditions: source.termsAndConditions || "",
       discountPercentage: source.discountPercentage || "0",
       discountAmount: source.discountAmount || "0",
     });
@@ -721,6 +737,7 @@ export default function PurchaseInvoicesIndex() {
       paymentTerms: "Net 30 days",
       bankAccount: "",
       notes: "",
+      termsAndConditions: "",
       discountPercentage: "0",
       discountAmount: "0",
     });
@@ -742,6 +759,31 @@ export default function PurchaseInvoicesIndex() {
     setEditingInvoice(null);
     setSelectedInvoiceFiles(null);
     setExistingInvoiceFiles([]);
+  };
+
+  // Open the dialog for a NEW invoice. Defaults are seeded into fields that are
+  // still EMPTY only, so a seed can never overwrite what someone already wrote.
+  // Editing an existing invoice never seeds — its stored values are the record.
+  // The editingInvoice guard mirrors the purchase order page: the dialog closes
+  // through resetForm, but should an abandoned edit ever survive, "New" must not
+  // reopen it.
+  const openNewInvoiceDialog = () => {
+    if (editingInvoice) {
+      resetForm();
+      setFormData(prev => ({
+        ...prev,
+        notes: invoiceDefaults?.notes || "",
+        termsAndConditions: invoiceDefaults?.termsAndConditions || "",
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        notes: prev.notes || invoiceDefaults?.notes || "",
+        termsAndConditions:
+          prev.termsAndConditions || invoiceDefaults?.termsAndConditions || "",
+      }));
+    }
+    setIsDialogOpen(true);
   };
 
   const resetPaymentForm = () => {
@@ -921,6 +963,7 @@ export default function PurchaseInvoicesIndex() {
     formDataInstance.append("subject", formData.subject || "");
     formDataInstance.append("bankAccount", formData.bankAccount);
     formDataInstance.append("notes", formData.notes);
+    formDataInstance.append("termsAndConditions", formData.termsAndConditions || "");
     formDataInstance.append("subtotal", subtotal.toFixed(2));
     formDataInstance.append("taxAmount", calculatedTaxAmount.toFixed(2));
     formDataInstance.append("discountPercentage", discountPct.toString());
@@ -1156,7 +1199,7 @@ export default function PurchaseInvoicesIndex() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {canEdit && (
-              <Button onClick={() => setIsDialogOpen(true)} className="w-full sm:w-auto">
+              <Button onClick={openNewInvoiceDialog} className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
                 New Invoice
               </Button>
@@ -1400,7 +1443,7 @@ export default function PurchaseInvoicesIndex() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No purchase invoices found</h3>
               <p className="text-gray-500 mb-4">Get started by creating your first purchase invoice.</p>
               {canEdit && (
-                <Button onClick={() => setIsDialogOpen(true)}>
+                <Button onClick={openNewInvoiceDialog}>
                   <Plus className="w-4 h-4 mr-2" />
                   Create Purchase Invoice
                 </Button>
@@ -1853,79 +1896,6 @@ export default function PurchaseInvoicesIndex() {
                           placeholder="e.g., Net 30 days"
                           className="h-10"
                         />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
-                        <Select
-                          value={selectedBankId}
-                          onValueChange={(value) => {
-                            setSelectedBankId(value);
-                            const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
-                            if (selected) {
-                              const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
-                              setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
-                            }
-                          }}
-                          disabled={!formData.supplierId || bankAccountOptions.length === 0}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue
-                              placeholder={
-                                !formData.supplierId
-                                  ? "Select supplier first"
-                                  : "Select bank account"
-                              }
-                            />
-                          </SelectTrigger>
-
-                          <SelectContent>
-                            {bankAccountOptions.map((bank, index) => (
-                              <SelectItem key={bank.id} value={bank.id.toString()}>
-                                <div className="whitespace-pre-wrap text-sm leading-snug">
-                                  {bank.accountDetails}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="mt-2 border border-input rounded-md overflow-hidden">
-                          <ReactQuill
-                            theme="snow"
-                            value={formData.bankAccount}
-                            onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
-                            placeholder="Enter or customize bank account details..."
-                            modules={{
-                              toolbar: [
-                                ['bold', 'italic', 'underline', 'strike'],
-                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                ['clean']
-                              ],
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
-                        <div className="mt-1 border border-input rounded-md overflow-hidden">
-                          <ReactQuill
-                            theme="snow"
-                            value={formData.notes}
-                            onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
-                            placeholder="Additional notes or comments..."
-                            modules={{
-                              toolbar: [
-                                [{ 'header': [1, 2, 3, false] }],
-                                ['bold', 'italic', 'underline', 'strike'],
-                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                [{ 'color': [] }, { 'background': [] }],
-                                ['link'],
-                                ['clean']
-                              ],
-                            }}
-                          />
-                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -2398,6 +2368,95 @@ export default function PurchaseInvoicesIndex() {
                     </div>
                   </CardContent>
                 </Card>
+
+                <div className="border-t pt-4">
+                  <Label className="text-lg font-semibold">Terms &amp; Notes</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bankAccount" className="text-sm font-medium">Bank Account Details (Optional)</Label>
+                  <Select
+                    value={selectedBankId}
+                    onValueChange={(value) => {
+                      setSelectedBankId(value);
+                      const selected = bankAccountOptions.find(opt => opt.id.toString() === value);
+                      if (selected) {
+                        const htmlValue = selected.accountDetails.split('\n').filter(line => line.trim()).map(line => `<p>${line}</p>`).join('');
+                        setFormData(prev => ({ ...prev, bankAccount: htmlValue }));
+                      }
+                    }}
+                    disabled={!formData.supplierId || bankAccountOptions.length === 0}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue
+                        placeholder={
+                          !formData.supplierId
+                            ? "Select supplier first"
+                            : "Select bank account"
+                        }
+                      />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {bankAccountOptions.map((bank, index) => (
+                        <SelectItem key={bank.id} value={bank.id.toString()}>
+                          <div className="whitespace-pre-wrap text-sm leading-snug">
+                            {bank.accountDetails}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-2 border border-input rounded-md overflow-hidden">
+                    <ReactQuill
+                      theme="snow"
+                      value={formData.bankAccount}
+                      onChange={(value) => setFormData(prev => ({ ...prev, bankAccount: value }))}
+                      placeholder="Enter or customize bank account details..."
+                      modules={{
+                        toolbar: [
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-sm font-medium">Notes</Label>
+                  <div className="mt-1 border border-input rounded-md overflow-hidden">
+                    <ReactQuill
+                      theme="snow"
+                      value={formData.notes}
+                      onChange={(value) => setFormData(prev => ({ ...prev, notes: value }))}
+                      placeholder="Additional notes or comments..."
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                          [{ 'color': [] }, { 'background': [] }],
+                          ['link'],
+                          ['clean']
+                        ],
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="invoiceTermsAndConditions" className="text-sm font-medium">Terms &amp; Conditions</Label>
+                  <Textarea
+                    id="invoiceTermsAndConditions"
+                    rows={6}
+                    value={formData.termsAndConditions}
+                    onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
+                    placeholder="Standing terms for this invoice. Pre-filled from Settings → Documents Default; edit or clear per invoice."
+                    data-testid="textarea-invoice-terms"
+                  />
+                </div>
 
                 {/* Edit Note - INSIDE SCROLL */}
                 {editRequiresNote && (

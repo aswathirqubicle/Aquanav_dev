@@ -1015,6 +1015,7 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   paymentTerms: text("payment_terms"),
   bankAccount: text("bank_account"),
   notes: text("notes"),
+  termsAndConditions: text("terms_and_conditions"),
   currency: text("currency").notNull().default("AED"),
   exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
     .notNull()

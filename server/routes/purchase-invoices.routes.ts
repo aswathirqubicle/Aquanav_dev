@@ -263,6 +263,7 @@ purchaseInvoicesRoutes.put(
         "currency",
         "exchangeRate",
         "notes",
+        "termsAndConditions",
         "paymentTerms",
         "bankAccount",
       ];

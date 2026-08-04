@@ -2176,7 +2176,7 @@ export default function PurchaseOrdersIndex() {
                   rows={6}
                   value={formData.termsAndConditions}
                   onChange={(e) => setFormData(prev => ({ ...prev, termsAndConditions: e.target.value }))}
-                  placeholder="Standing terms for this order. Pre-filled from Settings \u2192 Documents Default; edit or clear per order."
+                  placeholder="Standing terms for this order. Pre-filled from Settings → Documents Default; edit or clear per order."
                   className="mt-1"
                   data-testid="textarea-po-terms"
                 />
