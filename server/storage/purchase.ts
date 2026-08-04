@@ -776,22 +776,12 @@ export class PurchaseStorage extends SalesStorage {
         limit,
       );
 
-      // Get items and files for each purchase order
-      paginatedResult.data = await Promise.all(
-        paginatedResult.data.map(async (order) => {
-          const items = await this.getPurchaseOrderItems(order.id);
-          const files = await db
-            .select()
-            .from(purchaseOrderFiles)
-            .where(eq(purchaseOrderFiles.poId, order.id));
-          return {
-            ...order,
-            items,
-            files,
-          };
-        }),
-      );
-
+      // Items and files are deliberately NOT loaded here. This used to run two
+      // extra queries per row — 21 round trips for a 10-row page, growing with
+      // the page size and independent of any index. Nothing in the list table
+      // renders them; the only consumers were the edit, duplicate and view
+      // flows, which all fetch the order by id now. Callers that need children
+      // should use getPurchaseOrder(id).
       return paginatedResult;
     } catch (error: any) {
       await this.createErrorLog({
@@ -1123,8 +1113,6 @@ export class PurchaseStorage extends SalesStorage {
       if (data.bankAccount !== undefined)
         updateData.bankAccount = data.bankAccount || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
-      if (data.termsAndConditions !== undefined)
-        updateData.termsAndConditions = data.termsAndConditions || null;
       if (data.subtotal !== undefined) updateData.subtotal = data.subtotal;
       if (data.discountPercentage !== undefined)
         updateData.discountPercentage = data.discountPercentage;
@@ -1622,19 +1610,10 @@ export class PurchaseStorage extends SalesStorage {
         limit,
       );
 
-      // Fetch files for each invoice
-      if (paginatedResult.data && paginatedResult.data.length > 0) {
-        paginatedResult.data = await Promise.all(
-          paginatedResult.data.map(async (invoice: any) => {
-            const files = await db
-              .select()
-              .from(purchaseInvoiceFiles)
-              .where(eq(purchaseInvoiceFiles.invoiceId, invoice.id));
-            return { ...invoice, files };
-          }),
-        );
-      }
-
+      // Files are deliberately NOT loaded here — one extra query per row, and
+      // nothing in the list table renders them. The view, edit and duplicate
+      // flows all fetch the invoice by id. Callers that need files should use
+      // getPurchaseInvoice(id).
       return paginatedResult;
     } catch (error: any) {
       await this.createErrorLog({
@@ -2073,9 +2052,10 @@ export class PurchaseStorage extends SalesStorage {
           supplierId: invoiceData.supplierId,
           subject: invoiceData.subject || null,
           poId: invoiceData.poId || null,
-          projectId: invoiceData.projectId || null,
-          assetInventoryInstanceId:
-            invoiceData.assetInventoryInstanceId || null,
+          // project_id and asset_inventory_instance_id were dropped from
+          // purchase_invoices by migration 0002 and are absent from the live
+          // schema; Drizzle silently discarded both keys. Allocation to a
+          // project or asset is per line item (purchase_invoice_items).
           // L28: always create as draft. A caller-supplied status (e.g.
           // "approved") must NOT be honored — approval is the only path that
           // posts GL, goods receipts and project cost, so accepting it here

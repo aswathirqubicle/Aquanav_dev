@@ -917,7 +917,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   poNumber: text("po_number").notNull().unique(),
   subject: text("subject"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
-  status: text("status").notNull().default("draft"), // draft, sent, confirmed, received, cancelled
+  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected, converted
   orderDate: timestamp("order_date").notNull().defaultNow(),
   expectedDeliveryDate: timestamp("expected_delivery_date"),
   paymentTerms: text("payment_terms"),
@@ -1696,7 +1696,7 @@ const purchaseOrdersTable = pgTable("purchase_orders", {
   poNumber: text("po_number").notNull().unique(),
   subject: text("subject"),
   supplierId: integer("supplier_id").references(() => suppliers.id),
-  status: text("status").notNull().default("draft"), // draft, sent, confirmed, received, cancelled
+  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected, converted
   orderDate: timestamp("order_date").notNull().defaultNow(),
   expectedDeliveryDate: timestamp("expected_delivery_date"),
   paymentTerms: text("payment_terms"),

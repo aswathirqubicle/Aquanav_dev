@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, AlertCircle } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
 
@@ -621,7 +621,80 @@ export default function PurchaseOrdersIndex() {
     setEditNote("");
   };
 
-  const handleEditOrder = (order: PurchaseOrder) => {
+  // Copies an existing order into a fresh draft. Mirrors handleDuplicateInvoice:
+  // editingOrder is cleared so submit creates rather than updates, the order
+  // date restarts at today, and attachments are deliberately not carried over —
+  // they belong to the original document.
+  const handleDuplicateOrder = async (order: PurchaseOrder) => {
+    let source: any = order;
+    if (!order.items || order.items.length === 0) {
+      try {
+        const response = await apiRequest(`/api/purchase-orders/${order.id}`, { method: "GET" });
+        if (response.ok) {
+          source = await response.json();
+        }
+      } catch {}
+    }
+    setEditingOrder(null);
+    setFormData({
+      supplierId: source.supplierId?.toString() || "",
+      subject: source.subject || "",
+      orderDate: new Date().toISOString().split("T")[0],
+      expectedDeliveryDate: "",
+      paymentTerms: source.paymentTerms || "",
+      deliveryTerms: source.deliveryTerms || "",
+      deliverTo: source.deliverTo || "",
+      bankAccount: source.bankAccount || "",
+      notes: source.notes || "",
+      termsAndConditions: source.termsAndConditions || "",
+      currency: source.currency || source.supplierCurrency || "AED",
+      exchangeRate: source.exchangeRate || "1",
+      discountPercentage: source.discountPercentage || "0",
+      discountAmount: source.discountAmount || "0",
+    });
+    if (source.items && source.items.length > 0) {
+      setOrderItems(source.items.map((item: any) => ({
+        itemType: item.itemType,
+        inventoryItemId: item.inventoryItemId?.toString() || "",
+        description: item.description || "",
+        quantity: item.quantity.toString(),
+        unitPrice: item.unitPrice,
+        taxRate: item.taxRate != null ? item.taxRate.toString() : "0",
+        discount: item.discount != null ? item.discount.toString() : "0",
+        discountType: item.discountType || "amount",
+      })));
+    } else {
+      setOrderItems([]);
+    }
+    setSelectedFiles(null);
+    setExistingFiles([]);
+    setEditNote("");
+    setIsViewDialogOpen(false);
+    setIsDialogOpen(true);
+  };
+
+  // Fetches the order by id: the paginated list no longer carries items and
+  // files, since loading them per row cost two extra queries for every row on
+  // every page and nothing in the list table displayed them.
+  const handleEditOrder = async (listOrder: PurchaseOrder) => {
+    let order = listOrder;
+    if (!listOrder.items || listOrder.items.length === 0) {
+      try {
+        const response = await apiRequest(`/api/purchase-orders/${listOrder.id}`, { method: "GET" });
+        if (!response.ok) {
+          throw new Error("Failed to load purchase order details");
+        }
+        order = await response.json();
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load purchase order details",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setEditingOrder(order);
     setFormData({
       supplierId: order.supplierId.toString(),
@@ -1098,6 +1171,12 @@ export default function PurchaseOrdersIndex() {
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + " " + sizes[i];
   };
+
+  // Which edit-history fields hold rich text. notes and bankAccount are edited
+  // through ReactQuill, so their stored value is HTML; everything else tracked
+  // is plain text and must stay escaped.
+  const isRichTextField = (field: string) =>
+    field === "notes" || field === "bankAccount";
 
   const getFileIcon = (mimeType?: string) => {
     if (mimeType?.startsWith("image/")) {
@@ -2306,23 +2385,32 @@ export default function PurchaseOrdersIndex() {
 
       {/* View Order Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader className="flex-shrink-0 border-b pb-4">
-            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
-                actions (edit, print) live up here; status-flow actions
-                (submit, approve, reject, convert) stay in the footer. */}
-            <div className="flex items-center justify-between gap-3 pr-8">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                  <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          {viewingOrder && (
+            <div className="space-y-6 print:space-y-4">
+              {/* Header with Icon Badge and Document Actions, matching the
+                  purchase invoice view. pr-8 keeps the buttons clear of the
+                  dialog's own X. Document actions (edit, duplicate, print) live
+                  up here; status-flow actions (submit, approve, reject,
+                  convert) stay in the footer. DialogTitle rather than a plain
+                  h2 so the dialog has an accessible name. */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 pr-8 print:border-b-2 print:border-black">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900 rounded-lg print:bg-blue-100">
+                    <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white print:text-black">
+                      {viewingOrder.poNumber}
+                    </DialogTitle>
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700">
+                      Purchase Order
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <DialogTitle className="text-xl font-semibold">Purchase Order</DialogTitle>
-                  <p className="text-sm text-muted-foreground">{viewingOrder?.poNumber}</p>
-                </div>
-              </div>
-              {viewingOrder && (
-                <div className="flex flex-wrap items-center gap-2">
+                {/* Status is not repeated here — it has its own labelled field
+                    in Order Information. */}
+                <div className="flex flex-wrap items-center gap-3 print:hidden">
                   {/* Same gate as the list's Edit button: drafts for anyone who
                       can edit, post-approval statuses for admin/finance only.
                       Converted orders show no Edit, matching the list. */}
@@ -2337,43 +2425,50 @@ export default function PurchaseOrdersIndex() {
                         setIsViewDialogOpen(false);
                         handleEditOrder(order);
                       }}
-                      className="gap-2"
+                      className="flex items-center gap-2"
                       data-testid="button-edit-from-view"
                     >
                       <Pencil className="h-4 w-4" />
                       Edit
                     </Button>
                   )}
+                  {/* Duplicate is offered once an order is past drafting —
+                      approved, rejected and converted orders are the ones worth
+                      reissuing, and none of them can be edited in place. */}
+                  {["approved", "rejected", "converted"].includes(viewingOrder.status) && canEdit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicateOrder(viewingOrder)}
+                      className="flex items-center gap-2"
+                      data-testid="button-duplicate-order-header"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Duplicate
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handlePrintPDF(viewingOrder)}
-                    className="gap-2"
+                    className="flex items-center gap-2"
+                    data-testid="button-print-order"
                   >
                     <Printer className="w-4 h-4" />
                     Print
                   </Button>
-                  {/* Status is not repeated here — it has its own labelled
-                      field in Order Information. */}
                 </div>
-              )}
-            </div>
-          </DialogHeader>
+              </div>
 
-          {viewingOrder && (
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
-              {/* Supplier & Order Information */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Order Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* One uniform grid rather than two hand-balanced columns, so
-                      a field can be added without re-splitting the layout. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Order Information Card */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+                  Order Information
+                </h3>
+                {/* One uniform grid rather than two hand-balanced columns, so
+                    a field can be added without re-splitting the layout. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     <div>
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Supplier</label>
                       <p className="text-sm font-semibold mt-1 break-words">{viewingOrder.supplierName}</p>
@@ -2448,40 +2543,33 @@ export default function PurchaseOrdersIndex() {
                         </p>
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
-              {/* Bank Account Details */}
+              {/* Bank Account Details Card */}
               {viewingOrder.bankAccount && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CreditCard className="w-4 h-4" />
-                      Bank Account Details
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div 
-                      className="text-sm bg-muted/50 p-3 rounded-lg rich-text-content"
-                      dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
-                    />
-                  </CardContent>
-                </Card>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Bank Account Details
+                  </h3>
+                  <div
+                    className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
+                    dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
+                  />
+                </div>
               )}
 
-              {/* Line Items */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Order Items
-                    <Badge variant="secondary" className="ml-2">
-                      {viewingOrder.items?.length || 0} items
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              {/* Order Items Table */}
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <Package className="w-4 h-4 sm:w-5 sm:h-5" />
+                  Order Items
+                  <Badge variant="secondary" className="ml-2">
+                    {viewingOrder.items?.length || 0} items
+                  </Badge>
+                </h3>
+                <div>
                   <div className="border rounded-lg overflow-hidden">
                     <Table>
                       <TableHeader>
@@ -2542,22 +2630,18 @@ export default function PurchaseOrdersIndex() {
                       </TableBody>
                     </Table>
                   </div>
+                </div>
+              </div>
 
-                </CardContent>
-              </Card>
-
-              {/* Financial Summary — its own card rather than a block nested at
-                  the bottom of the items table, so Notes and Terms can sit
+              {/* Financial Summary — its own panel rather than a block nested
+                  at the bottom of the items table, so Notes and Terms can sit
                   below the totals as they do on the purchase invoice. */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" />
-                    Financial Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
+                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
+                  Financial Summary
+                </h3>
+                  <div className="space-y-2 sm:space-y-3">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Subtotal ({viewingOrder.currency || viewingOrder.supplierCurrency})</span>
                       <span className="font-medium">{formatCurrency(viewingOrder.subtotal, viewingOrder.currency || viewingOrder.supplierCurrency)}</span>
@@ -2610,27 +2694,25 @@ export default function PurchaseOrdersIndex() {
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
+              </div>
 
               {/* Notes and Terms & Conditions sit below the totals and are
                   collapsed by default — they are reference text, not something
                   a reader needs on opening the document. */}
               {(viewingOrder.notes || viewingOrder.termsAndConditions) && (
-                <Card>
-                  <CardContent className="py-0">
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg px-4 sm:px-6 print:bg-white print:border print:border-gray-300">
                     <Accordion type="multiple" className="w-full">
                       {viewingOrder.notes && (
                         <AccordionItem value="notes" className="border-b-0">
-                          <AccordionTrigger className="text-base font-semibold hover:no-underline">
+                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
                             <span className="flex items-center gap-2">
-                              <FileText className="w-4 h-4" />
+                              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                               Notes
                             </span>
                           </AccordionTrigger>
                           <AccordionContent>
                             <div
-                              className="text-sm text-muted-foreground rich-text-content"
+                              className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
                               dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.notes || "") }}
                             />
                           </AccordionContent>
@@ -2638,32 +2720,28 @@ export default function PurchaseOrdersIndex() {
                       )}
                       {viewingOrder.termsAndConditions && (
                         <AccordionItem value="terms" className="border-b-0">
-                          <AccordionTrigger className="text-base font-semibold hover:no-underline">
+                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
                             <span className="flex items-center gap-2">
-                              <FileText className="w-4 h-4" />
+                              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                               Terms &amp; Conditions
                             </span>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
+                            <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black whitespace-pre-wrap">{viewingOrder.termsAndConditions}</p>
                           </AccordionContent>
                         </AccordionItem>
                       )}
                     </Accordion>
-                  </CardContent>
-                </Card>
+                </div>
               )}
 
-              {/* Attachments */}
+              {/* Attachments Card */}
               {viewingOrder.files && viewingOrder.files.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Paperclip className="w-4 h-4" />
-                      Attachments ({viewingOrder.files.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Attachments ({viewingOrder.files.length})
+                  </h3>
                     <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {viewingOrder.files.map((file) => (
                         <li
@@ -2694,8 +2772,7 @@ export default function PurchaseOrdersIndex() {
                         </li>
                       ))}
                     </ul>
-                  </CardContent>
-                </Card>
+                </div>
               )}
 
               {/* Activity — approval trail and edit history in one tabbed block
@@ -2704,7 +2781,7 @@ export default function PurchaseOrdersIndex() {
                   its data is already on the order; edit history fetches on
                   first click. That endpoint is admin/finance only, so its tab
                   is hidden for project_manager rather than firing a 403. */}
-              <Card>
+              <Card className="print:hidden">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <History className="w-4 h-4" />
@@ -2814,8 +2891,27 @@ export default function PurchaseOrdersIndex() {
                                           field !== "items" ? (
                                             <div key={field} className="flex flex-col gap-1">
                                               <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                              <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                              <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                              {/* notes and bankAccount are ReactQuill fields, so their
+                                                  stored value is HTML and printing it raw showed markup
+                                                  to the reader. Every other tracked field is plain text
+                                                  and stays escaped. */}
+                                              {isRichTextField(field) ? (
+                                                <>
+                                                  <div
+                                                    className="text-red-500 line-through break-words rich-text-content"
+                                                    dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
+                                                  />
+                                                  <div
+                                                    className="text-green-600 break-words rich-text-content"
+                                                    dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
+                                                  />
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
+                                                  <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                                </>
+                                              )}
                                             </div>
                                           ) : (
                                             <div key={field} className="text-gray-500 italic">Line items were modified</div>
@@ -2841,7 +2937,7 @@ export default function PurchaseOrdersIndex() {
                   row gates exactly. viewingOrder is plain state and goes
                   stale after a mutation invalidates the list, so every
                   action closes the view dialog first. */}
-              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
+              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
                 {viewingOrder.status === "draft" && (
                   <Button
                     onClick={() => {
@@ -2849,6 +2945,7 @@ export default function PurchaseOrdersIndex() {
                       submitOrderMutation.mutate(viewingOrder.id);
                     }}
                     disabled={submitOrderMutation.isPending}
+                    size="lg"
                     className="w-full sm:w-auto gap-2"
                     data-testid="button-submit-order-dialog"
                   >
@@ -2864,6 +2961,7 @@ export default function PurchaseOrdersIndex() {
                         approveOrderMutation.mutate(viewingOrder.id);
                       }}
                       disabled={approveOrderMutation.isPending}
+                      size="lg"
                       className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700"
                       data-testid="button-approve-order-dialog"
                     >
@@ -2877,6 +2975,7 @@ export default function PurchaseOrdersIndex() {
                         setIsRejectDialogOpen(true);
                       }}
                       disabled={rejectOrderMutation.isPending}
+                      size="lg"
                       className="w-full sm:w-auto gap-2 border-red-300 text-red-600 hover:bg-red-50"
                       data-testid="button-reject-order-dialog"
                     >
@@ -2891,6 +2990,7 @@ export default function PurchaseOrdersIndex() {
                       setIsViewDialogOpen(false);
                       openConvertDialog();
                     }}
+                    size="lg"
                     className="w-full sm:w-auto gap-2"
                     data-testid="button-convert-order-dialog"
                   >
@@ -2900,6 +3000,7 @@ export default function PurchaseOrdersIndex() {
                 )}
                 <Button
                   variant="outline"
+                  size="lg"
                   onClick={() => setIsViewDialogOpen(false)}
                   className="w-full sm:w-auto"
                 >

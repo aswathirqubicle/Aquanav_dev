@@ -1182,6 +1182,12 @@ export default function PurchaseInvoicesIndex() {
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + " " + sizes[i];
   };
 
+  // Which edit-history fields hold rich text. notes and bankAccount are edited
+  // through ReactQuill, so their stored value is HTML; everything else tracked
+  // is plain text and must stay escaped.
+  const isRichTextField = (field: string) =>
+    field === "notes" || field === "bankAccount";
+
   const getFileIcon = (mimeType?: string) => {
     if (mimeType?.startsWith("image/")) {
       return <Paperclip className="h-4 w-4 flex-shrink-0 text-purple-600" />;
@@ -2640,9 +2646,11 @@ export default function PurchaseInvoicesIndex() {
                       <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
                     </div>
                     <div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white print:text-black">
+                      {/* DialogTitle rather than a plain h2 so the dialog has
+                          an accessible name; Radix warned on every open. */}
+                      <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white print:text-black">
                         {viewingInvoice.invoiceNumber}
-                      </h2>
+                      </DialogTitle>
                       <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700">
                         Purchase Invoice
                       </p>
@@ -3290,8 +3298,27 @@ export default function PurchaseInvoicesIndex() {
                                             field !== "items" ? (
                                               <div key={field} className="flex flex-col gap-1">
                                                 <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                                <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                                {/* notes and bankAccount are ReactQuill fields, so their
+                                                    stored value is HTML and printing it raw showed markup
+                                                    to the reader. Every other tracked field is plain text
+                                                    and stays escaped. */}
+                                                {isRichTextField(field) ? (
+                                                  <>
+                                                    <div
+                                                      className="text-red-500 line-through break-words rich-text-content"
+                                                      dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
+                                                    />
+                                                    <div
+                                                      className="text-green-600 break-words rich-text-content"
+                                                      dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
+                                                    />
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
+                                                    <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                                  </>
+                                                )}
                                               </div>
                                             ) : (
                                               <div key={field} className="text-gray-500 italic">Line items were modified</div>

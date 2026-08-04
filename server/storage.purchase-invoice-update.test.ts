@@ -160,4 +160,74 @@ describe("updatePurchaseInvoice — only writes fields the caller supplied", () 
     expect(written.taxAmount).toBe("10.00");
     expect(written.totalAmount).toBe("210.00");
   });
+
+  /**
+   * The tests above all assert a field is ABSENT when the caller omits it.
+   * That shape cannot tell "absent because omitted" from "absent always" — and
+   * that is exactly how termsAndConditions came to be missing from updateData
+   * entirely, so every edit silently discarded it while the suite stayed green.
+   *
+   * These assert the other direction: supply a value, and it must reach the
+   * write. One case per writable text column, so a column dropped from the
+   * hand-maintained allowlist fails here instead of in production.
+   */
+  describe.each([
+    ["supplierInvoiceNumber", "SUP-INV-99"],
+    ["subject", "Deck refit consumables"],
+    ["paymentTerms", "Net 45 days"],
+    ["bankAccount", "<p>Emirates NBD 1234567</p>"],
+    ["notes", "<p>Deliver to berth 4</p>"],
+    ["termsAndConditions", "Goods remain our property until paid in full."],
+  ])("writes %s when the caller supplies it", (field, value) => {
+    it("reaches the update", async () => {
+      await storage.updatePurchaseInvoice(
+        1,
+        {
+          supplierId: 7,
+          [field]: value,
+          items: [
+            {
+              quantity: 1,
+              unitPrice: 10,
+              taxRate: 0,
+              discount: 0,
+              discountType: "amount",
+            },
+          ],
+        },
+        true,
+      );
+
+      const written = invoiceSetCall();
+      expect(written).toBeDefined();
+      expect(written[field]).toBe(value);
+    });
+  });
+
+  it("clears a text field when the caller supplies an empty string", async () => {
+    await storage.updatePurchaseInvoice(
+      1,
+      {
+        supplierId: 7,
+        termsAndConditions: "",
+        items: [
+          {
+            quantity: 1,
+            unitPrice: 10,
+            taxRate: 0,
+            discount: 0,
+            discountType: "amount",
+          },
+        ],
+      },
+      true,
+    );
+
+    const written = invoiceSetCall();
+    expect(written).toBeDefined();
+    // Empty string is a deliberate clear, stored as null — distinct from
+    // omitting the key, which must leave the stored value alone.
+    expect(written).toHaveProperty("termsAndConditions");
+    expect(written.termsAndConditions).toBeNull();
+  });
 });
