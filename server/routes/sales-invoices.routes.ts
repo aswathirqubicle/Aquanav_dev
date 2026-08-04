@@ -448,6 +448,34 @@ salesInvoicesRoutes.post(
       // No conversion needed - Drizzle expects strings for date() columns
 
       const invoice = await storage.createSalesInvoice(invoiceData);
+
+      // An invoice raised from a quotation converts it. Nothing did this
+      // before, so the Converted status was unreachable and a single
+      // quotation could be billed any number of times with no trace — one
+      // in this database carries five invoices and still reads approved.
+      //
+      // Marked here rather than when the Convert button is pressed, because
+      // that button only pre-fills the form: an abandoned draft never became
+      // an invoice and must leave the quotation usable. Failing to mark it
+      // must not fail the invoice, which already exists by this point.
+      if (invoice && invoiceData.quotationId) {
+        try {
+          const quotation = await storage.getSalesQuotation(
+            Number(invoiceData.quotationId),
+          );
+          if (quotation && quotation.status !== "converted") {
+            await storage.updateSalesQuotation(Number(invoiceData.quotationId), {
+              status: "converted",
+            });
+          }
+        } catch (conversionError) {
+          console.error(
+            "Failed to mark quotation as converted:",
+            conversionError,
+          );
+        }
+      }
+
       res.status(201).json(invoice);
     } catch (error) {
       console.error("Sales invoice creation error:", error);
