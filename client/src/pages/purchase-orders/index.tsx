@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
 
@@ -1063,6 +1063,10 @@ export default function PurchaseOrdersIndex() {
     // Filters are applied automatically through filteredOrders
   };
 
+  // Collapsed by default, as on the sales page: the filters are occasional,
+  // and a permanently open panel pushes the list itself below the fold.
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
@@ -1193,11 +1197,39 @@ export default function PurchaseOrdersIndex() {
         </Card>
       </div>
 
-      {/* Advanced Filters */}
+      {/* Collapsible Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer select-none"
+          onClick={() => setFilterOpen((o) => !o)}
+        >
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+            <span className="font-medium text-sm">Filters</span>
+            {(() => {
+              const active = [
+                searchQuery,
+                statusFilter !== "all" ? statusFilter : "",
+                supplierFilter !== "all" ? supplierFilter : "",
+                startDateFilter,
+                endDateFilter,
+              ].filter(Boolean).length;
+              return active > 0 ? (
+                <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+              ) : null;
+            })()}
+          </div>
+          {filterOpen
+            ? <ChevronUp className="h-4 w-4 text-slate-400" />
+            : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        </div>
+
+        {filterOpen && (
+          <CardContent className="pt-0 pb-4 px-4 border-t">
+            {/* One grid rather than two: five fields and the clear action fill
+                three columns exactly, so nothing is left stranded on its own
+                row the way the old 4-then-3 split left the dates. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
               <div>
                 <Label htmlFor="searchFilter" className="text-sm font-medium">
                   Search
@@ -1247,14 +1279,6 @@ export default function PurchaseOrdersIndex() {
                   className="mt-1"
                 />
               </div>
-              <div className="flex items-end">
-                <Button onClick={clearFilters} variant="outline" className="w-full">
-                  Clear All Filters
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="startDate" className="text-sm font-medium">
                   Order Date From
@@ -1279,9 +1303,14 @@ export default function PurchaseOrdersIndex() {
                   className="mt-1"
                 />
               </div>
+              <div className="flex items-end">
+                <Button onClick={clearFilters} variant="outline" className="w-full">
+                  Clear All Filters
+                </Button>
+              </div>
             </div>
-          </div>
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       {/* Order List */}

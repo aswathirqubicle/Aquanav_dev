@@ -31,7 +31,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
 
@@ -1027,6 +1027,10 @@ export default function PurchaseInvoicesIndex() {
     setIsFilterOpen(false);
   };
 
+  // Collapsed by default, as on the sales page: filters are occasional, and a
+  // permanently open panel pushes the invoice list below the fold.
+  const [filterOpen, setFilterOpen] = useState(false);
+
   const clearFilters = () => {
     setFilters({
       startDate: "",
@@ -1219,11 +1223,41 @@ export default function PurchaseInvoicesIndex() {
           </Card>
         </div>
 
-        {/* Filters Section */}
+        {/* Collapsible Filters */}
         <Card>
-          <CardContent className="p-4">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            className="flex items-center justify-between p-4 cursor-pointer select-none"
+            onClick={() => setFilterOpen((o) => !o)}
+          >
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+              <span className="font-medium text-sm">Filters</span>
+              {(() => {
+                const active = [
+                  filters.search,
+                  filters.status,
+                  filters.paymentStatus,
+                  filters.supplierId,
+                  filters.projectId,
+                  filters.startDate,
+                  filters.endDate,
+                ].filter(Boolean).length;
+                return active > 0 ? (
+                  <Badge className="bg-primary text-primary-foreground text-xs px-1.5 py-0">{active}</Badge>
+                ) : null;
+              })()}
+            </div>
+            {filterOpen
+              ? <ChevronUp className="h-4 w-4 text-slate-400" />
+              : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </div>
+
+          {filterOpen && (
+            <CardContent className="pt-0 pb-4 px-4 border-t">
+              {/* One grid rather than two: seven fields and the clear action
+                  fill four columns exactly, so the dates no longer sit alone
+                  on a second row of different width. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
                 <div>
                   <Label htmlFor="search">Search</Label>
                   <Input
@@ -1323,9 +1357,6 @@ export default function PurchaseInvoicesIndex() {
                     placeholder="Select project..."
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="startDate">Invoice Date From</Label>
                   <Input
@@ -1350,8 +1381,8 @@ export default function PurchaseInvoicesIndex() {
                   </Button>
                 </div>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
 
         {/* Invoice List */}
