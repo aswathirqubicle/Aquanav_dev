@@ -68,7 +68,10 @@ export function generatePurchaseOrderHTML(
         name: val(supplier?.name),
         address: val(supplier?.address),
         phone: val(supplier?.phone),
-        vatNumber: val(supplier?.vatNumber),
+        // TRN falls back to Tax ID: the two fields both exist on the
+        // counterparty and most records carry only the latter, so printing
+        // vatNumber alone left the TRN off nearly every document.
+        vatNumber: val(supplier?.vatNumber) || val(supplier?.taxId),
       },
       // Free text rather than a structured address: deliveries go to vessels
       // and work sites as often as to the office. Absent when not set — an
