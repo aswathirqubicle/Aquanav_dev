@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, AlertCircle, Building2, AlignLeft } from "lucide-react";
+import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, Building2, AlignLeft } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
 
@@ -2410,8 +2410,8 @@ export default function PurchaseOrdersIndex() {
       </Dialog>
 
       {/* View Order Dialog — laid out to the approved redesign reference:
-          a full-bleed header band, a key-facts strip, a two-column body and a
-          fixed action footer. The dialog's own padding is removed (p-0 gap-0)
+          a full-bleed header band, a key-facts strip, a single-column body and
+          a fixed action footer. The dialog's own padding is removed (p-0 gap-0)
           so each band can carry its own padding and edge-to-edge rule, and the
           body scrolls on its own while the header and footer stay put.
           Colours are the reference's literal palette rather than the app's
@@ -2446,22 +2446,19 @@ export default function PurchaseOrdersIndex() {
               viewingOrder.paymentTerms ||
               viewingOrder.deliveryTerms ||
               viewingOrder.supplierVatTreatment ||
-              showExchangeRate ||
-              viewingOrder.deliverTo
+              showExchangeRate
             );
 
-            // The sidebar carries the bank account and the attachments. With
-            // neither there is nothing to put in it, so the main column runs
-            // full width instead of leaving a 316px gutter. Both class strings
-            // are written out in full so Tailwind's scanner picks them up.
-            const hasSidebar = !!(
+            // Bank account, Deliver to and Attachments share the second row.
+            // Each card is rendered only when it holds something and they flex
+            // to fill the width rather than sitting in fixed thirds, so the row
+            // still reads correctly with one or two of them. The row itself is
+            // dropped when none of the three has data.
+            const hasDetailRow = !!(
               viewingOrder.bankAccount ||
+              viewingOrder.deliverTo ||
               (viewingOrder.files && viewingOrder.files.length > 0)
             );
-            const bodyGridCls = hasSidebar
-              ? "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_316px] gap-5 p-5 sm:p-6"
-              : "grid grid-cols-1 gap-5 p-5 sm:p-6";
-            const spanFull = hasSidebar ? "lg:col-span-2" : "";
 
             // Shared chrome. Kept as constants rather than repeated inline so
             // the card/table/ledger treatment stays identical across every
@@ -2492,8 +2489,6 @@ export default function PurchaseOrdersIndex() {
             const tValCls = "font-medium print:text-black";
             const headBtnCls =
               "h-auto gap-[7px] rounded-lg border-[#E3E7EE] px-[13px] py-[7px] text-[13.5px] font-medium text-[#171B23] hover:bg-[#F7F9FC] hover:border-[#D4DAE3]";
-            const sectionLabelCls =
-              "text-[10.5px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] mt-3.5 mb-1.5 first:mt-0";
             const emptyCls = "text-[13px] text-[#8A93A3]";
 
             return (
@@ -2589,23 +2584,9 @@ export default function PurchaseOrdersIndex() {
                   </div>
                 </header>
 
-                {/* ===== REJECTION BANNER =====
-                    The reason is surfaced at the top for a rejected order so it
-                    is not missed; it also stays in Activity → Approval below. */}
-                {viewingOrder.status === "rejected" && viewingOrder.rejectionReason && (
-                  <div
-                    className="flex items-start gap-3 shrink-0 px-5 sm:px-6 py-3.5 bg-[#FEF3F2] border-b border-[#F0C5C1] text-[13.5px] text-[#912018] print:hidden"
-                    data-testid="banner-order-rejected"
-                  >
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-px text-[#B42318]" />
-                    <div className="flex-1 min-w-0">
-                      <strong className="font-semibold">This purchase order was rejected.</strong>
-                      <div className="text-[12.5px] text-[#A6584F] mt-px whitespace-pre-wrap break-words">
-                        {viewingOrder.rejectionReason}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* No rejection banner: the reason for a rejected order is
+                    carried by the Rejected node in Activity → Approval, which
+                    is where the rest of the approval trail already reads. */}
 
                 {/* ===== KEY FACTS STRIP =====
                     flex rather than a fixed 4-column grid so the remaining cells
@@ -2650,85 +2631,200 @@ export default function PurchaseOrdersIndex() {
 
                 {/* ===== BODY ===== */}
                 <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFCFE] print:bg-white">
-                  <div className={bodyGridCls}>
+                  {/* One vertical stack — every block runs the full width of the
+                      dialog. The reference cards below are collapsed on opening
+                      so the order items stay near the top of the scroll. */}
+                  <div className="flex flex-col gap-4 p-5 sm:p-6">
 
-                    {/* --- Top row: Supplier & Commercial terms --- */}
+                    {/* --- Row 1: Supplier & Commercial terms --- */}
                     <div
-                      className={`grid grid-cols-1 ${hasCommercialTerms ? "md:grid-cols-2" : ""} gap-4 ${spanFull}`}
+                      className={`grid grid-cols-1 ${hasCommercialTerms ? "md:grid-cols-2" : ""} gap-4 items-start`}
                     >
                       <section className={cardCls}>
-                        <div className={cardHeadCls}>
-                          <Building2 className={cardIconCls} />
-                          <span className={cardTitleCls}>Supplier</span>
-                        </div>
-                        <div className={cardBodyCls}>
-                          <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
-                            {viewingOrder.supplierName}
-                          </div>
-                          {supplierAddress && (
-                            <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
-                              {supplierAddress}
-                            </div>
-                          )}
-                        </div>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="supplier" className="border-b-0">
+                            <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                              <span className="flex items-center gap-2.5">
+                                <Building2 className={cardIconCls} />
+                                <span className={cardTitleCls}>Supplier</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                              <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
+                                {viewingOrder.supplierName}
+                              </div>
+                              {supplierAddress && (
+                                <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                  {supplierAddress}
+                                </div>
+                              )}
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </section>
 
                       {hasCommercialTerms && (
                         <section className={cardCls}>
-                          <div className={cardHeadCls}>
-                            <DollarSign className={cardIconCls} />
-                            <span className={cardTitleCls}>Commercial terms</span>
-                          </div>
-                          <div className={cardBodyCls}>
-                            <div className="flex flex-col">
-                              {viewingOrder.paymentTerms && (
-                                <div className={kvRowCls}>
-                                  <span className={kvLabelCls}>Payment terms</span>
-                                  <span className={kvValCls}>{viewingOrder.paymentTerms}</span>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="commercial" className="border-b-0">
+                              <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                <span className="flex items-center gap-2.5">
+                                  <DollarSign className={cardIconCls} />
+                                  <span className={cardTitleCls}>Commercial terms</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                <div className="flex flex-col">
+                                  {viewingOrder.paymentTerms && (
+                                    <div className={kvRowCls}>
+                                      <span className={kvLabelCls}>Payment terms</span>
+                                      <span className={kvValCls}>{viewingOrder.paymentTerms}</span>
+                                    </div>
+                                  )}
+                                  {viewingOrder.deliveryTerms && (
+                                    <div className={kvRowCls}>
+                                      <span className={kvLabelCls}>Delivery terms</span>
+                                      <span className={kvValCls}>{viewingOrder.deliveryTerms}</span>
+                                    </div>
+                                  )}
+                                  {viewingOrder.supplierVatTreatment && (
+                                    <div className={kvRowCls}>
+                                      <span className={kvLabelCls}>VAT treatment</span>
+                                      <span className={`${kvValCls} capitalize`}>
+                                        {viewingOrder.supplierVatTreatment.replace(/_/g, " ")}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {showExchangeRate && (
+                                    <div className={kvRowCls}>
+                                      <span className={kvLabelCls}>Exchange rate</span>
+                                      <span className={`${kvValCls} text-[12.5px]`}>
+                                        1 {orderCurrency} = {viewingOrder.exchangeRate} AED
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                              {viewingOrder.deliveryTerms && (
-                                <div className={kvRowCls}>
-                                  <span className={kvLabelCls}>Delivery terms</span>
-                                  <span className={kvValCls}>{viewingOrder.deliveryTerms}</span>
-                                </div>
-                              )}
-                              {viewingOrder.supplierVatTreatment && (
-                                <div className={kvRowCls}>
-                                  <span className={kvLabelCls}>VAT treatment</span>
-                                  <span className={`${kvValCls} capitalize`}>
-                                    {viewingOrder.supplierVatTreatment.replace(/_/g, " ")}
-                                  </span>
-                                </div>
-                              )}
-                              {showExchangeRate && (
-                                <div className={kvRowCls}>
-                                  <span className={kvLabelCls}>Exchange rate</span>
-                                  <span className={`${kvValCls} text-[12.5px]`}>
-                                    1 {orderCurrency} = {viewingOrder.exchangeRate} AED
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            {/* Where the goods go. It sits with the delivery
-                                terms rather than under the supplier, where it
-                                read as the supplier's own address. Given as a
-                                block, not a row, because it is a multi-line
-                                address. */}
-                            {viewingOrder.deliverTo && (
-                              <>
-                                <div className={sectionLabelCls}>Deliver to</div>
-                                <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
-                                  {viewingOrder.deliverTo}
-                                </div>
-                              </>
-                            )}
-                          </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
                         </section>
                       )}
                     </div>
 
-                    {/* --- Main column --- */}
+                    {/* --- Row 2: Bank account, Deliver to and Attachments.
+                        Wrapping flex rather than a fixed three-column grid, so
+                        one or two cards still fill the row instead of leaving a
+                        gap where the missing ones would sit. --- */}
+                    {hasDetailRow && (
+                      <div className="flex flex-wrap gap-4 items-start">
+                        {viewingOrder.bankAccount && (
+                          <section className={`${cardCls} flex-1 min-w-[260px]`}>
+                            <Accordion type="single" collapsible className="w-full">
+                              <AccordionItem value="bank" className="border-b-0">
+                                <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                  <span className="flex items-center gap-2.5">
+                                    <CreditCard className={cardIconCls} />
+                                    <span className={cardTitleCls}>Bank account</span>
+                                  </span>
+                                </AccordionTrigger>
+                                <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                  {/* Stored as one rich-text field rather than discrete
+                                      beneficiary/IBAN/SWIFT columns, so it renders as
+                                      prose here. */}
+                                  <div
+                                    className="rich-text-content text-[13px] leading-[1.6] text-[#333B47] break-words print:text-black"
+                                    dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
+                                  />
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          </section>
+                        )}
+
+                        {/* Where the goods go — its own card rather than a block
+                            inside the commercial terms, and kept clear of the
+                            supplier card where it read as the supplier's own
+                            address. Given as a block because it is a multi-line
+                            address. */}
+                        {viewingOrder.deliverTo && (
+                          <section className={`${cardCls} flex-1 min-w-[260px]`}>
+                            <Accordion type="single" collapsible className="w-full">
+                              <AccordionItem value="deliver-to" className="border-b-0">
+                                <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                  <span className="flex items-center gap-2.5">
+                                    <Truck className={cardIconCls} />
+                                    <span className={cardTitleCls}>Deliver to</span>
+                                  </span>
+                                </AccordionTrigger>
+                                <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                  <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                    {viewingOrder.deliverTo}
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          </section>
+                        )}
+
+                        {/* Attachments — same treatment as the payment-history
+                            attachments on the purchase invoice: icon by type,
+                            name, size · upload date, and a Download action. The
+                            link target is unchanged from before this redesign.
+                            One column, since the card is a third of the row. */}
+                        {viewingOrder.files && viewingOrder.files.length > 0 && (
+                          <section className={`${cardCls} flex-1 min-w-[260px]`}>
+                            <Accordion type="single" collapsible className="w-full">
+                              <AccordionItem value="attachments" className="border-b-0">
+                                <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
+                                  <span className="flex items-center gap-2.5">
+                                    <Paperclip className={cardIconCls} />
+                                    <span className={cardTitleCls}>Attachments</span>
+                                    <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
+                                      {viewingOrder.files.length}
+                                    </span>
+                                  </span>
+                                </AccordionTrigger>
+                                <AccordionContent className="px-[18px] pt-3.5 pb-4">
+                                  <ul className="flex flex-col gap-2">
+                                    {viewingOrder.files.map((file) => (
+                                      <li
+                                        key={file.id}
+                                        className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
+                                      >
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                          {getFileIcon((file as any).mimeType)}
+                                          <div className="flex flex-col overflow-hidden">
+                                            <span className="text-[13px] truncate" title={file.originalName}>
+                                              {file.originalName}
+                                            </span>
+                                            <span className="text-[11.5px] text-[#8A93A3]">
+                                              {formatFileSize(file.fileSize)}
+                                              {(file as any).uploadedAt &&
+                                                ` · ${formatDisplayDate((file as any).uploadedAt)}`}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
+                                          <a
+                                            href={`/${file.filePath}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            Download
+                                          </a>
+                                        </Button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          </section>
+                        )}
+                      </div>
+                    )}
+
+                    {/* --- Subject, items and the reference text --- */}
                     <div className="flex flex-col gap-4 min-w-0">
 
                       {/* Subject — above the items, and collapsible like Notes
@@ -2791,27 +2887,41 @@ export default function PurchaseOrdersIndex() {
                                   {index + 1}
                                 </TableCell>
                                 <TableCell className={tdCls}>
-                                  <div className="flex items-start gap-2">
-                                    {item.itemType === "product" && (
-                                      <Badge variant="default" className="text-xs shrink-0">
-                                        Product
-                                      </Badge>
-                                    )}
-                                    <div className="flex flex-col min-w-0">
-                                      <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words">
-                                        {item.itemType === "product"
-                                          ? item.inventoryItemName
-                                          : item.description}
-                                      </span>
-                                      {item.itemType === "product" && item.inventoryItemId && (() => {
-                                        const description = getItemDescription(item.inventoryItemId);
-                                        return description && (
-                                          <span className="text-[12.5px] text-[#5B6472] mt-px break-words">
-                                            {description}
-                                          </span>
-                                        );
-                                      })()}
-                                    </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words">
+                                      {item.itemType === "product"
+                                        ? item.inventoryItemName
+                                        : item.description}
+                                    </span>
+                                    {/* The inventory description and the item-type
+                                        marker share one wrapped line under the name.
+                                        The marker is a quiet outlined tag rather than
+                                        a filled badge ahead of the name: with most
+                                        lines being products it was carrying no
+                                        information at the loudest point in the row.
+                                        The line is dropped when it would be empty. */}
+                                    {(() => {
+                                      const isProduct = item.itemType === "product";
+                                      const description =
+                                        isProduct && item.inventoryItemId
+                                          ? getItemDescription(item.inventoryItemId)
+                                          : "";
+                                      if (!isProduct && !description) return null;
+                                      return (
+                                        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5">
+                                          {description && (
+                                            <span className="text-[12.5px] text-[#5B6472] break-words">
+                                              {description}
+                                            </span>
+                                          )}
+                                          {isProduct && (
+                                            <span className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-[#8A93A3] border border-[#E3E7EE] rounded px-1.5 py-px whitespace-nowrap">
+                                              Product
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </TableCell>
                                 <TableCell className={tdNumCls}>
@@ -2953,96 +3063,13 @@ export default function PurchaseOrdersIndex() {
 
                     </div>
 
-                    {/* --- Sidebar --- */}
-                    {hasSidebar && (
-                      <aside className="flex flex-col gap-4 min-w-0">
-                        {viewingOrder.bankAccount && (
-                          <section className={cardCls}>
-                            <div className={cardHeadCls}>
-                              <CreditCard className={cardIconCls} />
-                              <span className={cardTitleCls}>Bank account</span>
-                            </div>
-                            <div className={cardBodyCls}>
-                              {/* Stored as one rich-text field rather than discrete
-                                  beneficiary/IBAN/SWIFT columns, so it renders as
-                                  prose here. */}
-                              <div
-                                className="rich-text-content text-[13px] leading-[1.6] text-[#333B47] break-words print:text-black"
-                                dangerouslySetInnerHTML={{ __html: sanitize(viewingOrder.bankAccount || "") }}
-                              />
-                            </div>
-                          </section>
-                        )}
-
-                        {/* Attachments — below the bank account, collapsible like
-                            Subject and Notes. Same treatment as the payment-history
-                            attachments on the purchase invoice: icon by type, name,
-                            size · upload date, and a Download action. The link
-                            target is unchanged from before this redesign. One
-                            column, since the sidebar is narrow. */}
-                        {viewingOrder.files && viewingOrder.files.length > 0 && (
-                          <section className={cardCls}>
-                            <Accordion type="single" collapsible defaultValue="attachments" className="w-full">
-                              <AccordionItem value="attachments" className="border-b-0">
-                                <AccordionTrigger className="px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]">
-                                  <span className="flex items-center gap-2.5">
-                                    <Paperclip className={cardIconCls} />
-                                    <span className={cardTitleCls}>Attachments</span>
-                                    <span className="text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5">
-                                      {viewingOrder.files.length}
-                                    </span>
-                                  </span>
-                                </AccordionTrigger>
-                                <AccordionContent className="px-[18px] pt-3.5 pb-4">
-                                  <ul className="flex flex-col gap-2">
-                                    {viewingOrder.files.map((file) => (
-                                      <li
-                                        key={file.id}
-                                        className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
-                                      >
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                          {getFileIcon((file as any).mimeType)}
-                                          <div className="flex flex-col overflow-hidden">
-                                            <span className="text-[13px] truncate" title={file.originalName}>
-                                              {file.originalName}
-                                            </span>
-                                            <span className="text-[11.5px] text-[#8A93A3]">
-                                              {formatFileSize(file.fileSize)}
-                                              {(file as any).uploadedAt &&
-                                                ` · ${formatDisplayDate((file as any).uploadedAt)}`}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
-                                          <a
-                                            href={`/${file.filePath}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            Download
-                                          </a>
-                                        </Button>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </AccordionContent>
-                              </AccordionItem>
-                            </Accordion>
-                          </section>
-                        )}
-                      </aside>
-                    )}
-
                     {/* --- Activity: approval trail and edit history in one tabbed
-                        block. Full width rather than in the sidebar, because the
-                        edit-history diffs show old and new values of long fields
-                        and would wrap badly in a 316px column. A purchase order has
-                        no payments, so there are two tabs. Approval opens first
-                        because its data is already on the order; edit history
-                        fetches on first click. That endpoint is admin/finance only,
-                        so its tab is hidden for project_manager rather than firing
-                        a 403. --- */}
-                    <section className={`${cardCls} ${spanFull} print:hidden`}>
+                        block. A purchase order has no payments, so there are two
+                        tabs. Approval opens first because its data is already on
+                        the order; edit history fetches on first click. That
+                        endpoint is admin/finance only, so its tab is hidden for
+                        project_manager rather than firing a 403. --- */}
+                    <section className={`${cardCls} print:hidden`}>
                       <div className={cardHeadCls}>
                         <History className={cardIconCls} />
                         <span className={cardTitleCls}>Activity</span>
