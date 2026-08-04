@@ -1814,6 +1814,19 @@ export class PurchaseStorage extends SalesStorage {
 
   async getPurchaseInvoice(id: number): Promise<any> {
     try {
+      // Resolve submitter / approver / creator to a person's name in SQL.
+      // /api/users is admin-only while finance and project_manager can both
+      // open this document, so the client cannot look these ids up itself and
+      // the view fell back to printing "User ID: n". Employee name when the
+      // login is linked to an employee row, else the username. Mirrors the
+      // purchase request queries above.
+      const submitter = alias(users, "submitter");
+      const submitterEmp = alias(employees, "submitterEmp");
+      const approver = alias(users, "approver");
+      const approverEmp = alias(employees, "approverEmp");
+      const creator = alias(users, "creator");
+      const creatorEmp = alias(employees, "creatorEmp");
+
       const [invoice] = await db
         .select({
           id: purchaseInvoices.id,
@@ -1823,6 +1836,9 @@ export class PurchaseStorage extends SalesStorage {
           supplierName: suppliers.name,
           subject: purchaseInvoices.subject,
           poId: purchaseInvoices.poId,
+          // The view printed "PO-{poId}" — the raw row id, not the document
+          // number the supplier and the purchase order list both show.
+          poNumber: purchaseOrders.poNumber,
           status: purchaseInvoices.status,
           paymentStatus: purchaseInvoices.paymentStatus,
           invoiceDate: purchaseInvoices.invoiceDate,
@@ -1838,10 +1854,13 @@ export class PurchaseStorage extends SalesStorage {
           notes: purchaseInvoices.notes,
           termsAndConditions: purchaseInvoices.termsAndConditions,
           createdBy: purchaseInvoices.createdBy,
+          createdByName: sql<string>`COALESCE(NULLIF(CONCAT(${creatorEmp.firstName}, ' ', ${creatorEmp.lastName}), ' '), ${creator.username}, '')`,
           createdAt: purchaseInvoices.createdAt,
           submittedById: purchaseInvoices.submittedById,
+          submittedByName: sql<string>`COALESCE(NULLIF(CONCAT(${submitterEmp.firstName}, ' ', ${submitterEmp.lastName}), ' '), ${submitter.username}, '')`,
           submittedAt: purchaseInvoices.submittedAt,
           approvedById: purchaseInvoices.approvedById,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: purchaseInvoices.approvedAt,
           rejectionReason: purchaseInvoices.rejectionReason,
           currency: purchaseInvoices.currency,
@@ -1851,6 +1870,13 @@ export class PurchaseStorage extends SalesStorage {
         })
         .from(purchaseInvoices)
         .leftJoin(suppliers, eq(purchaseInvoices.supplierId, suppliers.id))
+        .leftJoin(purchaseOrders, eq(purchaseInvoices.poId, purchaseOrders.id))
+        .leftJoin(submitter, eq(purchaseInvoices.submittedById, submitter.id))
+        .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
+        .leftJoin(approver, eq(purchaseInvoices.approvedById, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .leftJoin(creator, eq(purchaseInvoices.createdBy, creator.id))
+        .leftJoin(creatorEmp, eq(creator.id, creatorEmp.userId))
         .where(eq(purchaseInvoices.id, id));
 
       if (!invoice) return null;
@@ -2149,6 +2175,8 @@ export class PurchaseStorage extends SalesStorage {
         updateData.bankAccount = invoiceData.bankAccount || null;
       if (invoiceData.notes !== undefined)
         updateData.notes = invoiceData.notes || null;
+      if (invoiceData.termsAndConditions !== undefined)
+        updateData.termsAndConditions = invoiceData.termsAndConditions || null;
       if (invoiceData.currency !== undefined)
         updateData.currency = invoiceData.currency;
       if (invoiceData.exchangeRate !== undefined)
@@ -2810,6 +2838,11 @@ export class PurchaseStorage extends SalesStorage {
         return [];
       }
 
+      // Same name resolution as getPurchaseInvoice: the client cannot turn a
+      // recordedBy id into a person without /api/users, which it may not read.
+      const recorder = alias(users, "paymentRecorder");
+      const recorderEmp = alias(employees, "paymentRecorderEmp");
+
       const payments = await db
         .select({
           id: purchaseInvoicePayments.id,
@@ -2819,10 +2852,17 @@ export class PurchaseStorage extends SalesStorage {
           paymentMethod: purchaseInvoicePayments.paymentMethod,
           referenceNumber: purchaseInvoicePayments.referenceNumber,
           notes: purchaseInvoicePayments.notes,
+          // A credit note applied to the invoice is stored as a payment row.
+          // Without these two the view showed it as an ordinary cash payment.
+          paymentType: purchaseInvoicePayments.paymentType,
+          creditNoteId: purchaseInvoicePayments.creditNoteId,
           recordedBy: purchaseInvoicePayments.recordedBy,
+          recordedByName: sql<string>`COALESCE(NULLIF(CONCAT(${recorderEmp.firstName}, ' ', ${recorderEmp.lastName}), ' '), ${recorder.username}, '')`,
           recordedAt: purchaseInvoicePayments.recordedAt,
         })
         .from(purchaseInvoicePayments)
+        .leftJoin(recorder, eq(purchaseInvoicePayments.recordedBy, recorder.id))
+        .leftJoin(recorderEmp, eq(recorder.id, recorderEmp.userId))
         .where(eq(purchaseInvoicePayments.invoiceId, invoiceId))
         .orderBy(desc(purchaseInvoicePayments.paymentDate));
 
