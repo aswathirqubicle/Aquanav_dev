@@ -29,6 +29,9 @@ export default function ProjectCreate() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [isCustomContractMode, setIsCustomContractMode] = useState(false);
+  const [customContractMode, setCustomContractMode] = useState("");
+
   const [formData, setFormData] = useState<CreateProjectData>({
     title: "",
     description: "",
@@ -110,7 +113,11 @@ export default function ProjectCreate() {
       appendIfExists("startDate", data.startDate);
       appendIfExists("plannedEndDate", data.plannedEndDate);
       appendIfExists("ridgingCrewNos", data.ridgingCrewNos);
-      appendIfExists("modeOfContract", data.modeOfContract);
+      if (isCustomContractMode) {
+        appendIfExists("modeOfContract", customContractMode);
+      } else {
+        appendIfExists("modeOfContract", data.modeOfContract);
+      }
       appendIfExists("workingHours", data.workingHours);
       appendIfExists("ppe", data.ppe);
       appendIfExists("additionalField1Title", data.additionalField1Title);
@@ -384,9 +391,12 @@ export default function ProjectCreate() {
                     value={formData.modeOfContract}
                     onValueChange={(value) => {
                       if (value === "custom") {
-                        handleChange("modeOfContract", "");
+                        setIsCustomContractMode(true);
+                        handleChange("modeOfContract", "custom");
                       } else {
+                        setIsCustomContractMode(false);
                         handleChange("modeOfContract", value);
+                        setCustomContractMode("");
                       }
                     }}
                   >
@@ -403,11 +413,12 @@ export default function ProjectCreate() {
                       <SelectItem value="monthly_contract">Monthly Contract</SelectItem>
                     </SelectContent>
                   </Select>
-                  {(!formData.modeOfContract || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum","monthly_contract"].includes(formData.modeOfContract)) && (
+                  {isCustomContractMode && (
                     <Input
                       id="modeOfContractCustom"
-                      value={formData.modeOfContract || ""}
-                      onChange={(e) => handleChange("modeOfContract", e.target.value)}
+                      className="mt-2"
+                      value={customContractMode}
+                      onChange={(e) => setCustomContractMode(e.target.value)}
                       placeholder="Enter custom contract mode..."
                     />
                   )}

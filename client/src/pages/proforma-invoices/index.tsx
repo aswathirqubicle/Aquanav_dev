@@ -108,6 +108,7 @@ interface ProformaInvoice {
   createdDate: string;
   invoiceDate?: string;
   validUntil?: string;
+  subject?: string;
   paymentTerms?: string;
   workOrderNumber?: string;
   deliveryTerms?: string;

@@ -673,6 +673,7 @@ export class SalesStorage extends LedgerStorage {
           status: creditNotes.status,
           creditNoteDate: creditNotes.creditNoteDate,
           reason: creditNotes.reason,
+          subject: creditNotes.subject,
           items: creditNotes.items,
           subtotal: creditNotes.subtotal,
           taxAmount: creditNotes.taxAmount,
@@ -1492,6 +1493,7 @@ export class SalesStorage extends LedgerStorage {
           bankAccount: proformaInvoices.bankAccount,
           termsAndConditions: proformaInvoices.termsAndConditions,
           remarks: proformaInvoices.remarks,
+          subject: proformaInvoices.subject,
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
           taxAmount: proformaInvoices.taxAmount,
@@ -1545,6 +1547,7 @@ export class SalesStorage extends LedgerStorage {
           bankAccount: proformaInvoices.bankAccount,
           termsAndConditions: proformaInvoices.termsAndConditions,
           remarks: proformaInvoices.remarks,
+          subject: proformaInvoices.subject,
           items: proformaInvoices.items,
           subtotal: proformaInvoices.subtotal,
           taxAmount: proformaInvoices.taxAmount,
@@ -1604,6 +1607,7 @@ export class SalesStorage extends LedgerStorage {
         validUntil: proformaData.validUntil
           ? new Date(proformaData.validUntil).toISOString()
           : null,
+        subject: proformaData.subject || null,
         billingAddress: proformaData.billingAddress,
         paymentTerms: proformaData.paymentTerms || null,
         deliveryTerms: proformaData.deliveryTerms || null,
@@ -1692,6 +1696,8 @@ export class SalesStorage extends LedgerStorage {
         updateData.validUntil = proformaData.validUntil
           ? new Date(proformaData.validUntil).toISOString()
           : null;
+      if (proformaData.subject !== undefined)
+        updateData.subject = proformaData.subject || null;
       if (proformaData.paymentTerms !== undefined)
         updateData.paymentTerms = proformaData.paymentTerms || null;
       if (proformaData.deliveryTerms !== undefined)

@@ -54,11 +54,11 @@ export function generateInvoiceHTML(
         label: "Bill To",
         name: val(customer?.name),
         address: val(invoice.billingAddress) || val(customer?.address) || "",
-        phone: val(customer?.phone),
+        // phone: val(customer?.phone),
         // TRN falls back to Tax ID: the two fields both exist on the
         // counterparty and most records carry only the latter, so printing
         // vatNumber alone left the TRN off nearly every document.
-        vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
+        // vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
       },
     ],
     meta: [
@@ -82,7 +82,11 @@ export function generateInvoiceHTML(
       // their own, as the approved layout has them.
       {
         heading: "Terms &amp; Conditions",
-        bodies: [invoice.termsAndConditions, invoice.bankAccount],
+        bodies: [invoice.termsAndConditions],
+      },
+      {
+        heading: "Our Bank Details",
+        bodies: [invoice.bankAccount],
       },
     ],
   });

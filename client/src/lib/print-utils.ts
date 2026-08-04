@@ -24,6 +24,14 @@ export async function printByUrl(url: string): Promise<void> {
  */
 export function printHtml(html: string): Promise<void> {
   return new Promise((resolve) => {
+     // Temporarily set the main document title to the HTML's title
+    // so that "Save to PDF" in the browser print dialog uses it as the default filename.
+    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const originalTitle = document.title;
+    if (titleMatch && titleMatch[1]) {
+      document.title = titleMatch[1].trim();
+    }
+
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -47,6 +55,7 @@ export function printHtml(html: string): Promise<void> {
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
         }
+        document.title = originalTitle;
         resolve();
       }, 1000);
     };

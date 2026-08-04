@@ -1385,6 +1385,7 @@ export default function CreditNotesIndex() {
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
                       <p>{formatDisplayDate(viewingCreditNote.creditNoteDate)}</p>
                     </div>
+                   
                   </div>
 
                   <div className="space-y-4">

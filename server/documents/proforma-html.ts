@@ -60,11 +60,11 @@ export function generateProformaHTML(
         label: "Bill To",
         name: val(customer?.name),
         address: val(proforma.billingAddress) || val(customer?.address) || "",
-        phone: val(customer?.phone),
+        // phone: val(customer?.phone),
         // TRN falls back to Tax ID: the two fields both exist on the
         // counterparty and most records carry only the latter, so printing
         // vatNumber alone left the TRN off nearly every document.
-        vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
+        // vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
       },
     ],
     meta: [
@@ -85,7 +85,11 @@ export function generateProformaHTML(
       // their own, as the approved invoice layout has them.
       {
         heading: "Terms &amp; Conditions",
-        bodies: [proforma.termsAndConditions, proforma.bankAccount],
+         bodies: [proforma.termsAndConditions],
+      },
+      {
+        heading: "Our Bank Details",
+        bodies: [proforma.bankAccount],
       },
     ],
   });

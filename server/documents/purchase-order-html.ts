@@ -105,7 +105,11 @@ export function generatePurchaseOrderHTML(
       { heading: "Notes", bodies: [order.notes] },
       {
         heading: "Terms &amp; Conditions",
-        bodies: [order.termsAndConditions, order.bankAccount],
+        bodies: [order.termsAndConditions],
+      },
+      {
+        heading: "Bank Details",
+        bodies: [order.bankAccount],
       },
     ],
   });

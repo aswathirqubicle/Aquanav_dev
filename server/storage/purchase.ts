@@ -1309,6 +1309,7 @@ export class PurchaseStorage extends SalesStorage {
       invoiceDate?: string;
       dueDate?: string;
       supplierInvoiceNumber?: string;
+      subject?: string;
       notes?: string;
       paymentTerms?: string;
       currency?: string;
@@ -1385,6 +1386,7 @@ export class PurchaseStorage extends SalesStorage {
           invoiceNumber,
           supplierInvoiceNumber: overrides?.supplierInvoiceNumber ?? null,
           supplierId: po.supplierId,
+          subject: overrides?.subject ?? po.subject ?? null,
           poId: id,
           status: "draft",
           invoiceDate: overrides?.invoiceDate

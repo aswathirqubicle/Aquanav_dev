@@ -446,7 +446,7 @@ export default function SalesIndex() {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
     const calcDiscountValue = quotationSubtotal * pct / 100;
     const currentDiscountValue = parseFloat(formData.discount || "0");
-    
+
     // Only update if the difference is more than a small epsilon to avoid loop/jumping
     if (Math.abs(currentDiscountValue - calcDiscountValue) > 0.001) {
       setFormData(prev => ({ ...prev, discount: calcDiscountValue.toFixed(2) }));
@@ -1198,7 +1198,7 @@ export default function SalesIndex() {
         {
           method: "POST",
           body: formData,
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       );
       if (!response.ok) {
@@ -1519,8 +1519,8 @@ export default function SalesIndex() {
         editingItemIndex === null
           ? [...prev.items, item]
           : prev.items.map((existing, i) =>
-              i === editingItemIndex ? item : existing,
-            ),
+            i === editingItemIndex ? item : existing,
+          ),
     }));
 
     setNewItem({
@@ -1634,8 +1634,8 @@ export default function SalesIndex() {
         editingInvoiceItemIndex === null
           ? [...prev.items, item]
           : prev.items.map((existing, i) =>
-              i === editingInvoiceItemIndex ? item : existing,
-            ),
+            i === editingInvoiceItemIndex ? item : existing,
+          ),
     }));
 
     setNewItem({
@@ -1924,7 +1924,7 @@ export default function SalesIndex() {
     try {
       const response = await fetch(`/api/sales-invoices/${invoice.id}/pdf`, {
         method: "GET",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
       });
 
       if (!response.ok) {
@@ -2759,9 +2759,9 @@ export default function SalesIndex() {
                               const val = e.target.value;
                               const pct = parseFloat(val) || 0;
                               const calcDiscount = (quotationSubtotal * pct / 100);
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                discountPercentage: val, 
+                              setFormData(prev => ({
+                                ...prev,
+                                discountPercentage: val,
                                 discount: val === "" ? "" : calcDiscount.toFixed(2)
                               }));
                             }}
@@ -2781,9 +2781,9 @@ export default function SalesIndex() {
                               const val = e.target.value;
                               const amount = parseFloat(val) || 0;
                               const calcPct = quotationSubtotal > 0 ? ((amount / quotationSubtotal) * 100) : 0;
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                discount: val, 
+                              setFormData(prev => ({
+                                ...prev,
+                                discount: val,
                                 discountPercentage: val === "" ? "" : calcPct.toFixed(2)
                               }));
                             }}
@@ -3503,10 +3503,10 @@ export default function SalesIndex() {
                               const val = e.target.value;
                               const pct = parseFloat(val) || 0;
                               const calcDiscount = (invoiceSubtotalValue * pct / 100);
-                              setInvoiceFormData(prev => ({ 
-                                ...prev, 
-                                discountPercentage: val, 
-                                discount: val === "" ? "" : calcDiscount.toFixed(2) 
+                              setInvoiceFormData(prev => ({
+                                ...prev,
+                                discountPercentage: val,
+                                discount: val === "" ? "" : calcDiscount.toFixed(2)
                               }));
                             }}
                             placeholder="0.00"
@@ -3525,10 +3525,10 @@ export default function SalesIndex() {
                               const val = e.target.value;
                               const amount = parseFloat(val) || 0;
                               const calcPct = invoiceSubtotalValue > 0 ? ((amount / invoiceSubtotalValue) * 100) : 0;
-                              setInvoiceFormData(prev => ({ 
-                                ...prev, 
-                                discount: val, 
-                                discountPercentage: val === "" ? "" : calcPct.toFixed(2) 
+                              setInvoiceFormData(prev => ({
+                                ...prev,
+                                discount: val,
+                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
                               }));
                             }}
                             placeholder="0.00"
@@ -3985,19 +3985,19 @@ export default function SalesIndex() {
                           {(quotation.status === "draft" ||
                             (["pending_approval", "approved", "rejected"].includes(quotation.status) &&
                               (user?.role === "admin" || user?.role === "finance"))) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditQuotation(quotation);
-                              }}
-                              data-testid={`button-edit-quotation-${quotation.id}`}
-                            >
-                              <Pencil className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                          )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditQuotation(quotation);
+                                }}
+                                data-testid={`button-edit-quotation-${quotation.id}`}
+                              >
+                                <Pencil className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                            )}
                           {quotation.status === "draft" && (
                             <Button
                               size="sm"
@@ -4672,16 +4672,16 @@ export default function SalesIndex() {
                   {(selectedQuotation.status === "draft" ||
                     (["pending_approval", "approved", "rejected"].includes(selectedQuotation.status) &&
                       (user?.role === "admin" || user?.role === "finance"))) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditQuotation(selectedQuotation)}
-                      data-testid="button-edit-quotation-header"
-                    >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                  )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditQuotation(selectedQuotation)}
+                        data-testid="button-edit-quotation-header"
+                      >
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                    )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -4777,6 +4777,14 @@ export default function SalesIndex() {
                         <span>{formatDate(selectedQuotation.validUntil)}</span>
                       </div>
                     )}
+                    {selectedQuotation.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedQuotation.subject}
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -4827,20 +4835,12 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedQuotation.subject || selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
+              {(selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {selectedQuotation.subject && (
-                      <div>
-                        <span className="font-medium">Subject Line:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedQuotation.subject}
-                        </p>
-                      </div>
-                    )}
                     {selectedQuotation.paymentTerms && (
                       <div>
                         <span className="font-medium">Payment Terms:</span>
@@ -4852,7 +4852,7 @@ export default function SalesIndex() {
                     {selectedQuotation.bankAccount && (
                       <div>
                         <span className="font-medium">Bank Account:</span>
-                        <div 
+                        <div
                           className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
                           dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.bankAccount) }}
                         />
@@ -4869,7 +4869,7 @@ export default function SalesIndex() {
                     {selectedQuotation.remarks && (
                       <div>
                         <span className="font-medium">Notes:</span>
-                        <div 
+                        <div
                           className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
                           dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.remarks) }}
                         />
@@ -5196,19 +5196,19 @@ export default function SalesIndex() {
                     (["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) &&
                       parseFloat(selectedInvoice.paidAmount || "0") === 0 &&
                       user?.role === "admin")) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setIsInvoiceDetailsOpen(false);
-                        handleEditInvoice(selectedInvoice);
-                      }}
-                      data-testid="button-edit-invoice-header"
-                    >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                  )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsInvoiceDetailsOpen(false);
+                          handleEditInvoice(selectedInvoice);
+                        }}
+                        data-testid="button-edit-invoice-header"
+                      >
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                    )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -5280,6 +5280,14 @@ export default function SalesIndex() {
                         <span>{selectedInvoice.workOrderNumber}</span>
                       </div>
                     )}
+                    {selectedInvoice.subject && (
+                      <div>
+                        <span className="font-medium">Subject Line:</span>
+                        <p className="mt-1 text-slate-600 dark:text-slate-400">
+                          {selectedInvoice.subject}
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -5343,20 +5351,12 @@ export default function SalesIndex() {
               </div>
 
               {/* Payment Details */}
-              {(selectedInvoice.subject || selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
+              {(selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Payment Details</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {selectedInvoice.subject && (
-                      <div>
-                        <span className="font-medium">Subject Line:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedInvoice.subject}
-                        </p>
-                      </div>
-                    )}
                     {selectedInvoice.paymentTerms && (
                       <div>
                         <span className="font-medium">Payment Terms:</span>
@@ -5368,7 +5368,7 @@ export default function SalesIndex() {
                     {selectedInvoice.bankAccount && (
                       <div>
                         <span className="font-medium">Bank Account:</span>
-                        <div 
+                        <div
                           className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
                           dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.bankAccount) }}
                         />
@@ -5385,7 +5385,7 @@ export default function SalesIndex() {
                     {selectedInvoice.remarks && (
                       <div>
                         <span className="font-medium">Notes:</span>
-                        <div 
+                        <div
                           className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
                           dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.remarks) }}
                         />
@@ -5594,180 +5594,180 @@ export default function SalesIndex() {
               {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
                 selectedInvoice.status,
               ) && (
-              <div
-                id={`payment-history-${selectedInvoice.id}`}
-                style={{ display: "none" }}
-              >
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Payment History</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {invoicePayments && invoicePayments.length > 0 ? (
-                      <div className="space-y-2">
-                        {invoicePayments.map((payment, index) => (
-                          <div key={payment.id} className="border rounded-lg">
-                            <div
-                              className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                              onClick={() =>
-                                startTransition(() =>
-                                  setExpandedPayment(
-                                    expandedPayment === payment.id
-                                      ? null
-                                      : payment.id,
-                                  ),
-                                )
-                              }
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                                  <span className="font-medium text-green-600">
-                                    {formatCurrency(payment.amount, selectedInvoice?.currency)}
-                                  </span>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {formatDate(payment.paymentDate)}
-                                  </span>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
-                                    {payment.paymentMethod?.replace("_", " ") ||
-                                      "N/A"}
-                                  </span>
+                  <div
+                    id={`payment-history-${selectedInvoice.id}`}
+                    style={{ display: "none" }}
+                  >
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Payment History</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {invoicePayments && invoicePayments.length > 0 ? (
+                          <div className="space-y-2">
+                            {invoicePayments.map((payment, index) => (
+                              <div key={payment.id} className="border rounded-lg">
+                                <div
+                                  className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                  onClick={() =>
+                                    startTransition(() =>
+                                      setExpandedPayment(
+                                        expandedPayment === payment.id
+                                          ? null
+                                          : payment.id,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                      <span className="font-medium text-green-600">
+                                        {formatCurrency(payment.amount, selectedInvoice?.currency)}
+                                      </span>
+                                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                                        {formatDate(payment.paymentDate)}
+                                      </span>
+                                      <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                                        {payment.paymentMethod?.replace("_", " ") ||
+                                          "N/A"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-500">
+                                        Recorded: {formatDate(payment.recordedAt)}
+                                      </span>
+                                      <svg
+                                        className={`h-4 w-4 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M19 9l-7 7-7-7"
+                                        />
+                                      </svg>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-gray-500">
-                                    Recorded: {formatDate(payment.recordedAt)}
-                                  </span>
-                                  <svg
-                                    className={`h-4 w-4 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M19 9l-7 7-7-7"
-                                    />
-                                  </svg>
-                                </div>
+
+                                {expandedPayment === payment.id && (
+                                  <div className="px-4 pb-4 border-t bg-gray-50 dark:bg-gray-800/50">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                          Reference Number:
+                                        </label>
+                                        <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
+                                          {payment.referenceNumber ||
+                                            "No reference provided"}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                          Payment ID:
+                                        </label>
+                                        <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
+                                          #{payment.id}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="mt-4">
+                                      <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                        Notes:
+                                      </label>
+                                      <p className="text-sm mt-1 p-3 bg-white dark:bg-gray-700 rounded border min-h-[60px]">
+                                        {payment.notes || "No notes provided"}
+                                      </p>
+                                    </div>
+
+                                    <div className="mt-4">
+                                      <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                        Attachments:
+                                      </label>
+                                      <div className="mt-1">
+                                        {(() => {
+                                          const filesQuery = paymentFilesQueries[index];
+                                          const files = filesQuery?.data || [];
+
+                                          if (filesQuery?.isLoading) {
+                                            return <p className="text-sm text-gray-500">Loading attachments...</p>;
+                                          }
+
+                                          if (files.length === 0) {
+                                            return <p className="text-sm text-gray-500 italic">No attachments</p>;
+                                          }
+
+                                          return (
+                                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              {files.map((file: any) => (
+                                                <li
+                                                  key={file.id}
+                                                  className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
+                                                >
+                                                  <div className="flex items-center gap-2 overflow-hidden">
+                                                    <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
+                                                    <span className="text-sm truncate" title={file.originalName}>
+                                                      {file.originalName}
+                                                    </span>
+                                                  </div>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    asChild
+                                                    className="h-8 ml-2"
+                                                  >
+                                                    <a
+                                                      href={`/api/payment-files/${file.id}/download`}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                    >
+                                                      Download
+                                                    </a>
+                                                  </Button>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            <div className="mt-6 pt-4 border-t">
+                              <div className="flex justify-between text-lg font-bold">
+                                <span>Total Payments:</span>
+                                <span className="text-green-600">
+                                  {formatCurrency(
+                                    invoicePayments
+                                      .reduce(
+                                        (sum, payment) =>
+                                          sum + parseFloat(payment.amount),
+                                        0,
+                                      )
+                                      .toFixed(2),
+                                    selectedInvoice?.currency,
+                                  )}
+                                </span>
                               </div>
                             </div>
-
-                            {expandedPayment === payment.id && (
-                              <div className="px-4 pb-4 border-t bg-gray-50 dark:bg-gray-800/50">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
-                                  <div>
-                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                      Reference Number:
-                                    </label>
-                                    <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
-                                      {payment.referenceNumber ||
-                                        "No reference provided"}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                      Payment ID:
-                                    </label>
-                                    <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
-                                      #{payment.id}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="mt-4">
-                                  <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                    Notes:
-                                  </label>
-                                  <p className="text-sm mt-1 p-3 bg-white dark:bg-gray-700 rounded border min-h-[60px]">
-                                    {payment.notes || "No notes provided"}
-                                  </p>
-                                </div>
-
-                                <div className="mt-4">
-                                  <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                    Attachments:
-                                  </label>
-                                  <div className="mt-1">
-                                    {(() => {
-                                      const filesQuery = paymentFilesQueries[index];
-                                      const files = filesQuery?.data || [];
-
-                                      if (filesQuery?.isLoading) {
-                                        return <p className="text-sm text-gray-500">Loading attachments...</p>;
-                                      }
-
-                                      if (files.length === 0) {
-                                        return <p className="text-sm text-gray-500 italic">No attachments</p>;
-                                      }
-
-                                      return (
-                                        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                          {files.map((file: any) => (
-                                            <li
-                                              key={file.id}
-                                              className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                                            >
-                                              <div className="flex items-center gap-2 overflow-hidden">
-                                                <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
-                                                <span className="text-sm truncate" title={file.originalName}>
-                                                  {file.originalName}
-                                                </span>
-                                              </div>
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                asChild
-                                                className="h-8 ml-2"
-                                              >
-                                                <a
-                                                  href={`/api/payment-files/${file.id}/download`}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                >
-                                                  Download
-                                                </a>
-                                              </Button>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      );
-                                    })()}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
-                        ))}
-
-                        <div className="mt-6 pt-4 border-t">
-                          <div className="flex justify-between text-lg font-bold">
-                            <span>Total Payments:</span>
-                            <span className="text-green-600">
-                              {formatCurrency(
-                                invoicePayments
-                                  .reduce(
-                                    (sum, payment) =>
-                                      sum + parseFloat(payment.amount),
-                                    0,
-                                  )
-                                  .toFixed(2),
-                                selectedInvoice?.currency,
-                              )}
-                            </span>
+                        ) : (
+                          <div className="text-center py-8">
+                            <p className="text-gray-500">
+                              No payments recorded for this invoice yet.
+                            </p>
                           </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <p className="text-gray-500">
-                          No payments recorded for this invoice yet.
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              )}
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
 
               {/* Edit History */}
               {invoiceEditHistory && invoiceEditHistory.length > 0 && (
@@ -5903,27 +5903,27 @@ export default function SalesIndex() {
                   {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
                     selectedInvoice.status,
                   ) && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        // Toggle the payment history section visibility
-                        const paymentHistorySection = document.getElementById(
-                          `payment-history-${selectedInvoice.id}`,
-                        );
-                        if (paymentHistorySection) {
-                          paymentHistorySection.style.display =
-                            paymentHistorySection.style.display === "none"
-                              ? "block"
-                              : "none";
-                        }
-                      }}
-                      className="w-full sm:w-auto"
-                      data-testid="button-view-payment-history"
-                    >
-                      <History className="h-4 w-4 mr-1" />
-                      Payment History
-                    </Button>
-                  )}
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          // Toggle the payment history section visibility
+                          const paymentHistorySection = document.getElementById(
+                            `payment-history-${selectedInvoice.id}`,
+                          );
+                          if (paymentHistorySection) {
+                            paymentHistorySection.style.display =
+                              paymentHistorySection.style.display === "none"
+                                ? "block"
+                                : "none";
+                          }
+                        }}
+                        className="w-full sm:w-auto"
+                        data-testid="button-view-payment-history"
+                      >
+                        <History className="h-4 w-4 mr-1" />
+                        Payment History
+                      </Button>
+                    )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (

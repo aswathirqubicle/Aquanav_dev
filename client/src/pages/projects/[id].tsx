@@ -2594,6 +2594,7 @@ export default function ProjectDetail() {
                             } else {
                               setIsCustomContractMode(false);
                               setEditProjectData(prev => ({ ...prev, modeOfContract: value }));
+                              setCustomContractMode("");
                             }
                           }}
                         >
@@ -2610,7 +2611,7 @@ export default function ProjectDetail() {
                             <SelectItem value="monthly_contract">Monthly Contract</SelectItem>
                           </SelectContent>
                         </Select>
-                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum", "monthly_contract"].includes(editProjectData.modeOfContract)) && (
+                        {(isCustomContractMode || !["fixed_price", "time_and_materials", "cost_plus", "day_rate", "lump_sum", "monthly_contract", "custom", ""].includes(editProjectData.modeOfContract)) && (
                           <Input
                             className="mt-2"
                             value={customContractMode}

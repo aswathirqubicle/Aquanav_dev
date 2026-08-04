@@ -355,11 +355,11 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                     <th class="l">#</th>
                     <th class="l">Item &amp; Description</th>
                     <th>Qty</th>
-                    <th>Rate</th>
-                    ${anyDiscount ? `<th>Discount</th>` : ""}
-                    <th>Taxable Amount</th>
-                    <th>Tax</th>
-                    <th>Amount</th>
+                    <th>Rate (${currency})</th>
+                    ${anyDiscount ? `<th>Discount (${currency})</th>` : ""}
+                    <th>Taxable Amount (${currency})</th>
+                    <th>Tax (${currency})</th>
+                    <th>Amount (${currency})</th>
                   </tr>
                 </thead>
                 <tbody>

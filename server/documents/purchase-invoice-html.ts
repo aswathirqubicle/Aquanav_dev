@@ -128,7 +128,11 @@ export function generatePurchaseInvoiceHTML(
       // ride under the same heading, as the sales invoice has them.
       {
         heading: "Terms &amp; Conditions",
-        bodies: [invoice.termsAndConditions, invoice.bankAccount],
+        bodies: [invoice.termsAndConditions],
+      },
+      {
+        heading: "Bank Details",
+        bodies: [invoice.bankAccount],
       },
     ],
   });

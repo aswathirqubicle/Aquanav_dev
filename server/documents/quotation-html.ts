@@ -54,11 +54,11 @@ export function generateQuotationHTML(
         label: "Bill To",
         name: val(customer?.name),
         address: val(quotation.billingAddress) || val(customer?.address) || "",
-        phone: val(customer?.phone),
+        // phone: val(customer?.phone),
         // TRN falls back to Tax ID: the two fields both exist on the
         // counterparty and most records carry only the latter, so printing
         // vatNumber alone left the TRN off nearly every document.
-        vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
+        // vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
       },
     ],
     // sales_quotations carries no date column of its own — createdDate is the
@@ -78,7 +78,11 @@ export function generateQuotationHTML(
       // their own, as the approved invoice layout has them.
       {
         heading: "Terms &amp; Conditions",
-        bodies: [quotation.termsAndConditions, quotation.bankAccount],
+        bodies: [quotation.termsAndConditions],
+      },
+      {
+        heading: "Our Bank Details",
+        bodies: [quotation.bankAccount],
       },
     ],
   });
