@@ -458,11 +458,20 @@ purchaseInvoicesRoutes.patch(
           .json({ message: "Only pending invoices can be rejected" });
       }
 
+      // A blank reason was stored as null, leaving the view with a rejected
+      // document it cannot explain. The form already requires one; the server
+      // is the actual boundary.
       const { reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res
+          .status(400)
+          .json({ message: "A rejection reason is required" });
+      }
+
       const updated = await storage.rejectPurchaseInvoice(
         id,
         req.session.userId!,
-        reason,
+        reason.trim(),
       );
       res.json({ message: "Purchase invoice rejected", invoice: updated });
     } catch (error) {

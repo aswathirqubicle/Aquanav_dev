@@ -371,11 +371,32 @@ purchaseOrdersRoutes.patch(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      // Gates mirroring the purchase invoice reject. Without them this
+      // accepted any id in any status, so an approved or already-converted
+      // order could be rejected, and a blank reason was stored as null —
+      // leaving the view with a rejected document it cannot explain. The
+      // form already requires a reason; the server is the actual boundary.
+      const existingOrder = await storage.getPurchaseOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      if (existingOrder.status !== "pending_approval") {
+        return res
+          .status(400)
+          .json({ message: "Only pending orders can be rejected" });
+      }
+
       const { reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res
+          .status(400)
+          .json({ message: "A rejection reason is required" });
+      }
+
       const order = await storage.rejectPurchaseOrder(
         id,
         req.session.userId!,
-        reason,
+        reason.trim(),
       );
       res.json(order);
     } catch (error) {
