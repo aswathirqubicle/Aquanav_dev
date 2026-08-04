@@ -309,6 +309,13 @@ export default function SettingsIndex() {
       formData.append("bankAccount2", data.bankAccount2 ?? "");
       formData.append("website", data.website ?? "");
       formData.append("vatNumber", data.vatNumber ?? "");
+      // Numbers have to be stringified explicitly: this is multipart, so every
+      // value arrives at the server as a string regardless, and the four
+      // financial-year fields were simply never appended at all.
+      formData.append("financialYearStartDay", String(data.financialYearStartDay ?? 1));
+      formData.append("financialYearStartMonth", String(data.financialYearStartMonth ?? 1));
+      formData.append("financialYearEndDay", String(data.financialYearEndDay ?? 31));
+      formData.append("financialYearEndMonth", String(data.financialYearEndMonth ?? 12));
 
       if (companyLogoFile) {
         formData.append("companyLogo", companyLogoFile); // ✅ fixed
