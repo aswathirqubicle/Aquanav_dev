@@ -38,7 +38,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
-import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send, ChevronDown, ChevronUp, Building2, AlignLeft } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
 
@@ -54,6 +54,9 @@ interface Supplier {
   phone?: string;
   vatTreatment?: "standard" | "zero_rated" | "exempt";
   currency?: string;
+  // The supplier's own address. It is not copied onto the invoice, so the view
+  // dialog reads it off the already-loaded supplier list.
+  address?: string;
   bankAccountDetails?: SupplierBankDetails[];
 }
 interface PurchaseInvoice {
@@ -2633,845 +2636,989 @@ export default function PurchaseInvoicesIndex() {
 
         {/* View Invoice Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-            {viewingInvoice && (
-              <div className="space-y-6 print:space-y-4">
-                {/* Header with Icon Badge and Document Actions. pr-8 keeps the
-                    buttons clear of the dialog's own X. Document actions (edit,
-                    duplicate, print) live up here; status-flow actions (submit,
-                    approve, pay, cancel) stay in the footer. */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4 pr-8 print:border-b-2 print:border-black">
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900 rounded-lg print:bg-blue-100">
-                      <FileText className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 dark:text-blue-400 print:text-blue-600" />
+          <DialogContent className="max-w-6xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+            {viewingInvoice && (() => {
+              // Design tokens for this dialog only. Literal hex rather than the
+              // app's semantic tokens because the approved design fixes the
+              // palette; nothing in here follows a theme.
+              const CARD = "bg-white border border-[#E3E7EE] rounded-[10px] overflow-hidden print:bg-white print:border print:border-gray-300";
+              const CARD_HEAD = "flex items-center gap-2.5 px-[18px] py-3 border-b border-[#EDF0F5]";
+              const CARD_TITLE = "text-sm font-semibold text-[#171B23] print:text-black";
+              const CARD_ICON = "w-[15px] h-[15px] shrink-0 text-[#8A93A3]";
+              const CARD_BODY = "px-[18px] py-4";
+              const ACC_TRIGGER = "px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]";
+              const ACC_BODY = "px-[18px] pt-3.5 pb-4";
+              const KV_ROW = "flex justify-between gap-3.5 py-2 text-[13.5px] border-b border-dashed border-[#EDF0F5] last:border-b-0 first:pt-0 last:pb-0";
+              const KV_LABEL = "shrink-0 text-[#5B6472] print:text-gray-700";
+              const KV_VAL = "min-w-0 text-right font-medium break-words print:text-black";
+              const META_LABEL = "text-[10.5px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] mb-[3px] print:text-gray-700";
+              const META_VALUE = "text-[14.5px] font-semibold text-[#171B23] print:text-black";
+              const META_CELL = "flex-1 min-w-[150px] px-5 sm:px-6 py-3.5 border-r border-[#E3E7EE] last:border-r-0";
+              const TH = "h-auto px-3.5 py-2.5 bg-[#F7F9FC] text-[10.5px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3] whitespace-nowrap text-left align-middle print:bg-gray-100 print:text-black";
+              const TD = "px-3.5 py-3 align-top print:text-black";
+              const TDN = "px-3.5 py-3 align-top text-right text-[13px] print:text-black";
+              const TROW = "flex justify-between items-baseline gap-4 py-[5px] print:text-black";
+              const BTN = "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors border bg-background h-auto gap-[7px] rounded-lg border-[#E3E7EE] px-[13px] py-[7px] text-[13.5px] text-[#171B23] hover:bg-[#F7F9FC] hover:border-[#D4DAE3] cursor-pointer";
+              const BTN_PRIMARY = "inline-flex items-center justify-center whitespace-nowrap transition-colors h-auto gap-[7px] rounded-lg px-[13px] py-[7px] text-[13.5px] font-semibold bg-[#2B4ACB] hover:bg-[#20389B] text-white cursor-pointer";
+              const BTN_DANGER = BTN + " text-[#B42318] border-[#F0C5C1] hover:bg-[#FEF3F2]";
+              const COUNT = "text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5";
+              const PROSE = "text-[13.5px] leading-[1.65] text-[#333B47] print:text-black";
+              const TYPE_TAG = "text-[10.5px] font-medium uppercase tracking-[0.06em] text-[#8A93A3] border border-[#E3E7EE] rounded px-1.5 py-px whitespace-nowrap print:border print:border-gray-400";
+              const PROJ_TAG = "inline-flex items-center gap-1 text-[10.5px] font-medium text-[#2B4ACB] bg-[#EEF2FE] border border-[#DCE4FB] rounded px-1.5 py-px whitespace-nowrap print:border print:border-blue-500 print:bg-blue-50";
+              const ASSET_TAG = "inline-flex items-center gap-1 text-[10.5px] font-medium text-[#6941C6] bg-[#F4F3FF] border border-[#D9D6FE] rounded px-1.5 py-px whitespace-nowrap print:border print:border-purple-500 print:bg-purple-50";
+              const SUBLBL = "text-[11px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3]";
+              const STAMP = "text-[11px] font-semibold tracking-[0.09em] uppercase px-[9px] py-[3px] rounded-[5px] border";
+
+              // Chip tones for the header stamps. Local on purpose — the list
+              // rows and the other dialogs keep using the shared
+              // getApprovalStatusBadge / getPaymentStatusBadge, which must not
+              // change shape.
+              const statusStampTone = (status: string) => {
+                switch (status) {
+                  case "draft": return "text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]";
+                  case "pending_approval": return "text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]";
+                  case "approved": return "text-[#027A48] bg-[#ECFDF3] border-[#A6F4C5]";
+                  case "rejected": return "text-[#B42318] bg-[#FEF3F2] border-[#F0C5C1]";
+                  case "cancelled": return "text-[#B42318] bg-[#F7F9FC] border-[#F0C5C1]";
+                  default: return "text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]";
+                }
+              };
+              const paymentStampTone = (paymentStatus: string) => {
+                switch (paymentStatus) {
+                  case "paid": return "text-[#027A48] bg-[#ECFDF3] border-[#A6F4C5]";
+                  case "partial": return "text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]";
+                  case "unpaid": return "text-[#2B4ACB] bg-[#EEF2FE] border-[#DCE4FB]";
+                  default: return null;
+                }
+              };
+
+              // Currency used for the parenthetical labels on the ledger, kept
+              // in step with the argument the values are formatted with so the
+              // label can never disagree with the number beside it.
+              const totalsCurrency = viewingInvoice.supplierCurrency || "AED";
+              const invoiceCurrency = viewingInvoice.currency || viewingInvoice.supplierCurrency;
+              const showExchangeRate = invoiceCurrency !== "AED" && !!viewingInvoice.exchangeRate;
+              // Total discount (header + line) derived from stored fields; the
+              // discountAmount column holds only the header portion.
+              const totalDiscount =
+                parseFloat(viewingInvoice.subtotal || "0") +
+                parseFloat(viewingInvoice.taxAmount || "0") -
+                parseFloat(viewingInvoice.totalAmount || "0");
+              const invoiceFiles: any[] = (viewingInvoice as any).files || [];
+              // The supplier's address is not stored on the invoice, so it is
+              // read off the already-loaded supplier list.
+              const supplierAddress = suppliers.find((s) => s.id === viewingInvoice.supplierId)?.address;
+              const hasCommercialTerms = !!(
+                viewingInvoice.supplierInvoiceNumber ||
+                viewingInvoice.paymentTerms ||
+                viewingInvoice.supplierVatTreatment ||
+                showExchangeRate
+              );
+
+              return (
+                <>
+                  {/* Header band. Document actions (edit, duplicate, print)
+                      live up here; status-flow actions (submit, approve, pay,
+                      cancel) stay in the footer. pr-5 sm:pr-14 keeps the
+                      buttons clear of the dialog's own X. */}
+                  <header className="flex flex-col sm:flex-row sm:items-center gap-4 shrink-0 border-b border-[#E3E7EE] py-4 pl-5 sm:pl-6 pr-5 sm:pr-14 print:border-b-2 print:border-black">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                      <div className="grid place-items-center w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#EEF2FE] border border-[#DCE4FB] print:bg-blue-100">
+                        <FileText className="w-5 h-5 text-[#2B4ACB] print:text-blue-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] print:text-gray-700">
+                          Purchase invoice
+                        </div>
+                        <div className="flex items-center flex-wrap gap-2.5 mt-px">
+                          {/* DialogTitle rather than a plain h2 so the dialog has
+                              an accessible name; Radix warned on every open. */}
+                          <DialogTitle className="text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
+                            {viewingInvoice.invoiceNumber}
+                          </DialogTitle>
+                          <span className={`${STAMP} ${statusStampTone(viewingInvoice.status)}`}>
+                            {viewingInvoice.status.replace(/_/g, " ")}
+                          </span>
+                          {paymentStampTone(viewingInvoice.paymentStatus) && (
+                            <span className={`${STAMP} ${paymentStampTone(viewingInvoice.paymentStatus)}`}>
+                              {viewingInvoice.paymentStatus.replace(/_/g, " ")}
+                            </span>
+                          )}
+                          {viewingInvoice.poId && (
+                            <span className="text-[11px] font-semibold tracking-[0.06em] px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]">
+                              &larr; {viewingInvoice.poNumber || `PO-${viewingInvoice.poId}`}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[13px] text-[#5B6472] mt-0.5 break-words print:text-gray-700">
+                          <strong className="font-semibold text-[#171B23] print:text-black">{viewingInvoice.supplierName}</strong>
+                          {viewingInvoice.createdAt && <>&nbsp;·&nbsp;Created {formatDisplayDate(viewingInvoice.createdAt)}</>}
+                          {(viewingInvoice.createdByName || viewingInvoice.createdBy) && <> by {viewingInvoice.createdByName || "—"}</>}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      {/* DialogTitle rather than a plain h2 so the dialog has
-                          an accessible name; Radix warned on every open. */}
-                      <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white print:text-black">
-                        {viewingInvoice.invoiceNumber}
-                      </DialogTitle>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700">
-                        Purchase Invoice
-                      </p>
-                    </div>
-                  </div>
-                  {/* Status and payment status are not repeated here — they
-                      have their own labelled fields in Invoice Information. */}
-                  <div className="flex flex-wrap items-center gap-3 print:hidden">
-                    {/* Same gates as the list's Edit buttons: drafts for
-                        admin/finance, approved invoices for admin only. */}
-                    {((viewingInvoice.status === "draft" && canEdit) ||
-                      (viewingInvoice.status === "approved" &&
-                        user?.role === "admin" &&
-                        // Once any payment or credit note is recorded the
-                        // server refuses the edit outright, so offering the
-                        // button here only produces a 400. Mirrors sales.
-                        parseFloat(viewingInvoice.paidAmount || "0") === 0)) && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 print:hidden">
+                      {/* Same gates as the list's Edit buttons: drafts for
+                          admin/finance, approved invoices for admin only. */}
+                      {((viewingInvoice.status === "draft" && canEdit) ||
+                        (viewingInvoice.status === "approved" &&
+                          user?.role === "admin" &&
+                          // Once any payment or credit note is recorded the
+                          // server refuses the edit outright, so offering the
+                          // button here only produces a 400. Mirrors sales.
+                          parseFloat(viewingInvoice.paidAmount || "0") === 0)) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditInvoice(viewingInvoice)}
+                          data-testid="button-edit-invoice-header"
+                          className={BTN}
+                        >
+                          <Pencil className="w-[15px] h-[15px] text-[#5B6472]" />
+                          Edit
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleEditInvoice(viewingInvoice)}
-                        data-testid="button-edit-invoice-header"
-                        className="flex items-center gap-2"
+                        onClick={() => handleDuplicateInvoice(viewingInvoice)}
+                        data-testid="button-duplicate-invoice-header"
+                        className={BTN}
                       >
-                        <Pencil className="w-4 h-4" />
-                        Edit
+                        <Copy className="w-[15px] h-[15px] text-[#5B6472]" />
+                        Duplicate
                       </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDuplicateInvoice(viewingInvoice)}
-                      data-testid="button-duplicate-invoice-header"
-                      className="flex items-center gap-2"
-                    >
-                      <Copy className="w-4 h-4" />
-                      Duplicate
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePrintPDF(viewingInvoice)}
-                      data-testid="button-print-invoice"
-                      className="flex items-center gap-2"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Print
-                    </Button>
-                  </div>
-                </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePrintPDF(viewingInvoice)}
+                        data-testid="button-print-invoice"
+                        className={BTN}
+                      >
+                        <Printer className="w-[15px] h-[15px] text-[#5B6472]" />
+                        Print
+                      </Button>
+                    </div>
+                  </header>
 
-                {/* Invoice Information Card */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                    <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Invoice Information
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Supplier</p>
-                      <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.supplierName}</p>
+                  {/* Key facts. flex rather than a fixed grid so the cells
+                      spread evenly when one of them is absent. */}
+                  <div className="flex flex-wrap shrink-0 border-b border-[#E3E7EE] bg-[#F7F9FC] print:bg-white">
+                    <div className={META_CELL}>
+                      <div className={META_LABEL}>Invoice date</div>
+                      <div className={META_VALUE}>{formatDisplayDate(viewingInvoice.invoiceDate)}</div>
                     </div>
-                    {viewingInvoice.supplierInvoiceNumber && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Supplier Invoice Number</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.supplierInvoiceNumber}</p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Invoice Date</p>
-                      <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
-                        {formatDisplayDate(viewingInvoice.invoiceDate)}
-                      </p>
+                    <div className={META_CELL}>
+                      <div className={META_LABEL}>Due date</div>
+                      <div className={META_VALUE}>{formatDisplayDate(viewingInvoice.dueDate)}</div>
                     </div>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Due Date</p>
-                      <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
-                        {formatDisplayDate(viewingInvoice.dueDate)}
-                      </p>
-                    </div>
-                    {/* Approval status and settlement status are two separate
-                        columns and are labelled as such. They used to share a
-                        single field headed "Payment Status", which described
-                        only one of the two badges under it. */}
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Status</p>
-                      <div className="print:inline-block">
-                        {getApprovalStatusBadge(viewingInvoice.status)}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Payment Status</p>
-                      <div className="print:inline-block">
-                        {getPaymentStatusBadge(viewingInvoice.paymentStatus)}
-                      </div>
-                    </div>
-                    {viewingInvoice.subject && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Subject</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.subject}</p>
-                      </div>
-                    )}
-                    {viewingInvoice.paymentTerms && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Payment Terms</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">{viewingInvoice.paymentTerms}</p>
-                      </div>
-                    )}
-                    {viewingInvoice.poId && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Purchase Order</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">
-                          {viewingInvoice.poNumber || `PO-${viewingInvoice.poId}`}
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Currency</p>
-                      <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
+                    <div className={META_CELL}>
+                      <div className={META_LABEL}>Currency</div>
+                      <div className={META_VALUE}>
                         {viewingInvoice.currency || viewingInvoice.supplierCurrency || "AED"}
-                      </p>
-                    </div>
-                    {(viewingInvoice.currency || viewingInvoice.supplierCurrency) !== "AED" && viewingInvoice.exchangeRate && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Exchange Rate</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">
+                        {viewingInvoice.supplierVatTreatment && (
+                          <span className="text-[13px] font-medium text-[#5B6472] capitalize print:text-gray-700">
+                            {" "}· {viewingInvoice.supplierVatTreatment.replace(/_/g, " ")} VAT
+                          </span>
+                        )}
+                      </div>
+                      {showExchangeRate && (
+                        <div className="text-[12px] text-[#8A93A3] mt-px print:text-gray-700">
                           1 {viewingInvoice.currency || viewingInvoice.supplierCurrency} = {viewingInvoice.exchangeRate} AED
-                        </p>
+                        </div>
+                      )}
+                    </div>
+                    <div className={META_CELL}>
+                      <div className={META_LABEL}>Total amount</div>
+                      <div className={META_VALUE}>{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.supplierCurrency)}</div>
+                    </div>
+                    <div className={META_CELL}>
+                      <div className={META_LABEL}>Balance due</div>
+                      <div className={`${META_VALUE} text-[#B42318] print:text-red-700`}>
+                        {formatCurrency((parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)), viewingInvoice.supplierCurrency)}
                       </div>
-                    )}
-                    {viewingInvoice.supplierVatTreatment && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">VAT Treatment</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black capitalize">
-                          {viewingInvoice.supplierVatTreatment.replace(/_/g, " ")}
-                        </p>
+                      <div className="text-[12px] text-[#8A93A3] mt-px print:text-gray-700">
+                        {formatCurrency(viewingInvoice.paidAmount, viewingInvoice.supplierCurrency)} paid
                       </div>
-                    )}
-                    {(viewingInvoice.createdByName || viewingInvoice.createdBy) && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Created By</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black break-words">
-                          {viewingInvoice.createdByName || "—"}
-                        </p>
-                      </div>
-                    )}
-                    {viewingInvoice.createdAt && (
-                      <div>
-                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 print:text-gray-700 mb-1">Created On</p>
-                        <p className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white print:text-black">
-                          {formatDisplayDate(viewingInvoice.createdAt)}
-                        </p>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Bank Account Details Card */}
-                {viewingInvoice.bankAccount && (
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                    <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-                      Bank Account Details
-                    </h3>
-                    <div 
-                      className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
-                      dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.bankAccount || "") }}
-                    />
-                  </div>
-                )}
+                  <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFCFE] print:overflow-visible print:bg-white">
+                    <div className="flex flex-col gap-4 p-5 sm:p-6 print:gap-3 print:p-0">
 
-                {/* Project and asset linking is per line item, shown as badges
-                    in the table below. The header-level "Linked to Project" and
-                    "Linked to Asset Instance" cards that used to sit here read
-                    purchase_invoices.project_id / asset_inventory_instance_id,
-                    both dropped from the table by migration 0002, so neither
-                    could ever render. */}
-
-                {/* Invoice Items Table */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                    <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Invoice Items
-                  </h3>
-                  <div className="overflow-x-auto -mx-4 sm:mx-0">
-                    <div className="inline-block min-w-full align-middle">
-                      <div className="border rounded-lg overflow-hidden print:border-gray-300">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-300">
-                          <thead className="bg-gray-100 dark:bg-gray-700 print:bg-gray-100">
-                            <tr>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">#</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Item</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Qty</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Price</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Tax Rate</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Tax</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Discount</th>
-                              <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-300 print:text-black uppercase tracking-wider">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700 print:bg-white print:divide-gray-200">
-                            {viewingInvoice.items?.map((item, index) => (
-                              <tr key={item.id}>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900 dark:text-white print:text-black">{index + 1}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm">
-                                  <div className="flex flex-col gap-1">
-                                    {item.itemType === "product" && (
-                                      <Badge variant="default" className="text-xs w-fit print:border print:border-blue-500 print:bg-blue-50">
-                                        Product
-                                      </Badge>
+                      {/* Supplier and commercial terms. flex-wrap rather than a
+                          two-column grid so the supplier card still fills the
+                          row when the terms card is dropped entirely. */}
+                      <div className="flex flex-wrap gap-4 items-start">
+                        <div className={`${CARD} flex-1 min-w-[260px]`}>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="supplier" className="border-b-0">
+                              <AccordionTrigger className={ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <Building2 className={CARD_ICON} />
+                                  <span className={CARD_TITLE}>Supplier</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={ACC_BODY}>
+                                <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
+                                  {viewingInvoice.supplierName}
+                                </div>
+                                {supplierAddress && (
+                                  <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words print:text-black">
+                                    {supplierAddress}
+                                  </div>
+                                )}
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                        {hasCommercialTerms && (
+                          <div className={`${CARD} flex-1 min-w-[260px]`}>
+                            <Accordion type="single" collapsible className="w-full">
+                              <AccordionItem value="terms" className="border-b-0">
+                                <AccordionTrigger className={ACC_TRIGGER}>
+                                  <span className="flex items-center gap-2.5">
+                                    <DollarSign className={CARD_ICON} />
+                                    <span className={CARD_TITLE}>Commercial terms</span>
+                                  </span>
+                                </AccordionTrigger>
+                                <AccordionContent className={ACC_BODY}>
+                                  <div className="flex flex-col">
+                                    {viewingInvoice.supplierInvoiceNumber && (
+                                      <div className={KV_ROW}>
+                                        <span className={KV_LABEL}>Supplier invoice no.</span>
+                                        <span className={KV_VAL}>{viewingInvoice.supplierInvoiceNumber}</span>
+                                      </div>
                                     )}
-                                    <div className="flex flex-col">
-                                      <span className="font-medium text-gray-900 dark:text-white print:text-black whitespace-pre-wrap break-words">
+                                    {viewingInvoice.paymentTerms && (
+                                      <div className={KV_ROW}>
+                                        <span className={KV_LABEL}>Payment terms</span>
+                                        <span className={KV_VAL}>{viewingInvoice.paymentTerms}</span>
+                                      </div>
+                                    )}
+                                    {viewingInvoice.supplierVatTreatment && (
+                                      <div className={KV_ROW}>
+                                        <span className={KV_LABEL}>VAT treatment</span>
+                                        <span className={`${KV_VAL} capitalize`}>
+                                          {viewingInvoice.supplierVatTreatment.replace(/_/g, " ")}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {showExchangeRate && (
+                                      <div className={KV_ROW}>
+                                        <span className={KV_LABEL}>Exchange rate</span>
+                                        <span className={`${KV_VAL} text-[12.5px]`}>
+                                          1 {viewingInvoice.currency || viewingInvoice.supplierCurrency} = {viewingInvoice.exchangeRate} AED
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            </Accordion>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bank account and attachments. Either can be absent, so
+                          the row is flex-wrap and each card grows to fill. */}
+                      {(viewingInvoice.bankAccount || invoiceFiles.length > 0) && (
+                        <div className="flex flex-wrap gap-4 items-start">
+                          {viewingInvoice.bankAccount && (
+                            <div className={`${CARD} flex-1 min-w-[260px]`}>
+                              <Accordion type="single" collapsible className="w-full">
+                                <AccordionItem value="bank" className="border-b-0">
+                                  <AccordionTrigger className={ACC_TRIGGER}>
+                                    <span className="flex items-center gap-2.5">
+                                      <CreditCard className={CARD_ICON} />
+                                      <span className={CARD_TITLE}>Bank account</span>
+                                    </span>
+                                  </AccordionTrigger>
+                                  <AccordionContent className={ACC_BODY}>
+                                    <div
+                                      className="text-[13px] leading-[1.6] text-[#333B47] break-words rich-text-content print:text-black"
+                                      dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.bankAccount || "") }}
+                                    />
+                                  </AccordionContent>
+                                </AccordionItem>
+                              </Accordion>
+                            </div>
+                          )}
+                          {invoiceFiles.length > 0 && (
+                            <div className={`${CARD} flex-1 min-w-[260px]`}>
+                              <Accordion type="single" collapsible className="w-full">
+                                <AccordionItem value="attachments" className="border-b-0">
+                                  <AccordionTrigger className={ACC_TRIGGER}>
+                                    <span className="flex items-center gap-2.5">
+                                      <Paperclip className={CARD_ICON} />
+                                      <span className={CARD_TITLE}>Attachments</span>
+                                      <span className={COUNT}>{invoiceFiles.length}</span>
+                                    </span>
+                                  </AccordionTrigger>
+                                  <AccordionContent className={ACC_BODY}>
+                                    <ul className="flex flex-col gap-2">
+                                      {invoiceFiles.map((file: any) => (
+                                        <li
+                                          key={file.id}
+                                          className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
+                                        >
+                                          <div className="flex items-center gap-2 overflow-hidden">
+                                            {getFileIcon(file.mimeType)}
+                                            <div className="flex flex-col overflow-hidden">
+                                              <span className="text-[13px] truncate" title={file.originalName}>
+                                                {file.originalName}
+                                              </span>
+                                              <span className="text-[11.5px] text-[#8A93A3]">
+                                                {formatFileSize(file.fileSize)}
+                                                {file.uploadedAt && ` · ${formatDisplayDate(file.uploadedAt)}`}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            asChild
+                                            className="h-8 ml-2 text-[13px]"
+                                          >
+                                            <a
+                                              href={`/${file.filePath}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                            >
+                                              Download
+                                            </a>
+                                          </Button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </AccordionContent>
+                                </AccordionItem>
+                              </Accordion>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Subject sits directly above the items and opens by
+                          default — it is what the invoice is for. */}
+                      {viewingInvoice.subject && (
+                        <div className={CARD}>
+                          <Accordion type="single" collapsible defaultValue="subject" className="w-full">
+                            <AccordionItem value="subject" className="border-b-0">
+                              <AccordionTrigger className={ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <AlignLeft className={CARD_ICON} />
+                                  <span className={CARD_TITLE}>Subject</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={ACC_BODY}>
+                                <div className={`${PROSE} whitespace-pre-wrap break-words`}>
+                                  {viewingInvoice.subject}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                      )}
+
+                      {/* Invoice items, with the ledger totals at the foot of
+                          the same card so the numbers sit under the lines they
+                          come from. */}
+                      <div className={CARD}>
+                        <div className={CARD_HEAD}>
+                          <Package className={CARD_ICON} />
+                          <span className={CARD_TITLE}>Invoice items</span>
+                          <span className={COUNT}>{viewingInvoice.items?.length || 0} items</span>
+                        </div>
+                        <div className="relative w-full overflow-auto">
+                          <table className="w-full caption-bottom text-sm">
+                            <thead>
+                              <tr className="border-b border-[#E3E7EE]">
+                                <th className={`${TH} w-9`}>#</th>
+                                <th className={TH}>Item</th>
+                                <th className={`${TH} text-right`}>Qty</th>
+                                <th className={`${TH} text-right`}>Unit price</th>
+                                <th className={`${TH} text-right`}>Tax rate</th>
+                                <th className={`${TH} text-right`}>Tax</th>
+                                <th className={`${TH} text-right`}>Discount</th>
+                                <th className={`${TH} text-right`}>Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {viewingInvoice.items?.map((item, index) => (
+                                <tr key={item.id} className="border-b border-[#EDF0F5] last:border-b-0 hover:bg-[#F7F9FC]">
+                                  <td className={`${TD} text-[12.5px] text-[#8A93A3] print:text-black`}>{index + 1}</td>
+                                  <td className={TD}>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words print:text-black">
                                         {item.itemType === "product" ? item.inventoryItemName : item.description}
                                       </span>
-                                      {item.itemType === "product" && item.inventoryItemId && (() => {
-                                        const description = getItemDescription(item.inventoryItemId);
-                                        return description && (
-                                          <span className="text-xs text-muted-foreground print:text-gray-600">
-                                            {description}
+                                      <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5">
+                                        {item.itemType === "product" && item.inventoryItemId && (() => {
+                                          const description = getItemDescription(item.inventoryItemId);
+                                          return description && (
+                                            <span className="text-[12.5px] text-[#5B6472] break-words print:text-gray-600">
+                                              {description}
+                                            </span>
+                                          );
+                                        })()}
+                                        {item.itemType === "product" && (
+                                          <span className={TYPE_TAG}>Product</span>
+                                        )}
+                                        {item.projectId && (
+                                          <span className={PROJ_TAG}>
+                                            <Briefcase className="w-3 h-3" />
+                                            {getProjectTitle(item.projectId.toString())}
                                           </span>
-                                        );
-                                      })()}
+                                        )}
+                                        {item.assetInstanceId && (
+                                          <span className={ASSET_TAG}>
+                                            <Package className="w-3 h-3" />
+                                            {getAssetInfo(item.assetInstanceId.toString()).tag}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                    {item.projectId && (
-                                      <Badge variant="outline" className="text-xs w-fit bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 print:border print:border-blue-500 print:bg-blue-50">
-                                        <Briefcase className="w-3 h-3 mr-1" />
-                                        {getProjectTitle(item.projectId.toString())}
-                                      </Badge>
-                                    )}
-                                    {item.assetInstanceId && (
-                                      <Badge variant="outline" className="text-xs w-fit bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 print:border print:border-purple-500 print:bg-purple-50">
-                                        <Package className="w-3 h-3 mr-1" />
-                                        {getAssetInfo(item.assetInstanceId.toString()).tag}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
-                                  {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
-                                </td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatAmount(item.unitPrice)}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{item.taxRate || "0"}%</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">{formatAmount(item.taxAmount || "0.00")}</td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right text-gray-900 dark:text-white print:text-black">
-                                  {Number(item.discount) > 0
-                                    ? (item.discountType === "percentage" ? `${item.discount}%` : formatAmount(item.discount as any))
-                                    : "-"}
-                                </td>
-                                <td className="px-3 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-right font-semibold text-gray-900 dark:text-white print:text-black">{formatAmount(item.lineTotal)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Financial Summary */}
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
-                  <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
-                    Financial Summary
-                  </h3>
-                  <div className="space-y-2 sm:space-y-3">
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">Subtotal:</span>
-                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.subtotal, viewingInvoice.supplierCurrency)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                      <span className="font-medium">Tax:</span>
-                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.taxAmount, viewingInvoice.supplierCurrency)}</span>
-                    </div>
-                    {/* The header discount as stored, shown alongside the
-                        derived total so a reader can tell the header portion
-                        from the line-level one. discountPercentage and
-                        discountAmount are mutually exclusive on save: a
-                        percentage is used when non-zero, else the fixed
-                        amount. */}
-                    {parseFloat(viewingInvoice.discountPercentage || "0") > 0 && (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">Header Discount:</span>
-                        <span className="text-lg font-semibold">{viewingInvoice.discountPercentage}%</span>
-                      </div>
-                    )}
-                    {parseFloat(viewingInvoice.discountAmount || "0") > 0 && (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">Discount Amount:</span>
-                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(viewingInvoice.discountAmount || "0", viewingInvoice.supplierCurrency)}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      // Total discount (header + line) derived from stored fields;
-                      // the discountAmount column holds only the header portion.
-                      const totalDiscount =
-                        parseFloat(viewingInvoice.subtotal || "0") +
-                        parseFloat(viewingInvoice.taxAmount || "0") -
-                        parseFloat(viewingInvoice.totalAmount || "0");
-                      return totalDiscount > 0.005 ? (
-                        <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                          <span className="font-medium">Total Discount:</span>
-                          <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), viewingInvoice.supplierCurrency)}</span>
+                                  </td>
+                                  <td className={TDN}>
+                                    {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
+                                  </td>
+                                  <td className={TDN}>{formatAmount(item.unitPrice)}</td>
+                                  <td className={TDN}>{item.taxRate || "0"}%</td>
+                                  <td className={TDN}>{formatAmount(item.taxAmount || "0.00")}</td>
+                                  <td className={Number(item.discount) > 0 ? `${TDN} text-[#B42318] print:text-red-700` : TDN}>
+                                    {Number(item.discount) > 0
+                                      ? (item.discountType === "percentage" ? `−${item.discount}%` : `−${formatAmount(item.discount as any)}`)
+                                      : "—"}
+                                  </td>
+                                  <td className={`${TDN} font-semibold`}>{formatAmount(item.lineTotal)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      ) : null;
-                    })()}
-                    <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
-                      <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(viewingInvoice.totalAmount, viewingInvoice.supplierCurrency)}</span>
-                    </div>
-                    {(viewingInvoice.currency || viewingInvoice.supplierCurrency) !== "AED" && viewingInvoice.exchangeRate && (
-                      <div className="text-xs text-muted-foreground mt-2 text-right">
-                        Exchange Rate: 1 {viewingInvoice.currency || viewingInvoice.supplierCurrency} = {viewingInvoice.exchangeRate} AED
+                        <div className="flex justify-end px-[18px] pt-3.5 pb-4 bg-[#F7F9FC] border-t border-[#EDF0F5] print:bg-white">
+                          <div className="w-full sm:w-[320px] text-[13.5px]">
+                            <div className={TROW}>
+                              <span className="text-[#5B6472] print:text-gray-700">Subtotal</span>
+                              <span className="font-medium">{formatAmount(viewingInvoice.subtotal)}</span>
+                            </div>
+                            {/* The header discount as stored, shown alongside the
+                                derived total so a reader can tell the header
+                                portion from the line-level one. discountPercentage
+                                and discountAmount are mutually exclusive on save: a
+                                percentage is used when non-zero, else the fixed
+                                amount. */}
+                            {parseFloat(viewingInvoice.discountPercentage || "0") > 0 && (
+                              <div className={TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Header discount</span>
+                                <span className="font-medium">{viewingInvoice.discountPercentage}%</span>
+                              </div>
+                            )}
+                            {parseFloat(viewingInvoice.discountAmount || "0") > 0 && (
+                              <div className={TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Discount amount</span>
+                                <span className="font-medium text-[#B42318] print:text-red-700">−{formatAmount(viewingInvoice.discountAmount || "0")}</span>
+                              </div>
+                            )}
+                            {totalDiscount > 0.005 && (
+                              <div className={TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Total discount</span>
+                                <span className="font-medium text-[#B42318] print:text-red-700">−{formatAmount(totalDiscount.toFixed(2))}</span>
+                              </div>
+                            )}
+                            <div className={TROW}>
+                              <span className="text-[#5B6472] print:text-gray-700">Tax</span>
+                              <span className="font-medium">{formatAmount(viewingInvoice.taxAmount)}</span>
+                            </div>
+                            <div className={`${TROW} mt-[7px] pt-[9px] border-t-[3px] border-double border-[#171B23]`}>
+                              <span className="text-sm font-semibold text-[#171B23] print:text-black">Total ({totalsCurrency})</span>
+                              <span className="text-[17px] font-semibold text-[#2B4ACB] print:text-blue-600">
+                                {formatCurrency(viewingInvoice.totalAmount, viewingInvoice.supplierCurrency)}
+                              </span>
+                            </div>
+                            <div className={`${TROW} mt-1`}>
+                              <span className="text-[#5B6472] print:text-gray-700">Paid amount</span>
+                              <span className="font-medium text-[#027A48] print:text-green-700">− {formatAmount(viewingInvoice.paidAmount)}</span>
+                            </div>
+                            <div className={`${TROW} pt-2 border-t border-[#E3E7EE]`}>
+                              <span className="text-sm font-semibold text-[#171B23] print:text-black">Balance due ({totalsCurrency})</span>
+                              <span className="text-[17px] font-semibold text-[#B42318] print:text-red-700">
+                                {formatCurrency((parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)), viewingInvoice.supplierCurrency)}
+                              </span>
+                            </div>
+                            {showExchangeRate && (
+                              <div className="text-right text-[11.5px] text-[#8A93A3] mt-2.5 print:text-gray-700">
+                                Exchange rate 1 {viewingInvoice.currency || viewingInvoice.supplierCurrency} = {viewingInvoice.exchangeRate} AED
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex justify-between items-center text-green-700 dark:text-green-400 print:text-green-700">
-                      <span className="font-medium">Paid Amount:</span>
-                      <span className="text-lg font-semibold">{formatCurrency(viewingInvoice.paidAmount, viewingInvoice.supplierCurrency)}</span>
-                    </div>
-                    <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
-                      <span className="text-lg font-bold text-red-700 dark:text-red-400 print:text-red-700">Balance Due:</span>
-                      <span className="text-2xl font-bold text-red-700 dark:text-red-400 print:text-red-700">
-                        {formatCurrency((parseFloat(viewingInvoice.totalAmount) - parseFloat(viewingInvoice.paidAmount)), viewingInvoice.supplierCurrency)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Notes and Terms & Conditions sit below the totals and are
-                    collapsed by default — they are reference text, not
-                    something a reader needs on opening the document. Terms
-                    were never rendered here before. */}
-                {(viewingInvoice.notes || viewingInvoice.termsAndConditions) && (
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg px-4 sm:px-6 print:bg-white print:border print:border-gray-300">
-                    <Accordion type="multiple" className="w-full">
+                      {/* Notes and terms are reference text, not something a
+                          reader needs on opening the document, so both stay
+                          collapsed. */}
                       {viewingInvoice.notes && (
-                        <AccordionItem value="notes" className="border-b-0">
-                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
-                            <span className="flex items-center gap-2">
-                              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                              Notes
-                            </span>
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <div
-                              className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black rich-text-content"
-                              dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.notes || "") }}
-                            />
-                          </AccordionContent>
-                        </AccordionItem>
+                        <div className={CARD}>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="notes" className="border-b-0">
+                              <AccordionTrigger className={ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <Pencil className={CARD_ICON} />
+                                  <span className={CARD_TITLE}>Notes</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={ACC_BODY}>
+                                <div
+                                  className={`${PROSE} break-words rich-text-content`}
+                                  dangerouslySetInnerHTML={{ __html: sanitize(viewingInvoice.notes || "") }}
+                                />
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
                       )}
                       {viewingInvoice.termsAndConditions && (
-                        <AccordionItem value="terms" className="border-b-0">
-                          <AccordionTrigger className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white print:text-black hover:no-underline">
-                            <span className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-                              Terms &amp; Conditions
-                            </span>
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 print:text-black whitespace-pre-wrap">
-                              {viewingInvoice.termsAndConditions}
-                            </p>
-                          </AccordionContent>
-                        </AccordionItem>
+                        <div className={CARD}>
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="terms-and-conditions" className="border-b-0">
+                              <AccordionTrigger className={ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <FileText className={CARD_ICON} />
+                                  <span className={CARD_TITLE}>Terms &amp; conditions</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={ACC_BODY}>
+                                <p className={`${PROSE} whitespace-pre-wrap break-words`}>
+                                  {viewingInvoice.termsAndConditions}
+                                </p>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
                       )}
-                    </Accordion>
-                  </div>
-                )}
 
-                {/* Attachments Card */}
-                {(viewingInvoice as any).files && (viewingInvoice as any).files.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 sm:p-6 print:bg-white print:border print:border-gray-300">
-                    <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                      <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
-                      Attachments ({(viewingInvoice as any).files.length})
-                    </h3>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {(viewingInvoice as any).files.map((file: any) => (
-                        <li
-                          key={file.id}
-                          className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            {getFileIcon(file.mimeType)}
-                            <div className="flex flex-col overflow-hidden">
-                              <span className="text-sm truncate" title={file.originalName}>
-                                {file.originalName}
-                              </span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatFileSize(file.fileSize)}
-                                {file.uploadedAt && ` · ${formatDisplayDate(file.uploadedAt)}`}
-                              </span>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            asChild
-                            className="h-8 ml-2"
-                          >
-                            <a
-                              href={`/${file.filePath}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Download
-                            </a>
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                      {/* Activity — approval trail, payments and edit history in
+                          one tabbed block rather than three stacked cards.
+                          Approval opens first because its data is already on the
+                          invoice row; the other two fetch on first click, so
+                          opening the dialog is a single request. Both of those
+                          endpoints are admin/finance only, so their tabs are
+                          hidden for project_manager rather than firing a request
+                          that would 403. */}
+                      <div className={`${CARD} print:hidden`}>
+                        <div className={CARD_HEAD}>
+                          <History className={CARD_ICON} />
+                          <span className={CARD_TITLE}>Activity</span>
+                        </div>
+                        <div className={CARD_BODY}>
+                          <Tabs value={activityTab} onValueChange={setActivityTab}>
+                            <TabsList>
+                              <TabsTrigger value="approval" data-testid="tab-approval">
+                                Approval
+                              </TabsTrigger>
+                              {canSeeActivityDetail && canHavePayments && (
+                                <TabsTrigger value="payments" data-testid="tab-payments">
+                                  Payments
+                                  {invoicePayments ? ` (${invoicePayments.length})` : ""}
+                                </TabsTrigger>
+                              )}
+                              {canSeeActivityDetail && (
+                                <TabsTrigger value="history" data-testid="tab-edit-history">
+                                  Edit History
+                                  {invoiceEditHistory ? ` (${invoiceEditHistory.length})` : ""}
+                                </TabsTrigger>
+                              )}
+                            </TabsList>
 
-                {/* Activity — approval trail, payments and edit history in one
-                    tabbed block rather than three stacked cards. Approval opens
-                    first because its data is already on the invoice row; the
-                    other two fetch on first click, so opening the dialog is a
-                    single request. Both of those endpoints are admin/finance
-                    only, so their tabs are hidden for project_manager rather
-                    than firing a request that would 403. */}
-                <Card className="print:hidden">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <History className="w-4 h-4" />
-                      Activity
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Tabs value={activityTab} onValueChange={setActivityTab}>
-                      <TabsList>
-                        <TabsTrigger value="approval" data-testid="tab-approval">
-                          Approval
-                        </TabsTrigger>
-                        {canSeeActivityDetail && canHavePayments && (
-                          <TabsTrigger value="payments" data-testid="tab-payments">
-                            Payments
-                            {invoicePayments ? ` (${invoicePayments.length})` : ""}
-                          </TabsTrigger>
-                        )}
-                        {canSeeActivityDetail && (
-                          <TabsTrigger value="history" data-testid="tab-edit-history">
-                            Edit History
-                            {invoiceEditHistory ? ` (${invoiceEditHistory.length})` : ""}
-                          </TabsTrigger>
-                        )}
-                      </TabsList>
-
-                      <TabsContent value="approval" className="mt-4">
-                        {viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason ? (
-                          <div className="space-y-3">
-                            {viewingInvoice.submittedAt && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
-                                <div>
-                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
-                                  <p className="text-sm font-medium mt-1">{viewingInvoice.submittedByName || "—"}</p>
-                                </div>
-                                <div>
-                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
-                                  <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.submittedAt).toLocaleString()}</p>
-                                </div>
-                              </div>
-                            )}
-                            {viewingInvoice.approvedAt && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
-                                  <p className="text-sm font-medium mt-1">{viewingInvoice.approvedByName || "—"}</p>
-                                </div>
-                                <div>
-                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
-                                  <p className="text-sm font-medium mt-1">{new Date(viewingInvoice.approvedAt).toLocaleString()}</p>
-                                </div>
-                              </div>
-                            )}
-                            {viewingInvoice.rejectionReason && (
-                              <div className="pt-1">
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
-                                <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{viewingInvoice.rejectionReason}</p>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground italic">
-                            This invoice has not been submitted for approval yet.
-                          </p>
-                        )}
-                      </TabsContent>
-
-                      {canSeeActivityDetail && canHavePayments && (
-                        <TabsContent value="payments" className="mt-4">
-                          {isLoadingPayments ? (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                              Loading payments…
-                            </div>
-                          ) : invoicePayments && invoicePayments.length > 0 ? (
-                            <div className="space-y-2">
-                              {invoicePayments.map((payment: any) => (
-                                <div key={payment.id} className="border rounded-lg overflow-hidden">
-                                  <div
-                                    className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                    onClick={() => setExpandedPayment(expandedPayment === payment.id ? null : payment.id)}
-                                  >
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                                        <span className="font-medium text-green-600">
-                                          {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
-                                        </span>
-                                        {/* A credit note applied to the invoice is
-                                            stored as a payment row; without this it
-                                            was indistinguishable from cash. */}
-                                        {payment.paymentType === "credit_note" ? (
-                                          <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300">
-                                            Credit Note
-                                            {payment.creditNoteId ? ` #${payment.creditNoteId}` : ""}
-                                          </Badge>
-                                        ) : (
-                                          <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
-                                            {payment.paymentMethod?.replace("_", " ") || "N/A"}
-                                          </span>
-                                        )}
-                                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                                          {formatDisplayDate(payment.paymentDate)}
-                                        </span>
+                            <TabsContent value="approval" className="mt-4">
+                              {viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason ? (
+                                <ul className="relative list-none pl-5 before:content-[''] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-[#EDF0F5]">
+                                  {viewingInvoice.submittedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#8A93A3]" />
+                                      <div className="text-[13.5px] font-semibold">Submitted for approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {viewingInvoice.submittedByName || "—"} · {new Date(viewingInvoice.submittedAt).toLocaleString()}
                                       </div>
-                                      <ChevronDown
-                                        className={`h-4 w-4 flex-shrink-0 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {expandedPayment === payment.id && (
-                                    <div className="px-3 pb-3 border-t bg-gray-50 dark:bg-gray-800/50">
-                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
-                                        <div>
-                                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reference</span>
-                                          <p className="text-sm mt-1">{payment.referenceNumber || "—"}</p>
-                                        </div>
-                                        <div>
-                                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recorded By</span>
-                                          <p className="text-sm mt-1">{payment.recordedByName || "—"}</p>
-                                        </div>
-                                        <div>
-                                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recorded On</span>
-                                          <p className="text-sm mt-1">{formatDisplayDate(payment.recordedAt)}</p>
-                                        </div>
-                                      </div>
-                                      <div className="mt-3">
-                                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Notes</span>
-                                        <p className="text-sm mt-1 whitespace-pre-wrap">{payment.notes || "—"}</p>
-                                      </div>
-                                      <div className="mt-3">
-                                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Attachments</span>
-                                        <div className="mt-2">
-                                          {payment.files && payment.files.length > 0 ? (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                              {payment.files.map((file: any) => (
-                                                <div
-                                                  key={file.id}
-                                                  className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                                                >
-                                                  <div className="flex items-center gap-2 overflow-hidden">
-                                                    {getFileIcon(file.mimeType)}
-                                                    <div className="flex flex-col overflow-hidden">
-                                                      <span className="text-sm truncate" title={file.originalName}>
-                                                        {file.originalName}
-                                                      </span>
-                                                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {formatFileSize(file.fileSize)}
-                                                        {file.uploadedAt && ` · ${formatDisplayDate(file.uploadedAt)}`}
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                  <Button variant="ghost" size="sm" asChild className="h-8 ml-2">
-                                                    <a
-                                                      href={`/api/purchase-payment-files/${file.id}/download`}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                    >
-                                                      Download
-                                                    </a>
-                                                  </Button>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <p className="text-sm text-muted-foreground italic">No attachments</p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
+                                    </li>
                                   )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground italic">No payments recorded.</p>
-                          )}
-                        </TabsContent>
-                      )}
-
-                      {canSeeActivityDetail && (
-                        <TabsContent value="history" className="mt-4">
-                          {isLoadingEditHistory ? (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                              Loading edit history…
-                            </div>
-                          ) : invoiceEditHistory && invoiceEditHistory.length > 0 ? (
-                            <div className="space-y-3">
-                              {invoiceEditHistory.map((entry: any) => {
-                                const changedFields = entry.changes ? Object.keys(entry.changes) : [];
-                                return (
-                                  <div key={entry.id} className="border rounded-lg overflow-hidden">
-                                    <div
-                                      className="p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                      onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
-                                    >
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="min-w-0">
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
-                                          </div>
-                                          <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 break-words">{entry.editNote}</p>
-                                          {changedFields.length > 0 && (
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                              {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
-                                            </p>
-                                          )}
-                                        </div>
-                                        {changedFields.length > 0 && (
-                                          <ChevronDown
-                                            className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
-                                          />
-                                        )}
+                                  {viewingInvoice.approvedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#12B76A]" />
+                                      <div className="text-[13.5px] font-semibold">Approved</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {viewingInvoice.approvedByName || "—"} · {new Date(viewingInvoice.approvedAt).toLocaleString()}
                                       </div>
-                                    </div>
-                                    {expandedEditEntry === entry.id && changedFields.length > 0 && (
-                                      <div className="px-3 pb-3 pt-3 border-t bg-gray-50 dark:bg-gray-800/50">
-                                        <div className="text-xs space-y-2">
-                                          {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                            field !== "items" ? (
-                                              <div key={field} className="flex flex-col gap-1">
-                                                <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                {/* notes and bankAccount are ReactQuill fields, so their
-                                                    stored value is HTML and printing it raw showed markup
-                                                    to the reader. Every other tracked field is plain text
-                                                    and stays escaped. */}
-                                                {isRichTextField(field) ? (
-                                                  <>
-                                                    <div
-                                                      className="text-red-500 line-through break-words rich-text-content"
-                                                      dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
-                                                    />
-                                                    <div
-                                                      className="text-green-600 break-words rich-text-content"
-                                                      dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
-                                                    />
-                                                  </>
+                                    </li>
+                                  )}
+                                  {viewingInvoice.rejectionReason && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#B42318]" />
+                                      <div className="text-[13.5px] font-semibold">Rejected</div>
+                                      <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                        {viewingInvoice.rejectionReason}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {viewingInvoice.status === "pending_approval" && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#E3E7EE]" />
+                                      <div className="text-[13.5px] font-semibold text-[#5B6472]">Awaiting approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">Pending review</div>
+                                    </li>
+                                  )}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">
+                                  This invoice has not been submitted for approval yet.
+                                </p>
+                              )}
+                            </TabsContent>
+
+                            {canSeeActivityDetail && canHavePayments && (
+                              <TabsContent value="payments" className="mt-4">
+                                {isLoadingPayments ? (
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                    Loading payments…
+                                  </div>
+                                ) : invoicePayments && invoicePayments.length > 0 ? (
+                                  <>
+                                    <div className="space-y-2">
+                                      {invoicePayments.map((payment: any) => (
+                                        <div key={payment.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
+                                          <div
+                                            className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
+                                            onClick={() => setExpandedPayment(expandedPayment === payment.id ? null : payment.id)}
+                                          >
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                                <span className="font-semibold text-[#027A48]">
+                                                  {formatCurrency(payment.amount, viewingInvoice.currency || "AED")}
+                                                </span>
+                                                {/* A credit note applied to the invoice is
+                                                    stored as a payment row; without this it
+                                                    was indistinguishable from cash. */}
+                                                {payment.paymentType === "credit_note" ? (
+                                                  <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold text-[#6941C6] bg-[#F4F3FF] border-[#D9D6FE]">
+                                                    Credit Note
+                                                    {payment.creditNoteId ? ` #${payment.creditNoteId}` : ""}
+                                                  </span>
                                                 ) : (
-                                                  <>
-                                                    <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                                    <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
-                                                  </>
+                                                  <span className="text-[13px] text-[#5B6472] capitalize">
+                                                    {payment.paymentMethod?.replace("_", " ") || "N/A"}
+                                                  </span>
+                                                )}
+                                                <span className="text-[13px] text-[#5B6472]">
+                                                  {formatDisplayDate(payment.paymentDate)}
+                                                </span>
+                                              </div>
+                                              <ChevronDown
+                                                className={`h-4 w-4 flex-shrink-0 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {expandedPayment === payment.id && (
+                                            <div className="px-3 pb-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
+                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3">
+                                                <div>
+                                                  <span className={SUBLBL}>Reference</span>
+                                                  <p className="text-[13.5px] mt-1">{payment.referenceNumber || "—"}</p>
+                                                </div>
+                                                <div>
+                                                  <span className={SUBLBL}>Recorded by</span>
+                                                  <p className="text-[13.5px] mt-1">{payment.recordedByName || "—"}</p>
+                                                </div>
+                                                <div>
+                                                  <span className={SUBLBL}>Recorded on</span>
+                                                  <p className="text-[13.5px] mt-1">{formatDisplayDate(payment.recordedAt)}</p>
+                                                </div>
+                                              </div>
+                                              <div className="mt-3">
+                                                <span className={SUBLBL}>Notes</span>
+                                                <p className="text-[13.5px] mt-1 whitespace-pre-wrap">{payment.notes || "—"}</p>
+                                              </div>
+                                              <div className="mt-3">
+                                                <span className={SUBLBL}>Attachments</span>
+                                                {payment.files && payment.files.length > 0 ? (
+                                                  <ul className="flex flex-col gap-2 mt-2">
+                                                    {payment.files.map((file: any) => (
+                                                      <li
+                                                        key={file.id}
+                                                        className="flex items-center justify-between p-2 rounded-lg border border-[#E3E7EE] bg-white"
+                                                      >
+                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                          {getFileIcon(file.mimeType)}
+                                                          <div className="flex flex-col overflow-hidden">
+                                                            <span className="text-[13px] truncate" title={file.originalName}>
+                                                              {file.originalName}
+                                                            </span>
+                                                            <span className="text-[11.5px] text-[#8A93A3]">
+                                                              {formatFileSize(file.fileSize)}
+                                                              {file.uploadedAt && ` · ${formatDisplayDate(file.uploadedAt)}`}
+                                                            </span>
+                                                          </div>
+                                                        </div>
+                                                        <Button variant="ghost" size="sm" asChild className="h-8 ml-2 text-[13px]">
+                                                          <a
+                                                            href={`/api/purchase-payment-files/${file.id}/download`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                          >
+                                                            Download
+                                                          </a>
+                                                        </Button>
+                                                      </li>
+                                                    ))}
+                                                  </ul>
+                                                ) : (
+                                                  <p className="text-[13px] text-[#8A93A3] italic mt-1">No attachments</p>
                                                 )}
                                               </div>
-                                            ) : (
-                                              <div key={field} className="text-gray-500 italic">Line items were modified</div>
-                                            )
-                                          ))}
+                                            </div>
+                                          )}
                                         </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground italic">No edits recorded.</p>
-                          )}
-                        </TabsContent>
-                      )}
-                    </Tabs>
-                  </CardContent>
-                </Card>
+                                      ))}
+                                    </div>
+                                    <div className="flex justify-between items-baseline mt-4 pt-3 border-t border-[#EDF0F5] text-[13.5px]">
+                                      <span className="text-[#5B6472]">Total recorded against this invoice</span>
+                                      <span className="font-semibold text-[#027A48]">
+                                        {formatCurrency(
+                                          invoicePayments.reduce((sum: number, p: any) => sum + parseFloat(p.amount || "0"), 0),
+                                          viewingInvoice.currency || "AED",
+                                        )}
+                                      </span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">No payments recorded.</p>
+                                )}
+                              </TabsContent>
+                            )}
 
-                {/* Action Buttons — status-flow actions only; document
-                    actions (edit, duplicate, print) live in the header. */}
-                <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t print:hidden">
-                  {viewingInvoice.status === "draft" && (
-                    <Button
-                      onClick={() => {
-                        submitInvoiceMutation.mutate(viewingInvoice.id);
-                      }}
-                      disabled={submitInvoiceMutation.isPending}
-                      variant="default"
-                      size="lg"
-                      className="w-full sm:w-auto"
-                      data-testid={`button-submit-invoice-${viewingInvoice.id}`}
-                    >
-                      {submitInvoiceMutation.isPending ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4 mr-2" />
-                          Submit
-                        </>
+                            {canSeeActivityDetail && (
+                              <TabsContent value="history" className="mt-4">
+                                {isLoadingEditHistory ? (
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                    Loading edit history…
+                                  </div>
+                                ) : invoiceEditHistory && invoiceEditHistory.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {invoiceEditHistory.map((entry: any) => {
+                                      const changedFields = entry.changes ? Object.keys(entry.changes) : [];
+                                      return (
+                                        <div key={entry.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
+                                          <div
+                                            className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
+                                            onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
+                                          >
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                  <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                                                  <span className="text-xs text-[#8A93A3]">{new Date(entry.editedAt).toLocaleString()}</span>
+                                                </div>
+                                                <p className="text-sm text-[#333B47] mt-1 break-words">{entry.editNote}</p>
+                                                {changedFields.length > 0 && (
+                                                  <p className="text-xs text-[#8A93A3] mt-1">
+                                                    {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
+                                                  </p>
+                                                )}
+                                              </div>
+                                              {changedFields.length > 0 && (
+                                                <ChevronDown
+                                                  className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
+                                                />
+                                              )}
+                                            </div>
+                                          </div>
+                                          {expandedEditEntry === entry.id && changedFields.length > 0 && (
+                                            <div className="px-3 pb-3 pt-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
+                                              <div className="text-xs space-y-2">
+                                                {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                                  field !== "items" ? (
+                                                    <div key={field} className="flex flex-col gap-1">
+                                                      <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                                      {/* notes and bankAccount are ReactQuill fields, so their
+                                                          stored value is HTML and printing it raw showed markup
+                                                          to the reader. Every other tracked field is plain text
+                                                          and stays escaped. */}
+                                                      {isRichTextField(field) ? (
+                                                        <>
+                                                          <div
+                                                            className="text-red-500 line-through break-words rich-text-content"
+                                                            dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
+                                                          />
+                                                          <div
+                                                            className="text-green-600 break-words rich-text-content"
+                                                            dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
+                                                          />
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
+                                                          <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  ) : (
+                                                    <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
+                                                  )
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">No edits recorded.</p>
+                                )}
+                              </TabsContent>
+                            )}
+                          </Tabs>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer band — status-flow actions only; document actions
+                      (edit, duplicate, print) live in the header. */}
+                  <footer className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 px-5 sm:px-6 py-3.5 border-t border-[#E3E7EE] bg-white print:hidden">
+                    <div className="text-[12.5px] text-[#8A93A3]">
+                      <span className="font-medium">{viewingInvoice.invoiceNumber}</span>
+                      {viewingInvoice.createdAt && <> · Created {formatDisplayDate(viewingInvoice.createdAt)}</>}
+                      {(viewingInvoice.createdByName || viewingInvoice.createdBy) && <> by {viewingInvoice.createdByName || "—"}</>}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2.5">
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsViewDialogOpen(false)}
+                        className={BTN}
+                      >
+                        Close
+                      </Button>
+                      {viewingInvoice.status === "approved" && user?.role === "admin" && parseFloat(viewingInvoice.paidAmount || "0") <= 0 && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              disabled={cancelInvoiceMutation.isPending}
+                              variant="outline"
+                              className={BTN_DANGER}
+                            >
+                              {cancelInvoiceMutation.isPending ? (
+                                <>
+                                  <div className="w-[14px] h-[14px] border-2 border-[#B42318] border-t-transparent rounded-full animate-spin" />
+                                  Cancelling...
+                                </>
+                              ) : (
+                                <>
+                                  <Ban className="w-[14px] h-[14px]" />
+                                  Cancel invoice
+                                </>
+                              )}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Cancel Invoice</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to cancel invoice{" "}
+                                {viewingInvoice.invoiceNumber}? This will create
+                                reverse ledger entries. This cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  cancelInvoiceMutation.mutate(viewingInvoice.id)
+                                }
+                                disabled={cancelInvoiceMutation.isPending}
+                              >
+                                {cancelInvoiceMutation.isPending
+                                  ? "Cancelling..."
+                                  : "Cancel Invoice"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       )}
-                    </Button>
-                  )}
-                  {viewingInvoice.status === "pending_approval" && user?.role === "admin" && (
-                    <>
-                      <Button
-                        onClick={() => {
-                          approveInvoiceMutation.mutate(viewingInvoice.id);
-                        }}
-                        disabled={approveInvoiceMutation.isPending}
-                        variant="default"
-                        size="lg"
-                        className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
-                        data-testid={`button-approve-invoice-${viewingInvoice.id}`}
-                      >
-                        {approveInvoiceMutation.isPending ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                            Approving...
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            Approve
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={() => setIsRejectDialogOpen(true)}
-                        variant="destructive"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                        data-testid={`button-reject-invoice-${viewingInvoice.id}`}
-                      >
-                        <XCircle className="w-4 h-4 mr-2" />
-                        Reject
-                      </Button>
-                    </>
-                  )}
-                  {canEdit && viewingInvoice.status === "approved" && parseFloat(viewingInvoice.paidAmount) < parseFloat(viewingInvoice.totalAmount) && (
-                    <Button
-                      onClick={() => setIsPaymentDialogOpen(true)}
-                      size="lg"
-                      className="w-full sm:w-auto"
-                      data-testid="button-record-payment"
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Record Payment
-                    </Button>
-                  )}
-                  {viewingInvoice.status === "approved" && user?.role === "admin" && parseFloat(viewingInvoice.paidAmount || "0") <= 0 && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
+                      {viewingInvoice.status === "pending_approval" && user?.role === "admin" && (
                         <Button
-                          disabled={cancelInvoiceMutation.isPending}
-                          variant="destructive"
-                          size="lg"
-                          className="w-full sm:w-auto"
+                          onClick={() => setIsRejectDialogOpen(true)}
+                          variant="outline"
+                          className={BTN_DANGER}
+                          data-testid={`button-reject-invoice-${viewingInvoice.id}`}
                         >
-                          {cancelInvoiceMutation.isPending ? (
+                          <XCircle className="w-[14px] h-[14px]" />
+                          Reject
+                        </Button>
+                      )}
+                      {viewingInvoice.status === "draft" && (
+                        <Button
+                          onClick={() => {
+                            submitInvoiceMutation.mutate(viewingInvoice.id);
+                          }}
+                          disabled={submitInvoiceMutation.isPending}
+                          className={BTN_PRIMARY}
+                          data-testid={`button-submit-invoice-${viewingInvoice.id}`}
+                        >
+                          {submitInvoiceMutation.isPending ? (
                             <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                              Cancelling...
+                              <div className="w-[14px] h-[14px] border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Submitting...
                             </>
                           ) : (
                             <>
-                              <Ban className="w-4 h-4 mr-2" />
-                              Cancel
+                              <Send className="w-[14px] h-[14px]" />
+                              Submit
                             </>
                           )}
                         </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Cancel Invoice</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to cancel invoice{" "}
-                            {viewingInvoice.invoiceNumber}? This will create
-                            reverse ledger entries. This cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() =>
-                              cancelInvoiceMutation.mutate(viewingInvoice.id)
-                            }
-                            disabled={cancelInvoiceMutation.isPending}
-                          >
-                            {cancelInvoiceMutation.isPending
-                              ? "Cancelling..."
-                              : "Cancel Invoice"}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={() => setIsViewDialogOpen(false)}
-                    className="w-full sm:w-auto"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            )}
+                      )}
+                      {viewingInvoice.status === "pending_approval" && user?.role === "admin" && (
+                        <Button
+                          onClick={() => {
+                            approveInvoiceMutation.mutate(viewingInvoice.id);
+                          }}
+                          disabled={approveInvoiceMutation.isPending}
+                          className={BTN_PRIMARY}
+                          data-testid={`button-approve-invoice-${viewingInvoice.id}`}
+                        >
+                          {approveInvoiceMutation.isPending ? (
+                            <>
+                              <div className="w-[14px] h-[14px] border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Approving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-[14px] h-[14px]" />
+                              Approve
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      {canEdit && viewingInvoice.status === "approved" && parseFloat(viewingInvoice.paidAmount) < parseFloat(viewingInvoice.totalAmount) && (
+                        <Button
+                          onClick={() => setIsPaymentDialogOpen(true)}
+                          className={BTN_PRIMARY}
+                          data-testid="button-record-payment"
+                        >
+                          <DollarSign className="w-[14px] h-[14px]" />
+                          Record payment
+                        </Button>
+                      )}
+                    </div>
+                  </footer>
+                </>
+              );
+            })()}
           </DialogContent>
         </Dialog>
 
