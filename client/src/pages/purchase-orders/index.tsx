@@ -165,14 +165,18 @@ export default function PurchaseOrdersIndex() {
     discountType?: "amount" | "percentage";
   }[]>([]);
 
+  // The staging form starts blank — quantity, unit price and discount carry
+  // their guidance in placeholders rather than as pre-filled values, so nothing
+  // can be saved by accident. taxRate is the exception: it is filled from the
+  // supplier's VAT treatment when a supplier is picked.
   const [newItem, setNewItem] = useState({
     itemType: "product" as "product" | "service",
     inventoryItemId: "",
     description: "",
-    quantity: "1",
-    unitPrice: "0",
+    quantity: "",
+    unitPrice: "",
     taxRate: "0",
-    discount: "0" as string,
+    discount: "" as string,
     discountType: "amount" as "amount" | "percentage",
   });
 
@@ -190,15 +194,14 @@ export default function PurchaseOrdersIndex() {
     window.setTimeout(() => descriptionRef.current?.focus(), 0);
   };
 
-  // Never carry a half-finished line edit across a dialog open or close. This
-  // keys off the open state rather than the dialog's onOpenChange because Radix
-  // only fires that for its own triggers (Escape, overlay, close button) — the
-  // programmatic setIsDialogOpen calls in the new, edit and post-submit paths
-  // would otherwise leave the index pointing at a stale row.
+  // Backstop against a half-finished line edit crossing a dialog open or close.
+  // resetForm already clears the staging form on every dismissal and on every
+  // "New", but this keys off the open state rather than the dialog's
+  // onOpenChange because Radix only fires that for its own triggers (Escape,
+  // overlay, close button), so it also covers any programmatic open.
   useEffect(() => {
-    // Only when an edit was actually abandoned: clearing the index alone would
-    // leave that row's values sitting in the staging form, so the next "Add"
-    // would append a duplicate of it. A half-typed NEW item is left untouched.
+    // Clearing the index alone would leave that row's values sitting in the
+    // staging form, so the next "Add" would append a duplicate of it.
     if (editingItemIndex !== null) {
       cancelEditItem();
     }
@@ -553,7 +556,12 @@ export default function PurchaseOrdersIndex() {
   const resetForm = () => {
     setFormData({
       supplierId: "",
-    subject: "",
+      subject: "",
+      // This object REPLACES the form state, so every field has to be listed:
+      // omitting these left formData.currency undefined and the labels reading
+      // "Unit Price ()". Both are overwritten as soon as a supplier is picked.
+      currency: "AED",
+      exchangeRate: "1",
       orderDate: new Date().toISOString().split('T')[0],
       expectedDeliveryDate: "",
       paymentTerms: "",
@@ -571,14 +579,15 @@ export default function PurchaseOrdersIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
     setSelectedFiles(null);
+    setExistingFiles([]);
     setEditingOrder(null);
     setEditNote("");
   };
@@ -623,31 +632,18 @@ export default function PurchaseOrdersIndex() {
     setIsDialogOpen(true);
   };
 
-  // Open the dialog for a NEW order. A cancelled edit leaves editingOrder and
-  // its form state behind (resetForm only runs on a successful save), so
-  // without the reset "New" would reopen the abandoned edit. Defaults are then
-  // seeded into fields that are still EMPTY only: the dialog deliberately
-  // preserves a half-typed new order across close/reopen, and a seed must not
-  // overwrite what someone already wrote. Editing an existing order never
-  // seeds — its stored values are the record.
+  // Open the dialog for a NEW order. Every dismissal runs resetForm, so the
+  // form is always clean here and the defaults can simply be seeded on top of
+  // it. Editing an existing order never comes through here — handleEditOrder
+  // loads the stored values, which are the record.
   const openNewOrderDialog = () => {
-    if (editingOrder) {
-      resetForm();
-      setFormData(prev => ({
-        ...prev,
-        deliverTo: company?.address || "",
-        notes: poDefaults?.notes || "",
-        termsAndConditions: poDefaults?.termsAndConditions || "",
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        deliverTo: prev.deliverTo || company?.address || "",
-        notes: prev.notes || poDefaults?.notes || "",
-        termsAndConditions:
-          prev.termsAndConditions || poDefaults?.termsAndConditions || "",
-      }));
-    }
+    resetForm();
+    setFormData(prev => ({
+      ...prev,
+      deliverTo: company?.address || "",
+      notes: poDefaults?.notes || "",
+      termsAndConditions: poDefaults?.termsAndConditions || "",
+    }));
     setIsDialogOpen(true);
   };
 
@@ -689,10 +685,12 @@ export default function PurchaseOrdersIndex() {
     const unitPrice = parseFloat(newItem.unitPrice);
     const taxRate = parseFloat(newItem.taxRate);
 
-    if (quantity <= 0 || unitPrice < 0) {
+    // Both fields start blank, so a non-number has to be rejected here rather
+    // than reaching the totals as NaN.
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
       toast({
         title: "Error",
-        description: "Quantity must be greater than 0 and unit price cannot be negative",
+        description: "Quantity must be a number greater than 0 and unit price a number that is not negative",
         variant: "destructive",
       });
       return;
@@ -716,10 +714,10 @@ export default function PurchaseOrdersIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -750,10 +748,10 @@ export default function PurchaseOrdersIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -1527,7 +1525,10 @@ export default function PurchaseOrdersIndex() {
       </Card>
 
       {/* Create Order Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      {/* Dismissing by any route — X, Escape, overlay click — clears the form.
+          Radix only fires onOpenChange for its own triggers, so the Cancel
+          button and the post-submit paths call resetForm themselves. */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex-shrink-0 border-b pb-4">
             <div className="flex items-center gap-3">
@@ -1764,7 +1765,7 @@ export default function PurchaseOrdersIndex() {
                           itemType: value,
                           inventoryItemId: "",
                           description: "",
-                          unitPrice: "0"
+                          unitPrice: ""
                         }))}
                       >
                         <SelectTrigger className="mt-1">
@@ -1815,6 +1816,7 @@ export default function PurchaseOrdersIndex() {
                           min="1"
                           value={newItem.quantity}
                           onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
+                          placeholder="e.g. 1"
                           className="mt-1"
                         />
                       </div>
@@ -1826,6 +1828,7 @@ export default function PurchaseOrdersIndex() {
                           min="0"
                           value={newItem.unitPrice}
                           onChange={(e) => setNewItem(prev => ({ ...prev, unitPrice: e.target.value }))}
+                          placeholder="0.00"
                           className="mt-1"
                         />
                       </div>
@@ -1850,6 +1853,7 @@ export default function PurchaseOrdersIndex() {
                             min="0"
                             value={newItem.discount}
                             onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
+                            placeholder="0.00"
                           />
                           <select
                             className="border rounded px-2 text-sm bg-background"
@@ -2197,7 +2201,7 @@ export default function PurchaseOrdersIndex() {
               )}
 
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); resetForm(); }} className="w-full sm:w-auto">
                   Cancel
                 </Button>
                 <Button

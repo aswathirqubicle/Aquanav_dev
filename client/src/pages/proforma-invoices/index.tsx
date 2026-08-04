@@ -179,12 +179,15 @@ export default function ProformaInvoicesIndex() {
     validUntil: new Date().toISOString().split('T')[0],
   });
 
+  // The staged line starts blank so nothing is pre-filled for the user to
+  // overwrite; the placeholders carry the guidance instead. Tax rate is the
+  // exception — it is derived from the customer's VAT treatment, not typed.
   const [newItem, setNewItem] = useState<ProformaItem>({
     description: "",
-    quantity: 1,
-    unitPrice: 0,
+    quantity: "",
+    unitPrice: "",
     taxRate: 0,
-    discount: 0,
+    discount: "",
     discountType: "amount",
   });
 
@@ -521,12 +524,15 @@ export default function ProformaInvoicesIndex() {
     });
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
+    // Clearing the index here makes resetForm self-sufficient: the effect on
+    // isDialogOpen below then finds nothing left to cancel.
+    setEditingItemIndex(null);
     setIsEditingProforma(false);
   };
 
@@ -561,8 +567,31 @@ export default function ProformaInvoicesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
+    // Quantity and unit price start blank, so they have to be entered rather
+    // than defaulted. Number.isFinite also catches a NaN that slipped past the
+    // number input, which would otherwise become a silently zero line.
+    const enteredQuantity = Number(newItem.quantity);
+    if (newItem.quantity === "" || !Number.isFinite(enteredQuantity) || enteredQuantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const enteredUnitPrice = Number(newItem.unitPrice);
+    if (newItem.unitPrice === "" || !Number.isFinite(enteredUnitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const quantity = enteredQuantity;
+    const unitPrice = enteredUnitPrice;
     const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
     const discount = newItem.discount === "" ? 0 : (newItem.discount || 0);
     const discountType = newItem.discountType || "amount";
@@ -588,13 +617,13 @@ export default function ProformaInvoicesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       // Reset these too. Leaving them undefined flips the Discount inputs from
       // controlled to uncontrolled, so they keep displaying the previous line's
-      // value while the staged item is actually 0.
-      discount: 0,
+      // value while the staged item is actually blank.
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -621,13 +650,13 @@ export default function ProformaInvoicesIndex() {
   const cancelEditItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       // Reset these too. Leaving them undefined flips the Discount inputs from
       // controlled to uncontrolled, so they keep displaying the previous line's
-      // value while the staged item is actually 0.
-      discount: 0,
+      // value while the staged item is actually blank.
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -825,10 +854,10 @@ export default function ProformaInvoicesIndex() {
     // 🔹 ensure new item uses correct tax
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: defaultTaxRate,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
 
@@ -852,7 +881,17 @@ export default function ProformaInvoicesIndex() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            {/* Dismissing the dialog by any route — the X, Escape, a click on
+                the overlay or the Cancel button below — leaves nothing behind.
+                Radix only reports its own close triggers here, so the Cancel
+                button and the post-submit path call resetForm themselves. */}
+            <Dialog
+              open={isDialogOpen}
+              onOpenChange={(open) => {
+                setIsDialogOpen(open);
+                if (!open) resetForm();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={openNewProformaDialog}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -1187,7 +1226,7 @@ export default function ProformaInvoicesIndex() {
                             <Label className="text-xs text-gray-600">Quantity</Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -1202,7 +1241,7 @@ export default function ProformaInvoicesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -1233,7 +1272,7 @@ export default function ProformaInvoicesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -1531,7 +1570,10 @@ export default function ProformaInvoicesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
+                      onClick={() => {
+                        setIsDialogOpen(false);
+                        resetForm();
+                      }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
@@ -1930,9 +1972,14 @@ export default function ProformaInvoicesIndex() {
                         // 🔹 ensure new item uses correct tax
                         setNewItem({
                           description: "",
-                          quantity: 1,
-                          unitPrice: 0,
+                          quantity: "",
+                          unitPrice: "",
                           taxRate: defaultTaxRate,
+                          // Without these the Discount inputs would flip from
+                          // controlled to uncontrolled and keep showing the
+                          // previous line's value.
+                          discount: "",
+                          discountType: "amount",
                         });
 
                         setIsEditingProforma(true);

@@ -314,11 +314,14 @@ export default function SalesIndex() {
     discountType: "amount" | "percentage";
   }>({
     description: "",
-    quantity: 1,
-    unitPrice: 0,
+    // Quantity, unit price and discount start blank so the guidance sits in the
+    // placeholder rather than as a value someone has to clear. Tax rate is the
+    // exception — it is auto-filled from the customer's VAT treatment.
+    quantity: "",
+    unitPrice: "",
     taxRate: 0,
     taxAmount: 0,
-    discount: 0,
+    discount: "",
     discountType: "amount",
   });
 
@@ -1253,11 +1256,11 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: 0,     // will be fixed by useEffect
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
 
@@ -1288,17 +1291,27 @@ export default function SalesIndex() {
       bankAccount: "",
       billingAddress: "",
       termsAndConditions: "",
+      // Both were missing while the declared initial state sets them, so a
+      // reset form carried currency undefined and the totals panel rendered
+      // its non-AED branch: "Exchange Rate: 1 undefined = undefined AED".
+      currency: "AED",
+      exchangeRate: "1",
     });
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
+    // The invoice dialog is reused for create and edit, so a dismissed edit must
+    // also drop the row it was editing and its note — otherwise the next "New
+    // Invoice" would save over that row.
+    setEditingInvoiceId(null);
+    setEditNote("");
   };
 
   const resetPaymentForm = () => {
@@ -1456,10 +1469,31 @@ export default function SalesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
-    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    // Quantity and unit price are required: the fields now start blank, so a
+    // missing one would otherwise be committed as a silent zero-value line.
+    const quantity = newItem.quantity === "" ? NaN : Number(newItem.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const unitPrice = newItem.unitPrice === "" ? NaN : Number(newItem.unitPrice);
+    if (!Number.isFinite(unitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tax rate and discount are optional — blank means zero.
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
+    const discount = newItem.discount === "" ? 0 : Number(newItem.discount) || 0;
     const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
@@ -1491,11 +1525,11 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -1523,11 +1557,11 @@ export default function SalesIndex() {
   const cancelEditItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingItemIndex(null);
@@ -1550,10 +1584,31 @@ export default function SalesIndex() {
       return;
     }
 
-    const quantity = newItem.quantity === "" ? 0 : newItem.quantity;
-    const unitPrice = newItem.unitPrice === "" ? 0 : newItem.unitPrice;
-    const taxRate = newItem.taxRate === "" ? 0 : newItem.taxRate;
-    const discount = newItem.discount === "" ? 0 : newItem.discount;
+    // Quantity and unit price are required: the fields now start blank, so a
+    // missing one would otherwise be committed as a silent zero-value line.
+    const quantity = newItem.quantity === "" ? NaN : Number(newItem.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const unitPrice = newItem.unitPrice === "" ? NaN : Number(newItem.unitPrice);
+    if (!Number.isFinite(unitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Tax rate and discount are optional — blank means zero.
+    const taxRate = newItem.taxRate === "" ? 0 : Number(newItem.taxRate) || 0;
+    const discount = newItem.discount === "" ? 0 : Number(newItem.discount) || 0;
     const discountType = newItem.discountType;
 
     const lineSubtotal = quantity * unitPrice;
@@ -1585,11 +1640,11 @@ export default function SalesIndex() {
 
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0, // keep VAT for next item
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
@@ -1615,11 +1670,11 @@ export default function SalesIndex() {
   const cancelEditInvoiceItem = () => {
     setNewItem({
       description: "",
-      quantity: 1,
-      unitPrice: 0,
+      quantity: "",
+      unitPrice: "",
       taxRate: customerVatTreatment === "standard" ? 5 : 0,
       taxAmount: 0,
-      discount: 0,
+      discount: "",
       discountType: "amount",
     });
     setEditingInvoiceItemIndex(null);
@@ -2132,7 +2187,7 @@ export default function SalesIndex() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button
                   className="w-full sm:w-auto"
@@ -2430,7 +2485,7 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -2447,7 +2502,7 @@ export default function SalesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -2482,7 +2537,7 @@ export default function SalesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -2787,7 +2842,7 @@ export default function SalesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
+                      onClick={() => { setIsDialogOpen(false); resetForm(); }}
                       className="w-full sm:w-auto"
                     >
                       Cancel
@@ -2812,7 +2867,7 @@ export default function SalesIndex() {
 
             <Dialog
               open={isInvoiceDialogOpen}
-              onOpenChange={(open) => { setIsInvoiceDialogOpen(open); if (!open) setEditingInvoiceId(null); }}
+              onOpenChange={(open) => { setIsInvoiceDialogOpen(open); if (!open) resetInvoiceForm(); }}
             >
               <DialogTrigger asChild>
                 <Button
@@ -3168,7 +3223,7 @@ export default function SalesIndex() {
                             </Label>
                             <Input
                               type="number"
-                              placeholder="Qty"
+                              placeholder="e.g. 1"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -3185,7 +3240,7 @@ export default function SalesIndex() {
                             <Input
                               type="number"
                               step="any"
-                              placeholder="Unit price"
+                              placeholder="0.00"
                               value={newItem.unitPrice}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
@@ -3220,7 +3275,7 @@ export default function SalesIndex() {
                               <Input
                                 type="number"
                                 step="any"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={newItem.discount}
                                 onChange={(e) =>
                                   setNewItem((prev) => ({
@@ -3531,7 +3586,7 @@ export default function SalesIndex() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => { setIsInvoiceDialogOpen(false); setEditingInvoiceId(null); }}
+                      onClick={() => { setIsInvoiceDialogOpen(false); resetInvoiceForm(); }}
                       className="w-full sm:w-auto"
                     >
                       Cancel

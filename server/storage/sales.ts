@@ -1535,6 +1535,9 @@ export class SalesStorage extends LedgerStorage {
           workOrderNumber: proformaInvoices.workOrderNumber,
           status: proformaInvoices.status,
           createdDate: proformaInvoices.createdDate,
+          // Present on the list projection but missing here, so the printed
+          // proforma showed no date for a value the record had stored.
+          invoiceDate: proformaInvoices.invoiceDate,
           validUntil: proformaInvoices.validUntil,
           paymentTerms: proformaInvoices.paymentTerms,
           deliveryTerms: proformaInvoices.deliveryTerms,

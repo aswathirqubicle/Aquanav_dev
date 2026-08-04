@@ -218,14 +218,17 @@ export default function PurchaseInvoicesIndex() {
     assetInstanceId?: string;
   }[]>([]);
 
+  // The staging form starts blank — quantity, unit price and discount carry
+  // their guidance in placeholders rather than as pre-filled values, so nothing
+  // can be saved by accident. taxRate keeps its default.
   const [newItem, setNewItem] = useState({
     itemType: "product" as "product" | "service",
     inventoryItemId: "",
     description: "",
-    quantity: "1" as string,
-    unitPrice: "0" as string,
+    quantity: "" as string,
+    unitPrice: "" as string,
     taxRate: "0" as string,
-    discount: "0" as string,
+    discount: "" as string,
     discountType: "amount" as "amount" | "percentage",
     projectId: "",
     assetInstanceId: "",
@@ -540,6 +543,10 @@ export default function PurchaseInvoicesIndex() {
     setFormData({
       supplierId: source.supplierId?.toString() || "",
       supplierInvoiceNumber: source.supplierInvoiceNumber || "",
+      // This object REPLACES the form state rather than merging into it,
+      // so any field left out silently becomes undefined — which is how
+      // the subject went missing from every duplicated invoice.
+      subject: source.subject || "",
       currency: source.currency || "AED",
       exchangeRate: source.exchangeRate || "1",
       invoiceDate: new Date().toISOString().split("T")[0],
@@ -747,10 +754,10 @@ export default function PurchaseInvoicesIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -759,14 +766,15 @@ export default function PurchaseInvoicesIndex() {
     setEditingInvoice(null);
     setSelectedInvoiceFiles(null);
     setExistingInvoiceFiles([]);
+    setEditNote("");
   };
 
   // Open the dialog for a NEW invoice. Defaults are seeded into fields that are
   // still EMPTY only, so a seed can never overwrite what someone already wrote.
   // Editing an existing invoice never seeds — its stored values are the record.
-  // The editingInvoice guard mirrors the purchase order page: the dialog closes
-  // through resetForm, but should an abandoned edit ever survive, "New" must not
-  // reopen it.
+  // Every dismissal already runs resetForm, so the editingInvoice branch is a
+  // belt-and-braces guard: should an abandoned edit ever survive, "New" must
+  // not reopen it.
   const openNewInvoiceDialog = () => {
     if (editingInvoice) {
       resetForm();
@@ -831,6 +839,20 @@ export default function PurchaseInvoicesIndex() {
       }
     }
 
+    const quantity = parseInt(newItem.quantity);
+    const unitPrice = parseFloat(newItem.unitPrice);
+
+    // Both fields start blank, so a non-number has to be rejected here rather
+    // than reaching the totals as NaN.
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      toast({
+        title: "Error",
+        description: "Quantity must be a number greater than 0 and unit price a number that is not negative",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setInvoiceItems(prev =>
       editingItemIndex === null
         ? [...prev, { ...newItem }]
@@ -840,10 +862,10 @@ export default function PurchaseInvoicesIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -878,10 +900,10 @@ export default function PurchaseInvoicesIndex() {
       itemType: "product",
       inventoryItemId: "",
       description: "",
-      quantity: "1",
-      unitPrice: "0",
+      quantity: "",
+      unitPrice: "",
       taxRate: "0",
-      discount: "0",
+      discount: "",
       discountType: "amount",
       projectId: "",
       assetInstanceId: "",
@@ -1997,7 +2019,7 @@ export default function PurchaseInvoicesIndex() {
                               itemType: value,
                               inventoryItemId: "",
                               description: "",
-                              unitPrice: "0"
+                              unitPrice: ""
                             }))}
                           >
                             <SelectTrigger className="h-9">
@@ -2047,7 +2069,7 @@ export default function PurchaseInvoicesIndex() {
                               min="1"
                               value={newItem.quantity}
                               onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
-                              placeholder="0"
+                              placeholder="e.g. 1"
                               className="h-9"
                             />
                           </div>
@@ -2088,7 +2110,7 @@ export default function PurchaseInvoicesIndex() {
                                 min="0"
                                 value={newItem.discount}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, discount: e.target.value }))}
-                                placeholder="0"
+                                placeholder="0.00"
                                 className="h-9"
                               />
                               <select

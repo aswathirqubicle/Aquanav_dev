@@ -66,13 +66,17 @@ interface CreditNoteItem {
   discountType: "amount" | "percentage";
 }
 
+// The staged line starts blank so nothing is pre-filled for the user to
+// overwrite; the placeholders on the inputs carry the guidance instead. Tax
+// rate is the exception — it follows the customer's VAT treatment rather than
+// being typed, so it keeps a real value.
 const emptyCreditNoteItem: CreditNoteItem = {
   description: "",
-  quantity: 1,
-  unitPrice: 0,
+  quantity: "",
+  unitPrice: "",
   taxRate: 0,
   taxAmount: 0,
-  discount: 0,
+  discount: "",
   discountType: "amount",
 };
 
@@ -231,10 +235,33 @@ const CreditNoteForm = ({
       return;
     }
 
+    // Quantity and unit price start blank, so they have to be entered rather
+    // than defaulted. Number.isFinite also catches a NaN that slipped past the
+    // number input, which would otherwise become a silently zero line.
+    const enteredQuantity = Number(newItem.quantity);
+    if (newItem.quantity === "" || !Number.isFinite(enteredQuantity) || enteredQuantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const enteredUnitPrice = Number(newItem.unitPrice);
+    if (newItem.unitPrice === "" || !Number.isFinite(enteredUnitPrice)) {
+      toast({
+        title: "Error",
+        description: "Please enter a unit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const item = {
       ...newItem,
-      quantity: newItem.quantity === "" ? 0 : newItem.quantity,
-      unitPrice: newItem.unitPrice === "" ? 0 : newItem.unitPrice,
+      quantity: enteredQuantity,
+      unitPrice: enteredUnitPrice,
       taxRate: newItem.taxRate === "" ? 0 : newItem.taxRate,
       discount: newItem.discount === "" ? 0 : (newItem.discount || 0),
       discountType: newItem.discountType || "amount",
@@ -496,7 +523,7 @@ const CreditNoteForm = ({
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="Qty"
+                  placeholder="e.g. 1"
                   value={newItem.quantity}
                   onChange={(e) =>
                     setNewItem((prev) => ({
@@ -512,7 +539,7 @@ const CreditNoteForm = ({
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="Unit price"
+                  placeholder="0.00"
                   value={newItem.unitPrice}
                   onChange={(e) =>
                     setNewItem((prev) => ({
@@ -546,7 +573,7 @@ const CreditNoteForm = ({
                     type="number"
                     min="0"
                     step="any"
-                    placeholder="0"
+                    placeholder="0.00"
                     value={newItem.discount}
                     onChange={(e) =>
                       setNewItem((prev) => ({
@@ -853,6 +880,22 @@ export default function CreditNotesIndex() {
   const [viewingCreditNote, setViewingCreditNote] = useState<any>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
+  // Dismissing either dialog by any route — the X, Escape, a click on the
+  // overlay, or the form's Cancel button — must leave nothing behind for the
+  // next one. CreditNoteForm is unmounted along with its dialog, so its own
+  // state (the fields, the staged line and the line-edit index) goes with it;
+  // what survives is the parent's. Clearing editingCreditNote also re-runs the
+  // form's line-edit effect while the form is still mounted, so a half-finished
+  // line edit is cancelled by that effect rather than by anything here.
+  // selectedInvoiceId is seeded once from the ?invoiceId= URL param and would
+  // otherwise stay pre-selected on every later Create.
+  // Radix only reports its own close triggers through onOpenChange, so the
+  // Cancel and post-submit paths call this too.
+  const resetDialogState = () => {
+    setEditingCreditNote(null);
+    setSelectedInvoiceId(null);
+  };
+
   // Check for invoice ID in URL params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -917,6 +960,7 @@ export default function CreditNotesIndex() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
       setIsCreateOpen(false);
+      resetDialogState();
       toast({
         title: "Success",
         description: "Credit note created successfully",
@@ -944,7 +988,7 @@ export default function CreditNotesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-notes"] });
-      setEditingCreditNote(null);
+      resetDialogState();
       toast({
         title: "Success",
         description: "Credit note updated successfully",
@@ -1035,7 +1079,13 @@ export default function CreditNotesIndex() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Credit Notes</h1>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <Dialog
+            open={isCreateOpen}
+            onOpenChange={(open) => {
+              setIsCreateOpen(open);
+              if (!open) resetDialogState();
+            }}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -1059,7 +1109,7 @@ export default function CreditNotesIndex() {
                 isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
                 onCancel={() => {
                   setIsCreateOpen(false);
-                  setEditingCreditNote(null);
+                  resetDialogState();
                 }}
               />
             </DialogContent>
@@ -1231,7 +1281,12 @@ export default function CreditNotesIndex() {
         </Card>
 
         {/* Edit Dialog */}
-        <Dialog open={!!editingCreditNote} onOpenChange={() => setEditingCreditNote(null)}>
+        <Dialog
+          open={!!editingCreditNote}
+          onOpenChange={(open) => {
+            if (!open) resetDialogState();
+          }}
+        >
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Credit Note</DialogTitle>
@@ -1252,7 +1307,7 @@ export default function CreditNotesIndex() {
                 isSubmitting={createCreditNoteMutation.isPending || updateCreditNoteMutation.isPending}
                 onCancel={() => {
                   setIsCreateOpen(false);
-                  setEditingCreditNote(null);
+                  resetDialogState();
                 }}
               />
             )}
