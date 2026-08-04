@@ -1501,6 +1501,8 @@ export class SalesStorage extends LedgerStorage {
           currency: proformaInvoices.currency,
           exchangeRate: proformaInvoices.exchangeRate,
           rejectionReason: proformaInvoices.rejectionReason,
+          approvedById: proformaInvoices.approvedById,
+          approvedAt: proformaInvoices.approvedAt,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -1549,6 +1551,8 @@ export class SalesStorage extends LedgerStorage {
           currency: proformaInvoices.currency,
           exchangeRate: proformaInvoices.exchangeRate,
           rejectionReason: proformaInvoices.rejectionReason,
+          approvedById: proformaInvoices.approvedById,
+          approvedAt: proformaInvoices.approvedAt,
           isArchived: proformaInvoices.isArchived,
         })
         .from(proformaInvoices)
@@ -1667,9 +1671,14 @@ export class SalesStorage extends LedgerStorage {
       if (proformaData.status !== undefined)
         updateData.status = proformaData.status;
       // Carried alongside the status: a rejected proforma without its reason
-      // records the verdict and loses the explanation.
+      // records the verdict and loses the explanation, and an approved one
+      // without an approver records that it was approved by nobody.
       if (proformaData.rejectionReason !== undefined)
         updateData.rejectionReason = proformaData.rejectionReason || null;
+      if (proformaData.approvedById !== undefined)
+        updateData.approvedById = proformaData.approvedById;
+      if (proformaData.approvedAt !== undefined)
+        updateData.approvedAt = proformaData.approvedAt;
       if (proformaData.invoiceDate !== undefined)
         updateData.invoiceDate = proformaData.invoiceDate
           ? new Date(proformaData.invoiceDate).toISOString()

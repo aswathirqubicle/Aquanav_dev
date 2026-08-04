@@ -1463,7 +1463,9 @@ export default function PurchaseInvoicesIndex() {
                                     Edit
                                   </Button>
                                 )}
-                                {invoice.status === "approved" && user?.role === "admin" && (
+                                {invoice.status === "approved" &&
+                                  user?.role === "admin" &&
+                                  parseFloat(invoice.paidAmount || "0") === 0 && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -2471,7 +2473,12 @@ export default function PurchaseInvoicesIndex() {
                     {/* Same gates as the list's Edit buttons: drafts for
                         admin/finance, approved invoices for admin only. */}
                     {((viewingInvoice.status === "draft" && canEdit) ||
-                      (viewingInvoice.status === "approved" && user?.role === "admin")) && (
+                      (viewingInvoice.status === "approved" &&
+                        user?.role === "admin" &&
+                        // Once any payment or credit note is recorded the
+                        // server refuses the edit outright, so offering the
+                        // button here only produces a 400. Mirrors sales.
+                        parseFloat(viewingInvoice.paidAmount || "0") === 0)) && (
                       <Button
                         variant="outline"
                         size="sm"

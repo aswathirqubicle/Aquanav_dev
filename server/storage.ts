@@ -190,6 +190,11 @@ export * from "./storage/types";
 export class Storage extends ReportStorage {}
 
 export interface IStorage {
+  // Declared here because every caller of these is typed against IStorage;
+  // without them each call site reports TS2339 even though the concrete
+  // storage class implements both.
+  createInvoiceEditHistory(entry: any): Promise<any>;
+  getInvoiceEditHistory(invoiceType: string, invoiceId: number): Promise<any[]>;
   generateNextNumber(prefix: string, table: any, column: any): Promise<string>;
   // User methods
   getUserByUsername(username: string): Promise<User | undefined>;

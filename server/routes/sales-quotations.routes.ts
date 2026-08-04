@@ -11,6 +11,25 @@ import { storage } from "../storage";
 
 export const salesQuotationsRoutes = Router();
 
+salesQuotationsRoutes.get(
+  "/api/sales-quotations/:id/edit-history",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const history = await storage.getInvoiceEditHistory(
+        "sales_quotation",
+        id,
+      );
+      res.json(history);
+    } catch (error) {
+      console.error("Get sales quotation edit history error:", error);
+      res.status(500).json({ message: "Failed to get edit history" });
+    }
+  },
+);
+
 // Sales Quotations routes
 salesQuotationsRoutes.get(
   "/api/sales-quotations",
@@ -118,16 +137,49 @@ salesQuotationsRoutes.put(
   async (req, res) => {
     try {
       const quotationId = parseInt(req.params.id);
-      const quotationData = req.body;
+      const existingQuotation = await storage.getSalesQuotation(quotationId);
+      if (!existingQuotation) {
+        return res.status(404).json({ message: "Quotation not found" });
+      }
+
+      const editableStatuses = [
+        "draft",
+        "pending_approval",
+        "approved",
+        "rejected",
+      ];
+      if (!editableStatuses.includes(existingQuotation.status)) {
+        return res.status(400).json({
+          message: "This quotation cannot be edited in its current status",
+        });
+      }
+
+      // `status` is stripped from the payload: an approved or rejected
+      // quotation is sent back to pending_approval below, and that transition is
+      // the server's to decide — a client-supplied status must not override it.
+      const { editNote, status: _status, ...quotationDataBody } = req.body;
+      // An edit note and an edit-history entry are required once the quotation
+      // has been through approval, either way: an approved quotation is a price
+      // already put to the customer, and a rejected one carries a decision
+      // someone needs to see was revisited. draft and pending_approval are still
+      // being drafted, so they edit freely. Read from the PERSISTED row, never
+      // req.body, so a client cannot claim draft status to skip the note.
+      const requiresEditNote =
+        existingQuotation.status === "approved" ||
+        existingQuotation.status === "rejected";
+      if (requiresEditNote && (!editNote || !editNote.trim())) {
+        return res.status(400).json({
+          message:
+            "Edit note is required when updating an approved or rejected quotation",
+        });
+      }
 
       // Checked against the customer on the payload where one is supplied, so
       // that reassigning the quotation and setting the currency in one request
-      // is judged on where it ends up, not where it started. A quotation that
-      // no longer exists is left to the 404 below.
-      const existingQuotation = await storage.getSalesQuotation(quotationId);
+      // is judged on where it ends up, not where it started.
       const currencyError = await checkCustomerDocumentCurrency(
-        quotationData.customerId ?? existingQuotation?.customerId,
-        quotationData.currency ?? existingQuotation?.currency,
+        quotationDataBody.customerId ?? existingQuotation.customerId,
+        quotationDataBody.currency ?? existingQuotation.currency,
       );
       if (currencyError) {
         return res.status(400).json({ message: currencyError });
@@ -136,6 +188,29 @@ salesQuotationsRoutes.put(
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
       // No conversion needed - Drizzle expects strings for timestamp({ mode: 'string' }) columns
 
+      // Editing a quotation that has already been through approval puts it back
+      // in the queue: the approval or rejection was made against a document that
+      // no longer exists in that form, so it has to be decided again. The stale
+      // trail goes with it — the details dialog renders "Approved By/Date"
+      // whenever approvedAt is set and the rejection reason whenever it is set,
+      // so leaving either behind would show a pending quotation carrying a
+      // verdict that no longer applies. The editor becomes the submitter, since
+      // the edit is what put it back in the queue.
+      const revertsToPending = requiresEditNote;
+      const quotationData = {
+        ...quotationDataBody,
+        ...(revertsToPending
+          ? {
+              status: "pending_approval",
+              approvedById: null,
+              approvedAt: null,
+              rejectionReason: null,
+              submittedById: req.session.userId ?? null,
+              submittedAt: new Date(),
+            }
+          : {}),
+      };
+
       const quotation = await storage.updateSalesQuotation(
         quotationId,
         quotationData,
@@ -143,6 +218,77 @@ salesQuotationsRoutes.put(
 
       if (!quotation) {
         return res.status(404).json({ message: "Quotation not found" });
+      }
+
+      // Diff against the PERSISTED row, not the client payload: the server
+      // recomputes subtotal/discount/taxAmount/totalAmount and the per-line tax
+      // (VAT on the discounted base) in applySalesDocumentTotals, so
+      // quotationData holds pre-recompute values that were never stored.
+      // Comparing stored to stored keeps edit history accurate — items
+      // included, which is why they are diffed off the two rows as well.
+      const changes: Record<string, { old: any; new: any }> = {};
+      const fieldsToTrack = [
+        "customerId",
+        "subject",
+        "status",
+        "totalAmount",
+        "subtotal",
+        "taxAmount",
+        "discountPercentage",
+        "discount",
+        "createdDate",
+        "validUntil",
+        "currency",
+        "exchangeRate",
+        "paymentTerms",
+        "bankAccount",
+        "billingAddress",
+        "termsAndConditions",
+        "remarks",
+      ];
+
+      for (const field of fieldsToTrack) {
+        const oldVal = (existingQuotation as any)[field];
+        let newVal = (quotation as any)[field];
+
+        if (field === "createdDate" || field === "validUntil") {
+          const oldDate = oldVal
+            ? new Date(oldVal).toISOString().split("T")[0]
+            : null;
+          const newDate = newVal
+            ? new Date(newVal).toISOString().split("T")[0]
+            : null;
+          if (oldDate !== newDate) {
+            changes[field] = { old: oldDate, new: newDate };
+          }
+        } else if (String(oldVal || "") !== String(newVal || "")) {
+          changes[field] = { old: oldVal, new: newVal };
+        }
+      }
+
+      if (
+        JSON.stringify(existingQuotation.items || []) !==
+        JSON.stringify(quotation.items || [])
+      ) {
+        changes["items"] = {
+          old: existingQuotation.items,
+          new: quotation.items,
+        };
+      }
+
+      // Only quotations that have been through approval get a history row — the
+      // same set that requires the note. Pre-approval edits are the document
+      // still being drafted, not changes to a decided record.
+      if (requiresEditNote) {
+        const user = await storage.getUser(req.session.userId!);
+        await storage.createInvoiceEditHistory({
+          invoiceType: "sales_quotation",
+          invoiceId: quotationId,
+          editNote: editNote.trim(),
+          changes: Object.keys(changes).length > 0 ? changes : null,
+          editedBy: req.session.userId || null,
+          editedByName: user?.username || null,
+        });
       }
 
       res.json(quotation);
@@ -494,9 +640,22 @@ salesQuotationsRoutes.put(
         return res.status(400).json({ message: currencyError });
       }
 
+      // Stamp who approved and when, server-side. Taken from the session, not
+      // the payload: a client-supplied approver is a claim, not a record.
+      // Approval was previously stored as a bare status, leaving approvedById
+      // and approvedAt null forever on every proforma ever approved.
+      const proformaUpdate =
+        req.body.status === "approved"
+          ? {
+              ...req.body,
+              approvedById: req.session.userId ?? null,
+              approvedAt: new Date(),
+            }
+          : req.body;
+
       const proformaInvoice = await storage.updateProformaInvoice(
         id,
-        req.body,
+        proformaUpdate,
       );
 
       if (!proformaInvoice) {

@@ -171,6 +171,18 @@ export default function SalesIndex() {
     useState<SalesQuotation | null>(null);
   const [isQuotationDetailsOpen, setIsQuotationDetailsOpen] = useState(false);
   const [isEditingQuotation, setIsEditingQuotation] = useState(false);
+  // Kept separate from the invoice's `editNote` above: the two dialogs have
+  // independent open state and neither closes the other, so one shared box
+  // could carry a half-typed invoice note into a quotation save.
+  const [quotationEditNote, setQuotationEditNote] = useState("");
+  // An edit note is only required once the quotation has been through approval;
+  // draft and pending_approval are still being drafted. This mirrors the server
+  // gate in sales-quotations.routes.ts — the server is the boundary, this just
+  // avoids showing a mandatory field that isn't.
+  const quotationEditRequiresNote =
+    isEditingQuotation &&
+    (selectedQuotation?.status === "approved" ||
+      selectedQuotation?.status === "rejected");
   const [selectedInvoice, setSelectedInvoice] = useState<SalesInvoice | null>(
     null,
   );
@@ -665,6 +677,16 @@ export default function SalesIndex() {
     enabled: isAuthenticated && !!selectedInvoice && (user?.role === "admin" || user?.role === "finance"),
   });
 
+  const { data: quotationEditHistory } = useQuery<any[]>({
+    queryKey: ["/api/sales-quotations", selectedQuotation?.id, "edit-history"],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/sales-quotations/${selectedQuotation?.id}/edit-history`, { method: "GET" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: isAuthenticated && !!selectedQuotation && (user?.role === "admin" || user?.role === "finance"),
+  });
+
   const paymentFilesQueries = useQueries({
     queries: (invoicePayments || []).map((payment) => ({
       queryKey: [`/api/payments/${payment.id}/files`],
@@ -708,6 +730,12 @@ export default function SalesIndex() {
         totalAmount: totalAmount.toFixed(2),
         discountPercentage: data.discountPercentage || "0",
         discount: discountAmount.toFixed(2),
+        // The note rides on the update only — a brand new quotation has no
+        // prior version to explain, and the create route would carry the field
+        // straight into the insert.
+        ...(isEditingQuotation
+          ? { editNote: quotationEditNote.trim() }
+          : {}),
       };
 
       const url =
@@ -724,6 +752,7 @@ export default function SalesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations", selectedQuotation?.id, "edit-history"] });
       toast({
         title: isEditingQuotation ? "Quotation Updated" : "Quotation Created",
         description: `The sales quotation has been ${isEditingQuotation ? "updated" : "created"} successfully.`,
@@ -1235,6 +1264,7 @@ export default function SalesIndex() {
     setEditingItemIndex(null);
     setIsEditingQuotation(false);
     setSelectedQuotation(null);
+    setQuotationEditNote("");
   };
 
   const resetInvoiceForm = () => {
@@ -1324,6 +1354,14 @@ export default function SalesIndex() {
       toast({
         title: "Error",
         description: "Please add at least one item to the quotation",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (quotationEditRequiresNote && !quotationEditNote.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide an edit note",
         variant: "destructive",
       });
       return;
@@ -1776,6 +1814,7 @@ export default function SalesIndex() {
         currency: quotation.currency || "AED",
         exchangeRate: quotation.exchangeRate || "1",
       });
+      setQuotationEditNote("");
       setIsEditingQuotation(true);
       setIsQuotationDetailsOpen(false);
       setIsDialogOpen(true);
@@ -2733,6 +2772,17 @@ export default function SalesIndex() {
                   </div>
 
                   {/* Form Actions */}
+                  {quotationEditRequiresNote && (
+                    <div className="space-y-2 border-t pt-4 mt-4">
+                      <Label className="text-sm font-medium text-red-600">Edit Note (Required) *</Label>
+                      <Textarea
+                        value={quotationEditNote}
+                        onChange={(e) => setQuotationEditNote(e.target.value)}
+                        placeholder="Explain the reason for this edit..."
+                        className="min-h-[80px]"
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                     <Button
                       type="button"
@@ -3872,7 +3922,14 @@ export default function SalesIndex() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {quotation.status === "draft" && (
+                          {/* Drafts for anyone who can reach this page,
+                              post-approval statuses for admin/finance only —
+                              those carry a mandatory edit note and a history
+                              entry. Converted and expired quotations show no
+                              Edit at all. */}
+                          {(quotation.status === "draft" ||
+                            (["pending_approval", "approved", "rejected"].includes(quotation.status) &&
+                              (user?.role === "admin" || user?.role === "finance"))) && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -4556,7 +4613,10 @@ export default function SalesIndex() {
               </div>
               {selectedQuotation && (
                 <div className="flex flex-wrap gap-2">
-                  {selectedQuotation.status === "draft" && (
+                  {/* Same gate as the list's Edit button. */}
+                  {(selectedQuotation.status === "draft" ||
+                    (["pending_approval", "approved", "rejected"].includes(selectedQuotation.status) &&
+                      (user?.role === "admin" || user?.role === "finance"))) && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -4937,6 +4997,46 @@ export default function SalesIndex() {
                         <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedQuotation as any).rejectionReason}</p>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Edit History */}
+              {quotationEditHistory && quotationEditHistory.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Edit History ({quotationEditHistory.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {quotationEditHistory.map((entry: any) => (
+                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
+                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
+                          {entry.changes && Object.keys(entry.changes).length > 0 && (
+                            <div className="text-xs space-y-1">
+                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                field !== "items" ? (
+                                  <div key={field} className="flex gap-2">
+                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
+                                    <span className="text-green-600">{String(change.new || "—")}</span>
+                                  </div>
+                                ) : (
+                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
+                                )
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               )}
