@@ -75,7 +75,7 @@ export function generateCreditNoteHTML(
         // TRN falls back to Tax ID: the two fields both exist on the
         // counterparty and most records carry only the latter, so printing
         // vatNumber alone left the TRN off nearly every document.
-        // vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
+        vatNumber: val(customer?.vatNumber) || val(customer?.taxId),
       },
     ],
     meta: [
