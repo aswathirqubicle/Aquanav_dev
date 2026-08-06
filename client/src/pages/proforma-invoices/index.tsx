@@ -284,6 +284,9 @@ export default function ProformaInvoicesIndex() {
   // Recalculate proforma discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
+    // No percentage set means the discount was entered as an amount. That value
+    // is the user's own and must never be recalculated from a percentage.
+    if (pct <= 0) return;
     const calcDiscountValue = proformaSubtotal * pct / 100;
     const currentDiscountValue = parseFloat(formData.discount || "0");
 
@@ -1524,12 +1527,14 @@ export default function ProformaInvoicesIndex() {
                             value={formData.discount}
                             onChange={(e) => {
                               const val = e.target.value;
-                              const amount = parseFloat(val) || 0;
-                              const calcPct = proformaSubtotal > 0 ? ((amount / proformaSubtotal) * 100) : 0;
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                discount: val, 
-                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
+                              // A typed amount is authoritative, so the percentage is
+                              // cleared rather than derived: the totals, the stored
+                              // record and the PDF all prefer a percentage whenever
+                              // one is set, and a derived one would round the amount.
+                              setFormData(prev => ({
+                                ...prev,
+                                discount: val,
+                                discountPercentage: ""
                               }));
                             }}
                             placeholder="0.00"

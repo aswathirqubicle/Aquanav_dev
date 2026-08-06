@@ -444,6 +444,9 @@ export default function SalesIndex() {
   // Recalculate quotation discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(formData.discountPercentage || "0") || 0;
+    // No percentage set means the discount was entered as an amount. That value
+    // is the user's own and must never be recalculated from a percentage.
+    if (pct <= 0) return;
     const calcDiscountValue = quotationSubtotal * pct / 100;
     const currentDiscountValue = parseFloat(formData.discount || "0");
 
@@ -465,6 +468,9 @@ export default function SalesIndex() {
   // Recalculate invoice discount when items or percentage changes
   useEffect(() => {
     const pct = parseFloat(invoiceFormData.discountPercentage || "0") || 0;
+    // No percentage set means the discount was entered as an amount. That value
+    // is the user's own and must never be recalculated from a percentage.
+    if (pct <= 0) return;
     const calcDiscountValue = invoiceSubtotalValue * pct / 100;
     const currentDiscountValue = parseFloat(invoiceFormData.discount || "0");
 
@@ -2779,12 +2785,14 @@ export default function SalesIndex() {
                             value={formData.discount}
                             onChange={(e) => {
                               const val = e.target.value;
-                              const amount = parseFloat(val) || 0;
-                              const calcPct = quotationSubtotal > 0 ? ((amount / quotationSubtotal) * 100) : 0;
+                              // A typed amount is authoritative, so the percentage is
+                              // cleared rather than derived: the totals, the stored
+                              // record and the PDF all prefer a percentage whenever
+                              // one is set, and a derived one would round the amount.
                               setFormData(prev => ({
                                 ...prev,
                                 discount: val,
-                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
+                                discountPercentage: ""
                               }));
                             }}
                             placeholder="0.00"
@@ -3523,12 +3531,14 @@ export default function SalesIndex() {
                             value={invoiceFormData.discount}
                             onChange={(e) => {
                               const val = e.target.value;
-                              const amount = parseFloat(val) || 0;
-                              const calcPct = invoiceSubtotalValue > 0 ? ((amount / invoiceSubtotalValue) * 100) : 0;
+                              // A typed amount is authoritative, so the percentage is
+                              // cleared rather than derived: the totals, the stored
+                              // record and the PDF all prefer a percentage whenever
+                              // one is set, and a derived one would round the amount.
                               setInvoiceFormData(prev => ({
                                 ...prev,
                                 discount: val,
-                                discountPercentage: val === "" ? "" : calcPct.toFixed(2)
+                                discountPercentage: ""
                               }));
                             }}
                             placeholder="0.00"
