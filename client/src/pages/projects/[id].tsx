@@ -617,6 +617,9 @@ export default function ProjectDetail() {
   const [isPhotoGroupDialogOpen, setIsPhotoGroupDialogOpen] = useState(false);
   const [selectedPhotoGroup, setSelectedPhotoGroup] = useState<PhotoGroupWithPhotos | null>(null);
   const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
+  // Activity record ids of the day being edited, in the same order as
+  // completedActivities. Empty when adding a new day.
+  const [editingDayActivityIds, setEditingDayActivityIds] = useState<number[]>([]);
   const [photoGroupData, setPhotoGroupData] = useState({
     title: "",
     date: new Date().toISOString().split('T')[0],
@@ -1108,29 +1111,38 @@ export default function ProjectDetail() {
     },
   });
 
-  const openEditActivityDialog = (activity: DailyActivity) => {
-    setEditingActivityId(activity.id);
+  // Opens the activity dialog for a whole day: every location of that day is
+  // loaded into completedActivities, alongside the day-level fields.
+  const openEditDayDialog = (dayActivities: DailyActivity[]) => {
+    if (dayActivities.length === 0) return;
+    const first = dayActivities[0];
+    const activityDateStr = first.date ? new Date(first.date).toISOString().split('T')[0] : "";
     // Load the day-level remark: find the first non-empty remark among all
     // activities on the same date (not just this record's own remark)
-    const activityDateStr = activity.date ? new Date(activity.date).toISOString().split('T')[0] : "";
     const dayRemark = allActivities
       ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === activityDateStr)
-      ?.find(a => a.remarks)?.remarks || activity.remarks || "";
+      ?.find(a => a.remarks)?.remarks || first.remarks || "";
+    // HBM hours and the stoppage flag are day-level too: they are written to
+    // every record of the day, so the first non-empty one represents the day.
+    const dayHbm = dayActivities.find(a => a.hbmDailyRunningHours)?.hbmDailyRunningHours;
+    const stoppageRecord = dayActivities.find(a => (a as any).isStoppage);
+    setEditingActivityId(first.id);
+    setEditingDayActivityIds(dayActivities.map(a => a.id));
     setActivityData({
       date: activityDateStr || new Date().toISOString().split('T')[0],
-      location: activity.location || "",
-      completedTasks: activity.completedTasks || "",
-      plannedTasks: activity.plannedTasks || "",
-      hbmDailyRunningHours: activity.hbmDailyRunningHours ? String(activity.hbmDailyRunningHours) : "",
+      location: first.location || "",
+      completedTasks: first.completedTasks || "",
+      plannedTasks: first.plannedTasks || "",
+      hbmDailyRunningHours: dayHbm ? String(dayHbm) : "",
       remarks: dayRemark,
-      photos: activity.photos || [],
-      isStoppage: (activity as any).isStoppage || false,
-      stoppageReason: (activity as any).stoppageReason || "",
+      photos: first.photos || [],
+      isStoppage: !!stoppageRecord,
+      stoppageReason: (stoppageRecord as any)?.stoppageReason || "",
     });
-    setCompletedActivities([{
-      location: activity.location || "",
-      tasks: activity.completedTasks || ""
-    }]);
+    setCompletedActivities(dayActivities.map(a => ({
+      location: a.location || "",
+      tasks: a.completedTasks || "",
+    })));
     setIsActivityDialogOpen(true);
   };
 
@@ -1153,6 +1165,7 @@ export default function ProjectDetail() {
     });
     setIsCustomCompletedLocation(true);
     setEditingCompletedActivityIndex(null);
+    setEditingDayActivityIds([]);
   };
 
   const handleActivitySubmit = async (e: React.FormEvent) => {
@@ -1170,30 +1183,65 @@ export default function ProjectDetail() {
     const activityDate = new Date(activityData.date + 'T00:00:00.000Z');
 
     try {
-      if (editingActivityId) {
-        // Update single activity
-        const activity = completedActivities[0];
-        const submitData: CreateActivityData = {
+      if (editingDayActivityIds.length > 0) {
+        // Editing an existing day: reconcile the edited location list against
+        // the day's existing records, pairing them by position. Records left
+        // over at the end were removed by the user and are deleted.
+        const removedIds = editingDayActivityIds.slice(completedActivities.length);
+
+        // A record still referenced by a photo group cannot be deleted (foreign
+        // key), so stop before making any change rather than fail halfway.
+        const blockedIds = removedIds.filter(rid => activityIdsWithPhotos.has(rid));
+        if (blockedIds.length > 0) {
+          const blockedNames = blockedIds
+            .map(rid => allActivities?.find(a => a.id === rid)?.location || "a location")
+            .join(", ");
+          toast({
+            title: "Cannot remove location",
+            description: `Photos are linked to ${blockedNames}. Delete the photo group first, then remove the location.`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const buildData = (activity: { location: string; tasks: string }, isFirst: boolean): CreateActivityData => ({
           projectId: parseInt(id!),
           date: activityDate,
           location: activity.location || "",
           completedTasks: activity.tasks,
           plannedTasks: activityData.plannedTasks || "",
           hbmDailyRunningHours: activityData.hbmDailyRunningHours || "",
-          remarks: activityData.remarks || "",
+          // Remarks are stored only on the first record (one remark per day)
+          remarks: isFirst ? (activityData.remarks || "") : "",
           photos: [],
           isStoppage: activityData.isStoppage,
           stoppageReason: activityData.isStoppage ? activityData.stoppageReason : null,
-        } as any;
+        } as any);
 
-        await apiRequest(`/api/projects/${id}/activities/${editingActivityId}`, {
-          method: "PUT",
-          body: submitData,
-        });
-        
+        for (let i = 0; i < completedActivities.length; i++) {
+          const submitData = buildData(completedActivities[i], i === 0);
+          if (i < editingDayActivityIds.length) {
+            await apiRequest(`/api/projects/${id}/activities/${editingDayActivityIds[i]}`, {
+              method: "PUT",
+              body: submitData,
+            });
+          } else {
+            await apiRequest(`/api/projects/${id}/activities`, {
+              method: "POST",
+              body: submitData,
+            });
+          }
+        }
+
+        for (const removedId of removedIds) {
+          await apiRequest(`/api/projects/${id}/activities/${removedId}`, {
+            method: "DELETE",
+          });
+        }
+
         toast({
-          title: "Activity Updated",
-          description: "Daily activity has been updated successfully.",
+          title: "Activities Updated",
+          description: "The day's activities have been updated successfully.",
         });
       } else {
         // Create a separate record for each completed activity
@@ -2258,6 +2306,59 @@ export default function ProjectDetail() {
 
     return true;
   }) || [];
+
+  // Activity records a photo group still points at. Those records cannot be
+  // deleted while the link exists (foreign key on project_photo_groups).
+  const activityIdsWithPhotos = new Set(
+    (photoGroups || [])
+      .map(group => (group as any).dailyActivityId)
+      .filter((activityId): activityId is number => typeof activityId === "number")
+  );
+
+  // Group the activities on the current page by day, newest first, matching the
+  // order the server returns them in.
+  const activitiesByDay = Object.entries(
+    filteredActivities.reduce((days, activity) => {
+      const dayKey = activity.date ? new Date(activity.date).toISOString().split('T')[0] : "unknown";
+      if (!days[dayKey]) days[dayKey] = [];
+      days[dayKey].push(activity);
+      return days;
+    }, {} as Record<string, typeof filteredActivities>)
+  ).sort(([dayA], [dayB]) => new Date(dayB).getTime() - new Date(dayA).getTime());
+
+  const handleDeleteDay = async (dayActivities: typeof filteredActivities) => {
+    const blocked = dayActivities.filter(a => activityIdsWithPhotos.has(a.id));
+    if (blocked.length > 0) {
+      toast({
+        title: "Cannot delete this day",
+        description: "Photos are linked to this day's activities. Delete the photo group first, then delete the day.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete all ${dayActivities.length} ${dayActivities.length === 1 ? "activity" : "activities"} for this day?`)) {
+      return;
+    }
+    try {
+      for (const activity of dayActivities) {
+        await apiRequest(`/api/projects/${id}/activities/${activity.id}`, {
+          method: "DELETE",
+        });
+      }
+      toast({
+        title: "Day Deleted",
+        description: "The day's activities have been deleted successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete the day's activities",
+        variant: "destructive",
+      });
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
+    }
+  };
 
   const handleAddWorkRemainingRow = () => {
     const lastRow = newWorkRemainingRows[newWorkRemainingRows.length - 1];
@@ -3712,41 +3813,38 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {filteredActivities.map((activity) => {
-                    // Find the day's remark: first non-empty remark among all activities on the same date
-                    const activityDateStr = activity.date ? new Date(activity.date).toISOString().split('T')[0] : "";
+                  {activitiesByDay.map(([dayKey, dayActivities]) => {
+                    // Remarks, HBM hours and the stoppage flag are day-level values:
+                    // the same value is written to every record of that day.
                     const dayRemark = allActivities
-                      ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === activityDateStr)
+                      ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === dayKey)
                       ?.find(a => a.remarks)?.remarks || "";
+                    const dayHbm = dayActivities.find(a => a.hbmDailyRunningHours)?.hbmDailyRunningHours;
+                    const stoppageRecord = dayActivities.find(a => (a as any).isStoppage);
+                    const dayHasPhotos = dayActivities.some(a => activityIdsWithPhotos.has(a.id));
                     return (
-                    <div key={activity.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-2">
+                    <div key={dayKey} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium text-slate-900 dark:text-slate-100">
-                              {activity.date ? formatDate(activity.date) : "Unknown Date"}
+                              {dayActivities[0]?.date ? formatDate(dayActivities[0].date) : "Unknown Date"}
                             </p>
-                            {(activity as any).isStoppage && (
+                            {stoppageRecord && (
                               <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-700 text-xs flex items-center gap-1">
                                 <AlertTriangle className="h-3 w-3" />
                                 Stoppage Day
-                                {(activity as any).stoppageReason && (
-                                  <span className="font-normal">– {(activity as any).stoppageReason}</span>
+                                {(stoppageRecord as any).stoppageReason && (
+                                  <span className="font-normal">– {(stoppageRecord as any).stoppageReason}</span>
                                 )}
                               </Badge>
                             )}
                           </div>
-                          {activity.hbmDailyRunningHours && (
+                          {dayHbm && (
                             <div className="flex items-center text-sm text-ocean-600 dark:text-ocean-400 font-medium">
                               <Clock className="h-3.5 w-3.5 mr-1" />
-                              HBM Hours: {activity.hbmDailyRunningHours}
+                              HBM Hours: {dayHbm}
                             </div>
-                          )}
-                          {activity.location && (
-                            <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              {activity.location}
-                            </p>
                           )}
                         </div>
                         {canEdit && (
@@ -3755,7 +3853,8 @@ export default function ProjectDetail() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-ocean-600"
-                              onClick={() => openEditActivityDialog(activity)}
+                              title="Edit this day"
+                              onClick={() => openEditDayDialog(dayActivities)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -3763,26 +3862,11 @@ export default function ProjectDetail() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-red-600"
-                              onClick={async () => {
-                                if (confirm("Are you sure you want to delete this activity?")) {
-                                  try {
-                                    await apiRequest(`/api/projects/${id}/activities/${activity.id}`, {
-                                      method: "DELETE",
-                                    });
-                                    queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
-                                    toast({
-                                      title: "Activity Deleted",
-                                      description: "Daily activity has been deleted successfully.",
-                                    });
-                                  } catch (error: any) {
-                                    toast({
-                                      title: "Error",
-                                      description: error.message || "Failed to delete activity",
-                                      variant: "destructive",
-                                    });
-                                  }
-                                }
-                              }}
+                              disabled={dayHasPhotos}
+                              title={dayHasPhotos
+                                ? "Photos are linked to this day. Delete the photo group first."
+                                : "Delete this day"}
+                              onClick={() => handleDeleteDay(dayActivities)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -3790,69 +3874,75 @@ export default function ProjectDetail() {
                         )}
                       </div>
 
-                      {activity.completedTasks && (
-                        <div className="mb-3">
-                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-3">Completed Tasks</p>
-                          <div className="space-y-3">
-                            {(() => {
-                              // Check if it's a legacy combined record or a new separate record
-                              const isCombined = activity.completedTasks.includes('\n') || activity.completedTasks.match(/^\[([^\]]+)\]\s*(.*)$/);
+                      <div className="space-y-4">
+                        {dayActivities.map((activity) => (
+                          <div key={activity.id} className="space-y-2">
+                            {activity.location && (
+                              <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
+                                <MapPin className="h-4 w-4 mr-2" />
+                                {activity.location}
+                              </div>
+                            )}
+                            {activity.completedTasks && (
+                              <div className="space-y-3">
+                                {(() => {
+                                  // Check if it's a legacy combined record or a new separate record
+                                  const isCombined = activity.completedTasks.includes('\n') || activity.completedTasks.match(/^\[([^\]]+)\]\s*(.*)$/);
 
-                              if (isCombined) {
-                                // Parse completed tasks that are in format "[Location] Task\n[Location] Task"
-                                const tasks = activity.completedTasks.split('\n').filter(task => task.trim());
-                                return tasks.map((task, index) => {
-                                  const locationMatch = task.match(/^\[([^\]]+)\]\s*(.*)$/);
-                                  if (locationMatch) {
-                                    const [, location, taskText] = locationMatch;
-                                    return (
-                                      <div key={index} className="space-y-2">
-                                        <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
-                                          <MapPin className="h-4 w-4 mr-2" />
-                                          {location}
-                                        </div>
-                                        <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
-                                          {taskText}
-                                        </div>
-                                      </div>
-                                    );
+                                  if (isCombined) {
+                                    // Parse completed tasks that are in format "[Location] Task\n[Location] Task"
+                                    const tasks = activity.completedTasks.split('\n').filter(task => task.trim());
+                                    return tasks.map((task, index) => {
+                                      const locationMatch = task.match(/^\[([^\]]+)\]\s*(.*)$/);
+                                      if (locationMatch) {
+                                        const [, location, taskText] = locationMatch;
+                                        return (
+                                          <div key={index} className="space-y-2">
+                                            <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
+                                              <MapPin className="h-4 w-4 mr-2" />
+                                              {location}
+                                            </div>
+                                            <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+                                              {taskText}
+                                            </div>
+                                          </div>
+                                        );
+                                      } else {
+                                        // Task without location
+                                        return (
+                                          <div key={index} className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+                                            {task}
+                                          </div>
+                                        );
+                                      }
+                                    });
                                   } else {
-                                    // Task without location
+                                    // New format: direct task display (location is already shown above)
                                     return (
-                                      <div key={index} className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                                        {task}
+                                      <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+                                        {activity.completedTasks}
                                       </div>
                                     );
                                   }
-                                });
-                              } else {
-                                // New format: direct task display (location is already shown above)
-                                return (
-                                  <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                                    {activity.completedTasks}
-                                  </div>
-                                );
-                              }
-                            })()}
+                                })()}
+                              </div>
+                            )}
+                            {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {(activity as any).photoGroups.map((group: any) => (
+                                  <Badge key={group.id} variant="secondary" className="flex items-center gap-1 cursor-default">
+                                    <Camera className="h-3 w-3" />
+                                    {group.title} ({group.photoCount})
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-
-
-
-                      {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-4">
-                          {(activity as any).photoGroups.map((group: any) => (
-                            <Badge key={group.id} variant="secondary" className="flex items-center gap-1 cursor-default">
-                              <Camera className="h-3 w-3" />
-                              {group.title} ({group.photoCount})
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
+                        ))}
+                      </div>
 
                       {dayRemark && (
-                        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
                           <p className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-1">Remarks</p>
                           <p className="text-sm text-slate-600 dark:text-slate-400 italic">{dayRemark}</p>
                         </div>
