@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -6042,7 +6043,7 @@ export default function ProjectDetail() {
                 ) : completionReportPhotoGroups.length === 0 ? (
                   <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">No photo groups found for this project.</p>
                 ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                     {(() => {
                       // Group by location
                       const byLocation = new Map<string, any[]>();
@@ -6156,40 +6157,59 @@ export default function ProjectDetail() {
                                           const isLast = posInGroup === groupSelectedInOrder.length - 1;
                                           return (
                                             <div key={photo.id} className="flex flex-col items-center gap-0.5">
-                                              <div
-                                                className={`relative cursor-pointer rounded overflow-hidden border-2 transition-all ${
-                                                  isSelected
-                                                    ? "border-blue-500 shadow-sm"
-                                                    : "border-transparent opacity-70 hover:opacity-100"
-                                                }`}
-                                                onClick={() => {
-                                                  if (selectedCompletionPhotoIds.includes(photo.id)) {
-                                                    setSelectedCompletionPhotoIds(prev => prev.filter(id => id !== photo.id));
-                                                  } else {
-                                                    setSelectedCompletionPhotoIds(prev => [...prev, photo.id]);
-                                                  }
-                                                }}
-                                              >
-                                                <img
-                                                  src={photo.filePath}
-                                                  alt={photo.originalName}
-                                                  className="w-12 h-12 object-cover"
-                                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                                />
-                                                {isSelected && (
-                                                  <div className="absolute inset-0 bg-blue-500/20 flex items-start justify-end p-0.5">
-                                                    <span className="bg-blue-600 text-white text-[9px] font-bold rounded px-1 leading-tight">
-                                                      {posInGroup + 1}
-                                                    </span>
+                                              <HoverCard openDelay={300} closeDelay={100}>
+                                                <HoverCardTrigger asChild>
+                                                  <div
+                                                    className={`relative cursor-pointer rounded overflow-hidden border-2 transition-all ${
+                                                      isSelected
+                                                        ? "border-blue-500 shadow-sm"
+                                                        : "border-transparent opacity-70 hover:opacity-100"
+                                                    }`}
+                                                    onClick={() => {
+                                                      if (selectedCompletionPhotoIds.includes(photo.id)) {
+                                                        setSelectedCompletionPhotoIds(prev => prev.filter(id => id !== photo.id));
+                                                      } else {
+                                                        setSelectedCompletionPhotoIds(prev => [...prev, photo.id]);
+                                                      }
+                                                    }}
+                                                  >
+                                                    <img
+                                                      src={photo.filePath}
+                                                      alt={photo.originalName}
+                                                      className="w-24 h-24 object-cover"
+                                                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                                    />
+                                                    {isSelected && (
+                                                      <div className="absolute inset-0 bg-blue-500/20 flex items-start justify-end p-0.5">
+                                                        <span className="bg-blue-600 text-white text-[11px] font-bold rounded px-1.5 leading-tight">
+                                                          {posInGroup + 1}
+                                                        </span>
+                                                      </div>
+                                                    )}
+                                                    <button
+                                                      type="button"
+                                                      title="Preview"
+                                                      className="absolute bottom-0.5 right-0.5 h-5 w-5 flex items-center justify-center rounded bg-black/50 text-white hover:bg-black/70 transition-colors"
+                                                      onClick={(e) => { e.stopPropagation(); setSelectedImageForPreview(photo); }}
+                                                    >
+                                                      <Eye className="h-3 w-3" />
+                                                    </button>
                                                   </div>
-                                                )}
-                                              </div>
+                                                </HoverCardTrigger>
+                                                <HoverCardContent side="top" className="w-auto p-1">
+                                                  <img
+                                                    src={photo.filePath}
+                                                    alt={photo.originalName}
+                                                    className="max-w-xs max-h-72 object-contain rounded"
+                                                  />
+                                                </HoverCardContent>
+                                              </HoverCard>
                                               {isSelected && (
                                                 <div className="flex gap-0.5">
                                                   <button
                                                     type="button"
                                                     disabled={isFirst}
-                                                    className="w-5 h-4 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    className="w-7 h-5 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                                     title="Move earlier"
                                                     onClick={(e) => { e.stopPropagation(); movePhotoInGroup(photo.id, 'prev', groupPhotoIds); }}
                                                   >
@@ -6198,7 +6218,7 @@ export default function ProjectDetail() {
                                                   <button
                                                     type="button"
                                                     disabled={isLast}
-                                                    className="w-5 h-4 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                                    className="w-7 h-5 flex items-center justify-center rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                                     title="Move later"
                                                     onClick={(e) => { e.stopPropagation(); movePhotoInGroup(photo.id, 'next', groupPhotoIds); }}
                                                   >
