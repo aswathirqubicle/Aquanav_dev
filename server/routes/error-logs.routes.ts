@@ -14,12 +14,14 @@ errorLogsRoutes.get("/api/error-logs", async (req, res) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const severity = req.query.severity as string;
     const resolved = req.query.resolved as string;
+    const userId = parseInt(req.query.userId as string);
 
     const result = await storage.getErrorLogs(
       page,
       limit,
       severity,
       resolved === "true" ? true : resolved === "false" ? false : undefined,
+      isNaN(userId) ? undefined : userId,
     );
 
     res.json(result);

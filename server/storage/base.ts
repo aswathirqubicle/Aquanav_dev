@@ -171,6 +171,7 @@ export class StorageBase {
     limit: number = 20,
     severity?: string,
     resolved?: string,
+    userId?: number,
   ): Promise<{
     data: any[];
     pagination: {
@@ -188,6 +189,9 @@ export class StorageBase {
       if (resolved !== undefined && resolved !== "all") {
         // Check for undefined explicitly
         queryConditions.push(eq(errorLogs.resolved, resolved === "true"));
+      }
+      if (userId !== undefined) {
+        queryConditions.push(eq(errorLogs.userId, userId));
       }
 
       const finalConditions =
