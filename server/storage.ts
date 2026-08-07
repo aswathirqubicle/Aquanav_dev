@@ -792,6 +792,7 @@ export interface IStorage {
     limit?: number,
     severity?: string,
     resolved?: boolean,
+    userId?: number,
   ): Promise<any>;
   updateErrorLog(id: number, updateData: { resolved?: boolean }): Promise<any>;
   clearErrorLogs(): Promise<number>;

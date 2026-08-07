@@ -69,6 +69,7 @@ export default function ErrorLogsIndex() {
   const [currentPage, setCurrentPage] = useState(1);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [resolvedFilter, setResolvedFilter] = useState<string>("all");
+  const [userFilter, setUserFilter] = useState<string>("all");
   const [selectedError, setSelectedError] = useState<ErrorLog | null>(null);
 
   useEffect(() => {
@@ -84,6 +85,7 @@ export default function ErrorLogsIndex() {
     currentPage,
     severityFilter,
     resolvedFilter,
+    userFilter,
   ];
 
   const { data: errorLogsData, isLoading } = useQuery<ErrorLogsResponse>({
@@ -95,9 +97,16 @@ export default function ErrorLogsIndex() {
       });
       if (severityFilter && severityFilter !== "all") params.append("severity", severityFilter);
       if (resolvedFilter && resolvedFilter !== "all") params.append("resolved", resolvedFilter);
-      
+      if (userFilter && userFilter !== "all") params.append("userId", userFilter);
+
       return apiRequest("GET", `/api/error-logs?${params.toString()}`);
     },
+    enabled: isAuthenticated && user?.role === "admin",
+  });
+
+  const { data: usersData } = useQuery<{ id: number; username: string }[]>({
+    queryKey: ["/api/users"],
+    queryFn: () => apiRequest("GET", "/api/users"),
     enabled: isAuthenticated && user?.role === "admin",
   });
 
@@ -313,6 +322,20 @@ export default function ErrorLogsIndex() {
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="false">Unresolved</SelectItem>
             <SelectItem value="true">Resolved</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={userFilter} onValueChange={setUserFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filter by user" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Users</SelectItem>
+            {usersData?.map((u) => (
+              <SelectItem key={u.id} value={u.id.toString()}>
+                {u.username}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

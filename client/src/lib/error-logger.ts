@@ -29,10 +29,18 @@ export const showErrorDialog = (error: ErrorDialogData) => {
   }
 };
 
+// The request the logger itself uses to drain the queue. Failures of this
+// request must never be queued, or the queue feeds itself while it drains.
+const ERROR_LOG_ENDPOINT = 'POST /api/error-logs';
+
+// Give up on the backlog after this many consecutive failed posts.
+const MAX_CONSECUTIVE_FAILURES = 5;
+
 class ErrorLogger {
   private static instance: ErrorLogger;
   private queue: ErrorLogData[] = [];
   private isProcessing = false;
+  private originalConsoleError = console.error.bind(console);
 
   public static getInstance(): ErrorLogger {
     if (!ErrorLogger.instance) {
@@ -83,7 +91,7 @@ class ErrorLogger {
     });
 
     // Override console.error to capture manual error logs
-    const originalConsoleError = console.error;
+    const originalConsoleError = this.originalConsoleError;
     console.error = (...args) => {
       // Call original console.error first
       originalConsoleError.apply(console, args);
@@ -103,6 +111,12 @@ class ErrorLogger {
   }
 
   public logError(errorData: ErrorLogData) {
+    // Never queue a failure of the error-log request itself. The queue drains
+    // through that request, so queueing its failures makes it feed itself.
+    if (errorData.component?.includes(ERROR_LOG_ENDPOINT)) {
+      return;
+    }
+
     // Add to queue
     this.queue.push({
       ...errorData,
@@ -162,14 +176,27 @@ class ErrorLogger {
 
     this.isProcessing = true;
 
+    let consecutiveFailures = 0;
+
     while (this.queue.length > 0) {
       const errorData = this.queue.shift();
       if (errorData) {
         try {
           await apiRequest('POST', '/api/error-logs', errorData);
+          consecutiveFailures = 0;
         } catch (error) {
-          // If logging fails, we don't want to create an infinite loop
-          console.error('Failed to log error to server:', error);
+          // Use the captured console.error: the override would queue this
+          // message and feed the loop we are trying to break out of.
+          this.originalConsoleError('Failed to log error to server:', error);
+
+          consecutiveFailures++;
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            this.originalConsoleError(
+              `Error logging stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive failures; dropping ${this.queue.length} queued entr${this.queue.length === 1 ? 'y' : 'ies'}.`
+            );
+            this.queue = [];
+            break;
+          }
         }
       }
     }
