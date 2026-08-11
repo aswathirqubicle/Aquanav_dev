@@ -651,6 +651,7 @@ export default function PurchaseInvoicesIndex() {
     mutationFn: async (invoiceId: number) => {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/submit`, {
         method: "PATCH",
+        body: {},
       });
       return response.json();
     },
@@ -675,6 +676,7 @@ export default function PurchaseInvoicesIndex() {
     mutationFn: async (invoiceId: number) => {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/approve`, {
         method: "PATCH",
+        body: {},
       });
       return response.json();
     },
