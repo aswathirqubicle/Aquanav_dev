@@ -653,12 +653,32 @@ projectsRoutes.post(
         });
       }
 
+      // Linking is optional, but a link that is given has to point at an
+      // activity of this same project — the same check the edit route makes.
+      let linkedActivityId: number | null = null;
+      if (
+        dailyActivityId !== undefined &&
+        dailyActivityId !== null &&
+        dailyActivityId !== ""
+      ) {
+        linkedActivityId = parseInt(dailyActivityId);
+        const activities = await storage.getDailyActivities(projectId);
+        if (
+          isNaN(linkedActivityId) ||
+          !activities.some((a) => a.id === linkedActivityId)
+        ) {
+          return res.status(400).json({
+            message: "Daily activity does not belong to this project",
+          });
+        }
+      }
+
       const parsedGroupData = insertProjectPhotoGroupSchema.parse({
         projectId,
         title,
         date,
         description,
-        dailyActivityId: dailyActivityId ? parseInt(dailyActivityId) : null,
+        dailyActivityId: linkedActivityId,
         createdBy: req.session.userId,
       });
 
