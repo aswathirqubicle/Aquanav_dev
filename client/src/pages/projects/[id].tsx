@@ -1298,6 +1298,25 @@ export default function ProjectDetail() {
       return;
     }
 
+    // The same location legitimately appears several times in a day with
+    // different work, so only an entry matching on both location and tasks is
+    // a duplicate.
+    const norm = (value: string) => value.trim().toLowerCase();
+    const isDuplicate = completedActivities.some(
+      (existing, i) =>
+        i !== editingCompletedActivityIndex &&
+        norm(existing.location) === norm(newCompletedActivity.location) &&
+        norm(existing.tasks) === norm(newCompletedActivity.tasks),
+    );
+    if (isDuplicate) {
+      toast({
+        title: "Already added",
+        description: "This location and task are already in the list for this day.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setCompletedActivities(prev =>
       editingCompletedActivityIndex === null
         ? [...prev, { ...newCompletedActivity }]
@@ -3996,16 +4015,6 @@ export default function ProjectDetail() {
                                     );
                                   }
                                 })()}
-                              </div>
-                            )}
-                            {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {(activity as any).photoGroups.map((group: any) => (
-                                  <Badge key={group.id} variant="secondary" className="flex items-center gap-1 cursor-default">
-                                    <Camera className="h-3 w-3" />
-                                    {group.title} ({group.photoCount})
-                                  </Badge>
-                                ))}
                               </div>
                             )}
                           </div>

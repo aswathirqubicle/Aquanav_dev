@@ -1952,7 +1952,8 @@ export class ProjectAssetStorage extends InventoryStorage {
             ne(dailyActivities.plannedTasks, ""),
           ),
         )
-        .orderBy(desc(dailyActivities.date));
+        // id breaks date ties so a day's rows keep their entry order.
+        .orderBy(desc(dailyActivities.date), asc(dailyActivities.id));
 
       return result.map((row) => ({
         location: row.location || "",
@@ -1996,7 +1997,9 @@ export class ProjectAssetStorage extends InventoryStorage {
           })
           .from(dailyActivities)
           .where(whereCondition)
-          .orderBy(desc(dailyActivities.date))
+          // id breaks date ties so a day's rows keep their entry order and
+          // pagination stays stable across pages.
+          .orderBy(desc(dailyActivities.date), asc(dailyActivities.id))
           .limit(limit)
           .offset(offset),
         db
