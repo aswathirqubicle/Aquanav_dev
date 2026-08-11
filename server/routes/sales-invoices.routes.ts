@@ -12,6 +12,13 @@ import {
   checkCreditNoteCurrency,
   checkCustomerDocumentCurrency,
 } from "../lib/document-currency";
+import {
+  addLineItemChanges,
+  diffDocumentFields,
+  documentRequiresEditNote,
+  labelReferenceChanges,
+  recordDocumentEdit,
+} from "../lib/document-edit-history";
 import { salesInvoices } from "@shared/schema";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
@@ -127,9 +134,7 @@ salesInvoicesRoutes.put(
       // draft and pending_approval are still pre-ledger, so they edit freely.
       // Read from the PERSISTED row, never req.body, so a client cannot claim
       // draft status to skip the note.
-      const requiresEditNote =
-        existingInvoice.status !== "draft" &&
-        existingInvoice.status !== "pending_approval";
+      const requiresEditNote = documentRequiresEditNote(existingInvoice.status);
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message: "Edit note is required when updating an approved invoice",
@@ -160,9 +165,10 @@ salesInvoicesRoutes.put(
       // recomputes subtotal/discount/taxAmount/totalAmount (VAT on the
       // discounted base), so req.body holds pre-recompute values that were
       // never stored. Comparing to the stored row keeps edit history accurate.
-      const changes: Record<string, { old: any; new: any }> = {};
-      const fieldsToTrack = [
+      const changes = diffDocumentFields(existingInvoice, invoice, [
         "customerId",
+        "subject",
+        "projectId",
         "totalAmount",
         "subtotal",
         "taxAmount",
@@ -178,23 +184,9 @@ salesInvoicesRoutes.put(
         "bankAccount",
         "billingAddress",
         "termsAndConditions",
-      ];
-      for (const field of fieldsToTrack) {
-        const oldVal = (existingInvoice as any)[field];
-        const newVal = (invoice as any)[field];
-        if (String(oldVal || "") !== String(newVal || "")) {
-          changes[field] = { old: oldVal, new: newVal };
-        }
-      }
-      if (
-        JSON.stringify(existingInvoice.items) !==
-        JSON.stringify(invoice.items)
-      ) {
-        changes["items"] = {
-          old: existingInvoice.items,
-          new: invoice.items,
-        };
-      }
+      ]);
+      addLineItemChanges(changes, existingInvoice.items, invoice.items);
+      await labelReferenceChanges(changes);
 
       if (existingInvoice.status !== "draft") {
         // GL is posted on approval. An invoice still awaiting approval has no
@@ -237,14 +229,12 @@ salesInvoicesRoutes.put(
       // document still being drafted, not changes to an approved record, so
       // recording them would bury the entries that matter in drafting noise.
       if (requiresEditNote) {
-        const user = await storage.getUser(req.session.userId!);
-        await storage.createInvoiceEditHistory({
+        await recordDocumentEdit({
           invoiceType: "sales",
           invoiceId,
-          editNote: editNote.trim(),
-          changes: Object.keys(changes).length > 0 ? changes : null,
-          editedBy: req.session.userId || null,
-          editedByName: user?.username || null,
+          editNote,
+          changes,
+          userId: req.session.userId,
         });
       }
 
@@ -375,9 +365,19 @@ salesInvoicesRoutes.patch(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      // Cancelling reverses posted ledger entries, so the reason is mandatory
+      // the same way a rejection reason is — the trail has to say why, not just
+      // that it happened.
+      const cancellationReason = req.body?.cancellationReason;
+      if (!cancellationReason || !String(cancellationReason).trim()) {
+        return res
+          .status(400)
+          .json({ message: "A cancellation reason is required" });
+      }
       const updated = await storage.cancelSalesInvoice(
         id,
         req.session.userId!,
+        String(cancellationReason).trim(),
       );
       res.json({
         message: "Sales invoice cancelled successfully",

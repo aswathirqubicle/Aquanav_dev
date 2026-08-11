@@ -8,6 +8,14 @@ import {
   requireRole,
 } from "../middleware/auth";
 import { checkSupplierDocumentCurrency } from "../lib/document-currency";
+import {
+  addAttachmentChanges,
+  addLineItemChanges,
+  diffDocumentFields,
+  documentRequiresEditNote,
+  labelReferenceChanges,
+  recordDocumentEdit,
+} from "../lib/document-edit-history";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
 
@@ -210,7 +218,7 @@ purchaseInvoicesRoutes.put(
       // the PERSISTED row, never req.body, so a client cannot claim draft
       // status to skip the note. Kept separate from isApprovedEdit below,
       // which drives GL posting and must keep its existing meaning.
-      const requiresEditNote = existingInvoice.status === "approved";
+      const requiresEditNote = documentRequiresEditNote(existingInvoice.status);
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message: "Edit note is required when updating an approved invoice",
@@ -249,10 +257,20 @@ purchaseInvoicesRoutes.put(
       // recomputes subtotal/discountAmount/taxAmount/totalAmount (VAT on the
       // discounted base), so req.body holds pre-recompute values that were
       // never stored. Comparing to the stored row keeps edit history accurate.
-      const changes: Record<string, { old: any; new: any }> = {};
-      const fieldsToTrack = [
+      //
+      // Re-read the invoice rather than diffing the update's return value or
+      // the payload: items are child rows that were deleted and reinserted, and
+      // files were written to disk, so only a fresh read carries both in their
+      // persisted form. The payload's `items` is still the raw multipart JSON
+      // string at this point — the parsed copy went into updatedInvoiceData —
+      // so diffing against it recorded a bogus items change, holding an
+      // unparsed string, on every approved edit.
+      const persistedInvoice = await storage.getPurchaseInvoice(id);
+      const changes = diffDocumentFields(existingInvoice, persistedInvoice, [
         "supplierId",
         "subject",
+        "supplierInvoiceNumber",
+        "poId",
         "totalAmount",
         "subtotal",
         "taxAmount",
@@ -266,23 +284,18 @@ purchaseInvoicesRoutes.put(
         "termsAndConditions",
         "paymentTerms",
         "bankAccount",
-      ];
-      for (const field of fieldsToTrack) {
-        const oldVal = (existingInvoice as any)[field];
-        const newVal = (invoice as any)[field];
-        if (String(oldVal || "") !== String(newVal || "")) {
-          changes[field] = { old: oldVal, new: newVal };
-        }
-      }
-      if (
-        JSON.stringify(existingInvoice.items) !==
-        JSON.stringify(invoiceData.items)
-      ) {
-        changes["items"] = {
-          old: existingInvoice.items,
-          new: invoiceData.items,
-        };
-      }
+      ]);
+      addLineItemChanges(
+        changes,
+        (existingInvoice as any).items,
+        (persistedInvoice as any)?.items,
+      );
+      addAttachmentChanges(
+        changes,
+        (existingInvoice as any).files,
+        (persistedInvoice as any)?.files,
+      );
+      await labelReferenceChanges(changes);
 
       if (existingInvoice.status !== "draft") {
         // GL is posted on approval. An invoice still awaiting approval has no
@@ -329,14 +342,12 @@ purchaseInvoicesRoutes.put(
       // Only approved invoices get a history row. Pre-approval edits are the
       // document still being drafted, not changes to an approved record.
       if (requiresEditNote) {
-        const user = await storage.getUser(req.session.userId!);
-        await storage.createInvoiceEditHistory({
+        await recordDocumentEdit({
           invoiceType: "purchase",
           invoiceId: id,
-          editNote: editNote.trim(),
-          changes: Object.keys(changes).length > 0 ? changes : null,
-          editedBy: req.session.userId || null,
-          editedByName: user?.username || null,
+          editNote,
+          changes,
+          userId: req.session.userId,
         });
       }
 
@@ -509,9 +520,21 @@ purchaseInvoicesRoutes.post(
         });
       }
 
+      // Cancelling reverses posted ledger entries, project cost allocations and
+      // inventory movements, so the reason is mandatory the same way a
+      // rejection reason is — the trail has to say why, not just that it
+      // happened.
+      const cancellationReason = req.body?.cancellationReason;
+      if (!cancellationReason || !String(cancellationReason).trim()) {
+        return res
+          .status(400)
+          .json({ message: "A cancellation reason is required" });
+      }
+
       const result = await storage.cancelPurchaseInvoice(
         id,
         req.session.userId!,
+        String(cancellationReason).trim(),
       );
       res.json({ message: "Purchase invoice cancelled", invoice: result });
     } catch (error) {

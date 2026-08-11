@@ -1833,6 +1833,8 @@ export class PurchaseStorage extends SalesStorage {
       const approverEmp = alias(employees, "approverEmp");
       const creator = alias(users, "creator");
       const creatorEmp = alias(employees, "creatorEmp");
+      const canceller = alias(users, "canceller");
+      const cancellerEmp = alias(employees, "cancellerEmp");
 
       const [invoice] = await db
         .select({
@@ -1870,6 +1872,10 @@ export class PurchaseStorage extends SalesStorage {
           approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: purchaseInvoices.approvedAt,
           rejectionReason: purchaseInvoices.rejectionReason,
+          cancelledById: purchaseInvoices.cancelledById,
+          cancelledByName: sql<string>`COALESCE(NULLIF(CONCAT(${cancellerEmp.firstName}, ' ', ${cancellerEmp.lastName}), ' '), ${canceller.username}, '')`,
+          cancelledAt: purchaseInvoices.cancelledAt,
+          cancellationReason: purchaseInvoices.cancellationReason,
           currency: purchaseInvoices.currency,
           exchangeRate: purchaseInvoices.exchangeRate,
           supplierCurrency: suppliers.currency,
@@ -1884,6 +1890,8 @@ export class PurchaseStorage extends SalesStorage {
         .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
         .leftJoin(creator, eq(purchaseInvoices.createdBy, creator.id))
         .leftJoin(creatorEmp, eq(creator.id, creatorEmp.userId))
+        .leftJoin(canceller, eq(purchaseInvoices.cancelledById, canceller.id))
+        .leftJoin(cancellerEmp, eq(canceller.id, cancellerEmp.userId))
         .where(eq(purchaseInvoices.id, id));
 
       if (!invoice) return null;
@@ -2500,7 +2508,11 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
-  async cancelPurchaseInvoice(id: number, userId: number): Promise<any> {
+  async cancelPurchaseInvoice(
+    id: number,
+    userId: number,
+    cancellationReason: string,
+  ): Promise<any> {
     try {
       const invoice = await this.getPurchaseInvoice(id);
       if (!invoice) throw new Error("Purchase invoice not found");
@@ -2516,7 +2528,12 @@ export class PurchaseStorage extends SalesStorage {
 
       await db
         .update(purchaseInvoices)
-        .set({ status: "cancelled" })
+        .set({
+          status: "cancelled",
+          cancelledById: userId,
+          cancelledAt: new Date(),
+          cancellationReason,
+        })
         .where(eq(purchaseInvoices.id, id));
 
       // Reverse project cost allocations

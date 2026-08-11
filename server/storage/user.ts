@@ -1,6 +1,7 @@
 import { CompanyStorage } from "./company";
 import bcrypt from "bcrypt";
 import {
+  employees,
   InsertUser,
   User,
   users,
@@ -57,6 +58,38 @@ export class UserStorage extends CompanyStorage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getUser",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * The name to show against something a user did — an edit, a cancellation.
+   *
+   * Resolved the same way the approval trails resolve theirs: employee full
+   * name where the login is linked to an employee record, falling back to the
+   * username. Without this, an Activity block showed the approval trail's
+   * "Priya Menon" and the edit history's "pmenon" as if they were two people.
+   */
+  async getUserDisplayName(id: number): Promise<string | null> {
+    try {
+      const result = await db
+        .select({
+          displayName: sql<string>`COALESCE(NULLIF(CONCAT(${employees.firstName}, ' ', ${employees.lastName}), ' '), ${users.username}, '')`,
+        })
+        .from(users)
+        .leftJoin(employees, eq(employees.userId, users.id))
+        .where(eq(users.id, id))
+        .limit(1);
+      return result[0]?.displayName || null;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getUserDisplayName (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getUserDisplayName",
         severity: "error",
       });
       throw error;

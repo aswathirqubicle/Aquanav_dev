@@ -6,6 +6,13 @@ import {
   requireRole,
 } from "../middleware/auth";
 import { checkCustomerDocumentCurrency } from "../lib/document-currency";
+import {
+  addLineItemChanges,
+  diffDocumentFields,
+  documentRequiresEditNote,
+  labelReferenceChanges,
+  recordDocumentEdit,
+} from "../lib/document-edit-history";
 import { salesQuotations } from "@shared/schema";
 import { storage } from "../storage";
 
@@ -164,9 +171,9 @@ salesQuotationsRoutes.put(
       // someone needs to see was revisited. draft and pending_approval are still
       // being drafted, so they edit freely. Read from the PERSISTED row, never
       // req.body, so a client cannot claim draft status to skip the note.
-      const requiresEditNote =
-        existingQuotation.status === "approved" ||
-        existingQuotation.status === "rejected";
+      const requiresEditNote = documentRequiresEditNote(
+        existingQuotation.status,
+      );
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message:
@@ -226,8 +233,7 @@ salesQuotationsRoutes.put(
       // quotationData holds pre-recompute values that were never stored.
       // Comparing stored to stored keeps edit history accurate — items
       // included, which is why they are diffed off the two rows as well.
-      const changes: Record<string, { old: any; new: any }> = {};
-      const fieldsToTrack = [
+      const changes = diffDocumentFields(existingQuotation, quotation, [
         "customerId",
         "subject",
         "status",
@@ -245,49 +251,20 @@ salesQuotationsRoutes.put(
         "billingAddress",
         "termsAndConditions",
         "remarks",
-      ];
-
-      for (const field of fieldsToTrack) {
-        const oldVal = (existingQuotation as any)[field];
-        let newVal = (quotation as any)[field];
-
-        if (field === "createdDate" || field === "validUntil") {
-          const oldDate = oldVal
-            ? new Date(oldVal).toISOString().split("T")[0]
-            : null;
-          const newDate = newVal
-            ? new Date(newVal).toISOString().split("T")[0]
-            : null;
-          if (oldDate !== newDate) {
-            changes[field] = { old: oldDate, new: newDate };
-          }
-        } else if (String(oldVal || "") !== String(newVal || "")) {
-          changes[field] = { old: oldVal, new: newVal };
-        }
-      }
-
-      if (
-        JSON.stringify(existingQuotation.items || []) !==
-        JSON.stringify(quotation.items || [])
-      ) {
-        changes["items"] = {
-          old: existingQuotation.items,
-          new: quotation.items,
-        };
-      }
+      ]);
+      addLineItemChanges(changes, existingQuotation.items, quotation.items);
+      await labelReferenceChanges(changes);
 
       // Only quotations that have been through approval get a history row — the
       // same set that requires the note. Pre-approval edits are the document
       // still being drafted, not changes to a decided record.
       if (requiresEditNote) {
-        const user = await storage.getUser(req.session.userId!);
-        await storage.createInvoiceEditHistory({
+        await recordDocumentEdit({
           invoiceType: "sales_quotation",
           invoiceId: quotationId,
-          editNote: editNote.trim(),
-          changes: Object.keys(changes).length > 0 ? changes : null,
-          editedBy: req.session.userId || null,
-          editedByName: user?.username || null,
+          editNote,
+          changes,
+          userId: req.session.userId,
         });
       }
 

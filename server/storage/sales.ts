@@ -1087,6 +1087,8 @@ export class SalesStorage extends LedgerStorage {
       const submitterEmp = alias(employees, "invoiceSubmitterEmp");
       const approver = alias(users, "invoiceApprover");
       const approverEmp = alias(employees, "invoiceApproverEmp");
+      const canceller = alias(users, "invoiceCanceller");
+      const cancellerEmp = alias(employees, "invoiceCancellerEmp");
 
       const dataQueryBuilder = db
         .select({
@@ -1125,6 +1127,10 @@ export class SalesStorage extends LedgerStorage {
           approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: salesInvoices.approvedAt,
           rejectionReason: salesInvoices.rejectionReason,
+          cancelledById: salesInvoices.cancelledById,
+          cancelledByName: sql<string>`COALESCE(NULLIF(CONCAT(${cancellerEmp.firstName}, ' ', ${cancellerEmp.lastName}), ' '), ${canceller.username}, '')`,
+          cancelledAt: salesInvoices.cancelledAt,
+          cancellationReason: salesInvoices.cancellationReason,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
@@ -1133,6 +1139,8 @@ export class SalesStorage extends LedgerStorage {
         .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
         .leftJoin(approver, eq(salesInvoices.approvedById, approver.id))
         .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .leftJoin(canceller, eq(salesInvoices.cancelledById, canceller.id))
+        .leftJoin(cancellerEmp, eq(canceller.id, cancellerEmp.userId))
         .where(finalConditions)
         .orderBy(desc(salesInvoices.id));
 
@@ -2323,7 +2331,11 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
-  async cancelSalesInvoice(id: number, userId: number): Promise<any> {
+  async cancelSalesInvoice(
+    id: number,
+    userId: number,
+    cancellationReason: string,
+  ): Promise<any> {
     try {
       const invoice = await this.getSalesInvoice(id);
       if (!invoice) throw new Error("Invoice not found");
@@ -2345,7 +2357,12 @@ export class SalesStorage extends LedgerStorage {
 
       await db
         .update(salesInvoices)
-        .set({ status: "cancelled" })
+        .set({
+          status: "cancelled",
+          cancelledById: userId,
+          cancelledAt: new Date(),
+          cancellationReason,
+        })
         .where(eq(salesInvoices.id, id));
 
       await this.createCancellationGLEntries(id);
