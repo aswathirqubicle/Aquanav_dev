@@ -1189,6 +1189,21 @@ projectsRoutes.delete(
         return res.status(404).json({ message: "Daily activity not found" });
       }
 
+      // A photo group pointing at this activity holds a foreign key to it, so
+      // deleting would fail in the database and surface as a bare 500. Say what
+      // is in the way instead — the link can be removed from the Photos tab.
+      const groups = await storage.getProjectPhotoGroups(projectId);
+      const linkedGroups = groups.filter(
+        (g) => (g as any).dailyActivityId === activityId,
+      );
+      if (linkedGroups.length > 0) {
+        return res.status(409).json({
+          message: `Photos are linked to this activity (${linkedGroups
+            .map((g) => g.title)
+            .join(", ")}). Remove the link or delete the photo group first.`,
+        });
+      }
+
       const success = await storage.deleteDailyActivity(activityId);
       if (!success) {
         return res.status(404).json({ message: "Daily activity not found" });
