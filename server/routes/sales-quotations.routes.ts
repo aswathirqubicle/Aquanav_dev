@@ -137,6 +137,31 @@ salesQuotationsRoutes.post(
   },
 );
 
+// Reading one quotation by id. Added for Convert to Invoice: the invoice page
+// is a separate route now, so it loads the quotation it was sent rather than
+// finding it in a list it no longer holds. Same shape as the proforma
+// equivalent below.
+salesQuotationsRoutes.get(
+  "/api/sales-quotations/:id",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const quotation = await storage.getSalesQuotation(id);
+
+      if (!quotation) {
+        return res.status(404).json({ message: "Sales quotation not found" });
+      }
+
+      res.json(quotation);
+    } catch (error) {
+      console.error("Error fetching sales quotation:", error);
+      res.status(500).json({ message: "Failed to fetch sales quotation" });
+    }
+  },
+);
+
 salesQuotationsRoutes.put(
   "/api/sales-quotations/:id",
   requireAuth,
