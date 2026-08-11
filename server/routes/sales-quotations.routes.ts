@@ -13,7 +13,6 @@ import {
   labelReferenceChanges,
   recordDocumentEdit,
 } from "../lib/document-edit-history";
-import { salesQuotations } from "@shared/schema";
 import { storage } from "../storage";
 
 export const salesQuotationsRoutes = Router();
@@ -91,13 +90,13 @@ salesQuotationsRoutes.post(
         return res.status(400).json({ message: currencyError });
       }
 
-      // Auto-generate quotation number if not provided
+      // A quotation being drafted gets a throwaway number, not a sequence one.
+      // The permanent QTN-AQNV- number is drawn at approval, so a draft that is
+      // deleted or never approved does not consume a serial and leave a hole in
+      // the sequence. Mirrors createSalesInvoice.
       if (!quotationData.quotationNumber) {
-        quotationData.quotationNumber = await storage.generateNextNumber(
-          "QTN",
-          salesQuotations,
-          salesQuotations.quotationNumber,
-        );
+        const timestamp = Date.now().toString().slice(-10);
+        quotationData.quotationNumber = `QTN-DRFT-${timestamp}`;
       }
 
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
@@ -401,25 +400,41 @@ salesQuotationsRoutes.patch(
   },
 );
 
-salesQuotationsRoutes.post(
-  "/api/sales-quotations/:id/approve",
+// Withdrawing an approved quotation. The reason is mandatory for the same
+// reason the rejection reason and the edit note are: a decision taken against
+// an approved document has to be one someone can account for later. The status
+// gate itself lives in storage.cancelSalesQuotation, which reads the persisted
+// row — see the sales invoice cancel route, which is shaped the same way.
+salesQuotationsRoutes.patch(
+  "/api/sales-quotations/:id/cancel",
   requireAuth,
   requireRole(["admin"]),
   async (req, res) => {
     try {
-      const quotationId = parseInt(req.params.id);
-      const quotation = await storage.updateSalesQuotation(quotationId, {
-        status: "approved",
-      });
-
-      if (!quotation) {
-        return res.status(404).json({ message: "Quotation not found" });
+      const id = parseInt(req.params.id);
+      const cancellationReason = req.body?.cancellationReason;
+      if (!cancellationReason || !String(cancellationReason).trim()) {
+        return res
+          .status(400)
+          .json({ message: "A cancellation reason is required" });
       }
 
-      res.json(quotation);
-    } catch (error) {
-      console.error("Sales quotation approval error:", error);
-      res.status(500).json({ message: "Failed to approve sales quotation" });
+      const cancelled = await storage.cancelSalesQuotation(
+        id,
+        req.session.userId!,
+        String(cancellationReason).trim(),
+      );
+      res.json({
+        message: "Sales quotation cancelled successfully",
+        quotation: cancelled,
+      });
+    } catch (error: any) {
+      console.error("Cancel sales quotation error:", error);
+      // Business-rule refusals (not found, wrong status) come back from storage
+      // as thrown errors, the same way the sales invoice cancel route treats them.
+      res
+        .status(400)
+        .json({ message: error?.message || "Failed to cancel sales quotation" });
     }
   },
 );
@@ -459,6 +474,22 @@ salesQuotationsRoutes.put(
   async (req, res) => {
     try {
       const quotationId = parseInt(req.params.id);
+      const existing = await storage.getSalesQuotation(quotationId);
+      if (!existing) {
+        return res.status(404).json({ message: "Quotation not found" });
+      }
+
+      // A converted quotation is the origin of a live invoice. Archiving hides
+      // it from the default list, which would leave that invoice traceable back
+      // to a document nobody can find. Every other status may be archived.
+      // Read from the PERSISTED row, never req.body.
+      if (existing.status === "converted") {
+        return res.status(400).json({
+          message:
+            "A converted quotation cannot be archived — it is the origin of an invoice",
+        });
+      }
+
       const quotation = await storage.updateSalesQuotation(quotationId, {
         isArchived: true,
       });

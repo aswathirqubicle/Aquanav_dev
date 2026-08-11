@@ -927,6 +927,8 @@ export class SalesStorage extends LedgerStorage {
       const submitterEmp = alias(employees, "quotationSubmitterEmp");
       const approver = alias(users, "quotationApprover");
       const approverEmp = alias(employees, "quotationApproverEmp");
+      const canceller = alias(users, "quotationCanceller");
+      const cancellerEmp = alias(employees, "quotationCancellerEmp");
 
       const dataQueryBuilder = db
         .select({
@@ -959,6 +961,10 @@ export class SalesStorage extends LedgerStorage {
           approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: salesQuotations.approvedAt,
           rejectionReason: salesQuotations.rejectionReason,
+          cancelledById: salesQuotations.cancelledById,
+          cancelledByName: sql<string>`COALESCE(NULLIF(CONCAT(${cancellerEmp.firstName}, ' ', ${cancellerEmp.lastName}), ' '), ${canceller.username}, '')`,
+          cancelledAt: salesQuotations.cancelledAt,
+          cancellationReason: salesQuotations.cancellationReason,
           isArchived: salesQuotations.isArchived,
           createdDate: salesQuotations.createdDate,
         })
@@ -968,6 +974,8 @@ export class SalesStorage extends LedgerStorage {
         .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
         .leftJoin(approver, eq(salesQuotations.approvedById, approver.id))
         .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .leftJoin(canceller, eq(salesQuotations.cancelledById, canceller.id))
+        .leftJoin(cancellerEmp, eq(canceller.id, cancellerEmp.userId))
         .where(finalConditions)
         .orderBy(desc(salesQuotations.createdDate));
 
@@ -1469,10 +1477,26 @@ export class SalesStorage extends LedgerStorage {
 
   async approveSalesQuotation(id: number, userId: number): Promise<void> {
     try {
+      const quotation = await this.getSalesQuotation(id);
+      if (!quotation) throw new Error("Quotation not found");
+
+      // Draw the permanent number only if the quotation does not already carry
+      // one. An approved quotation that is edited goes back to the queue and is
+      // approved again; re-issuing a number there would abandon the one the
+      // customer was quoted and leave a gap in the sequence.
+      const quotationNumber = quotation.quotationNumber?.startsWith("QTN-AQNV-")
+        ? quotation.quotationNumber
+        : await this.generateNextNumber(
+            "QTN",
+            salesQuotations,
+            salesQuotations.quotationNumber,
+          );
+
       await db
         .update(salesQuotations)
         .set({
           status: "approved",
+          quotationNumber,
           approvedById: userId,
           approvedAt: new Date(),
         })
@@ -1514,6 +1538,56 @@ export class SalesStorage extends LedgerStorage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "rejectSalesQuotation",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Withdraw an approved quotation.
+   *
+   * Only an approved quotation can be cancelled. Before approval the document
+   * is still being drafted and reject already covers turning it down; after
+   * conversion an invoice hangs off it, and cancelling the quote there would
+   * leave that invoice pointing at a withdrawn price.
+   *
+   * Unlike cancelSalesInvoice this reverses nothing. A quotation posts no
+   * ledger entries, moves no stock and contributes no project revenue, so there
+   * is nothing to unwind — the cancellation is the status change plus who did
+   * it, when, and why.
+   */
+  async cancelSalesQuotation(
+    id: number,
+    userId: number,
+    cancellationReason: string,
+  ): Promise<any> {
+    try {
+      const quotation = await this.getSalesQuotation(id);
+      if (!quotation) throw new Error("Quotation not found");
+
+      if (quotation.status !== "approved") {
+        throw new Error("Only an approved quotation can be cancelled");
+      }
+
+      await db
+        .update(salesQuotations)
+        .set({
+          status: "cancelled",
+          cancelledById: userId,
+          cancelledAt: new Date(),
+          cancellationReason,
+        })
+        .where(eq(salesQuotations.id, id));
+
+      return this.getSalesQuotation(id);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in cancelSalesQuotation (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "cancelSalesQuotation",
         severity: "error",
       });
       throw error;

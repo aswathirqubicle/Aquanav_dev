@@ -168,6 +168,8 @@ export default function SalesQuotationsPage() {
       selectedQuotation?.status === "rejected");
   const [isQuotationRejectDialogOpen, setIsQuotationRejectDialogOpen] = useState(false);
   const [quotationRejectionReason, setQuotationRejectionReason] = useState("");
+  const [isQuotationCancelDialogOpen, setIsQuotationCancelDialogOpen] = useState(false);
+  const [quotationCancellationReason, setQuotationCancellationReason] = useState("");
   // Filter panel open/close
   const [quotationFilterOpen, setQuotationFilterOpen] = useState(false);
 
@@ -597,6 +599,46 @@ export default function SalesQuotationsPage() {
     },
   });
 
+  // Withdrawing an approved quotation. Shaped like the reject mutation above —
+  // the server takes the reason and decides the status, and refuses anything
+  // that is not approved.
+  const cancelQuotationMutation = useMutation({
+    mutationFn: async ({
+      quotationId,
+      cancellationReason,
+    }: {
+      quotationId: number;
+      cancellationReason: string;
+    }) => {
+      const response = await apiRequest(
+        `/api/sales-quotations/${quotationId}/cancel`,
+        {
+          method: "PATCH",
+          body: { cancellationReason },
+        },
+      );
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-quotations"] });
+      toast({
+        title: "Quotation Cancelled",
+        description: "The sales quotation has been cancelled.",
+      });
+      setIsQuotationCancelDialogOpen(false);
+      setQuotationCancellationReason("");
+      setSelectedQuotation(null);
+      setIsQuotationDetailsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Cannot Cancel Quotation",
+        description: error.message || "Failed to cancel quotation",
+        variant: "destructive",
+      });
+    },
+  });
+
   const archiveQuotationMutation = useMutation({
     mutationFn: async (quotationId: number) => {
       const response = await apiRequest(
@@ -877,6 +919,12 @@ export default function SalesQuotationsPage() {
         class:
           "bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400",
         label: "Converted",
+      },
+      cancelled: {
+        icon: XCircle,
+        class:
+          "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400",
+        label: "Cancelled",
       },
     };
 
@@ -2109,6 +2157,13 @@ export default function SalesQuotationsPage() {
                               </Button>
                             </>
                           )}
+                        {/* Archive is not offered on a converted quotation — it
+                            is the origin of a live invoice and hiding it would
+                            leave that invoice traceable back to a document
+                            nobody can find. Same gate as the archive route.
+                            Unarchive stays available regardless, so anything
+                            archived before the rule existed can still come
+                            back. */}
                         {user?.role === "admin" &&
                           (quotation.isArchived ? (
                             <Button
@@ -2131,25 +2186,27 @@ export default function SalesQuotationsPage() {
                                 : "Unarchive"}
                             </Button>
                           ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startTransition(() =>
-                                  archiveQuotationMutation.mutate(
-                                    quotation.id,
-                                  ),
-                                );
-                              }}
-                              disabled={archiveQuotationMutation.isPending}
-                              data-testid={`button-archive-quotation-${quotation.id}`}
-                            >
-                              <Archive className="h-4 w-4 mr-1" />
-                              {archiveQuotationMutation.isPending
-                                ? "Archiving..."
-                                : "Archive"}
-                            </Button>
+                            quotation.status !== "converted" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startTransition(() =>
+                                    archiveQuotationMutation.mutate(
+                                      quotation.id,
+                                    ),
+                                  );
+                                }}
+                                disabled={archiveQuotationMutation.isPending}
+                                data-testid={`button-archive-quotation-${quotation.id}`}
+                              >
+                                <Archive className="h-4 w-4 mr-1" />
+                                {archiveQuotationMutation.isPending
+                                  ? "Archiving..."
+                                  : "Archive"}
+                              </Button>
+                            )
                           ))}
                         {quotation.status === "approved" && (
                           <Button
@@ -2741,7 +2798,8 @@ export default function SalesQuotationsPage() {
                             <TabsContent value="approval" className="mt-4">
                               {(selectedQuotation as any).submittedAt ||
                               (selectedQuotation as any).approvedAt ||
-                              (selectedQuotation as any).rejectionReason ? (
+                              (selectedQuotation as any).rejectionReason ||
+                              (selectedQuotation as any).cancelledAt ? (
                                 <ul className={DOC_TIMELINE}>
                                   {(selectedQuotation as any).submittedAt && (
                                     <li className="relative pb-4 last:pb-0">
@@ -2770,6 +2828,23 @@ export default function SalesQuotationsPage() {
                                       <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
                                         {(selectedQuotation as any).rejectionReason}
                                       </div>
+                                    </li>
+                                  )}
+                                  {/* Same step the sales invoice trail renders,
+                                      keyed on cancelledAt for the same reason. */}
+                                  {(selectedQuotation as any).cancelledAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#B42318]`} />
+                                      <div className="text-[13.5px] font-semibold">Cancelled</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedQuotation as any).cancelledByName || "—"} ·{" "}
+                                        {new Date((selectedQuotation as any).cancelledAt).toLocaleString()}
+                                      </div>
+                                      {(selectedQuotation as any).cancellationReason && (
+                                        <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                          {(selectedQuotation as any).cancellationReason}
+                                        </div>
+                                      )}
                                     </li>
                                   )}
                                   {selectedQuotation.status === "pending_approval" && (
@@ -2860,6 +2935,19 @@ export default function SalesQuotationsPage() {
                       Convert to Invoice
                     </Button>
                   )}
+                  {user?.role === "admin" &&
+                    selectedQuotation.status === "approved" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsQuotationCancelDialogOpen(true)}
+                        disabled={cancelQuotationMutation.isPending}
+                        className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
+                        data-testid="button-cancel-quotation-dialog"
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Cancel Quotation
+                      </Button>
+                    )}
                   <Button
                     variant="outline"
                     onClick={() => setIsQuotationDetailsOpen(false)}
@@ -2938,6 +3026,75 @@ export default function SalesQuotationsPage() {
                 data-testid="button-confirm-reject-quotation"
               >
                 {rejectQuotationMutation.isPending ? "Rejecting..." : "Reject Quotation"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quotation Cancel Dialog */}
+      <Dialog
+        open={isQuotationCancelDialogOpen}
+        onOpenChange={setIsQuotationCancelDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Sales Quotation</DialogTitle>
+            <DialogDescription>
+              This withdraws the approved quotation. It cannot be edited or
+              converted to an invoice afterwards.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="quotationCancellationReason">
+                Cancellation Reason *
+              </Label>
+              <Textarea
+                id="quotationCancellationReason"
+                value={quotationCancellationReason}
+                onChange={(e) => setQuotationCancellationReason(e.target.value)}
+                placeholder="Explain why this quotation is being cancelled..."
+                rows={4}
+                className="resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsQuotationCancelDialogOpen(false);
+                  setQuotationCancellationReason("");
+                }}
+                disabled={cancelQuotationMutation.isPending}
+                data-testid="button-dismiss-cancel-quotation"
+              >
+                Keep Quotation
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (!quotationCancellationReason.trim()) {
+                    toast({
+                      title: "Error",
+                      description: "Please provide a cancellation reason",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (selectedQuotation) {
+                    cancelQuotationMutation.mutate({
+                      quotationId: selectedQuotation.id,
+                      cancellationReason: quotationCancellationReason.trim(),
+                    });
+                  }
+                }}
+                disabled={cancelQuotationMutation.isPending}
+                data-testid="button-confirm-cancel-quotation"
+              >
+                {cancelQuotationMutation.isPending
+                  ? "Cancelling..."
+                  : "Cancel Quotation"}
               </Button>
             </div>
           </div>

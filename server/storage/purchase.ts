@@ -987,11 +987,12 @@ export class PurchaseStorage extends SalesStorage {
   async createPurchaseOrder(orderData: any): Promise<any> {
     try {
       orderData = this.applyPurchaseDocumentTotals(orderData);
-      const poNumber = await this.generateNextNumber(
-        "PO",
-        purchaseOrders,
-        purchaseOrders.poNumber,
-      );
+      // An order being drafted gets a throwaway number, not a sequence one. The
+      // permanent PO-AQNV- number is drawn at approval, so a draft that is
+      // deleted or never approved does not consume a serial and leave a hole in
+      // the sequence. Mirrors createSalesInvoice.
+      const timestamp = Date.now().toString().slice(-10);
+      const poNumber = `PO-DRFT-${timestamp}`;
 
       // Create the purchase order
       const [order] = await db
@@ -1251,10 +1252,26 @@ export class PurchaseStorage extends SalesStorage {
 
   async approvePurchaseOrder(id: number, userId: number): Promise<any> {
     try {
+      const order = await this.getPurchaseOrder(id);
+      if (!order) throw new Error("Purchase order not found");
+
+      // Draw the permanent number only if the order does not already carry one.
+      // An approved order that is edited goes back to the queue and is approved
+      // again; re-issuing a number there would abandon the one the supplier was
+      // sent and leave a gap in the sequence.
+      const poNumber = order.poNumber?.startsWith("PO-AQNV-")
+        ? order.poNumber
+        : await this.generateNextNumber(
+            "PO",
+            purchaseOrders,
+            purchaseOrders.poNumber,
+          );
+
       await db
         .update(purchaseOrders)
         .set({
           status: "approved",
+          poNumber,
           approvedById: userId,
           approvedAt: new Date(),
         })
@@ -1343,12 +1360,11 @@ export class PurchaseStorage extends SalesStorage {
         );
       }
 
-      // Generate invoice number
-      const invoiceNumber = await this.generateNextNumber(
-        "PI",
-        purchaseInvoices,
-        purchaseInvoices.invoiceNumber,
-      );
+      // The converted invoice is created as a draft, so it gets a throwaway
+      // number like any other draft. The permanent PI-AQNV- number is drawn at
+      // approval.
+      const convertTimestamp = Date.now().toString().slice(-10);
+      const invoiceNumber = `PI-DRFT-${convertTimestamp}`;
 
       // Use provided items or fall back to PO items for totals
       const itemsToUse =
@@ -2048,11 +2064,12 @@ export class PurchaseStorage extends SalesStorage {
   async createPurchaseInvoiceStandalone(invoiceData: any): Promise<any> {
     invoiceData = this.applyPurchaseDocumentTotals(invoiceData);
     try {
-      const invoiceNumber = await this.generateNextNumber(
-        "PI",
-        purchaseInvoices,
-        purchaseInvoices.invoiceNumber,
-      );
+      // An invoice being drafted gets a throwaway number, not a sequence one.
+      // The permanent PI-AQNV- number is drawn at approval, so a draft that is
+      // deleted or never approved does not consume a serial and leave a hole in
+      // the sequence. Mirrors createSalesInvoice.
+      const timestamp = Date.now().toString().slice(-10);
+      const invoiceNumber = `PI-DRFT-${timestamp}`;
 
       const [invoice] = await db
         .insert(purchaseInvoices)
@@ -2336,11 +2353,33 @@ export class PurchaseStorage extends SalesStorage {
         throw new Error("Purchase invoice not found");
       }
 
+      // Draw the permanent number only if the invoice does not already carry
+      // one. An approved invoice that is edited goes back to the queue and is
+      // approved again; re-issuing a number there would abandon the one already
+      // on the books and leave a gap in the sequence.
+      //
+      // Assigned back onto `invoice` before anything below runs. Everything
+      // this method writes downstream — the asset maintenance description, the
+      // goods receipt reference, the GL description and invoice_number column —
+      // is keyed on invoice.invoiceNumber as a STRING, and the revert and
+      // cancel paths find those rows again by matching that same string. Left
+      // stale, they would all be stamped with the draft number and neither
+      // revertPurchaseInvoiceToPending nor cancelPurchaseInvoice would match
+      // them, silently orphaning stock, maintenance records and ledger rows.
+      invoice.invoiceNumber = invoice.invoiceNumber?.startsWith("PI-AQNV-")
+        ? invoice.invoiceNumber
+        : await this.generateNextNumber(
+            "PI",
+            purchaseInvoices,
+            purchaseInvoices.invoiceNumber,
+          );
+
       // Update invoice approval status
       await db
         .update(purchaseInvoices)
         .set({
           status: "approved",
+          invoiceNumber: invoice.invoiceNumber,
           approvedById: userId,
           approvedAt: new Date(),
         })

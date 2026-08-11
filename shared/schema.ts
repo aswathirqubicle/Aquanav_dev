@@ -416,7 +416,7 @@ export const salesQuotations = pgTable("sales_quotations", {
   exchangeRate: decimal("exchange_rate", { precision: 18, scale: 8 })
     .notNull()
     .default("1"),
-  status: text("status").notNull().default("draft"), // draft, sent, approved, rejected, converted
+  status: text("status").notNull().default("draft"), // draft, pending_approval, approved, rejected, converted, cancelled
   validUntil: timestamp("valid_until", { mode: "string" }),
   paymentTerms: text("payment_terms"),
   bankAccount: text("bank_account"),
@@ -447,6 +447,9 @@ export const salesQuotations = pgTable("sales_quotations", {
   approvedById: integer("approved_by_id").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  cancelledById: integer("cancelled_by_id").references(() => users.id),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
   isArchived: boolean("is_archived").notNull().default(false),
   createdDate: timestamp("created_date", { mode: "string" })
     .notNull()
