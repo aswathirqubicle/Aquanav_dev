@@ -2047,7 +2047,7 @@ export default function EmployeesIndex() {
 
       {/* Employee Detail Dialog */}
       <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-auto">
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto w-[95vw]">
           <DialogHeader>
             <DialogTitle className="text-base sm:text-lg">
               {selectedEmployee?.firstName} {selectedEmployee?.lastName} - Employee Details
