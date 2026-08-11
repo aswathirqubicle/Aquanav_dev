@@ -158,7 +158,9 @@ printRoutes.post("/api/print/project-completion", requireAuth, async (req, res) 
       })
       .from(dailyActivities)
       .where(eq(dailyActivities.projectId, parseInt(projectId)))
-      .orderBy(asc(dailyActivities.date));
+      // id breaks date ties so the printed report lists a day's locations in
+      // the same order the Activities tab shows them.
+      .orderBy(asc(dailyActivities.date), asc(dailyActivities.id));
 
     // Compute stats
     const startDate = project.startDate ? new Date(project.startDate) : null;

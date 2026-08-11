@@ -1842,7 +1842,11 @@ export class ProjectAssetStorage extends InventoryStorage {
             isNotNull(dailyActivities.completedTasks),
             ne(dailyActivities.completedTasks, ""),
           ),
-        );
+        )
+        // Ordering by id within a date keeps a day's locations in the order
+        // they were entered. Without it the order is whatever Postgres returns
+        // from the heap, which an UPDATE reshuffles.
+        .orderBy(desc(dailyActivities.date), asc(dailyActivities.id));
     } catch (error: any) {
       await this.createErrorLog({
         message:
@@ -1873,7 +1877,9 @@ export class ProjectAssetStorage extends InventoryStorage {
           .select()
           .from(dailyActivities)
           .where(whereCondition)
-          .orderBy(desc(dailyActivities.date))
+          // id breaks date ties so a day's locations keep their entry order and
+          // pagination stays stable across pages.
+          .orderBy(desc(dailyActivities.date), asc(dailyActivities.id))
           .limit(limit)
           .offset(offset),
         db

@@ -602,8 +602,7 @@ projectsRoutes.post(
   async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
-      const { title, date, description } = req.body;
-      let { dailyActivityId } = req.body;
+      const { title, date, description, dailyActivityId } = req.body;
 
       if (!title || !date) {
         return res
@@ -634,22 +633,6 @@ projectsRoutes.post(
         return res.status(400).json({
           message: "Photo group date cannot be after project end date",
         });
-      }
-
-      // Auto-link to daily activity if not provided
-      if (!dailyActivityId) {
-        const activities = await storage.getDailyActivities(projectId);
-        const matchingActivity = activities.find((a) => {
-          const activityDate = new Date(a.date);
-          return (
-            activityDate.getUTCFullYear() === photoDate.getUTCFullYear() &&
-            activityDate.getUTCMonth() === photoDate.getUTCMonth() &&
-            activityDate.getUTCDate() === photoDate.getUTCDate()
-          );
-        });
-        if (matchingActivity) {
-          dailyActivityId = matchingActivity.id;
-        }
       }
 
       const parsedGroupData = insertProjectPhotoGroupSchema.parse({
@@ -723,6 +706,102 @@ projectsRoutes.delete(
     } catch (error) {
       console.error("Delete photo group error:", error);
       res.status(500).json({ message: "Failed to delete photo group" });
+    }
+  },
+);
+
+// Edits a photo group's details and its daily activity link. Photos themselves
+// are not touched here: adding or removing them still means deleting the group
+// and creating it again.
+projectsRoutes.put(
+  "/api/projects/:projectId/photo-groups/:groupId",
+  requireAuth,
+  requireRole(["admin", "project_manager"]),
+  async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.projectId);
+      const groupId = parseInt(req.params.groupId);
+      if (isNaN(projectId) || isNaN(groupId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid project or group ID" });
+      }
+
+      const { title, date, description, dailyActivityId } = req.body;
+
+      if (!title || !date) {
+        return res
+          .status(400)
+          .json({ message: "Title and date are required" });
+      }
+
+      // Reading the group through the project's own groups proves both that it
+      // exists and that it belongs to this project.
+      const groups = await storage.getProjectPhotoGroups(projectId);
+      if (!groups.some((g) => g.id === groupId)) {
+        return res.status(404).json({ message: "Photo group not found" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // The same window the create route enforces, so an edit cannot move a
+      // group to a date creating it there would have rejected.
+      const photoDate = new Date(date);
+      if (project.startDate && photoDate < new Date(project.startDate)) {
+        return res.status(400).json({
+          message: "Photo group date cannot be before project start date",
+        });
+      }
+
+      const projectEndDate = project.actualEndDate || project.plannedEndDate;
+      if (projectEndDate && photoDate > new Date(projectEndDate)) {
+        return res.status(400).json({
+          message: "Photo group date cannot be after project end date",
+        });
+      }
+
+      // Linking is optional — an absent or empty value clears the link — but a
+      // link that is given has to point at an activity of this same project.
+      let linkedActivityId: number | null = null;
+      if (
+        dailyActivityId !== undefined &&
+        dailyActivityId !== null &&
+        dailyActivityId !== ""
+      ) {
+        linkedActivityId = parseInt(dailyActivityId);
+        const activities = await storage.getDailyActivities(projectId);
+        if (
+          isNaN(linkedActivityId) ||
+          !activities.some((a) => a.id === linkedActivityId)
+        ) {
+          return res.status(400).json({
+            message: "Daily activity does not belong to this project",
+          });
+        }
+      }
+
+      const parsedGroupData = insertProjectPhotoGroupSchema.partial().parse({
+        title,
+        date,
+        description: description ?? null,
+        dailyActivityId: linkedActivityId,
+      });
+
+      const group = await storage.updateProjectPhotoGroup(
+        groupId,
+        parsedGroupData,
+      );
+      if (!group) {
+        return res.status(404).json({ message: "Photo group not found" });
+      }
+
+      res.json(group);
+    } catch (error) {
+      console.error("Update photo group error:", error);
+      res.status(500).json({ message: "Failed to update photo group" });
     }
   },
 );
