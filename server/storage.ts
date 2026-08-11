@@ -198,6 +198,7 @@ export interface IStorage {
   generateNextNumber(prefix: string, table: any, column: any): Promise<string>;
   // User methods
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   getUser(id: number): Promise<User | undefined>;
   getUsers(): Promise<User[]>;
   createUser(userData: InsertUser): Promise<User>;
