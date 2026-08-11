@@ -103,13 +103,13 @@ const navigation: NavItem[] = [
     roles: ["admin", "finance"],
     subItems: [
       {
-        title: "Quotations",
+        title: "Sales Quotations",
         href: "/sales-quotations",
         icon: FileText,
         roles: ["admin", "finance"],
       },
       {
-        title: "Invoices",
+        title: "Sales Invoices",
         href: "/sales-invoices",
         icon: FileText,
         roles: ["admin", "finance"],
