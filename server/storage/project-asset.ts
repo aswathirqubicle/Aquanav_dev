@@ -343,6 +343,10 @@ export class ProjectAssetStorage extends InventoryStorage {
 
       // Group non-empty remarks by date
       const remarksByDate: Record<string, string> = {};
+      // HBM running hours are day-level in the same way, so collect the day's
+      // value too. It is not always on the day's first row — the row carrying
+      // it may sort after one that has none.
+      const hbmByDate: Record<string, string> = {};
       if (res.dailyActivities && res.dailyActivities.length > 0) {
         res.dailyActivities.forEach((activity) => {
           if (activity.date && activity.remarks) {
@@ -351,19 +355,29 @@ export class ProjectAssetStorage extends InventoryStorage {
               remarksByDate[dateStr] = activity.remarks;
             }
           }
+          if (activity.date && activity.hbmDailyRunningHours) {
+            const dateStr = activity.date.toISOString().split("T")[0];
+            if (!hbmByDate[dateStr]) {
+              hbmByDate[dateStr] = activity.hbmDailyRunningHours;
+            }
+          }
         });
 
-        // Apply the date's remark to the first activity row for each date,
-        // and clear it from subsequent rows
+        // Carry the date's remark and HBM hours on the first activity row for
+        // that date, and clear both from the rest. Left on every row the hours
+        // read as if they repeated per location, and anyone totalling the
+        // column counts a single day's hours once for each location worked.
         const seenDates = new Set<string>();
         res.dailyActivities.forEach((activity) => {
           if (activity.date) {
             const dateStr = activity.date.toISOString().split("T")[0];
             if (!seenDates.has(dateStr)) {
               activity.remarks = remarksByDate[dateStr] || "";
+              activity.hbmDailyRunningHours = hbmByDate[dateStr] || "";
               seenDates.add(dateStr);
             } else {
               activity.remarks = "";
+              activity.hbmDailyRunningHours = "";
             }
           }
         });
