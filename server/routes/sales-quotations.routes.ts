@@ -13,7 +13,6 @@ import {
   labelReferenceChanges,
   recordDocumentEdit,
 } from "../lib/document-edit-history";
-import { salesQuotations } from "@shared/schema";
 import { storage } from "../storage";
 
 export const salesQuotationsRoutes = Router();
@@ -91,13 +90,13 @@ salesQuotationsRoutes.post(
         return res.status(400).json({ message: currencyError });
       }
 
-      // Auto-generate quotation number if not provided
+      // A quotation being drafted gets a throwaway number, not a sequence one.
+      // The permanent QTN-AQNV- number is drawn at approval, so a draft that is
+      // deleted or never approved does not consume a serial and leave a hole in
+      // the sequence. Mirrors createSalesInvoice.
       if (!quotationData.quotationNumber) {
-        quotationData.quotationNumber = await storage.generateNextNumber(
-          "QTN",
-          salesQuotations,
-          salesQuotations.quotationNumber,
-        );
+        const timestamp = Date.now().toString().slice(-10);
+        quotationData.quotationNumber = `QTN-DRFT-${timestamp}`;
       }
 
       // Date fields should remain as ISO strings (YYYY-MM-DD format)
@@ -397,29 +396,6 @@ salesQuotationsRoutes.patch(
     } catch (error) {
       console.error("Reject sales quotation error:", error);
       res.status(500).json({ message: "Failed to reject sales quotation" });
-    }
-  },
-);
-
-salesQuotationsRoutes.post(
-  "/api/sales-quotations/:id/approve",
-  requireAuth,
-  requireRole(["admin"]),
-  async (req, res) => {
-    try {
-      const quotationId = parseInt(req.params.id);
-      const quotation = await storage.updateSalesQuotation(quotationId, {
-        status: "approved",
-      });
-
-      if (!quotation) {
-        return res.status(404).json({ message: "Quotation not found" });
-      }
-
-      res.json(quotation);
-    } catch (error) {
-      console.error("Sales quotation approval error:", error);
-      res.status(500).json({ message: "Failed to approve sales quotation" });
     }
   },
 );

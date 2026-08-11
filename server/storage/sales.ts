@@ -1469,10 +1469,26 @@ export class SalesStorage extends LedgerStorage {
 
   async approveSalesQuotation(id: number, userId: number): Promise<void> {
     try {
+      const quotation = await this.getSalesQuotation(id);
+      if (!quotation) throw new Error("Quotation not found");
+
+      // Draw the permanent number only if the quotation does not already carry
+      // one. An approved quotation that is edited goes back to the queue and is
+      // approved again; re-issuing a number there would abandon the one the
+      // customer was quoted and leave a gap in the sequence.
+      const quotationNumber = quotation.quotationNumber?.startsWith("QTN-AQNV-")
+        ? quotation.quotationNumber
+        : await this.generateNextNumber(
+            "QTN",
+            salesQuotations,
+            salesQuotations.quotationNumber,
+          );
+
       await db
         .update(salesQuotations)
         .set({
           status: "approved",
+          quotationNumber,
           approvedById: userId,
           approvedAt: new Date(),
         })
