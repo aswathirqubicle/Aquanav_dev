@@ -513,10 +513,20 @@ export class InventoryStorage extends EmployeeStorage {
 
         createdTransactions.push(transaction[0]);
 
-        // Update inventory item stock and average cost
-        const newStock = inventoryItem.currentStock + item.quantity;
+        // Update inventory item stock and average cost.
+        //
+        // currentStock is numeric(10,2), which comes back from the driver as a
+        // STRING. `currentStock + quantity` was therefore string concatenation,
+        // not addition: receiving 7 against a stock of "0.00" produced "0.007",
+        // which the column then stored as 0.01. Every goods receipt — including
+        // the one each purchase invoice approval creates — wrote a nonsense
+        // figure, and avgCost below was derived from it. The other two lines
+        // coerce correctly because `*` and `/` have no string meaning, so only
+        // the addition was wrong.
+        const stockBefore = Number(inventoryItem.currentStock);
+        const newStock = stockBefore + Number(item.quantity);
         const currentValue =
-          inventoryItem.currentStock * parseFloat(inventoryItem.avgCost || "0");
+          stockBefore * parseFloat(inventoryItem.avgCost || "0");
         const newValue = currentValue + item.quantity * item.unitCost;
         const newAvgCost =
           newStock > 0 ? (newValue / newStock).toFixed(4) : "0";

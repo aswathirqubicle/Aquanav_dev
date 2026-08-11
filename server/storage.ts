@@ -581,6 +581,12 @@ export interface IStorage {
     invoiceData: Partial<InsertSalesInvoice>,
   ): Promise<SalesInvoice | undefined>;
   deleteSalesInvoice(id: number): Promise<void>;
+  revertSalesInvoiceToPending(id: number, userId: number): Promise<void>;
+  revertPurchaseInvoiceToPending(id: number, userId: number): Promise<void>;
+  deleteDocumentGLEntries(
+    referenceType: string,
+    referenceId: number,
+  ): Promise<void>;
 
   // Payment file methods
   createPaymentFile(fileData: CreatePaymentFileData): Promise<PaymentFile>;

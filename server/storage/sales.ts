@@ -2212,6 +2212,55 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
+  /**
+   * Send an approved sales invoice back for approval after an edit.
+   *
+   * Approval is what posts the ledger and recognises the revenue, so an edited
+   * invoice has to give both back until someone approves it again — otherwise
+   * the figures on the books are ones nobody signed off. Mirrors what the
+   * quotation and purchase order edits already do, and unwinds the same things
+   * approveSalesInvoice put in place.
+   *
+   * Callers must invoke this BEFORE applying the edit, while the stored row
+   * still holds the approved figures.
+   *
+   * The permanent invoice number is deliberately kept. It was issued to the
+   * customer when the invoice was first approved and reusing or reissuing it
+   * would break the number sequence; approveSalesInvoice only generates one
+   * when the invoice does not already carry an INV-AQNV- number.
+   *
+   * Project revenue is NOT recalculated here — updateProjectRevenue reads the
+   * status, so the caller recalculates after the edit lands, covering both the
+   * project the invoice was on and the one it may have moved to.
+   */
+  async revertSalesInvoiceToPending(id: number, userId: number): Promise<void> {
+    try {
+      await this.deleteDocumentGLEntries("sales_invoice", id);
+
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "pending_approval",
+          approvedById: null,
+          approvedAt: null,
+          rejectionReason: null,
+          submittedById: userId,
+          submittedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in revertSalesInvoiceToPending (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "revertSalesInvoiceToPending",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async submitSalesInvoiceForApproval(
     id: number,
     userId: number,

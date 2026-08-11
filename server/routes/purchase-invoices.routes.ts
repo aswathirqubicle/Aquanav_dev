@@ -238,6 +238,19 @@ purchaseInvoicesRoutes.put(
 
       const isApprovedEdit = existingInvoice.status !== "draft";
 
+      // Editing an invoice that has already been approved sends it back to the
+      // queue: the approval was given for figures that no longer exist, so it
+      // has to be given again. Done BEFORE the edit lands, while the line items
+      // still hold the approved quantities — the stock booked in at approval is
+      // measured against them, and the ledger posting is deleted here and
+      // re-created when the invoice is approved again. The editor becomes the
+      // submitter, since the edit is what put it back in the queue. Mirrors the
+      // purchase order edit.
+      const revertsToPending = requiresEditNote;
+      if (revertsToPending) {
+        await storage.revertPurchaseInvoiceToPending(id, req.session.userId!);
+      }
+
       const updatedInvoiceData = {
         ...invoiceData,
         items: JSON.parse(invoiceData.items || "[]"),
@@ -297,45 +310,29 @@ purchaseInvoicesRoutes.put(
       );
       await labelReferenceChanges(changes);
 
-      if (existingInvoice.status !== "draft") {
-        // GL is posted on approval. An invoice still awaiting approval has no
-        // posting to reverse, so re-posting here would create ledger entries for
-        // an unapproved document — and approval would then post the same split a
-        // second time, silently doubling expense, input VAT and payable (the
-        // doubled set still balances, so no ΣDr=ΣCr check catches it). Only an
-        // already-approved invoice gets the reverse-and-re-post.
-        if (existingInvoice.status !== "pending_approval") {
-          await storage.updatePurchaseInvoiceGLEntries(id);
-        }
+      if (revertsToPending) {
+        invoice.status = "pending_approval";
+        changes["status"] = {
+          old: existingInvoice.status,
+          new: "pending_approval",
+        };
 
-        const paidAmount = parseFloat(invoice.paidAmount || "0");
-        const newTotal = parseFloat(invoice.totalAmount || "0");
-        let newPaymentStatus = invoice.paymentStatus;
-        if (paidAmount > 0 && newTotal > 0) {
-          if (paidAmount >= newTotal) {
-            newPaymentStatus = "paid";
-          } else {
-            newPaymentStatus = "partial";
-          }
-        } else if (
-          paidAmount === 0 &&
-          (invoice.paymentStatus === "paid" ||
-            invoice.paymentStatus === "partial")
-        ) {
-          newPaymentStatus = "unpaid";
-        }
-
-        if (newPaymentStatus !== invoice.paymentStatus) {
-          await storage.updatePurchaseInvoice(
-            id,
-            { paymentStatus: newPaymentStatus } as any,
-            false,
-          );
-          invoice.paymentStatus = newPaymentStatus;
-          changes["paymentStatus"] = {
-            old: existingInvoice.paymentStatus,
-            new: newPaymentStatus,
-          };
+        // Recalculated after the edit, not inside the revert: line items may
+        // have been re-allocated to different projects in the same request, so
+        // both the projects the lines left and the ones they joined need their
+        // cost redone. recalculateProjectCost reads the status, so a pending
+        // invoice drops out of all of them and comes back on approval.
+        const oldProjectIds = ((existingInvoice as any).items || [])
+          .map((item: any) => item.projectId)
+          .filter((pid: any): pid is number => typeof pid === "number");
+        const newProjectIds = ((persistedInvoice as any)?.items || [])
+          .map((item: any) => item.projectId)
+          .filter((pid: any): pid is number => typeof pid === "number");
+        const affectedProjectIds = Array.from(
+          new Set<number>([...oldProjectIds, ...newProjectIds]),
+        );
+        for (const projectId of affectedProjectIds) {
+          await storage.recalculateProjectCost(projectId);
         }
       }
 

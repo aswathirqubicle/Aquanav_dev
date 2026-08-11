@@ -2508,6 +2508,125 @@ export class PurchaseStorage extends SalesStorage {
     }
   }
 
+  /**
+   * Send an approved purchase invoice back for approval after an edit.
+   *
+   * Approving a purchase invoice does considerably more than post the ledger:
+   * it books stock in against the inventory (a goods receipt with its own FIFO
+   * layers), writes asset maintenance records, and feeds project cost. An edit
+   * that left those in place would hold stock and cost for a document nobody
+   * has approved, and re-approval would book the whole lot a second time.
+   *
+   * Unwinds the same things approvePurchaseInvoice put in place, so re-approval
+   * re-applies them from the corrected line items. Mirrors what the purchase
+   * order edit already does, with the side effects an order does not have.
+   *
+   * Callers must invoke this BEFORE applying the edit, while the line items
+   * still hold the approved quantities — they are what the stock reversal is
+   * measured against.
+   *
+   * Project cost is NOT recalculated here — recalculateProjectCost reads the
+   * status, so the caller recalculates after the edit lands, covering both the
+   * projects the lines were on and any they have moved to.
+   */
+  async revertPurchaseInvoiceToPending(
+    id: number,
+    userId: number,
+  ): Promise<void> {
+    try {
+      const invoice = await this.getPurchaseInvoice(id);
+      if (!invoice) throw new Error("Purchase invoice not found");
+
+      const items = await db
+        .select()
+        .from(purchaseInvoiceItems)
+        .where(eq(purchaseInvoiceItems.invoiceId, id));
+
+      await this.deleteDocumentGLEntries("purchase_invoice", id);
+
+      // Asset maintenance records were written at approval and are matched the
+      // same way cancellation matches them — on the invoice number the
+      // description was built from.
+      for (const item of items) {
+        if (!item.assetInstanceId) continue;
+        const matchDesc = `Purchase Invoice: ${invoice.invoiceNumber}`;
+        await db
+          .delete(assetInventoryMaintenanceRecords)
+          .where(
+            and(
+              eq(
+                assetInventoryMaintenanceRecords.instanceId,
+                item.assetInstanceId,
+              ),
+              sql`${assetInventoryMaintenanceRecords.description} LIKE ${matchDesc + "%"}`,
+            ),
+          );
+      }
+
+      // Reverse the goods receipt with an offsetting outflow.
+      //
+      // Stock is allowed to go negative. Where part of the received quantity has
+      // already been issued out, reversing the receipt legitimately leaves the
+      // item short, and there is no goods-return or GRN flow in this system to
+      // record that shortfall anywhere else. Flooring at zero would silently
+      // absorb it and overstate the stock on hand; a negative figure is visibly
+      // wrong and prompts a physical count, which is the honest outcome.
+      const productItems = items.filter(
+        (item) => item.itemType === "product" && item.inventoryItemId,
+      );
+      if (productItems.length > 0) {
+        const revertRef = `REVERT-PI-${invoice.invoiceNumber}`;
+        const exchangeRate = parseFloat(invoice.exchangeRate || "1");
+        for (const item of productItems) {
+          const inventoryItem = await this.getInventoryItem(
+            item.inventoryItemId!,
+          );
+          if (!inventoryItem) continue;
+
+          const unitCostAED = (
+            parseFloat(item.unitPrice) * exchangeRate
+          ).toFixed(4);
+          await db.insert(inventoryTransactions).values({
+            itemId: item.inventoryItemId!,
+            type: "outflow",
+            quantity: item.quantity,
+            unitCost: unitCostAED,
+            remainingQuantity: 0,
+            reference: revertRef,
+            createdBy: userId,
+          });
+
+          await this.updateInventoryItem(item.inventoryItemId!, {
+            currentStock: (Number(inventoryItem.currentStock) -
+              Number(item.quantity)) as any,
+          });
+        }
+      }
+
+      await db
+        .update(purchaseInvoices)
+        .set({
+          status: "pending_approval",
+          approvedById: null,
+          approvedAt: null,
+          rejectionReason: null,
+          submittedById: userId,
+          submittedAt: new Date(),
+        })
+        .where(eq(purchaseInvoices.id, id));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in revertPurchaseInvoiceToPending (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "revertPurchaseInvoiceToPending",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async cancelPurchaseInvoice(
     id: number,
     userId: number,

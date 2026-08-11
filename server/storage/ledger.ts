@@ -26,6 +26,45 @@ import {
 import { db, sql as sqlRaw } from "../db";
 
 export class LedgerStorage extends ProjectAssetStorage {
+  /**
+   * Remove a document's ledger posting outright.
+   *
+   * Used only when a document is sent back for approval: it is no longer an
+   * approved record, so it should carry no ledger footprint at all, and
+   * re-approval posts the split again from the corrected figures. Deleting
+   * rather than reversing keeps the ledger free of paired rows for a posting
+   * that, in the end, never stood — the edit-history entry is what records that
+   * the change happened.
+   *
+   * This is deliberately NOT what cancellation does. A cancelled invoice was
+   * genuinely issued and its reversal stays on the ledger for audit.
+   */
+  async deleteDocumentGLEntries(
+    referenceType: string,
+    referenceId: number,
+  ): Promise<void> {
+    try {
+      await db
+        .delete(generalLedgerEntries)
+        .where(
+          and(
+            eq(generalLedgerEntries.referenceType, referenceType),
+            eq(generalLedgerEntries.referenceId, referenceId),
+          ),
+        );
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in deleteDocumentGLEntries (${referenceType} ${referenceId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "deleteDocumentGLEntries",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   // Chart of Accounts methods
   async getChartOfAccounts(): Promise<ChartOfAccount[]> {
     try {
