@@ -12,6 +12,13 @@ import {
   checkCreditNoteCurrency,
   checkCustomerDocumentCurrency,
 } from "../lib/document-currency";
+import {
+  addLineItemChanges,
+  diffDocumentFields,
+  documentRequiresEditNote,
+  labelReferenceChanges,
+  recordDocumentEdit,
+} from "../lib/document-edit-history";
 import { salesInvoices } from "@shared/schema";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
@@ -127,9 +134,7 @@ salesInvoicesRoutes.put(
       // draft and pending_approval are still pre-ledger, so they edit freely.
       // Read from the PERSISTED row, never req.body, so a client cannot claim
       // draft status to skip the note.
-      const requiresEditNote =
-        existingInvoice.status !== "draft" &&
-        existingInvoice.status !== "pending_approval";
+      const requiresEditNote = documentRequiresEditNote(existingInvoice.status);
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message: "Edit note is required when updating an approved invoice",
@@ -147,6 +152,21 @@ salesInvoicesRoutes.put(
         return res.status(400).json({ message: currencyError });
       }
 
+      // Editing an invoice that has already been approved sends it back to the
+      // queue: the approval was given for figures that no longer exist, so it
+      // has to be given again. Done BEFORE the edit lands, while the stored row
+      // still holds the approved figures the ledger was posted from — the
+      // posting is deleted here and re-created when the invoice is approved
+      // again. The editor becomes the submitter, since the edit is what put it
+      // back in the queue. Mirrors the quotation and purchase order edits.
+      const revertsToPending = requiresEditNote;
+      if (revertsToPending) {
+        await storage.revertSalesInvoiceToPending(
+          invoiceId,
+          req.session.userId!,
+        );
+      }
+
       const invoice = await storage.updateSalesInvoice(
         invoiceId,
         invoiceData,
@@ -160,9 +180,10 @@ salesInvoicesRoutes.put(
       // recomputes subtotal/discount/taxAmount/totalAmount (VAT on the
       // discounted base), so req.body holds pre-recompute values that were
       // never stored. Comparing to the stored row keeps edit history accurate.
-      const changes: Record<string, { old: any; new: any }> = {};
-      const fieldsToTrack = [
+      const changes = diffDocumentFields(existingInvoice, invoice, [
         "customerId",
+        "subject",
+        "projectId",
         "totalAmount",
         "subtotal",
         "taxAmount",
@@ -178,58 +199,31 @@ salesInvoicesRoutes.put(
         "bankAccount",
         "billingAddress",
         "termsAndConditions",
-      ];
-      for (const field of fieldsToTrack) {
-        const oldVal = (existingInvoice as any)[field];
-        const newVal = (invoice as any)[field];
-        if (String(oldVal || "") !== String(newVal || "")) {
-          changes[field] = { old: oldVal, new: newVal };
-        }
-      }
-      if (
-        JSON.stringify(existingInvoice.items) !==
-        JSON.stringify(invoice.items)
-      ) {
-        changes["items"] = {
-          old: existingInvoice.items,
-          new: invoice.items,
+      ]);
+      addLineItemChanges(changes, existingInvoice.items, invoice.items);
+      await labelReferenceChanges(changes);
+
+      if (revertsToPending) {
+        invoice.status = "pending_approval";
+        changes["status"] = {
+          old: existingInvoice.status,
+          new: "pending_approval",
         };
-      }
 
-      if (existingInvoice.status !== "draft") {
-        // GL is posted on approval. An invoice still awaiting approval has no
-        // posting to reverse, so re-posting here would create ledger entries for
-        // an unapproved document — and approval would then post the same split a
-        // second time, silently doubling revenue, output VAT and receivables (the
-        // doubled set still balances, so no ΣDr=ΣCr check catches it). Only an
-        // already-approved invoice gets the reverse-and-re-post.
-        if (existingInvoice.status !== "pending_approval") {
-          await storage.updateSalesInvoiceGLEntries(invoiceId);
-        }
-
-        const paidAmount = parseFloat(invoice.paidAmount || "0");
-        const newTotal = parseFloat(invoice.totalAmount || "0");
-        let newStatus = existingInvoice.status;
-        if (paidAmount > 0 && newTotal > 0) {
-          if (paidAmount >= newTotal) {
-            newStatus = "paid";
-          } else {
-            newStatus = "partially_paid";
-          }
-        } else if (
-          paidAmount === 0 &&
-          (existingInvoice.status === "paid" ||
-            existingInvoice.status === "partially_paid")
-        ) {
-          newStatus = "approved";
-        }
-
-        if (newStatus !== existingInvoice.status) {
-          await storage.updateSalesInvoice(invoiceId, {
-            status: newStatus,
-          } as any);
-          invoice.status = newStatus;
-          changes["status"] = { old: existingInvoice.status, new: newStatus };
+        // Recalculated after the edit, not inside the revert: the invoice may
+        // have been moved to a different project in the same request, so both
+        // the project it left and the one it joined need their revenue redone.
+        // updateProjectRevenue reads the status, so a pending invoice drops out
+        // of both and comes back on approval.
+        const affectedProjectIds = Array.from(
+          new Set(
+            [existingInvoice.projectId, invoice.projectId].filter(
+              (pid): pid is number => typeof pid === "number",
+            ),
+          ),
+        );
+        for (const projectId of affectedProjectIds) {
+          await storage.updateProjectRevenue(projectId);
         }
       }
 
@@ -237,14 +231,12 @@ salesInvoicesRoutes.put(
       // document still being drafted, not changes to an approved record, so
       // recording them would bury the entries that matter in drafting noise.
       if (requiresEditNote) {
-        const user = await storage.getUser(req.session.userId!);
-        await storage.createInvoiceEditHistory({
+        await recordDocumentEdit({
           invoiceType: "sales",
           invoiceId,
-          editNote: editNote.trim(),
-          changes: Object.keys(changes).length > 0 ? changes : null,
-          editedBy: req.session.userId || null,
-          editedByName: user?.username || null,
+          editNote,
+          changes,
+          userId: req.session.userId,
         });
       }
 
@@ -375,9 +367,19 @@ salesInvoicesRoutes.patch(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      // Cancelling reverses posted ledger entries, so the reason is mandatory
+      // the same way a rejection reason is — the trail has to say why, not just
+      // that it happened.
+      const cancellationReason = req.body?.cancellationReason;
+      if (!cancellationReason || !String(cancellationReason).trim()) {
+        return res
+          .status(400)
+          .json({ message: "A cancellation reason is required" });
+      }
       const updated = await storage.cancelSalesInvoice(
         id,
         req.session.userId!,
+        String(cancellationReason).trim(),
       );
       res.json({
         message: "Sales invoice cancelled successfully",

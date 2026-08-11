@@ -148,7 +148,7 @@ export default function GeneralLedgerPayable() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: entriesResponse, isLoading, refetch } = useQuery<{
+  const { data: entriesResponse, isLoading, isFetching, refetch } = useQuery<{
     data: GeneralLedgerEntry[];
     pagination: {
       page: number;
@@ -194,6 +194,12 @@ export default function GeneralLedgerPayable() {
       refetch();
     }
   }, [isAuthenticated, refetch]);
+
+  // See the note in general-ledger/index.tsx: the refetch above is what keeps
+  // this page current on navigation, and it runs against cached data, so
+  // isLoading stays false and stale rows sit on screen with nothing to say they
+  // are being replaced. isFetching covers that window.
+  const isRefreshing = isFetching && !isLoading;
 
   const entries = entriesResponse?.data || [];
   const pagination = entriesResponse?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
@@ -366,6 +372,17 @@ export default function GeneralLedgerPayable() {
         </Card>
       </div>
 
+      {isRefreshing && (
+        <div
+          className="flex items-center justify-center gap-2 pb-3 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          data-testid="gl-refreshing"
+        >
+          <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary" />
+          Refreshing…
+        </div>
+      )}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>

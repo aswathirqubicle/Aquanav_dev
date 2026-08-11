@@ -5,6 +5,14 @@ import {
   requireRole,
 } from "../middleware/auth";
 import { checkSupplierDocumentCurrency } from "../lib/document-currency";
+import {
+  addAttachmentChanges,
+  addLineItemChanges,
+  diffDocumentFields,
+  documentRequiresEditNote,
+  labelReferenceChanges,
+  recordDocumentEdit,
+} from "../lib/document-edit-history";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
 
@@ -169,9 +177,7 @@ purchaseOrdersRoutes.put(
       // was revisited. draft and pending_approval are still being drafted, so
       // they edit freely. Read from the PERSISTED row, never req.body, so a
       // client cannot claim draft status to skip the note.
-      const requiresEditNote =
-        existingOrder.status === "approved" ||
-        existingOrder.status === "rejected";
+      const requiresEditNote = documentRequiresEditNote(existingOrder.status);
       if (requiresEditNote && (!editNote || !editNote.trim())) {
         return res.status(400).json({
           message:
@@ -219,9 +225,6 @@ purchaseOrdersRoutes.put(
           : {}),
       };
 
-      // Fetch existing items BEFORE the update so the items diff sees the old set.
-      const existingItems = await storage.getPurchaseOrderItems(id);
-
       const order = await storage.updatePurchaseOrder(id, orderData);
       if (!order) {
         return res.status(404).json({ message: "Purchase order not found" });
@@ -231,8 +234,15 @@ purchaseOrdersRoutes.put(
       // recomputes subtotal/discountAmount/taxAmount/totalAmount (VAT on the
       // discounted base), so orderData holds pre-recompute values that were
       // never stored. Comparing to the stored row keeps edit history accurate.
-      const changes: Record<string, { old: any; new: any }> = {};
-      const fieldsToTrack = [
+      //
+      // Re-read the order rather than diffing the update's return value: items
+      // are child rows that were deleted and reinserted, and files were written
+      // to disk, so only a fresh read carries both in their persisted form.
+      // Diffing the request payload here reported the line items as changed on
+      // every single edit, because DB rows carry id/orderId/createdAt that the
+      // payload objects never had.
+      const persistedOrder = await storage.getPurchaseOrder(id);
+      const changes = diffDocumentFields(existingOrder, persistedOrder, [
         "supplierId",
         "subject",
         "status",
@@ -251,46 +261,29 @@ purchaseOrdersRoutes.put(
         "bankAccount",
         "notes",
         "termsAndConditions",
-      ];
-
-      for (const field of fieldsToTrack) {
-        const oldVal = (existingOrder as any)[field];
-        let newVal = (order as any)[field];
-
-        if (field === "orderDate" || field === "expectedDeliveryDate") {
-          const oldDate = oldVal
-            ? new Date(oldVal).toISOString().split("T")[0]
-            : null;
-          const newDate = newVal
-            ? new Date(newVal).toISOString().split("T")[0]
-            : null;
-          if (oldDate !== newDate) {
-            changes[field] = { old: oldDate, new: newDate };
-          }
-        } else if (String(oldVal || "") !== String(newVal || "")) {
-          changes[field] = { old: oldVal, new: newVal };
-        }
-      }
-
-      if (JSON.stringify(existingItems) !== JSON.stringify(orderItems)) {
-        changes["items"] = {
-          old: existingItems,
-          new: orderItems,
-        };
-      }
+      ]);
+      addLineItemChanges(
+        changes,
+        (existingOrder as any).items,
+        (persistedOrder as any)?.items,
+      );
+      addAttachmentChanges(
+        changes,
+        (existingOrder as any).files,
+        (persistedOrder as any)?.files,
+      );
+      await labelReferenceChanges(changes);
 
       // Only orders that have been through approval get a history row — the same
       // set that requires the note. Pre-approval edits are the document still
       // being drafted, not changes to a decided record.
       if (requiresEditNote) {
-        const user = await storage.getUser(req.session.userId!);
-        await storage.createInvoiceEditHistory({
+        await recordDocumentEdit({
           invoiceType: "purchase_order",
           invoiceId: id,
-          editNote: editNote.trim(),
-          changes: Object.keys(changes).length > 0 ? changes : null,
-          editedBy: req.session.userId || null,
-          editedByName: user?.username || null,
+          editNote,
+          changes,
+          userId: req.session.userId,
         });
       }
 

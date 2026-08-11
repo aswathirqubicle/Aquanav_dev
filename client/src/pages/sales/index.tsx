@@ -54,6 +54,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 import { sanitize } from "@/lib/sanitize";
+import { EditHistoryTab } from "@/components/documents/EditHistoryTab";
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import {
@@ -317,6 +318,9 @@ export default function SalesIndex() {
   const [quotationActivityTab, setQuotationActivityTab] = useState("approval");
   const [invoiceActivityOpen, setInvoiceActivityOpen] = useState(false);
   const [invoiceActivityTab, setInvoiceActivityTab] = useState("approval");
+  // Cancelling reverses posted ledger entries, so the reason is mandatory and
+  // is recorded against the invoice — same as a rejection reason.
+  const [cancellationReason, setCancellationReason] = useState("");
   const [selectedPaymentFiles, setSelectedPaymentFiles] =
     useState<FileList | null>(null);
 
@@ -923,6 +927,10 @@ export default function SalesIndex() {
         title: "Quotation Submitted",
         description: "The sales quotation has been submitted for approval.",
       });
+      // Same snapshot problem as approve: the dialog would keep showing the
+      // quotation as a draft with a live Submit button.
+      setSelectedQuotation(null);
+      setIsQuotationDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1171,6 +1179,10 @@ export default function SalesIndex() {
       // cards (receivables, invoice value) are stale until this refetches.
       queryClient.invalidateQueries({ queryKey: ["/api/sales/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", variables.id, "edit-history"] });
+      // Editing an approved invoice deletes its ledger posting server-side.
+      // staleTime is Infinity with no refetch on focus, so without this the
+      // General Ledger page keeps showing rows that no longer exist.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Updated",
         description: "The sales invoice has been updated successfully.",
@@ -1207,6 +1219,10 @@ export default function SalesIndex() {
         title: "Invoice Submitted",
         description: "The sales invoice has been submitted for approval.",
       });
+      // Same snapshot problem as approve: the dialog would keep showing the
+      // invoice as a draft with a live Submit button.
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1231,10 +1247,19 @@ export default function SalesIndex() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Approved",
         description: "The sales invoice has been approved and general ledger entries have been posted.",
       });
+      // selectedInvoice is a snapshot taken when the dialog opened; invalidating
+      // refetches the list but never re-syncs it. Leaving the dialog open showed
+      // the invoice still pending with a live Approve button, so the obvious
+      // reading was that nothing had happened — and pressing it again failed,
+      // because by then the invoice was approved. Closing is what the purchase
+      // invoice, quotation approve and reject flows already do.
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1280,10 +1305,16 @@ export default function SalesIndex() {
   });
 
   const cancelInvoiceMutation = useMutation({
-    mutationFn: async (invoiceId: number) => {
+    mutationFn: async ({
+      invoiceId,
+      cancellationReason,
+    }: {
+      invoiceId: number;
+      cancellationReason: string;
+    }) => {
       const response = await apiRequest(
         `/api/sales-invoices/${invoiceId}/cancel`,
-        { method: "PATCH", body: {} },
+        { method: "PATCH", body: { cancellationReason } },
       );
       return response;
     },
@@ -1295,6 +1326,7 @@ export default function SalesIndex() {
         title: "Invoice Cancelled",
         description: "The sales invoice has been cancelled and reversal ledger entries have been posted.",
       });
+      setCancellationReason("");
       setSelectedInvoice(null);
       setIsInvoiceDetailsOpen(false);
     },
@@ -1349,6 +1381,8 @@ export default function SalesIndex() {
       queryClient.invalidateQueries({
         queryKey: [`/api/sales-invoices/${selectedInvoice?.id}/payments`],
       });
+      // Recording a payment posts its own ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Payment Recorded",
         description: "The payment has been recorded successfully.",
@@ -5335,40 +5369,11 @@ export default function SalesIndex() {
                             </TabsContent>
 
                             <TabsContent value="history" className="mt-4">
-                              {quotationEditHistory && quotationEditHistory.length > 0 ? (
-                                <div className="space-y-3">
-                                  {quotationEditHistory.map((entry: any) => (
-                                    <div key={entry.id} className="border border-[#E3E7EE] rounded-lg p-3 bg-[#F7F9FC]">
-                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                                        <span className="font-semibold text-[13.5px]">{entry.editedByName || "Unknown"}</span>
-                                        <span className="text-[11.5px] text-[#8A93A3]">
-                                          {new Date(entry.editedAt).toLocaleString()}
-                                        </span>
-                                      </div>
-                                      <p className="text-[13px] text-[#333B47] mb-2">{entry.editNote}</p>
-                                      {entry.changes && Object.keys(entry.changes).length > 0 && (
-                                        <div className="text-[12px] space-y-1">
-                                          {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                            field !== "items" ? (
-                                              <div key={field} className="flex gap-2">
-                                                <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                <span className="text-[#B42318] line-through">{String(change.old || "—")}</span>
-                                                <span className="text-[#027A48]">{String(change.new || "—")}</span>
-                                              </div>
-                                            ) : (
-                                              <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
-                                            )
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground italic">
-                                  No edits have been recorded for this quotation.
-                                </p>
-                              )}
+                              <EditHistoryTab
+                                entries={quotationEditHistory}
+                                currency={selectedQuotation.currency}
+                                emptyMessage="No edits have been recorded for this quotation."
+                              />
                             </TabsContent>
                           </Tabs>
                         </div>
@@ -5992,7 +5997,8 @@ export default function SalesIndex() {
                             <TabsContent value="approval" className="mt-4">
                               {(selectedInvoice as any).submittedAt ||
                               (selectedInvoice as any).approvedAt ||
-                              (selectedInvoice as any).rejectionReason ? (
+                              (selectedInvoice as any).rejectionReason ||
+                              (selectedInvoice as any).cancelledAt ? (
                                 <ul className={DOC_TIMELINE}>
                                   {(selectedInvoice as any).submittedAt && (
                                     <li className="relative pb-4 last:pb-0">
@@ -6021,6 +6027,25 @@ export default function SalesIndex() {
                                       <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
                                         {(selectedInvoice as any).rejectionReason}
                                       </div>
+                                    </li>
+                                  )}
+                                  {/* Rendered only when cancelledAt is set. Invoices
+                                      cancelled before this was recorded have no
+                                      attribution to show, so they keep displaying
+                                      exactly as they did. */}
+                                  {(selectedInvoice as any).cancelledAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#B42318]`} />
+                                      <div className="text-[13.5px] font-semibold">Cancelled</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedInvoice as any).cancelledByName || "—"} ·{" "}
+                                        {new Date((selectedInvoice as any).cancelledAt).toLocaleString()}
+                                      </div>
+                                      {(selectedInvoice as any).cancellationReason && (
+                                        <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                          {(selectedInvoice as any).cancellationReason}
+                                        </div>
+                                      )}
                                     </li>
                                   )}
                                   {selectedInvoice.status === "pending_approval" && (
@@ -6187,40 +6212,11 @@ export default function SalesIndex() {
                             )}
 
                             <TabsContent value="history" className="mt-4">
-                              {invoiceEditHistory && invoiceEditHistory.length > 0 ? (
-                                <div className="space-y-3">
-                                  {invoiceEditHistory.map((entry: any) => (
-                                    <div key={entry.id} className="border border-[#E3E7EE] rounded-lg p-3 bg-[#F7F9FC]">
-                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                                        <span className="font-semibold text-[13.5px]">{entry.editedByName || "Unknown"}</span>
-                                        <span className="text-[11.5px] text-[#8A93A3]">
-                                          {new Date(entry.editedAt).toLocaleString()}
-                                        </span>
-                                      </div>
-                                      <p className="text-[13px] text-[#333B47] mb-2">{entry.editNote}</p>
-                                      {entry.changes && Object.keys(entry.changes).length > 0 && (
-                                        <div className="text-[12px] space-y-1">
-                                          {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                            field !== "items" ? (
-                                              <div key={field} className="flex gap-2">
-                                                <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                <span className="text-[#B42318] line-through">{String(change.old || "—")}</span>
-                                                <span className="text-[#027A48]">{String(change.new || "—")}</span>
-                                              </div>
-                                            ) : (
-                                              <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
-                                            )
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground italic">
-                                  No edits have been recorded for this invoice.
-                                </p>
-                              )}
+                              <EditHistoryTab
+                                entries={invoiceEditHistory}
+                                currency={invoiceCurrency}
+                                emptyMessage="No edits have been recorded for this invoice."
+                              />
                             </TabsContent>
                           </Tabs>
                         </div>
@@ -6333,7 +6329,11 @@ export default function SalesIndex() {
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
-                      <AlertDialog>
+                      <AlertDialog
+                        onOpenChange={(open) => {
+                          if (!open) setCancellationReason("");
+                        }}
+                      >
                         <AlertDialogTrigger asChild>
                           <Button
                             variant="destructive"
@@ -6353,14 +6353,43 @@ export default function SalesIndex() {
                               reversal ledger entries. This cannot be undone.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
+                          <div className="space-y-2">
+                            <Label htmlFor="cancellationReason">
+                              Reason for Cancellation
+                            </Label>
+                            <Textarea
+                              id="cancellationReason"
+                              placeholder="Why is this invoice being cancelled?"
+                              value={cancellationReason}
+                              onChange={(e) => setCancellationReason(e.target.value)}
+                              rows={3}
+                              data-testid="input-cancellation-reason"
+                            />
+                          </div>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() =>
+                              onClick={(e) => {
+                                // The reason is recorded on the invoice, so an
+                                // empty one has to keep the dialog open rather
+                                // than cancel without it.
+                                if (!cancellationReason.trim()) {
+                                  e.preventDefault();
+                                  toast({
+                                    title: "Reason required",
+                                    description:
+                                      "Enter why this invoice is being cancelled.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
                                 startTransition(() =>
-                                  cancelInvoiceMutation.mutate(selectedInvoice.id),
-                                )
-                              }
+                                  cancelInvoiceMutation.mutate({
+                                    invoiceId: selectedInvoice.id,
+                                    cancellationReason: cancellationReason.trim(),
+                                  }),
+                                );
+                              }}
                               disabled={cancelInvoiceMutation.isPending}
                             >
                               {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}

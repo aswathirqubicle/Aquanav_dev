@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
+import { EditHistoryTab } from "@/components/documents/EditHistoryTab";
 import { Plus, FileText, Package, Truck, CheckCircle, XCircle, Clock, Trash2, Search, Filter, DollarSign, TrendingUp, CreditCard, Printer, Paperclip, Download, History, Pencil, X, Send, ArrowRightLeft, ChevronDown, ChevronUp, Copy, Building2, AlignLeft } from "lucide-react";
 import { InventoryItem, type SupplierBankDetails } from "@shared/schema";
 import { computeDocumentTotals } from "@shared/document-totals";
@@ -3139,84 +3140,12 @@ export default function PurchaseOrdersIndex() {
 
                           {canSeeEditHistory && (
                             <TabsContent value="history" className="mt-4">
-                              {isLoadingEditHistory ? (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                                  Loading edit history…
-                                </div>
-                              ) : poEditHistory && poEditHistory.length > 0 ? (
-                                <div className="space-y-3">
-                                  {poEditHistory.map((entry: any) => {
-                                    const changedFields = entry.changes ? Object.keys(entry.changes) : [];
-                                    return (
-                                      <div key={entry.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
-                                        <div
-                                          className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
-                                          onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
-                                        >
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                              <div className="flex flex-wrap items-center gap-2">
-                                                <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                                                <span className="text-xs text-[#8A93A3]">{new Date(entry.editedAt).toLocaleString()}</span>
-                                              </div>
-                                              <p className="text-sm text-[#333B47] mt-1 break-words">{entry.editNote}</p>
-                                              {changedFields.length > 0 && (
-                                                <p className="text-xs text-[#8A93A3] mt-1">
-                                                  {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
-                                                </p>
-                                              )}
-                                            </div>
-                                            {changedFields.length > 0 && (
-                                              <ChevronDown
-                                                className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
-                                              />
-                                            )}
-                                          </div>
-                                        </div>
-                                        {expandedEditEntry === entry.id && changedFields.length > 0 && (
-                                          <div className="px-3 pb-3 pt-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
-                                            <div className="text-xs space-y-2">
-                                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                                field !== "items" ? (
-                                                  <div key={field} className="flex flex-col gap-1">
-                                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                    {/* notes and bankAccount are ReactQuill fields, so their
-                                                        stored value is HTML and printing it raw showed markup
-                                                        to the reader. Every other tracked field is plain text
-                                                        and stays escaped. */}
-                                                    {isRichTextField(field) ? (
-                                                      <>
-                                                        <div
-                                                          className="text-red-500 line-through break-words rich-text-content"
-                                                          dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
-                                                        />
-                                                        <div
-                                                          className="text-green-600 break-words rich-text-content"
-                                                          dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
-                                                        />
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                                        <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
-                                                      </>
-                                                    )}
-                                                  </div>
-                                                ) : (
-                                                  <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
-                                                )
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p className={emptyCls}>No edits recorded.</p>
-                              )}
+                              <EditHistoryTab
+                                entries={poEditHistory}
+                                isLoading={isLoadingEditHistory}
+                                currency={viewingOrder.currency}
+                                emptyMessage="No edits recorded."
+                              />
                             </TabsContent>
                           )}
                         </Tabs>

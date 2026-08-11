@@ -1087,6 +1087,8 @@ export class SalesStorage extends LedgerStorage {
       const submitterEmp = alias(employees, "invoiceSubmitterEmp");
       const approver = alias(users, "invoiceApprover");
       const approverEmp = alias(employees, "invoiceApproverEmp");
+      const canceller = alias(users, "invoiceCanceller");
+      const cancellerEmp = alias(employees, "invoiceCancellerEmp");
 
       const dataQueryBuilder = db
         .select({
@@ -1125,6 +1127,10 @@ export class SalesStorage extends LedgerStorage {
           approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: salesInvoices.approvedAt,
           rejectionReason: salesInvoices.rejectionReason,
+          cancelledById: salesInvoices.cancelledById,
+          cancelledByName: sql<string>`COALESCE(NULLIF(CONCAT(${cancellerEmp.firstName}, ' ', ${cancellerEmp.lastName}), ' '), ${canceller.username}, '')`,
+          cancelledAt: salesInvoices.cancelledAt,
+          cancellationReason: salesInvoices.cancellationReason,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
@@ -1133,6 +1139,8 @@ export class SalesStorage extends LedgerStorage {
         .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
         .leftJoin(approver, eq(salesInvoices.approvedById, approver.id))
         .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
+        .leftJoin(canceller, eq(salesInvoices.cancelledById, canceller.id))
+        .leftJoin(cancellerEmp, eq(canceller.id, cancellerEmp.userId))
         .where(finalConditions)
         .orderBy(desc(salesInvoices.id));
 
@@ -2204,6 +2212,55 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
+  /**
+   * Send an approved sales invoice back for approval after an edit.
+   *
+   * Approval is what posts the ledger and recognises the revenue, so an edited
+   * invoice has to give both back until someone approves it again — otherwise
+   * the figures on the books are ones nobody signed off. Mirrors what the
+   * quotation and purchase order edits already do, and unwinds the same things
+   * approveSalesInvoice put in place.
+   *
+   * Callers must invoke this BEFORE applying the edit, while the stored row
+   * still holds the approved figures.
+   *
+   * The permanent invoice number is deliberately kept. It was issued to the
+   * customer when the invoice was first approved and reusing or reissuing it
+   * would break the number sequence; approveSalesInvoice only generates one
+   * when the invoice does not already carry an INV-AQNV- number.
+   *
+   * Project revenue is NOT recalculated here — updateProjectRevenue reads the
+   * status, so the caller recalculates after the edit lands, covering both the
+   * project the invoice was on and the one it may have moved to.
+   */
+  async revertSalesInvoiceToPending(id: number, userId: number): Promise<void> {
+    try {
+      await this.deleteDocumentGLEntries("sales_invoice", id);
+
+      await db
+        .update(salesInvoices)
+        .set({
+          status: "pending_approval",
+          approvedById: null,
+          approvedAt: null,
+          rejectionReason: null,
+          submittedById: userId,
+          submittedAt: new Date(),
+        })
+        .where(eq(salesInvoices.id, id));
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in revertSalesInvoiceToPending (id: ${id}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "revertSalesInvoiceToPending",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
   async submitSalesInvoiceForApproval(
     id: number,
     userId: number,
@@ -2323,7 +2380,11 @@ export class SalesStorage extends LedgerStorage {
     }
   }
 
-  async cancelSalesInvoice(id: number, userId: number): Promise<any> {
+  async cancelSalesInvoice(
+    id: number,
+    userId: number,
+    cancellationReason: string,
+  ): Promise<any> {
     try {
       const invoice = await this.getSalesInvoice(id);
       if (!invoice) throw new Error("Invoice not found");
@@ -2345,7 +2406,12 @@ export class SalesStorage extends LedgerStorage {
 
       await db
         .update(salesInvoices)
-        .set({ status: "cancelled" })
+        .set({
+          status: "cancelled",
+          cancelledById: userId,
+          cancelledAt: new Date(),
+          cancellationReason,
+        })
         .where(eq(salesInvoices.id, id));
 
       await this.createCancellationGLEntries(id);

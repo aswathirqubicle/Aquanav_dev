@@ -200,6 +200,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUser(id: number): Promise<User | undefined>;
+  getUserDisplayName(id: number): Promise<string | null>;
   getUsers(): Promise<User[]>;
   createUser(userData: InsertUser): Promise<User>;
   updateUser(
@@ -580,6 +581,12 @@ export interface IStorage {
     invoiceData: Partial<InsertSalesInvoice>,
   ): Promise<SalesInvoice | undefined>;
   deleteSalesInvoice(id: number): Promise<void>;
+  revertSalesInvoiceToPending(id: number, userId: number): Promise<void>;
+  revertPurchaseInvoiceToPending(id: number, userId: number): Promise<void>;
+  deleteDocumentGLEntries(
+    referenceType: string,
+    referenceId: number,
+  ): Promise<void>;
 
   // Payment file methods
   createPaymentFile(fileData: CreatePaymentFileData): Promise<PaymentFile>;

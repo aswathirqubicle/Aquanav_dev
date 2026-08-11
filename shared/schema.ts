@@ -504,6 +504,11 @@ export const salesInvoices = pgTable("sales_invoices", {
   approvedById: integer("approved_by_id").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  // Cancelling an approved invoice reverses posted ledger entries, so who did
+  // it and why belongs on the record alongside who approved it.
+  cancelledById: integer("cancelled_by_id").references(() => users.id),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
   workOrderNumber: text("work_order_number"),
 });
 
@@ -1040,6 +1045,12 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   approvedById: integer("approved_by_id").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  // Cancelling an approved invoice reverses posted ledger entries, project cost
+  // allocations and inventory movements, so who did it and why belongs on the
+  // record alongside who approved it.
+  cancelledById: integer("cancelled_by_id").references(() => users.id),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
   createdBy: integer("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

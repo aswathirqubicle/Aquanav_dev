@@ -178,7 +178,7 @@ export default function GeneralLedger() {
     }
   }, [isAuthenticated, user, setLocation]);
 
-  const { data: entriesResponse, isLoading, refetch } = useQuery<{
+  const { data: entriesResponse, isLoading, isFetching, refetch } = useQuery<{
     data: GeneralLedgerEntry[];
     pagination: {
       page: number;
@@ -208,6 +208,15 @@ export default function GeneralLedger() {
       refetch();
     }
   }, [isAuthenticated, refetch]);
+
+  // Queries are configured with staleTime Infinity and no refetch on focus, so
+  // the refetch above is what keeps this page current when it is navigated to.
+  // It runs against cached data, which means isLoading stays false and the old
+  // rows sit on screen until the response lands — with nothing to say they are
+  // being replaced. An invoice edited elsewhere would appear to still have its
+  // ledger entries. isFetching covers that window; isLoading is still what
+  // drives the full-page spinner on a first load or a filter change.
+  const isRefreshing = isFetching && !isLoading;
 
   const entries = entriesResponse?.data || [];
   const pagination = entriesResponse?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
@@ -713,8 +722,19 @@ export default function GeneralLedger() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>General Ledger Entries</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              {pagination.total} total entries
+            <span className="flex items-center gap-3 text-sm font-normal text-muted-foreground">
+              {isRefreshing && (
+                <span
+                  className="flex items-center gap-2"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="gl-refreshing"
+                >
+                  <span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary" />
+                  Refreshing…
+                </span>
+              )}
+              <span>{pagination.total} total entries</span>
             </span>
           </CardTitle>
         </CardHeader>

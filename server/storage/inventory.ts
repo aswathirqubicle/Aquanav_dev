@@ -513,13 +513,45 @@ export class InventoryStorage extends EmployeeStorage {
 
         createdTransactions.push(transaction[0]);
 
-        // Update inventory item stock and average cost
-        const newStock = inventoryItem.currentStock + item.quantity;
+        // Update inventory item stock and average cost.
+        //
+        // currentStock is numeric(10,2), which comes back from the driver as a
+        // STRING. `currentStock + quantity` was therefore string concatenation,
+        // not addition: receiving 7 against a stock of "0.00" produced "0.007",
+        // which the column then stored as 0.01. Every goods receipt — including
+        // the one each purchase invoice approval creates — wrote a nonsense
+        // figure, and avgCost below was derived from it. The other two lines
+        // coerce correctly because `*` and `/` have no string meaning, so only
+        // the addition was wrong.
+        const stockBefore = Number(inventoryItem.currentStock);
+        const newStock = stockBefore + Number(item.quantity);
         const currentValue =
-          inventoryItem.currentStock * parseFloat(inventoryItem.avgCost || "0");
+          stockBefore * parseFloat(inventoryItem.avgCost || "0");
         const newValue = currentValue + item.quantity * item.unitCost;
-        const newAvgCost =
-          newStock > 0 ? (newValue / newStock).toFixed(4) : "0";
+        // A weighted average needs stock to divide by, and it is unstable when
+        // there is barely any: receiving 7 against a stock of -6.99 leaves 0.01,
+        // and dividing by that turns a modest value into millions. avg_cost is
+        // numeric(10,4), so the write then failed outright with "numeric field
+        // overflow" and the whole receipt — and the approval that triggered it —
+        // was lost. `newStock > 0` did not catch that, because 0.01 passes it.
+        //
+        // Where the average cannot be computed meaningfully, keep the cost basis
+        // already on the item rather than resetting it to zero, and fall back to
+        // what this receipt actually paid if the item has no basis yet. That
+        // leaves a sane figure instead of a crash where earlier data is bad.
+        const previousAvgCost = inventoryItem.avgCost || null;
+        const receiptUnitCost = Number(item.unitCost);
+        const computedAvgCost = newValue / newStock;
+        const avgCostIsUsable =
+          newStock > 0 &&
+          Number.isFinite(computedAvgCost) &&
+          Math.abs(computedAvgCost) < 1_000_000;
+        const newAvgCost = avgCostIsUsable
+          ? computedAvgCost.toFixed(4)
+          : previousAvgCost ??
+            (Number.isFinite(receiptUnitCost)
+              ? receiptUnitCost.toFixed(4)
+              : "0");
 
         await this.updateInventoryItem(item.inventoryItemId, {
           currentStock: newStock,

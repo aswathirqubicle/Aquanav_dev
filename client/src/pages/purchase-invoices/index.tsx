@@ -38,6 +38,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { computeDocumentTotals } from "@shared/document-totals";
 import { printByUrl } from "@/lib/print-utils";
 import { sanitize } from "@/lib/sanitize";
+import { EditHistoryTab } from "@/components/documents/EditHistoryTab";
 import { Plus, FileText, DollarSign, Filter, Upload, Download, Trash2, Calendar, TrendingUp, CreditCard, AlertCircle, CheckCircle2, Printer, Package, Briefcase, XCircle, CheckCircle, Ban, History, Copy, Paperclip, Pencil, X, Send, ChevronDown, ChevronUp, Building2, AlignLeft } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CustomPagination } from "@/components/ui/pagination";
@@ -96,6 +97,10 @@ interface PurchaseInvoice {
   approvedByName?: string;
   approvedAt?: string;
   rejectionReason?: string;
+  cancelledById?: number;
+  cancelledByName?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
   createdBy?: number;
   createdByName?: string;
   createdAt?: string;
@@ -182,6 +187,9 @@ export default function PurchaseInvoicesIndex() {
   // single entry's changes can run to hundreds of lines (notes and terms are
   // long rich text), which buried the rest of the list.
   const [expandedEditEntry, setExpandedEditEntry] = useState<number | null>(null);
+  // Cancelling reverses posted ledger entries, project costs and inventory
+  // movements, so the reason is mandatory and is recorded against the invoice.
+  const [cancellationReason, setCancellationReason] = useState("");
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedInvoiceForCreditNote, setSelectedInvoiceForCreditNote] = useState<any>(null);
@@ -507,6 +515,10 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Editing an approved invoice deletes its ledger posting server-side.
+      // staleTime is Infinity with no refetch on focus, so without this the
+      // General Ledger page keeps showing rows that no longer exist.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({ title: "Invoice Updated", description: "Purchase invoice has been updated successfully." });
       setIsDialogOpen(false);
       setEditNote("");
@@ -682,6 +694,8 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Approval posts the ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Approved",
         description: "Purchase invoice has been approved successfully.",
@@ -727,18 +741,28 @@ export default function PurchaseInvoicesIndex() {
   });
 
   const cancelInvoiceMutation = useMutation({
-    mutationFn: async (invoiceId: number) => {
+    mutationFn: async ({
+      invoiceId,
+      cancellationReason,
+    }: {
+      invoiceId: number;
+      cancellationReason: string;
+    }) => {
       const response = await apiRequest(`/api/purchase-invoices/${invoiceId}/cancel`, {
         method: "POST",
+        body: { cancellationReason },
       });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Cancellation posts reversing ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Cancelled",
         description: "Purchase invoice has been cancelled and reverse ledger entries created.",
       });
+      setCancellationReason("");
       setViewingInvoice(null);
       setIsViewDialogOpen(false);
     },
@@ -781,6 +805,8 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Recording a payment posts its own ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Payment Recorded",
         description: "Payment has been recorded successfully.",
@@ -3235,7 +3261,7 @@ export default function PurchaseInvoicesIndex() {
                             </TabsList>
 
                             <TabsContent value="approval" className="mt-4">
-                              {viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason ? (
+                              {viewingInvoice.submittedAt || viewingInvoice.approvedAt || viewingInvoice.rejectionReason || viewingInvoice.cancelledAt ? (
                                 <ul className="relative list-none pl-5 before:content-[''] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-[#EDF0F5]">
                                   {viewingInvoice.submittedAt && (
                                     <li className="relative pb-4 last:pb-0">
@@ -3262,6 +3288,24 @@ export default function PurchaseInvoicesIndex() {
                                       <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
                                         {viewingInvoice.rejectionReason}
                                       </div>
+                                    </li>
+                                  )}
+                                  {/* Rendered only when cancelledAt is set. Invoices
+                                      cancelled before this was recorded have no
+                                      attribution to show, so they keep displaying
+                                      exactly as they did. */}
+                                  {viewingInvoice.cancelledAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className="absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px] border-[#B42318]" />
+                                      <div className="text-[13.5px] font-semibold">Cancelled</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {viewingInvoice.cancelledByName || "—"} · {new Date(viewingInvoice.cancelledAt).toLocaleString()}
+                                      </div>
+                                      {viewingInvoice.cancellationReason && (
+                                        <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                          {viewingInvoice.cancellationReason}
+                                        </div>
+                                      )}
                                     </li>
                                   )}
                                   {viewingInvoice.status === "pending_approval" && (
@@ -3403,84 +3447,12 @@ export default function PurchaseInvoicesIndex() {
 
                             {canSeeActivityDetail && (
                               <TabsContent value="history" className="mt-4">
-                                {isLoadingEditHistory ? (
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                                    Loading edit history…
-                                  </div>
-                                ) : invoiceEditHistory && invoiceEditHistory.length > 0 ? (
-                                  <div className="space-y-3">
-                                    {invoiceEditHistory.map((entry: any) => {
-                                      const changedFields = entry.changes ? Object.keys(entry.changes) : [];
-                                      return (
-                                        <div key={entry.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
-                                          <div
-                                            className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
-                                            onClick={() => setExpandedEditEntry(expandedEditEntry === entry.id ? null : entry.id)}
-                                          >
-                                            <div className="flex items-start justify-between gap-2">
-                                              <div className="min-w-0">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                  <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                                                  <span className="text-xs text-[#8A93A3]">{new Date(entry.editedAt).toLocaleString()}</span>
-                                                </div>
-                                                <p className="text-sm text-[#333B47] mt-1 break-words">{entry.editNote}</p>
-                                                {changedFields.length > 0 && (
-                                                  <p className="text-xs text-[#8A93A3] mt-1">
-                                                    {changedFields.length} field{changedFields.length === 1 ? "" : "s"} changed
-                                                  </p>
-                                                )}
-                                              </div>
-                                              {changedFields.length > 0 && (
-                                                <ChevronDown
-                                                  className={`h-4 w-4 flex-shrink-0 mt-1 transition-transform ${expandedEditEntry === entry.id ? "rotate-180" : ""}`}
-                                                />
-                                              )}
-                                            </div>
-                                          </div>
-                                          {expandedEditEntry === entry.id && changedFields.length > 0 && (
-                                            <div className="px-3 pb-3 pt-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
-                                              <div className="text-xs space-y-2">
-                                                {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                                  field !== "items" ? (
-                                                    <div key={field} className="flex flex-col gap-1">
-                                                      <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                                      {/* notes and bankAccount are ReactQuill fields, so their
-                                                          stored value is HTML and printing it raw showed markup
-                                                          to the reader. Every other tracked field is plain text
-                                                          and stays escaped. */}
-                                                      {isRichTextField(field) ? (
-                                                        <>
-                                                          <div
-                                                            className="text-red-500 line-through break-words rich-text-content"
-                                                            dangerouslySetInnerHTML={{ __html: sanitize(String(change.old || "—")) }}
-                                                          />
-                                                          <div
-                                                            className="text-green-600 break-words rich-text-content"
-                                                            dangerouslySetInnerHTML={{ __html: sanitize(String(change.new || "—")) }}
-                                                          />
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <span className="text-red-500 line-through break-words whitespace-pre-wrap">{String(change.old || "—")}</span>
-                                                          <span className="text-green-600 break-words whitespace-pre-wrap">{String(change.new || "—")}</span>
-                                                        </>
-                                                      )}
-                                                    </div>
-                                                  ) : (
-                                                    <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
-                                                  )
-                                                ))}
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground italic">No edits recorded.</p>
-                                )}
+                                <EditHistoryTab
+                                  entries={invoiceEditHistory}
+                                  isLoading={isLoadingEditHistory}
+                                  currency={viewingInvoice.currency}
+                                  emptyMessage="No edits recorded."
+                                />
                               </TabsContent>
                             )}
                           </Tabs>
@@ -3506,7 +3478,11 @@ export default function PurchaseInvoicesIndex() {
                         Close
                       </Button>
                       {viewingInvoice.status === "approved" && user?.role === "admin" && parseFloat(viewingInvoice.paidAmount || "0") <= 0 && (
-                        <AlertDialog>
+                        <AlertDialog
+                          onOpenChange={(open) => {
+                            if (!open) setCancellationReason("");
+                          }}
+                        >
                           <AlertDialogTrigger asChild>
                             <Button
                               disabled={cancelInvoiceMutation.isPending}
@@ -3535,12 +3511,41 @@ export default function PurchaseInvoicesIndex() {
                                 reverse ledger entries. This cannot be undone.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
+                            <div className="space-y-2">
+                              <Label htmlFor="cancellationReason">
+                                Reason for Cancellation
+                              </Label>
+                              <Textarea
+                                id="cancellationReason"
+                                placeholder="Why is this invoice being cancelled?"
+                                value={cancellationReason}
+                                onChange={(e) => setCancellationReason(e.target.value)}
+                                rows={3}
+                                data-testid="input-cancellation-reason"
+                              />
+                            </div>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Keep Invoice</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() =>
-                                  cancelInvoiceMutation.mutate(viewingInvoice.id)
-                                }
+                                onClick={(e) => {
+                                  // The reason is recorded on the invoice, so an
+                                  // empty one has to keep the dialog open rather
+                                  // than cancel without it.
+                                  if (!cancellationReason.trim()) {
+                                    e.preventDefault();
+                                    toast({
+                                      title: "Reason required",
+                                      description:
+                                        "Enter why this invoice is being cancelled.",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
+                                  cancelInvoiceMutation.mutate({
+                                    invoiceId: viewingInvoice.id,
+                                    cancellationReason: cancellationReason.trim(),
+                                  });
+                                }}
                                 disabled={cancelInvoiceMutation.isPending}
                               >
                                 {cancelInvoiceMutation.isPending
