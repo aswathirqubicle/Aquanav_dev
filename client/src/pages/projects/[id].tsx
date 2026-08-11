@@ -1298,6 +1298,25 @@ export default function ProjectDetail() {
       return;
     }
 
+    // The same location legitimately appears several times in a day with
+    // different work, so only an entry matching on both location and tasks is
+    // a duplicate.
+    const norm = (value: string) => value.trim().toLowerCase();
+    const isDuplicate = completedActivities.some(
+      (existing, i) =>
+        i !== editingCompletedActivityIndex &&
+        norm(existing.location) === norm(newCompletedActivity.location) &&
+        norm(existing.tasks) === norm(newCompletedActivity.tasks),
+    );
+    if (isDuplicate) {
+      toast({
+        title: "Already added",
+        description: "This location and task are already in the list for this day.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setCompletedActivities(prev =>
       editingCompletedActivityIndex === null
         ? [...prev, { ...newCompletedActivity }]
@@ -2383,6 +2402,15 @@ export default function ProjectDetail() {
       return days;
     }, {} as Record<string, typeof filteredActivities>)
   ).sort(([dayA], [dayB]) => new Date(dayB).getTime() - new Date(dayA).getTime());
+
+  // A day's records can straddle a pagination boundary, so the rows shown for a
+  // day are only the ones on this page. Anything that acts on the day as a whole
+  // — editing it, deleting it, or describing it — has to read the whole day
+  // instead, or it silently works on part of it.
+  const activitiesForDay = (dayKey: string) =>
+    (allActivities || []).filter(
+      a => a.date && new Date(a.date).toISOString().split('T')[0] === dayKey,
+    );
 
   const handleDeleteDay = async (dayActivities: typeof filteredActivities) => {
     const blocked = dayActivities.filter(a => activityIdsWithPhotos.has(a.id));
@@ -3871,12 +3899,15 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {activitiesByDay.map(([dayKey, dayActivities]) => {
+                  {activitiesByDay.map(([dayKey, pagedActivities]) => {
+                    // pagedActivities are this page's rows for the day; dayActivities
+                    // is the whole day. Everything below the row list is day-level and
+                    // must use the latter, including the guards on the two buttons.
+                    const dayActivities = activitiesForDay(dayKey);
+                    const dayLoaded = dayActivities.length > 0;
                     // Remarks, HBM hours and the stoppage flag are day-level values:
                     // the same value is written to every record of that day.
-                    const dayRemark = allActivities
-                      ?.filter(a => a.date && new Date(a.date).toISOString().split('T')[0] === dayKey)
-                      ?.find(a => a.remarks)?.remarks || "";
+                    const dayRemark = dayActivities.find(a => a.remarks)?.remarks || "";
                     const dayHbm = dayActivities.find(a => a.hbmDailyRunningHours)?.hbmDailyRunningHours;
                     const stoppageRecord = dayActivities.find(a => (a as any).isStoppage);
                     const dayHasPhotos = dayActivities.some(a => activityIdsWithPhotos.has(a.id));
@@ -3886,7 +3917,7 @@ export default function ProjectDetail() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-medium text-slate-900 dark:text-slate-100">
-                              {dayActivities[0]?.date ? formatDate(dayActivities[0].date) : "Unknown Date"}
+                              {pagedActivities[0]?.date ? formatDate(pagedActivities[0].date) : "Unknown Date"}
                             </p>
                             {stoppageRecord && (
                               <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-700 text-xs flex items-center gap-1">
@@ -3911,6 +3942,7 @@ export default function ProjectDetail() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-ocean-600"
+                              disabled={!dayLoaded}
                               title="Edit this day"
                               onClick={() => openEditDayDialog(dayActivities)}
                             >
@@ -3920,7 +3952,7 @@ export default function ProjectDetail() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-500 hover:text-red-600"
-                              disabled={dayHasPhotos}
+                              disabled={dayHasPhotos || !dayLoaded}
                               title={dayHasPhotos
                                 ? "Photos are linked to this day. Delete the photo group first."
                                 : "Delete this day"}
@@ -3933,7 +3965,7 @@ export default function ProjectDetail() {
                       </div>
 
                       <div className="space-y-4">
-                        {dayActivities.map((activity) => (
+                        {pagedActivities.map((activity) => (
                           <div key={activity.id} className="space-y-2">
                             {activity.location && (
                               <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center">
@@ -3983,16 +4015,6 @@ export default function ProjectDetail() {
                                     );
                                   }
                                 })()}
-                              </div>
-                            )}
-                            {(activity as any).photoGroups && (activity as any).photoGroups.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {(activity as any).photoGroups.map((group: any) => (
-                                  <Badge key={group.id} variant="secondary" className="flex items-center gap-1 cursor-default">
-                                    <Camera className="h-3 w-3" />
-                                    {group.title} ({group.photoCount})
-                                  </Badge>
-                                ))}
                               </div>
                             )}
                           </div>

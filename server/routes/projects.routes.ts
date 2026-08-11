@@ -480,6 +480,15 @@ projectsRoutes.get(
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
+      const hasAccess = await checkProjectAccess(
+        projectId,
+        req.session.userId!,
+        req.session.userRole || "",
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
       const offset = (page - 1) * limit;
@@ -505,6 +514,15 @@ projectsRoutes.get(
       const projectId = parseInt(req.params.projectId);
       if (isNaN(projectId)) {
         return res.status(400).json({ message: "Invalid project ID" });
+      }
+
+      const hasAccess = await checkProjectAccess(
+        projectId,
+        req.session.userId!,
+        req.session.userRole || "",
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       const activities = await storage.getDailyActivities(projectId);
@@ -674,6 +692,15 @@ projectsRoutes.get("/api/projects/:id/photo-groups", requireAuth, async (req, re
       return res.status(400).json({ message: "Invalid project ID" });
     }
 
+    const hasAccess = await checkProjectAccess(
+      projectId,
+      req.session.userId!,
+      req.session.userRole || "",
+    );
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
     const photoGroups = await storage.getProjectPhotoGroups(projectId);
     res.json(photoGroups);
   } catch (error) {
@@ -688,9 +715,19 @@ projectsRoutes.delete(
   requireRole(["admin", "project_manager"]),
   async (req, res) => {
     try {
+      const projectId = parseInt(req.params.projectId);
       const groupId = parseInt(req.params.groupId);
-      if (isNaN(groupId)) {
-        return res.status(400).json({ message: "Invalid group ID" });
+      if (isNaN(projectId) || isNaN(groupId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid project or group ID" });
+      }
+
+      // Storage deletes by group id alone, so without this a group could be
+      // deleted through another project's URL.
+      const groups = await storage.getProjectPhotoGroups(projectId);
+      if (!groups.some((g) => g.id === groupId)) {
+        return res.status(404).json({ message: "Photo group not found" });
       }
 
       const deleted = await storage.deleteProjectPhotoGroup(groupId);
@@ -1006,6 +1043,17 @@ projectsRoutes.post(
     try {
       const projectId = parseInt(req.params.projectId);
 
+      // employee is allowed this route, so membership decides which projects
+      // they may log against.
+      const hasAccess = await checkProjectAccess(
+        projectId,
+        req.session.userId!,
+        req.session.userRole || "",
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
       // Ensure date is properly formatted
       const activityData = {
         ...req.body,
@@ -1031,6 +1079,26 @@ projectsRoutes.post(
   },
 );
 
+// Storage looks activities up by id alone, so the id in the path has to be
+// checked against the project in the path. Without it an activity can be
+// changed or removed through another project's URL.
+async function activityBelongsToProject(
+  activityId: number,
+  projectId: number,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: dailyActivities.id })
+    .from(dailyActivities)
+    .where(
+      and(
+        eq(dailyActivities.id, activityId),
+        eq(dailyActivities.projectId, projectId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 projectsRoutes.put(
   "/api/projects/:projectId/activities/:activityId",
   requireAuth,
@@ -1039,6 +1107,15 @@ projectsRoutes.put(
     try {
       const activityId = parseInt(req.params.activityId);
       const projectId = parseInt(req.params.projectId);
+      if (isNaN(activityId) || isNaN(projectId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid project or activity ID" });
+      }
+
+      if (!(await activityBelongsToProject(activityId, projectId))) {
+        return res.status(404).json({ message: "Daily activity not found" });
+      }
 
       const activityData = {
         ...req.body,
@@ -1101,6 +1178,32 @@ projectsRoutes.delete(
   async (req, res) => {
     try {
       const activityId = parseInt(req.params.activityId);
+      const projectId = parseInt(req.params.projectId);
+      if (isNaN(activityId) || isNaN(projectId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid project or activity ID" });
+      }
+
+      if (!(await activityBelongsToProject(activityId, projectId))) {
+        return res.status(404).json({ message: "Daily activity not found" });
+      }
+
+      // A photo group pointing at this activity holds a foreign key to it, so
+      // deleting would fail in the database and surface as a bare 500. Say what
+      // is in the way instead — the link can be removed from the Photos tab.
+      const groups = await storage.getProjectPhotoGroups(projectId);
+      const linkedGroups = groups.filter(
+        (g) => (g as any).dailyActivityId === activityId,
+      );
+      if (linkedGroups.length > 0) {
+        return res.status(409).json({
+          message: `Photos are linked to this activity (${linkedGroups
+            .map((g) => g.title)
+            .join(", ")}). Remove the link or delete the photo group first.`,
+        });
+      }
+
       const success = await storage.deleteDailyActivity(activityId);
       if (!success) {
         return res.status(404).json({ message: "Daily activity not found" });

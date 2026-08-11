@@ -1624,7 +1624,12 @@ export const insertDailyActivitySchema = createInsertSchema(dailyActivities)
   .extend({
     hbmDailyRunningHours: z
       .string()
+      .nullable()
       .transform((val) => {
+        // The column is nullable, so a stored null comes back as null and has
+        // to be accepted here: reading a record and writing it back unchanged
+        // would otherwise fail validation. Null and blank both mean "leave the
+        // value alone" rather than "clear it".
         if (!val || val.trim() === "") return undefined;
         const num = parseFloat(val);
         return isNaN(num) ? undefined : num.toFixed(2);
