@@ -74,6 +74,8 @@ export interface PlannedActivityItem {
 // For getSalesQuotationsPaginated return type
 export interface SalesQuotationWithCustomerName extends SalesQuotation {
   customerName: string | null;
+  submittedByName: string | null;
+  approvedByName: string | null;
 }
 
 // For getProjectAssetAssignments return type

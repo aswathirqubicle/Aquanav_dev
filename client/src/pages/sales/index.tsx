@@ -5024,9 +5024,9 @@ export default function SalesIndex() {
               </div>
 
               {/* Approval trail — submitted, approved, rejected. Mirrors the
-                  sales invoice view. User IDs rather than names: this page has
-                  no users query, and /api/users is admin-only while finance can
-                  open this dialog, so resolving names here would 403 for them. */}
+                  sales invoice view. The names are resolved server-side on the
+                  list rows: /api/users is admin-only while finance can open this
+                  dialog, so looking them up from here would 403 for them. */}
               {((selectedQuotation as any).submittedAt || (selectedQuotation as any).approvedAt || (selectedQuotation as any).rejectionReason) && (
                 <Card>
                   <CardHeader>
@@ -5040,7 +5040,7 @@ export default function SalesIndex() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
-                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).submittedById}</p>
+                          <p className="text-sm font-medium mt-1">{(selectedQuotation as any).submittedByName || "—"}</p>
                         </div>
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
@@ -5052,7 +5052,7 @@ export default function SalesIndex() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
-                          <p className="text-sm font-medium mt-1">User ID: {(selectedQuotation as any).approvedById}</p>
+                          <p className="text-sm font-medium mt-1">{(selectedQuotation as any).approvedByName || "—"}</p>
                         </div>
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
@@ -5557,9 +5557,9 @@ export default function SalesIndex() {
               </div>
 
               {/* Approval trail — submitted, approved, rejected. Mirrors the
-                  purchase order view. User IDs rather than names: this page has
-                  no users query, and /api/users is admin-only while finance can
-                  open this dialog, so resolving names here would 403 for them. */}
+                  purchase order view. The names are resolved server-side on the
+                  list rows: /api/users is admin-only while finance can open this
+                  dialog, so looking them up from here would 403 for them. */}
               {((selectedInvoice as any).submittedAt || (selectedInvoice as any).approvedAt || (selectedInvoice as any).rejectionReason) && (
                 <Card>
                   <CardHeader>
@@ -5573,7 +5573,7 @@ export default function SalesIndex() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
-                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).submittedById}</p>
+                          <p className="text-sm font-medium mt-1">{(selectedInvoice as any).submittedByName || "—"}</p>
                         </div>
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
@@ -5585,7 +5585,7 @@ export default function SalesIndex() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
-                          <p className="text-sm font-medium mt-1">User ID: {(selectedInvoice as any).approvedById}</p>
+                          <p className="text-sm font-medium mt-1">{(selectedInvoice as any).approvedByName || "—"}</p>
                         </div>
                         <div>
                           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>

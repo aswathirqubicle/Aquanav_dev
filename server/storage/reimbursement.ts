@@ -68,15 +68,20 @@ export class ReimbursementStorage extends PayrollStorage {
         );
       }
 
-      // Get approver names
+      // Get approver names. Employee name where the approver's login is linked
+      // to an employee row, else the username — same as the sales and purchase
+      // documents, so the same person reads the same way everywhere.
       const enriched = await Promise.all(
         filtered.map(async (r: any) => {
           if (r.approvedById) {
             const [approver] = await db
-              .select({ username: users.username })
+              .select({
+                name: sql<string>`COALESCE(NULLIF(CONCAT(${employees.firstName}, ' ', ${employees.lastName}), ' '), ${users.username}, '')`,
+              })
               .from(users)
+              .leftJoin(employees, eq(users.id, employees.userId))
               .where(eq(users.id, r.approvedById));
-            return { ...r, approvedByName: approver?.username || "Unknown" };
+            return { ...r, approvedByName: approver?.name || "Unknown" };
           }
           return { ...r, approvedByName: null };
         }),
