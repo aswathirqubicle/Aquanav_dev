@@ -307,7 +307,12 @@ export class ProjectAssetStorage extends InventoryStorage {
             ...completedDateConditions,
           ),
         )
-        .orderBy(asc(dailyActivities.date));
+        // id breaks the date tie so a day's locations print in the order they
+        // were entered. Without it the order is whatever the database returns,
+        // which an edit to the day reshuffles — and the remark and HBM hours
+        // below are carried on the first row of each date, so which row that is
+        // has to be settled here.
+        .orderBy(asc(dailyActivities.date), asc(dailyActivities.id));
 
       if (shouldFetchPlannedActivities) {
         res.plannedActivities = await db
@@ -327,7 +332,7 @@ export class ProjectAssetStorage extends InventoryStorage {
               ...plannedDateConditions,
             ),
           )
-          .orderBy(asc(dailyActivities.date));
+          .orderBy(asc(dailyActivities.date), asc(dailyActivities.id));
       } else {
         res.plannedActivities = [];
       }
