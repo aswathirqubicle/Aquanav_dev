@@ -142,6 +142,35 @@ employeesRoutes.post(
           .json({ message: "Employee code already exists" });
       }
 
+      // If a login is being created alongside the employee, check it can
+      // actually be created first. Otherwise the employee row is written and
+      // the user creation below fails, leaving a half-finished record that
+      // still reports success.
+      if (createUserAccount && employeeData.email && employeeData.email.trim()) {
+        const existingUser = await storage.getUserByEmail(
+          employeeData.email.trim(),
+        );
+        if (existingUser) {
+          return res.status(409).json({
+            message:
+              "A user account already exists with this email address. Use a different email, or untick create user account.",
+          });
+        }
+
+        const intendedUsername =
+          `${employeeData.firstName.toLowerCase()}.${employeeData.lastName.toLowerCase()}`.replace(
+            /\s+/g,
+            "",
+          );
+        const existingUsername =
+          await storage.getUserByUsername(intendedUsername);
+        if (existingUsername) {
+          return res.status(409).json({
+            message: `A user account already exists with the username "${intendedUsername}", which is generated from this employee's name. Create the login manually, or untick create user account.`,
+          });
+        }
+      }
+
       const parsedEmployeeData = insertEmployeeSchema.parse(employeeData);
       const employee = await storage.createEmployee(parsedEmployeeData);
 
@@ -192,12 +221,19 @@ employeesRoutes.post(
       } else {
         res.status(201).json(employee);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Employee creation error:", error);
       if (error instanceof ZodError) {
         return res
           .status(400)
           .json({ message: "Invalid data", errors: error.errors });
+      }
+      // The employee code check above is case insensitive while the database
+      // constraint is an exact match, so a race can still reach the database.
+      if (error.code === "23505") {
+        return res
+          .status(409)
+          .json({ message: "Employee code already exists" });
       }
       res.status(500).json({ message: "Failed to create employee" });
     }

@@ -703,7 +703,9 @@ export default function EmployeesIndex() {
         weight: data.weight || null,
       };
 
-      const response = await apiRequest("/api/employees", {
+      // Uses fetch rather than apiRequest: apiRequest throws `${status}: ${body}`,
+      // which would surface the raw JSON in the toast instead of the message.
+      const response = await fetch("/api/employees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(processedData),
@@ -735,6 +737,28 @@ export default function EmployeesIndex() {
       });
     },
   });
+
+  // Two employees sharing an email address is allowed, but it is usually a
+  // mistake, so warn and let the admin decide instead of blocking the save.
+  const handleCreateEmployee = () => {
+    const email = formData.email?.trim();
+    if (email) {
+      const clash = employees?.find(
+        (employee) =>
+          employee.email &&
+          employee.email.trim().toLowerCase() === email.toLowerCase(),
+      );
+      if (
+        clash &&
+        !confirm(
+          `An employee with this email already exists: ${clash.firstName} ${clash.lastName} (${clash.employeeCode}).\n\nSave anyway?`,
+        )
+      ) {
+        return;
+      }
+    }
+    createEmployeeMutation.mutate({ ...formData, createUserAccount });
+  };
 
   const createNextOfKinMutation = useMutation({
     mutationFn: async (data: CreateNextOfKinData) => {
@@ -1586,7 +1610,7 @@ export default function EmployeesIndex() {
                 Cancel
               </Button>
               <Button
-                onClick={() => createEmployeeMutation.mutate({ ...formData, createUserAccount })}
+                onClick={handleCreateEmployee}
                 disabled={createEmployeeMutation.isPending}
               >
                 {createEmployeeMutation.isPending ? "Creating..." : "Create Employee"}
