@@ -927,6 +927,10 @@ export default function SalesIndex() {
         title: "Quotation Submitted",
         description: "The sales quotation has been submitted for approval.",
       });
+      // Same snapshot problem as approve: the dialog would keep showing the
+      // quotation as a draft with a live Submit button.
+      setSelectedQuotation(null);
+      setIsQuotationDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1175,6 +1179,10 @@ export default function SalesIndex() {
       // cards (receivables, invoice value) are stale until this refetches.
       queryClient.invalidateQueries({ queryKey: ["/api/sales/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", variables.id, "edit-history"] });
+      // Editing an approved invoice deletes its ledger posting server-side.
+      // staleTime is Infinity with no refetch on focus, so without this the
+      // General Ledger page keeps showing rows that no longer exist.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Updated",
         description: "The sales invoice has been updated successfully.",
@@ -1211,6 +1219,10 @@ export default function SalesIndex() {
         title: "Invoice Submitted",
         description: "The sales invoice has been submitted for approval.",
       });
+      // Same snapshot problem as approve: the dialog would keep showing the
+      // invoice as a draft with a live Submit button.
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1235,10 +1247,19 @@ export default function SalesIndex() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Approved",
         description: "The sales invoice has been approved and general ledger entries have been posted.",
       });
+      // selectedInvoice is a snapshot taken when the dialog opened; invalidating
+      // refetches the list but never re-syncs it. Leaving the dialog open showed
+      // the invoice still pending with a live Approve button, so the obvious
+      // reading was that nothing had happened — and pressing it again failed,
+      // because by then the invoice was approved. Closing is what the purchase
+      // invoice, quotation approve and reject flows already do.
+      setSelectedInvoice(null);
+      setIsInvoiceDetailsOpen(false);
     },
     onError: (error: Error) => {
       toast({
@@ -1360,6 +1381,8 @@ export default function SalesIndex() {
       queryClient.invalidateQueries({
         queryKey: [`/api/sales-invoices/${selectedInvoice?.id}/payments`],
       });
+      // Recording a payment posts its own ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Payment Recorded",
         description: "The payment has been recorded successfully.",

@@ -515,6 +515,10 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Editing an approved invoice deletes its ledger posting server-side.
+      // staleTime is Infinity with no refetch on focus, so without this the
+      // General Ledger page keeps showing rows that no longer exist.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({ title: "Invoice Updated", description: "Purchase invoice has been updated successfully." });
       setIsDialogOpen(false);
       setEditNote("");
@@ -690,6 +694,8 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Approval posts the ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Approved",
         description: "Purchase invoice has been approved successfully.",
@@ -750,6 +756,8 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Cancellation posts reversing ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Invoice Cancelled",
         description: "Purchase invoice has been cancelled and reverse ledger entries created.",
@@ -797,6 +805,8 @@ export default function PurchaseInvoicesIndex() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      // Recording a payment posts its own ledger entries.
+      queryClient.invalidateQueries({ queryKey: ["/api/general-ledger"] });
       toast({
         title: "Payment Recorded",
         description: "Payment has been recorded successfully.",
