@@ -43,6 +43,7 @@ import {
   projectConsumableItems,
   projectConsumables,
   projectEmployees,
+  GENERAL_PHOTO_LOCATION,
   projectPhotoGroups,
   projectPhotos,
   projects,
@@ -3580,6 +3581,147 @@ export class ProjectAssetStorage extends InventoryStorage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "createConsumablesGoodsIssue",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // Photo groups for the Photos tab: one page at a time, optionally narrowed by
+  // date range and by the location of the activity a group is linked to.
+  //
+  // linkedActivityIds covers the whole project rather than the page. The
+  // Activities tab uses it to block deleting a day whose activities still carry
+  // photos, and a page-sized answer there would miss links on other pages.
+  async getProjectPhotoGroupsPaginated(
+    projectId: number,
+    limit: number,
+    offset: number,
+    filters: { from?: string; to?: string; location?: string } = {},
+  ): Promise<{ data: any[]; total: number; linkedActivityIds: number[] }> {
+    try {
+      const conditions: any[] = [eq(projectPhotoGroups.projectId, projectId)];
+
+      if (filters.from) {
+        conditions.push(gte(projectPhotoGroups.date, new Date(filters.from)));
+      }
+      if (filters.to) {
+        const endOfDay = new Date(filters.to);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+        conditions.push(lte(projectPhotoGroups.date, endOfDay));
+      }
+      // A group's location is the location of the activity it is linked to.
+      // Groups with no link have no location, and are filtered as "General".
+      if (filters.location === GENERAL_PHOTO_LOCATION) {
+        conditions.push(isNull(projectPhotoGroups.dailyActivityId));
+      } else if (filters.location) {
+        conditions.push(eq(dailyActivities.location, filters.location));
+      }
+
+      const whereCondition = and(...conditions);
+
+      const [groups, countResult, linked] = await Promise.all([
+        db
+          .select({
+            ...getTableColumns(projectPhotoGroups),
+            dailyActivity: {
+              id: dailyActivities.id,
+              date: dailyActivities.date,
+              location: dailyActivities.location,
+              completedTasks: dailyActivities.completedTasks,
+            },
+          })
+          .from(projectPhotoGroups)
+          .leftJoin(
+            dailyActivities,
+            eq(projectPhotoGroups.dailyActivityId, dailyActivities.id),
+          )
+          .where(whereCondition)
+          // Newest day first, and within a day the order the groups were added.
+          // id breaks the date tie so the order does not shift when a group is
+          // edited, and so paging cannot repeat or skip same-date rows.
+          .orderBy(desc(projectPhotoGroups.date), asc(projectPhotoGroups.id))
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(projectPhotoGroups)
+          .leftJoin(
+            dailyActivities,
+            eq(projectPhotoGroups.dailyActivityId, dailyActivities.id),
+          )
+          .where(whereCondition),
+        db
+          .select({ dailyActivityId: projectPhotoGroups.dailyActivityId })
+          .from(projectPhotoGroups)
+          .where(
+            and(
+              eq(projectPhotoGroups.projectId, projectId),
+              isNotNull(projectPhotoGroups.dailyActivityId),
+            ),
+          ),
+      ]);
+
+      const groupIds = groups.map((g) => g.id);
+      const photos = groupIds.length
+        ? await db
+            .select()
+            .from(projectPhotos)
+            .where(inArray(projectPhotos.groupId, groupIds))
+            .orderBy(asc(projectPhotos.id))
+        : [];
+
+      return {
+        data: groups.map((group) => ({
+          ...group,
+          photos: photos.filter((p) => p.groupId === group.id),
+        })),
+        total: Number(countResult[0]?.count || 0),
+        linkedActivityIds: Array.from(
+          new Set(linked.map((r) => r.dailyActivityId as number)),
+        ),
+      };
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getProjectPhotoGroupsPaginated (projectId: ${projectId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProjectPhotoGroupsPaginated",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  // The locations that photo groups can actually be filtered by: those carried
+  // by activities groups are linked to. Locations never used by a linked group
+  // are left out, since selecting one could only ever return nothing.
+  async getProjectPhotoGroupLocations(projectId: number): Promise<string[]> {
+    try {
+      const rows = await db
+        .selectDistinct({ location: dailyActivities.location })
+        .from(projectPhotoGroups)
+        .innerJoin(
+          dailyActivities,
+          eq(projectPhotoGroups.dailyActivityId, dailyActivities.id),
+        )
+        .where(
+          and(
+            eq(projectPhotoGroups.projectId, projectId),
+            isNotNull(dailyActivities.location),
+            ne(dailyActivities.location, ""),
+          ),
+        )
+        .orderBy(asc(dailyActivities.location));
+      return rows.map((r) => r.location as string);
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getProjectPhotoGroupLocations (projectId: ${projectId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getProjectPhotoGroupLocations",
         severity: "error",
       });
       throw error;

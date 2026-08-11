@@ -48,7 +48,7 @@ import {
   Image,
   X,
 } from "lucide-react";
-import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto } from "@shared/schema";
+import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto, GENERAL_PHOTO_LOCATION } from "@shared/schema";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { z } from "zod";
 
@@ -809,7 +809,16 @@ export default function ProjectDetail() {
   // Pagination state
   const [activitiesPage, setActivitiesPage] = useState(1);
   const [plannedActivitiesPage, setPlannedActivitiesPage] = useState(1);
+  const [photoGroupsPage, setPhotoGroupsPage] = useState(1);
   const itemsPerPage = 10;
+
+  // Photo group filters. location holds an activity location, or
+  // GENERAL_PHOTO_LOCATION for groups that are not linked to one.
+  const [photoGroupFilter, setPhotoGroupFilter] = useState({
+    startDate: "",
+    endDate: "",
+    location: "",
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -972,13 +981,45 @@ export default function ProjectDetail() {
     }
   }, [project, isAssetAssignmentDialogOpen]);
 
-  const { data: photoGroups } = useQuery<PhotoGroupWithPhotos[]>({
-    queryKey: ["/api/projects", id, "photo-groups"],
+  const { data: photoGroupsData } = useQuery<{
+    data: PhotoGroupWithPhotos[];
+    total: number;
+    // Every linked activity in the project, not just the ones on this page:
+    // the Activities tab uses it to block deleting a day that still has photos.
+    linkedActivityIds: number[];
+  }>({
+    queryKey: [
+      "/api/projects", id, "photo-groups",
+      photoGroupsPage, photoGroupFilter.startDate, photoGroupFilter.endDate, photoGroupFilter.location,
+    ],
     queryFn: async () => {
-      const response = await fetch(`/api/projects/${id}/photo-groups`, {
+      const params = new URLSearchParams({
+        page: String(photoGroupsPage),
+        limit: String(itemsPerPage),
+      });
+      if (photoGroupFilter.startDate) params.set("from", photoGroupFilter.startDate);
+      if (photoGroupFilter.endDate) params.set("to", photoGroupFilter.endDate);
+      if (photoGroupFilter.location) params.set("location", photoGroupFilter.location);
+      const response = await fetch(`/api/projects/${id}/photo-groups?${params}`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch photo groups");
+      return response.json();
+    },
+    enabled: isAuthenticated && !!id,
+  });
+  const photoGroups = photoGroupsData?.data;
+  const photoGroupsTotalPages = photoGroupsData
+    ? Math.ceil(photoGroupsData.total / itemsPerPage)
+    : 0;
+
+  const { data: photoGroupLocations } = useQuery<string[]>({
+    queryKey: ["/api/projects", id, "photo-groups", "locations"],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${id}/photo-groups/locations`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch photo group locations");
       return response.json();
     },
     enabled: isAuthenticated && !!id,
@@ -2375,11 +2416,11 @@ export default function ProjectDetail() {
   }) || [];
 
   // Activity records a photo group still points at. Those records cannot be
-  // deleted while the link exists (foreign key on project_photo_groups).
+  // deleted while the link exists (foreign key on project_photo_groups). This
+  // covers the whole project, not the page of groups on screen, so a link on
+  // another page still blocks the delete.
   const activityIdsWithPhotos = new Set(
-    (photoGroups || [])
-      .map(group => (group as any).dailyActivityId)
-      .filter((activityId): activityId is number => typeof activityId === "number")
+    photoGroupsData?.linkedActivityIds || [],
   );
 
   // Group the activities on the current page by day, newest first, matching the
@@ -4561,11 +4602,87 @@ export default function ProjectDetail() {
               </div>
             </CardHeader>
             <CardContent>
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-6">
+                <div className="space-y-1">
+                  <Label htmlFor="photoGroupFrom" className="text-xs">From Date</Label>
+                  <Input
+                    id="photoGroupFrom"
+                    type="date"
+                    className="w-full sm:w-40"
+                    value={photoGroupFilter.startDate}
+                    onChange={(e) => {
+                      setPhotoGroupsPage(1);
+                      setPhotoGroupFilter(prev => ({ ...prev, startDate: e.target.value }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="photoGroupTo" className="text-xs">To Date</Label>
+                  <Input
+                    id="photoGroupTo"
+                    type="date"
+                    className="w-full sm:w-40"
+                    value={photoGroupFilter.endDate}
+                    onChange={(e) => {
+                      setPhotoGroupsPage(1);
+                      setPhotoGroupFilter(prev => ({ ...prev, endDate: e.target.value }));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="photoGroupLocation" className="text-xs">Location</Label>
+                  <Select
+                    value={photoGroupFilter.location || "__all__"}
+                    onValueChange={(value) => {
+                      setPhotoGroupsPage(1);
+                      setPhotoGroupFilter(prev => ({ ...prev, location: value === "__all__" ? "" : value }));
+                    }}
+                  >
+                    <SelectTrigger id="photoGroupLocation" className="w-full sm:w-64">
+                      <SelectValue placeholder="All locations" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All locations</SelectItem>
+                      {/* Groups with no linked activity have no location of
+                          their own; they are filtered as General. */}
+                      <SelectItem value={GENERAL_PHOTO_LOCATION}>General (not linked)</SelectItem>
+                      {(photoGroupLocations || []).map((loc) => (
+                        <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(photoGroupFilter.startDate || photoGroupFilter.endDate || photoGroupFilter.location) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPhotoGroupsPage(1);
+                      setPhotoGroupFilter({ startDate: "", endDate: "", location: "" });
+                    }}
+                  >
+                    Reset
+                  </Button>
+                )}
+                {photoGroupsData && (
+                  <div className="text-sm text-slate-500 dark:text-slate-400 sm:ml-auto">
+                    {photoGroupsData.total} photo group{photoGroupsData.total !== 1 ? "s" : ""}
+                  </div>
+                )}
+              </div>
+
               {!photoGroups || photoGroups.length === 0 ? (
                 <div className="text-center py-8">
                   <Camera className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-                  <p className="text-slate-500 dark:text-slate-400">No photo groups created yet</p>
-                  {canEdit && (
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {photoGroupFilter.startDate || photoGroupFilter.endDate || photoGroupFilter.location
+                      ? "No photo groups match these filters"
+                      : "No photo groups created yet"}
+                  </p>
+                  {canEdit
+                    && !photoGroupFilter.startDate
+                    && !photoGroupFilter.endDate
+                    && !photoGroupFilter.location && (
                     <Dialog open={isPhotoGroupDialogOpen} onOpenChange={setIsPhotoGroupDialogOpen}>
                       <DialogTrigger asChild>
                         <Button className="mt-4" size="sm">
@@ -4578,8 +4695,9 @@ export default function ProjectDetail() {
                 </div>
               ) : (
                 <div className="space-y-6">
+                  {/* Ordered by the server: newest day first, and within a day
+                      the order the groups were added. */}
                   {photoGroups
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map((group) => (
                       <div key={group.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4">
                         <div className="flex items-start justify-between mb-4">
@@ -4677,6 +4795,34 @@ export default function ProjectDetail() {
                         )}
                       </div>
                     ))}
+                </div>
+              )}
+
+              {photoGroupsTotalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 pt-4 mt-6">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    Page {photoGroupsPage} of {photoGroupsTotalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPhotoGroupsPage(p => Math.max(1, p - 1))}
+                      disabled={photoGroupsPage === 1}
+                      data-testid="button-photo-groups-prev-page"
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPhotoGroupsPage(p => Math.min(photoGroupsTotalPages, p + 1))}
+                      disabled={photoGroupsPage === photoGroupsTotalPages}
+                      data-testid="button-photo-groups-next-page"
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
