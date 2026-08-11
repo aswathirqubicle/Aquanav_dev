@@ -778,6 +778,10 @@ export default function ProjectDetail() {
     useState<number | null>(null);
   const completedActivityFormRef = useRef<HTMLDivElement>(null);
   const completedTasksRef = useRef<HTMLTextAreaElement>(null);
+  // Guards the day's save against being submitted twice. The ref blocks the
+  // second call; the state drives the button.
+  const savingActivitiesRef = useRef(false);
+  const [isSavingActivities, setIsSavingActivities] = useState(false);
 
   const [isPlannedActivityDialogOpen, setIsPlannedActivityDialogOpen] = useState(false);
   const [plannedActivities, setPlannedActivities] = useState<Array<{
@@ -1067,31 +1071,6 @@ export default function ProjectDetail() {
 
 
 
-  const createActivityMutation = useMutation({
-    mutationFn: async (data: CreateActivityData) => {
-      return await apiRequest(`/api/projects/${id}/activities`, {
-        method: "POST",
-        body: data,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "activities"] });
-      toast({
-        title: "Activity Added",
-        description: "Daily activity has been logged successfully.",
-      });
-      setIsActivityDialogOpen(false);
-      resetActivityForm();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to add activity",
-        variant: "destructive",
-      });
-    },
-  });
-
   const savePlannedActivitiesMutation = useMutation({
     mutationFn: async (activities: Array<{ location: string; tasks: string; date: string }>) => {
       return await apiRequest(`/api/projects/${id}/planned-activities`, { method: "POST", body: activities, });
@@ -1181,6 +1160,14 @@ export default function ProjectDetail() {
       });
       return;
     }
+
+    // Saving posts one request per location, so a second submit before the
+    // first finishes writes the whole day twice. The ref is what actually
+    // blocks it: two clicks can both get here before React re-renders with the
+    // disabled button, and a ref updates immediately where state does not.
+    if (savingActivitiesRef.current) return;
+    savingActivitiesRef.current = true;
+    setIsSavingActivities(true);
 
     // Create proper date object from the date string with timezone handling
     const activityDate = new Date(activityData.date + 'T00:00:00.000Z');
@@ -1285,6 +1272,9 @@ export default function ProjectDetail() {
         description: error.message || `Failed to ${editingActivityId ? 'update' : 'add'} activities`,
         variant: "destructive",
       });
+    } finally {
+      savingActivitiesRef.current = false;
+      setIsSavingActivities(false);
     }
   };
 
@@ -3856,10 +3846,10 @@ export default function ProjectDetail() {
                           </Button>
                           <Button
                             type="submit"
-                            disabled={createActivityMutation.isPending}
+                            disabled={isSavingActivities}
                             className="w-full sm:w-auto"
                           >
-                            {createActivityMutation.isPending ? "Saving..." : "Save"}
+                            {isSavingActivities ? "Saving..." : "Save"}
                           </Button>
                         </div>
                       </form>
