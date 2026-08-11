@@ -416,6 +416,13 @@ export interface IStorage {
 
   // Project Photo Group methods
   getProjectPhotoGroups(projectId: number): Promise<any[]>;
+  getProjectPhotoGroupsPaginated(
+    projectId: number,
+    limit: number,
+    offset: number,
+    filters?: { from?: string; to?: string; location?: string },
+  ): Promise<{ data: any[]; total: number; linkedActivityIds: number[] }>;
+  getProjectPhotoGroupLocations(projectId: number): Promise<string[]>;
   createProjectPhotoGroup(
     groupData: InsertProjectPhotoGroup,
   ): Promise<ProjectPhotoGroup>;

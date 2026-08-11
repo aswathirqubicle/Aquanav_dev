@@ -721,13 +721,58 @@ projectsRoutes.get("/api/projects/:id/photo-groups", requireAuth, async (req, re
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const photoGroups = await storage.getProjectPhotoGroups(projectId);
-    res.json(photoGroups);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+
+    const result = await storage.getProjectPhotoGroupsPaginated(
+      projectId,
+      limit,
+      offset,
+      {
+        from: (req.query.from as string) || undefined,
+        to: (req.query.to as string) || undefined,
+        location: (req.query.location as string) || undefined,
+      },
+    );
+    res.json(result);
   } catch (error) {
     console.error("Get photo groups error:", error);
     res.status(500).json({ message: "Failed to get photo groups" });
   }
 });
+
+// The locations available to filter photo groups by, plus whether any group is
+// unlinked, which is what the "General" option in the filter stands for.
+projectsRoutes.get(
+  "/api/projects/:id/photo-groups/locations",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      if (isNaN(projectId)) {
+        return res.status(400).json({ message: "Invalid project ID" });
+      }
+
+      const hasAccess = await checkProjectAccess(
+        projectId,
+        req.session.userId!,
+        req.session.userRole || "",
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const locations = await storage.getProjectPhotoGroupLocations(projectId);
+      res.json(locations);
+    } catch (error) {
+      console.error("Get photo group locations error:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to get photo group locations" });
+    }
+  },
+);
 
 projectsRoutes.delete(
   "/api/projects/:projectId/photo-groups/:groupId",

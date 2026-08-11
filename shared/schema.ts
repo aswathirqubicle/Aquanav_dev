@@ -1657,6 +1657,11 @@ export const insertInvoicePaymentSchema = createInsertSchema(
 export const insertSupplierInventoryItemSchema = createInsertSchema(
   supplierInventoryItems,
 ).omit({ id: true, createdAt: true });
+// A photo group takes its location from the activity it is linked to, so groups
+// with no link have none. This is the value the location filter uses to mean
+// "those groups", kept here so the filter dropdown and the query agree on it.
+export const GENERAL_PHOTO_LOCATION = "__general__";
+
 export const insertProjectPhotoGroupSchema = createInsertSchema(
   projectPhotoGroups,
 )
