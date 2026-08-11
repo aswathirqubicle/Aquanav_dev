@@ -61,7 +61,9 @@ export default function UsersIndex() {
 
   const createUserMutation = useMutation({
     mutationFn: async (data: CreateUserData) => {
-      const response = await apiRequest("/api/users", {
+      // Uses fetch rather than apiRequest: apiRequest throws `${status}: ${body}`,
+      // which would surface the raw JSON in the toast instead of the message.
+      const response = await fetch("/api/users", {
         method: "POST",
         body: JSON.stringify(data),
         headers: {
@@ -103,7 +105,8 @@ export default function UsersIndex() {
       id: number;
       data: Partial<CreateUserData>;
     }) => {
-      const response = await apiRequest(`/api/users/${id}`, {
+      // See createUserMutation: fetch keeps the server's message intact.
+      const response = await fetch(`/api/users/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
         headers: {

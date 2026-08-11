@@ -159,6 +159,22 @@ usersRoutes.post(
         }
       }
 
+      const existingUsername = await storage.getUserByUsername(
+        parsedUserData.username,
+      );
+      if (existingUsername) {
+        return res
+          .status(409)
+          .json({ message: "A user with this username already exists" });
+      }
+
+      const existingEmail = await storage.getUserByEmail(parsedUserData.email);
+      if (existingEmail) {
+        return res
+          .status(409)
+          .json({ message: "A user with this email already exists" });
+      }
+
       const user = await storage.createUser(parsedUserData);
 
       // Link employee to user if employeeId provided
@@ -173,11 +189,21 @@ usersRoutes.post(
       }
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof ZodError) {
         return res
           .status(400)
           .json({ message: "Invalid user data", errors: error.errors });
+      }
+      // Backstop for the race the checks above cannot close, and for the other
+      // paths that create users (the employee module and the database seed).
+      if (error.code === "23505") {
+        const field = String(error.constraint || "").includes("email")
+          ? "email"
+          : "username";
+        return res
+          .status(409)
+          .json({ message: `A user with this ${field} already exists` });
       }
       res.status(500).json({ message: "Failed to create user" });
     }
@@ -242,13 +268,41 @@ usersRoutes.put(
         await storage.updateEmployee(empId, { userId: id });
       }
 
+      if (userData.username) {
+        const existingUsername = await storage.getUserByUsername(
+          userData.username,
+        );
+        if (existingUsername && existingUsername.id !== id) {
+          return res
+            .status(409)
+            .json({ message: "A user with this username already exists" });
+        }
+      }
+
+      if (userData.email) {
+        const existingEmail = await storage.getUserByEmail(userData.email);
+        if (existingEmail && existingEmail.id !== id) {
+          return res
+            .status(409)
+            .json({ message: "A user with this email already exists" });
+        }
+      }
+
       const user = await storage.updateUser(id, userData);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === "23505") {
+        const field = String(error.constraint || "").includes("email")
+          ? "email"
+          : "username";
+        return res
+          .status(409)
+          .json({ message: `A user with this ${field} already exists` });
+      }
       res.status(500).json({ message: "Failed to update user" });
     }
   },

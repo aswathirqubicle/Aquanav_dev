@@ -6,7 +6,7 @@ import {
   users,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export class UserStorage extends CompanyStorage {
   // User methods
@@ -21,6 +21,23 @@ export class UserStorage extends CompanyStorage {
     } catch (error: any) {
       // Log to console only to avoid recursive database errors
       console.error("Error in getUserByUsername:", error);
+      throw error;
+    }
+  }
+
+  // Email uniqueness ignores case, so Admin@x.com and admin@x.com are the same
+  // account. This matches the users_email_lower_unique index in migration 0077.
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    try {
+      const result = await db
+        .select()
+        .from(users)
+        .where(sql`lower(${users.email}) = lower(${email})`)
+        .limit(1);
+      return result[0];
+    } catch (error: any) {
+      // Log to console only to avoid recursive database errors
+      console.error("Error in getUserByEmail:", error);
       throw error;
     }
   }
