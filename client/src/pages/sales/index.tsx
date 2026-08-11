@@ -41,6 +41,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -73,6 +79,10 @@ import {
   ArrowRightLeft,
   Ban,
   CreditCard,
+  Building2,
+  DollarSign,
+  AlignLeft,
+  Package,
 } from "lucide-react";
 import {
   SalesQuotation,
@@ -94,6 +104,78 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+
+// Design tokens for the two view dialogs, ported from the purchase invoice
+// view so a sales document reads the same way as a purchase one. Literal hex
+// rather than the app's semantic tokens because the approved design fixes the
+// palette; nothing in here follows a theme. Module scope rather than inline —
+// the purchase file declares them inside its single dialog, but quotations and
+// invoices are two dialogs in this file and would otherwise duplicate the lot.
+const DOC_CARD =
+  "bg-white border border-[#E3E7EE] rounded-[10px] overflow-hidden print:bg-white print:border print:border-gray-300";
+const DOC_CARD_HEAD =
+  "flex items-center gap-2.5 px-[18px] py-3 border-b border-[#EDF0F5]";
+const DOC_CARD_TITLE = "text-sm font-semibold text-[#171B23] print:text-black";
+const DOC_CARD_ICON = "w-[15px] h-[15px] shrink-0 text-[#8A93A3]";
+const DOC_CARD_BODY = "px-[18px] py-4";
+const DOC_ACC_TRIGGER =
+  "px-[18px] py-3 hover:no-underline data-[state=open]:border-b data-[state=open]:border-[#EDF0F5]";
+const DOC_ACC_BODY = "px-[18px] pt-3.5 pb-4";
+const DOC_KV_ROW =
+  "flex justify-between gap-3.5 py-2 text-[13.5px] border-b border-dashed border-[#EDF0F5] last:border-b-0 first:pt-0 last:pb-0";
+const DOC_KV_LABEL = "shrink-0 text-[#5B6472] print:text-gray-700";
+const DOC_KV_VAL =
+  "min-w-0 text-right font-medium break-words print:text-black";
+const DOC_META_LABEL =
+  "text-[10.5px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] mb-[3px] print:text-gray-700";
+const DOC_META_VALUE = "text-[14.5px] font-semibold text-[#171B23] print:text-black";
+const DOC_META_CELL =
+  "flex-1 min-w-[150px] px-5 sm:px-6 py-3.5 border-r border-[#E3E7EE] last:border-r-0";
+const DOC_TH =
+  "h-auto px-3.5 py-2.5 bg-[#F7F9FC] text-[10.5px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3] whitespace-nowrap text-left align-middle print:bg-gray-100 print:text-black";
+const DOC_TD = "px-3.5 py-3 align-top print:text-black";
+const DOC_TDN =
+  "px-3.5 py-3 align-top text-right text-[13px] print:text-black";
+const DOC_TROW =
+  "flex justify-between items-baseline gap-4 py-[5px] print:text-black";
+const DOC_BTN =
+  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors border bg-background h-auto gap-[7px] rounded-lg border-[#E3E7EE] px-[13px] py-[7px] text-[13.5px] text-[#171B23] hover:bg-[#F7F9FC] hover:border-[#D4DAE3] cursor-pointer";
+const DOC_COUNT =
+  "text-[11.5px] font-semibold text-[#5B6472] bg-[#EDF0F5] rounded-full px-2.5 py-0.5";
+const DOC_PROSE = "text-[13.5px] leading-[1.65] text-[#333B47] print:text-black";
+const DOC_STAMP =
+  "text-[11px] font-semibold tracking-[0.09em] uppercase px-[9px] py-[3px] rounded-[5px] border";
+const DOC_TIMELINE =
+  "relative list-none pl-5 before:content-[''] before:absolute before:left-[5px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-[#EDF0F5]";
+const DOC_DOT = "absolute -left-5 top-[5px] w-3 h-3 rounded-full bg-white border-[3px]";
+
+// Chip tones for the header stamps. Local on purpose — the list rows keep using
+// getQuotationStatusBadge / getInvoiceStatusBadge, which must not change shape.
+const docStatusTone = (status: string) => {
+  switch (status) {
+    case "draft":
+      return "text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]";
+    case "pending_approval":
+      return "text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]";
+    case "approved":
+    case "paid":
+      return "text-[#027A48] bg-[#ECFDF3] border-[#A6F4C5]";
+    case "rejected":
+      return "text-[#B42318] bg-[#FEF3F2] border-[#F0C5C1]";
+    case "cancelled":
+      return "text-[#B42318] bg-[#F7F9FC] border-[#F0C5C1]";
+    case "overdue":
+      return "text-[#B42318] bg-[#FEF3F2] border-[#F0C5C1]";
+    case "partially_paid":
+      return "text-[#B54708] bg-[#FFFAEB] border-[#FEDF89]";
+    case "unpaid":
+      return "text-[#2B4ACB] bg-[#EEF2FE] border-[#DCE4FB]";
+    case "converted":
+      return "text-[#6941C6] bg-[#F4F3FF] border-[#D9D6FE]";
+    default:
+      return "text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]";
+  }
+};
 
 const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
   validUntil: z.string().optional(),
@@ -227,6 +309,14 @@ export default function SalesIndex() {
     useState<string>("");
   const [invoiceEndDateFilter, setInvoiceEndDateFilter] = useState<string>("");
   const [expandedPayment, setExpandedPayment] = useState<number | null>(null);
+  // Activity block in each view dialog: collapsed on open, and which tab is
+  // showing once expanded. Collapsed by default keeps the dialog to the
+  // document itself; the payment and edit-history requests are gated on the
+  // matching tab, so opening a dialog costs no extra fetch.
+  const [quotationActivityOpen, setQuotationActivityOpen] = useState(false);
+  const [quotationActivityTab, setQuotationActivityTab] = useState("approval");
+  const [invoiceActivityOpen, setInvoiceActivityOpen] = useState(false);
+  const [invoiceActivityTab, setInvoiceActivityTab] = useState("approval");
   const [selectedPaymentFiles, setSelectedPaymentFiles] =
     useState<FileList | null>(null);
 
@@ -367,6 +457,25 @@ export default function SalesIndex() {
       cancelEditInvoiceItem();
     }
   }, [isInvoiceDialogOpen]);
+
+  // Reset each view dialog's Activity block when it closes, so the next
+  // document opens with it collapsed on the Approval tab. Keyed on the open
+  // flag rather than done in onOpenChange because most close paths — the Close
+  // button, Edit, Record Payment, Reject — call the setter directly and never
+  // reach Radix's onOpenChange.
+  useEffect(() => {
+    if (!isQuotationDetailsOpen) {
+      setQuotationActivityOpen(false);
+      setQuotationActivityTab("approval");
+    }
+  }, [isQuotationDetailsOpen]);
+
+  useEffect(() => {
+    if (!isInvoiceDetailsOpen) {
+      setInvoiceActivityOpen(false);
+      setInvoiceActivityTab("approval");
+    }
+  }, [isInvoiceDetailsOpen]);
 
   const [paymentFormData, setPaymentFormData] = useState<CreatePaymentData>({
     invoiceId: 0,
@@ -671,9 +780,15 @@ export default function SalesIndex() {
     enabled: isAuthenticated,
   });
 
-  const { data: invoicePayments } = useQuery<InvoicePayment[]>({
+  const { data: invoicePayments, isLoading: isLoadingPayments } = useQuery<
+    InvoicePayment[]
+  >({
     queryKey: [`/api/sales-invoices/${selectedInvoice?.id}/payments`],
-    enabled: isAuthenticated && !!selectedInvoice,
+    enabled:
+      isAuthenticated &&
+      !!selectedInvoice &&
+      invoiceActivityOpen &&
+      invoiceActivityTab === "payments",
   });
 
   const { data: invoiceEditHistory } = useQuery<any[]>({
@@ -683,7 +798,12 @@ export default function SalesIndex() {
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: isAuthenticated && !!selectedInvoice && (user?.role === "admin" || user?.role === "finance"),
+    enabled:
+      isAuthenticated &&
+      !!selectedInvoice &&
+      invoiceActivityOpen &&
+      invoiceActivityTab === "history" &&
+      (user?.role === "admin" || user?.role === "finance"),
   });
 
   const { data: quotationEditHistory } = useQuery<any[]>({
@@ -693,7 +813,12 @@ export default function SalesIndex() {
       if (!response.ok) return [];
       return response.json();
     },
-    enabled: isAuthenticated && !!selectedQuotation && (user?.role === "admin" || user?.role === "finance"),
+    enabled:
+      isAuthenticated &&
+      !!selectedQuotation &&
+      quotationActivityOpen &&
+      quotationActivityTab === "history" &&
+      (user?.role === "admin" || user?.role === "finance"),
   });
 
   const paymentFilesQueries = useQueries({
@@ -1825,6 +1950,14 @@ export default function SalesIndex() {
   const formatCurrency = (amount: string | number, currency?: string) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
     return `${currency || "AED"} ${num.toFixed(2)}`;
+  };
+
+  // Bare number for the line-item columns. The document's currency is stated
+  // once on the key-facts band and again on the totals, so repeating it on
+  // every cell only crowds the table. Mirrors the purchase invoice view.
+  const formatAmount = (amount: string | number) => {
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    return num.toFixed(2);
   };
 
   const formatDate = (date: string | Date) => {
@@ -4668,521 +4801,657 @@ export default function SalesIndex() {
         open={isQuotationDetailsOpen}
         onOpenChange={setIsQuotationDetailsOpen}
       >
-        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
-                actions (edit, duplicate, print) live up here; status-flow
-                actions (submit, approve, convert) stay in the footer. */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
-              <div>
-                <DialogTitle>Quotation Details</DialogTitle>
-                <DialogDescription>
-                  View detailed information about this sales quotation.
-                </DialogDescription>
-              </div>
-              {selectedQuotation && (
-                <div className="flex flex-wrap gap-2">
-                  {/* Same gate as the list's Edit button. */}
-                  {(selectedQuotation.status === "draft" ||
-                    (["pending_approval", "approved", "rejected"].includes(selectedQuotation.status) &&
-                      (user?.role === "admin" || user?.role === "finance"))) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditQuotation(selectedQuotation)}
-                        data-testid="button-edit-quotation-header"
-                      >
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
+        <DialogContent className="max-w-6xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+          {selectedQuotation ? (() => {
+            const quotationCurrency = selectedQuotation.currency || "AED";
+            const showExchangeRate =
+              quotationCurrency !== "AED" && !!selectedQuotation.exchangeRate;
+            const totalAmount = parseFloat(selectedQuotation.totalAmount || "0");
+            // Total discount (header + line) derived from stored fields; the
+            // `discount` column itself holds only the header portion.
+            const totalDiscount =
+              parseFloat(selectedQuotation.subtotal || "0") +
+              parseFloat(selectedQuotation.taxAmount || "0") -
+              totalAmount;
+            const customer = customers?.find(
+              (c) => c.id === selectedQuotation.customerId,
+            );
+            // Resolved once: the header band and the customer card both show it.
+            const customerLabel = getCustomerName(selectedQuotation.customerId);
+            const hasCommercialTerms = !!(
+              selectedQuotation.paymentTerms || showExchangeRate
+            );
+
+            return (
+              <>
+                {/* Header band. Document actions (edit, duplicate, print,
+                    archive) live up here; status-flow actions (submit, approve,
+                    convert) stay in the footer. pr-5 sm:pr-14 keeps the buttons
+                    clear of the dialog's own X. */}
+                <header className="flex flex-col sm:flex-row sm:items-center gap-4 shrink-0 border-b border-[#E3E7EE] py-4 pl-5 sm:pl-6 pr-5 sm:pr-14 print:border-b-2 print:border-black">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                    <div className="grid place-items-center w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#EEF2FE] border border-[#DCE4FB] print:bg-blue-100">
+                      <FileText className="w-5 h-5 text-[#2B4ACB] print:text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] print:text-gray-700">
+                        Sales quotation
+                      </div>
+                      <div className="flex items-center flex-wrap gap-2.5 mt-px">
+                        <DialogTitle className="text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
+                          {selectedQuotation.quotationNumber}
+                        </DialogTitle>
+                        <span className={`${DOC_STAMP} ${docStatusTone(selectedQuotation.status)}`}>
+                          {selectedQuotation.status.replace(/_/g, " ")}
+                        </span>
+                        {selectedQuotation.isArchived && (
+                          <span className="text-[11px] font-semibold tracking-[0.06em] uppercase px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]">
+                            Archived
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[13px] text-[#5B6472] mt-0.5 break-words print:text-gray-700">
+                        <strong className="font-semibold text-[#171B23] print:text-black">
+                          {customerLabel}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 print:hidden">
+                    {/* Same gate as the list's Edit button. */}
+                    {(selectedQuotation.status === "draft" ||
+                      (["pending_approval", "approved", "rejected"].includes(selectedQuotation.status) &&
+                        (user?.role === "admin" || user?.role === "finance"))) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditQuotation(selectedQuotation)}
+                          data-testid="button-edit-quotation-header"
+                          className={DOC_BTN}
+                        >
+                          <Pencil className="w-[15px] h-[15px] text-[#5B6472]" />
+                          Edit
+                        </Button>
+                      )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicateQuotation(selectedQuotation)}
+                      data-testid="button-duplicate-quotation-header"
+                      className={DOC_BTN}
+                    >
+                      <Copy className="w-[15px] h-[15px] text-[#5B6472]" />
+                      Duplicate
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePrintPDF(selectedQuotation)}
+                      data-testid="button-print-quotation-header"
+                      className={DOC_BTN}
+                    >
+                      <Printer className="w-[15px] h-[15px] text-[#5B6472]" />
+                      Print
+                    </Button>
+                    {user?.role === "admin" &&
+                      (selectedQuotation.isArchived ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setIsQuotationDetailsOpen(false);
+                            startTransition(() =>
+                              unarchiveQuotationMutation.mutate(selectedQuotation.id),
+                            );
+                          }}
+                          disabled={unarchiveQuotationMutation.isPending}
+                          data-testid="button-unarchive-quotation-header"
+                          className={DOC_BTN}
+                        >
+                          <ArchiveRestore className="w-[15px] h-[15px] text-[#5B6472]" />
+                          {unarchiveQuotationMutation.isPending ? "Unarchiving..." : "Unarchive"}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setIsQuotationDetailsOpen(false);
+                            startTransition(() =>
+                              archiveQuotationMutation.mutate(selectedQuotation.id),
+                            );
+                          }}
+                          disabled={archiveQuotationMutation.isPending}
+                          data-testid="button-archive-quotation-header"
+                          className={DOC_BTN}
+                        >
+                          <Archive className="w-[15px] h-[15px] text-[#5B6472]" />
+                          {archiveQuotationMutation.isPending ? "Archiving..." : "Archive"}
+                        </Button>
+                      ))}
+                  </div>
+                </header>
+
+                {/* Key facts. flex rather than a fixed grid so the cells spread
+                    evenly when one of them is absent. */}
+                <div className="flex flex-wrap shrink-0 border-b border-[#E3E7EE] bg-[#F7F9FC] print:bg-white">
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Created date</div>
+                    <div className={DOC_META_VALUE}>{formatDate(selectedQuotation.createdDate)}</div>
+                  </div>
+                  {selectedQuotation.validUntil && (
+                    <div className={DOC_META_CELL}>
+                      <div className={DOC_META_LABEL}>Valid until</div>
+                      <div className={DOC_META_VALUE}>{formatDate(selectedQuotation.validUntil)}</div>
+                    </div>
+                  )}
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Currency</div>
+                    <div className={DOC_META_VALUE}>{quotationCurrency}</div>
+                    {showExchangeRate && (
+                      <div className="text-[12px] text-[#8A93A3] mt-px print:text-gray-700">
+                        1 {quotationCurrency} = {selectedQuotation.exchangeRate} AED
+                      </div>
                     )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDuplicateQuotation(selectedQuotation)}
-                    data-testid="button-duplicate-quotation-header"
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    Duplicate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePrintPDF(selectedQuotation)}
-                    data-testid="button-print-quotation-header"
-                  >
-                    <Printer className="h-4 w-4 mr-1" />
-                    Print
-                  </Button>
-                  {user?.role === "admin" &&
-                    (selectedQuotation.isArchived ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setIsQuotationDetailsOpen(false);
-                          startTransition(() =>
-                            unarchiveQuotationMutation.mutate(
-                              selectedQuotation.id,
-                            ),
-                          );
-                        }}
-                        disabled={unarchiveQuotationMutation.isPending}
-                        data-testid="button-unarchive-quotation-header"
-                      >
-                        <ArchiveRestore className="h-4 w-4 mr-1" />
-                        {unarchiveQuotationMutation.isPending
-                          ? "Unarchiving..."
-                          : "Unarchive"}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setIsQuotationDetailsOpen(false);
-                          startTransition(() =>
-                            archiveQuotationMutation.mutate(
-                              selectedQuotation.id,
-                            ),
-                          );
-                        }}
-                        disabled={archiveQuotationMutation.isPending}
-                        data-testid="button-archive-quotation-header"
-                      >
-                        <Archive className="h-4 w-4 mr-1" />
-                        {archiveQuotationMutation.isPending
-                          ? "Archiving..."
-                          : "Archive"}
-                      </Button>
-                    ))}
+                  </div>
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Total amount</div>
+                    <div className={DOC_META_VALUE}>
+                      {formatCurrency(selectedQuotation.totalAmount || "0", quotationCurrency)}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-          </DialogHeader>
-          {selectedQuotation ? (
-            <div className="space-y-6">
-              {/* Header Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">
-                      Quotation Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Quotation Number:</span>
-                      <span>{selectedQuotation.quotationNumber}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Status:</span>
-                      <span>
-                        {getQuotationStatusBadge(selectedQuotation.status)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Created Date:</span>
-                      <span>{formatDate(selectedQuotation.createdDate)}</span>
-                    </div>
-                    {selectedQuotation.validUntil && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">Valid Until:</span>
-                        <span>{formatDate(selectedQuotation.validUntil)}</span>
+
+                <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFCFE] print:overflow-visible print:bg-white">
+                  <div className="flex flex-col gap-4 p-5 sm:p-6 print:gap-3 print:p-0">
+
+                    {/* Customer and commercial terms. flex-wrap rather than a
+                        two-column grid so the customer card still fills the row
+                        when the terms card is dropped entirely. */}
+                    <div className="flex flex-wrap gap-4 items-start">
+                      <div className={`${DOC_CARD} flex-1 min-w-[260px]`}>
+                        <Accordion type="single" collapsible defaultValue="customer" className="w-full">
+                          <AccordionItem value="customer" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <Building2 className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Customer</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
+                                {customerLabel}
+                              </div>
+                              {customer?.email && (
+                                <div className={DOC_KV_ROW}>
+                                  <span className={DOC_KV_LABEL}>Email</span>
+                                  <span className={DOC_KV_VAL}>{customer.email}</span>
+                                </div>
+                              )}
+                              {customer?.phone && (
+                                <div className={DOC_KV_ROW}>
+                                  <span className={DOC_KV_LABEL}>Phone</span>
+                                  <span className={DOC_KV_VAL}>{customer.phone}</span>
+                                </div>
+                              )}
+                              {selectedQuotation.billingAddress && (
+                                <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words mt-2 print:text-black">
+                                  {selectedQuotation.billingAddress}
+                                </div>
+                              )}
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
-                    )}
+                      {hasCommercialTerms && (
+                        <div className={`${DOC_CARD} flex-1 min-w-[260px]`}>
+                          <Accordion type="single" collapsible defaultValue="terms" className="w-full">
+                            <AccordionItem value="terms" className="border-b-0">
+                              <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <DollarSign className={DOC_CARD_ICON} />
+                                  <span className={DOC_CARD_TITLE}>Commercial terms</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={DOC_ACC_BODY}>
+                                <div className="flex flex-col">
+                                  {selectedQuotation.paymentTerms && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Payment terms</span>
+                                      <span className={DOC_KV_VAL}>{selectedQuotation.paymentTerms}</span>
+                                    </div>
+                                  )}
+                                  {showExchangeRate && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Exchange rate</span>
+                                      <span className={`${DOC_KV_VAL} text-[12.5px]`}>
+                                        1 {quotationCurrency} = {selectedQuotation.exchangeRate} AED
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Subject sits directly above the items and opens by
+                        default — it is what the quotation is for. */}
                     {selectedQuotation.subject && (
-                      <div>
-                        <span className="font-medium">Subject Line:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedQuotation.subject}
-                        </p>
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible defaultValue="subject" className="w-full">
+                          <AccordionItem value="subject" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <AlignLeft className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Subject</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div className={`${DOC_PROSE} whitespace-pre-wrap break-words`}>
+                                {selectedQuotation.subject}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">
-                      Customer Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Customer:</span>
-                      <span>
-                        {getCustomerName(selectedQuotation.customerId)}
-                      </span>
-                    </div>
-                    {(() => {
-                      const customer = customers?.find(
-                        (c) => c.id === selectedQuotation.customerId,
-                      );
-                      return customer ? (
+                    {/* Quotation items, with the ledger totals at the foot of
+                        the same card so the numbers sit under the lines they
+                        come from. */}
+                    <div className={DOC_CARD}>
+                      <div className={DOC_CARD_HEAD}>
+                        <Package className={DOC_CARD_ICON} />
+                        <span className={DOC_CARD_TITLE}>Services / items</span>
+                        <span className={DOC_COUNT}>{selectedQuotation.items?.length || 0} items</span>
+                      </div>
+                      {selectedQuotation.items && selectedQuotation.items.length > 0 ? (
                         <>
-                          {customer.email && (
-                            <div className="flex justify-between">
-                              <span className="font-medium">Email:</span>
-                              <span>{customer.email}</span>
-                            </div>
-                          )}
-                          {customer.phone && (
-                            <div className="flex justify-between">
-                              <span className="font-medium">Phone:</span>
-                              <span>{customer.phone}</span>
-                            </div>
-                          )}
-                        </>
-                      ) : null;
-                    })()}
-                    {selectedQuotation.billingAddress && (
-                      <div>
-                        <span className="font-medium">Billing Address:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedQuotation.billingAddress}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                          <div className="relative w-full overflow-auto">
+                            <table className="w-full caption-bottom text-sm">
+                              <thead>
+                                <tr className="border-b border-[#E3E7EE]">
+                                  <th className={`${DOC_TH} w-9`}>#</th>
+                                  <th className={DOC_TH}>Description</th>
+                                  <th className={`${DOC_TH} text-right`}>Qty</th>
+                                  <th className={`${DOC_TH} text-right`}>Unit price</th>
+                                  <th className={`${DOC_TH} text-right`}>Discount</th>
+                                  <th className={`${DOC_TH} text-right`}>Tax rate</th>
+                                  <th className={`${DOC_TH} text-right`}>Tax</th>
+                                  <th className={`${DOC_TH} text-right`}>Line total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedQuotation.items.map((item, index) => {
+                                  const lineSubtotal = item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    (item as any).discountType === "percentage"
+                                      ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
+                                      : Math.min(Number((item as any).discount) || 0, lineSubtotal);
+                                  const taxRate = item.taxRate || 0;
+                                  const taxable = lineSubtotal - lineDiscount;
+                                  const calculatedTaxAmount = taxable * (taxRate / 100);
+                                  const taxAmount =
+                                    item.taxAmount !== undefined
+                                      ? parseFloat(item.taxAmount.toString())
+                                      : calculatedTaxAmount;
+                                  const lineTotal = taxable + taxAmount;
 
-              {/* Payment Details */}
-              {(selectedQuotation.paymentTerms || selectedQuotation.bankAccount || selectedQuotation.termsAndConditions || selectedQuotation.remarks) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Payment Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {selectedQuotation.paymentTerms && (
-                      <div>
-                        <span className="font-medium">Payment Terms:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedQuotation.paymentTerms}
-                        </p>
-                      </div>
-                    )}
-                    {selectedQuotation.bankAccount && (
-                      <div>
-                        <span className="font-medium">Bank Account:</span>
-                        <div
-                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
-                          dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.bankAccount) }}
-                        />
+                                  return (
+                                    <tr key={index} className="border-b border-[#EDF0F5] last:border-b-0 hover:bg-[#F7F9FC]">
+                                      <td className={`${DOC_TD} text-[12.5px] text-[#8A93A3] print:text-black`}>{index + 1}</td>
+                                      <td className={DOC_TD}>
+                                        <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words print:text-black">
+                                          {item.description}
+                                        </span>
+                                      </td>
+                                      <td className={DOC_TDN}>{item.quantity}</td>
+                                      <td className={DOC_TDN}>
+                                        {formatAmount(item.unitPrice)}
+                                      </td>
+                                      <td className={DOC_TDN}>
+                                        {(Number((item as any).discount) || 0) > 0
+                                          ? (item as any).discountType === "percentage"
+                                            ? `${(item as any).discount}%`
+                                            : formatAmount((item as any).discount)
+                                          : "—"}
+                                      </td>
+                                      <td className={DOC_TDN}>{taxRate}%</td>
+                                      <td className={DOC_TDN}>
+                                        {formatAmount(taxAmount)}
+                                      </td>
+                                      <td className={`${DOC_TDN} font-semibold`}>
+                                        {formatAmount(lineTotal)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="flex justify-end px-[18px] pt-3.5 pb-4 bg-[#F7F9FC] border-t border-[#EDF0F5] print:bg-white">
+                            <div className="w-full sm:w-[320px] text-[13.5px]">
+                              <div className={DOC_TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Subtotal</span>
+                                <span className="font-medium">
+                                  {formatCurrency(selectedQuotation.subtotal || "0", quotationCurrency)}
+                                </span>
+                              </div>
+                              {totalDiscount > 0.005 && (
+                                <div className={DOC_TROW}>
+                                  <span className="text-[#5B6472] print:text-gray-700">Total discount</span>
+                                  <span className="font-medium text-[#B42318] print:text-red-700">
+                                    −{formatCurrency(totalDiscount.toFixed(2), quotationCurrency)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className={DOC_TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Tax</span>
+                                <span className="font-medium">
+                                  {formatCurrency(selectedQuotation.taxAmount || "0", quotationCurrency)}
+                                </span>
+                              </div>
+                              <div className={`${DOC_TROW} mt-[7px] pt-[9px] border-t-[3px] border-double border-[#171B23]`}>
+                                <span className="text-sm font-semibold text-[#171B23] print:text-black">
+                                  Total ({quotationCurrency})
+                                </span>
+                                <span className="text-[17px] font-semibold text-[#2B4ACB] print:text-blue-600">
+                                  {formatCurrency(selectedQuotation.totalAmount || "0", quotationCurrency)}
+                                </span>
+                              </div>
+                              {showExchangeRate && (
+                                <div className="text-right text-[11.5px] text-[#8A93A3] mt-2.5 print:text-gray-700">
+                                  Exchange rate 1 {quotationCurrency} = {selectedQuotation.exchangeRate} AED
+                                  <br />
+                                  AED equivalent: AED {(totalAmount * parseFloat(selectedQuotation.exchangeRate || "1")).toFixed(2)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className={DOC_CARD_BODY}>
+                          <p className="text-sm text-muted-foreground italic">No items found.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Notes and terms are reference text, not something a
+                        reader needs on opening the document, so both stay
+                        collapsed. */}
+                    {selectedQuotation.remarks && (
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="notes" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <Pencil className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Notes</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div
+                                className={`${DOC_PROSE} break-words rich-text-content`}
+                                dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.remarks) }}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
                     {selectedQuotation.termsAndConditions && (
-                      <div>
-                        <span className="font-medium">Terms & Conditions:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedQuotation.termsAndConditions}
-                        </p>
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="terms-and-conditions" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <FileText className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Terms &amp; conditions</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <p className={`${DOC_PROSE} whitespace-pre-wrap break-words`}>
+                                {selectedQuotation.termsAndConditions}
+                              </p>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
-                    {selectedQuotation.remarks && (
-                      <div>
-                        <span className="font-medium">Notes:</span>
-                        <div
-                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
-                          dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.remarks) }}
-                        />
+
+                    {/* Bank account sits after the notes and terms: it is
+                        settlement reference detail, read last. */}
+                    {selectedQuotation.bankAccount && (
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="bank" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <CreditCard className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Bank account</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div
+                                className="text-[13px] leading-[1.6] text-[#333B47] break-words rich-text-content print:text-black"
+                                dangerouslySetInnerHTML={{ __html: sanitize(selectedQuotation.bankAccount) }}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              )}
 
-              {/* Items Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Services / Items</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedQuotation.items &&
-                    selectedQuotation.items.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-3 font-medium">
-                              Description
-                            </th>
-                            <th className="text-right p-3 font-medium">Qty</th>
-                            <th className="text-right p-3 font-medium">
-                              Unit Price
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Discount
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Tax Rate
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Tax Amount
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Line Total
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedQuotation.items.map((item, index) => {
-                            const lineSubtotal = item.quantity * item.unitPrice;
-                            const lineDiscount =
-                              (item as any).discountType === "percentage"
-                                ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
-                                : Math.min(Number((item as any).discount) || 0, lineSubtotal);
-                            const taxRate = item.taxRate || 0;
-                            const taxable = lineSubtotal - lineDiscount;
-                            const calculatedTaxAmount = taxable * (taxRate / 100);
-                            const taxAmount =
-                              item.taxAmount !== undefined
-                                ? parseFloat(item.taxAmount.toString())
-                                : calculatedTaxAmount;
-                            const lineTotal = taxable + taxAmount;
-
-                            return (
-                              <tr key={index} className="border-b">
-                                <td className="p-3 whitespace-pre-wrap break-words">{item.description}</td>
-                                <td className="text-right p-3">
-                                  {item.quantity}
-                                </td>
-                                <td className="text-right p-3">
-                                  {formatCurrency(item.unitPrice, selectedQuotation?.currency)}
-                                </td>
-                                <td className="text-right p-3">
-                                  {(Number((item as any).discount) || 0) > 0
-                                    ? (item as any).discountType === "percentage"
-                                      ? `${(item as any).discount}%`
-                                      : formatCurrency((item as any).discount, selectedQuotation?.currency)
-                                    : "-"}
-                                </td>
-                                <td className="text-right p-3">{taxRate}%</td>
-                                <td className="text-right p-3">
-                                  {formatCurrency(taxAmount, selectedQuotation?.currency)}
-                                </td>
-                                <td className="text-right p-3 font-medium">
-                                  {formatCurrency(lineTotal, selectedQuotation?.currency)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">
-                      No items found
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Financial Summary */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-                  Financial Summary
-                </h3>
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                    <span className="font-medium">Subtotal:</span>
-                    <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.subtotal || "0", selectedQuotation?.currency)}</span>
-                  </div>
-                  {(() => {
-                    // Total discount (header + line) derived from stored fields;
-                    // equals discountTotal to the cent. The `discount` column
-                    // itself now holds only the header portion.
-                    const totalDiscount =
-                      parseFloat(selectedQuotation.subtotal || "0") +
-                      parseFloat(selectedQuotation.taxAmount || "0") -
-                      parseFloat(selectedQuotation.totalAmount || "0");
-                    return totalDiscount > 0.005 ? (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">Total Discount:</span>
-                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedQuotation?.currency)}</span>
-                      </div>
-                    ) : null;
-                  })()}
-                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                    <span className="font-medium">Tax Amount:</span>
-                    <span className="text-lg font-semibold">{formatCurrency(selectedQuotation.taxAmount || "0", selectedQuotation?.currency)}</span>
-                  </div>
-                  <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
-                    <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(selectedQuotation.totalAmount || "0", selectedQuotation?.currency)}</span>
-                  </div>
-                  {selectedQuotation.currency && selectedQuotation.currency !== "AED" && (
-                    <div className="text-xs text-muted-foreground mt-2 text-right">
-                      Exchange Rate: 1 {selectedQuotation.currency} = {selectedQuotation.exchangeRate} AED
-                      <br />
-                      AED Equivalent: AED {(parseFloat(selectedQuotation.totalAmount || "0") * parseFloat(selectedQuotation.exchangeRate || "1")).toFixed(2)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Approval trail — submitted, approved, rejected. Mirrors the
-                  sales invoice view. The names are resolved server-side on the
-                  list rows: /api/users is admin-only while finance can open this
-                  dialog, so looking them up from here would 403 for them. */}
-              {((selectedQuotation as any).submittedAt || (selectedQuotation as any).approvedAt || (selectedQuotation as any).rejectionReason) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
-                      Approval Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(selectedQuotation as any).submittedAt && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
-                          <p className="text-sm font-medium mt-1">{(selectedQuotation as any).submittedByName || "—"}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
-                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).submittedAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(selectedQuotation as any).approvedAt && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
-                          <p className="text-sm font-medium mt-1">{(selectedQuotation as any).approvedByName || "—"}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
-                          <p className="text-sm font-medium mt-1">{new Date((selectedQuotation as any).approvedAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(selectedQuotation as any).rejectionReason && (
-                      <div className="pt-1">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
-                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedQuotation as any).rejectionReason}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Edit History */}
-              {quotationEditHistory && quotationEditHistory.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <History className="h-5 w-5" />
-                      Edit History ({quotationEditHistory.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {quotationEditHistory.map((entry: any) => (
-                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
-                          </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
-                          {entry.changes && Object.keys(entry.changes).length > 0 && (
-                            <div className="text-xs space-y-1">
-                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                field !== "items" ? (
-                                  <div key={field} className="flex gap-2">
-                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
-                                    <span className="text-green-600">{String(change.new || "—")}</span>
-                                  </div>
-                                ) : (
-                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
-                                )
-                              ))}
-                            </div>
+                    {/* Activity — approval trail and edit history in one tabbed
+                        block rather than two stacked cards. Collapsed on open so
+                        the dialog leads with the document; edit history fetches
+                        on first click of its tab. Quotations never hold
+                        payments, so there is no payments tab. */}
+                    <div className={`${DOC_CARD} print:hidden`}>
+                      <button
+                        type="button"
+                        onClick={() => setQuotationActivityOpen((o) => !o)}
+                        aria-expanded={quotationActivityOpen}
+                        className={`${DOC_CARD_HEAD} w-full text-left cursor-pointer hover:bg-[#F7F9FC] ${quotationActivityOpen ? "" : "border-b-0"}`}
+                        data-testid="button-toggle-quotation-activity"
+                      >
+                        <History className={DOC_CARD_ICON} />
+                        <span className={DOC_CARD_TITLE}>Activity</span>
+                        <span className="ml-auto">
+                          {quotationActivityOpen ? (
+                            <ChevronUp className="w-4 h-4 text-[#8A93A3]" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-[#8A93A3]" />
                           )}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                        </span>
+                      </button>
+                      {quotationActivityOpen && (
+                        <div className={DOC_CARD_BODY}>
+                          <Tabs value={quotationActivityTab} onValueChange={setQuotationActivityTab}>
+                            <TabsList>
+                              <TabsTrigger value="approval" data-testid="tab-quotation-approval">
+                                Approval
+                              </TabsTrigger>
+                              <TabsTrigger value="history" data-testid="tab-quotation-edit-history">
+                                Edit History
+                                {quotationEditHistory ? ` (${quotationEditHistory.length})` : ""}
+                              </TabsTrigger>
+                            </TabsList>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
-                {selectedQuotation.status === "draft" && (
-                  <Button
-                    onClick={() =>
-                      startTransition(() =>
-                        submitQuotationMutation.mutate(selectedQuotation.id),
-                      )
-                    }
-                    disabled={submitQuotationMutation.isPending}
-                    data-testid="button-submit-quotation-dialog"
-                  >
-                    <Send className="h-4 w-4 mr-1" />
-                    {submitQuotationMutation.isPending
-                      ? "Submitting..."
-                      : "Submit"}
-                  </Button>
-                )}
-                {user?.role === "admin" &&
-                  selectedQuotation.status === "pending_approval" && (
-                    <>
-                      <Button
-                        onClick={() =>
-                          startTransition(() =>
-                            approveQuotationMutation.mutate(
-                              selectedQuotation.id,
-                            ),
-                          )
-                        }
-                        disabled={approveQuotationMutation.isPending}
-                        data-testid="button-approve-quotation-dialog"
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        {approveQuotationMutation.isPending
-                          ? "Approving..."
-                          : "Approve"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsQuotationDetailsOpen(false);
-                          setIsQuotationRejectDialogOpen(true);
-                        }}
-                        disabled={rejectQuotationMutation.isPending}
-                        data-testid="button-reject-quotation-dialog"
-                        className="border-red-300 text-red-600 hover:bg-red-50"
-                      >
-                        <XCircle className="h-4 w-4 mr-1" />
-                        Reject
-                      </Button>
-                    </>
+                            {/* Approval trail. The names are resolved
+                                server-side on the list rows: /api/users is
+                                admin-only while finance can open this dialog,
+                                so looking them up from here would 403. */}
+                            <TabsContent value="approval" className="mt-4">
+                              {(selectedQuotation as any).submittedAt ||
+                              (selectedQuotation as any).approvedAt ||
+                              (selectedQuotation as any).rejectionReason ? (
+                                <ul className={DOC_TIMELINE}>
+                                  {(selectedQuotation as any).submittedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#8A93A3]`} />
+                                      <div className="text-[13.5px] font-semibold">Submitted for approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedQuotation as any).submittedByName || "—"} ·{" "}
+                                        {new Date((selectedQuotation as any).submittedAt).toLocaleString()}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {(selectedQuotation as any).approvedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#12B76A]`} />
+                                      <div className="text-[13.5px] font-semibold">Approved</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedQuotation as any).approvedByName || "—"} ·{" "}
+                                        {new Date((selectedQuotation as any).approvedAt).toLocaleString()}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {(selectedQuotation as any).rejectionReason && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#B42318]`} />
+                                      <div className="text-[13.5px] font-semibold">Rejected</div>
+                                      <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                        {(selectedQuotation as any).rejectionReason}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {selectedQuotation.status === "pending_approval" && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#E3E7EE]`} />
+                                      <div className="text-[13.5px] font-semibold text-[#5B6472]">Awaiting approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">Pending review</div>
+                                    </li>
+                                  )}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">
+                                  This quotation has not been submitted for approval yet.
+                                </p>
+                              )}
+                            </TabsContent>
+
+                            <TabsContent value="history" className="mt-4">
+                              {quotationEditHistory && quotationEditHistory.length > 0 ? (
+                                <div className="space-y-3">
+                                  {quotationEditHistory.map((entry: any) => (
+                                    <div key={entry.id} className="border border-[#E3E7EE] rounded-lg p-3 bg-[#F7F9FC]">
+                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                                        <span className="font-semibold text-[13.5px]">{entry.editedByName || "Unknown"}</span>
+                                        <span className="text-[11.5px] text-[#8A93A3]">
+                                          {new Date(entry.editedAt).toLocaleString()}
+                                        </span>
+                                      </div>
+                                      <p className="text-[13px] text-[#333B47] mb-2">{entry.editNote}</p>
+                                      {entry.changes && Object.keys(entry.changes).length > 0 && (
+                                        <div className="text-[12px] space-y-1">
+                                          {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                            field !== "items" ? (
+                                              <div key={field} className="flex gap-2">
+                                                <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                                <span className="text-[#B42318] line-through">{String(change.old || "—")}</span>
+                                                <span className="text-[#027A48]">{String(change.new || "—")}</span>
+                                              </div>
+                                            ) : (
+                                              <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
+                                            )
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">
+                                  No edits have been recorded for this quotation.
+                                </p>
+                              )}
+                            </TabsContent>
+                          </Tabs>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer band — status-flow actions only; document actions
+                    live in the header. */}
+                <div className="flex flex-col sm:flex-row sm:justify-end gap-3 shrink-0 border-t border-[#E3E7EE] bg-white px-5 sm:px-6 py-3.5 print:hidden">
+                  {selectedQuotation.status === "draft" && (
+                    <Button
+                      onClick={() =>
+                        startTransition(() =>
+                          submitQuotationMutation.mutate(selectedQuotation.id),
+                        )
+                      }
+                      disabled={submitQuotationMutation.isPending}
+                      className="w-full sm:w-auto"
+                      data-testid="button-submit-quotation-dialog"
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      {submitQuotationMutation.isPending ? "Submitting..." : "Submit"}
+                    </Button>
                   )}
-                {selectedQuotation.status === "approved" && (
+                  {user?.role === "admin" &&
+                    selectedQuotation.status === "pending_approval" && (
+                      <>
+                        <Button
+                          onClick={() =>
+                            startTransition(() =>
+                              approveQuotationMutation.mutate(selectedQuotation.id),
+                            )
+                          }
+                          disabled={approveQuotationMutation.isPending}
+                          data-testid="button-approve-quotation-dialog"
+                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          {approveQuotationMutation.isPending ? "Approving..." : "Approve"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsQuotationDetailsOpen(false);
+                            setIsQuotationRejectDialogOpen(true);
+                          }}
+                          disabled={rejectQuotationMutation.isPending}
+                          data-testid="button-reject-quotation-dialog"
+                          className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50"
+                        >
+                          <XCircle className="h-4 w-4 mr-1" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  {selectedQuotation.status === "approved" && (
+                    <Button
+                      onClick={() => handleConvertToInvoice(selectedQuotation)}
+                      className="w-full sm:w-auto"
+                      data-testid="button-convert-quotation-dialog"
+                    >
+                      <ArrowRightLeft className="h-4 w-4 mr-1" />
+                      Convert to Invoice
+                    </Button>
+                  )}
                   <Button
-                    onClick={() => handleConvertToInvoice(selectedQuotation)}
-                    data-testid="button-convert-quotation-dialog"
+                    variant="outline"
+                    onClick={() => setIsQuotationDetailsOpen(false)}
+                    className="w-full sm:w-auto"
+                    data-testid="button-close-quotation-details"
                   >
-                    <ArrowRightLeft className="h-4 w-4 mr-1" />
-                    Convert to Invoice
+                    Close
                   </Button>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={() => setIsQuotationDetailsOpen(false)}
-                  data-testid="button-close-quotation-details"
-                >
-                  Close
-                </Button>
-              </div>
+                </div>
+              </>
+            );
+          })() : (
+            <div className="p-6">
+              <DialogTitle className="text-base font-semibold">Quotation Details</DialogTitle>
+              <p className="mt-2 text-sm text-muted-foreground">No quotation selected.</p>
             </div>
-          ) : (
-            <p>No quotation selected.</p>
           )}
         </DialogContent>
       </Dialog>
@@ -5192,659 +5461,791 @@ export default function SalesIndex() {
         open={isInvoiceDetailsOpen}
         onOpenChange={setIsInvoiceDetailsOpen}
       >
-        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            {/* pr-8 keeps the buttons clear of the dialog's own X. Document
-                actions (edit, duplicate, print) live up here; status-flow
-                actions (submit, approve, pay, cancel) stay in the footer. */}
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pr-8">
-              <div>
-                <DialogTitle>Invoice Details</DialogTitle>
-                <DialogDescription>
-                  View detailed information about this sales invoice.
-                </DialogDescription>
-              </div>
-              {selectedInvoice && (
-                <div className="flex flex-wrap gap-2">
-                  {(selectedInvoice.status === "draft" ||
-                    (["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) &&
-                      parseFloat(selectedInvoice.paidAmount || "0") === 0 &&
-                      user?.role === "admin")) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setIsInvoiceDetailsOpen(false);
-                          handleEditInvoice(selectedInvoice);
-                        }}
-                        data-testid="button-edit-invoice-header"
-                      >
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                    )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDuplicateInvoice(selectedInvoice)}
-                    data-testid="button-duplicate-invoice-header"
-                  >
-                    <Copy className="h-4 w-4 mr-1" />
-                    Duplicate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handlePrintInvoice(selectedInvoice)}
-                    data-testid="button-print-invoice-header"
-                  >
-                    <Printer className="h-4 w-4 mr-1" />
-                    Print
-                  </Button>
-                </div>
-              )}
-            </div>
-          </DialogHeader>
-          {selectedInvoice ? (
-            <div className="space-y-6">
-              {/* Header Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">
-                      Invoice Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Invoice Number:</span>
-                      <span>{selectedInvoice.invoiceNumber || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Work Order Number:</span>
-                      <span>{selectedInvoice.workOrderNumber || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Status:</span>
-                      <span>
-                        {getInvoiceStatusBadge(selectedInvoice.status)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Invoice Date:</span>
-                      <span>{formatDate(selectedInvoice.invoiceDate)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Due Date:</span>
-                      <span>{formatDate(selectedInvoice.dueDate)}</span>
-                    </div>
-                    {selectedInvoice.quotationId && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">From Quotation:</span>
-                        <span>
-                          {quotations?.find(
-                            (q) => q.id === selectedInvoice.quotationId,
-                          )?.quotationNumber || "N/A"}
-                        </span>
-                      </div>
-                    )}
-                    {selectedInvoice.workOrderNumber && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">Work Order Number:</span>
-                        <span>{selectedInvoice.workOrderNumber}</span>
-                      </div>
-                    )}
-                    {selectedInvoice.subject && (
-                      <div>
-                        <span className="font-medium">Subject Line:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedInvoice.subject}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+        <DialogContent className="max-w-6xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+          {selectedInvoice ? (() => {
+            const invoiceCurrency = selectedInvoice.currency || "AED";
+            const showExchangeRate =
+              invoiceCurrency !== "AED" && !!selectedInvoice.exchangeRate;
+            const totalAmount = parseFloat(selectedInvoice.totalAmount || "0");
+            const paidAmount = parseFloat(selectedInvoice.paidAmount || "0");
+            // Total discount (header + line) derived from stored fields; the
+            // `discount` column itself holds only the header portion.
+            const totalDiscount =
+              parseFloat(selectedInvoice.subtotal || "0") +
+              parseFloat(selectedInvoice.taxAmount || "0") -
+              totalAmount;
+            const customer = customers?.find(
+              (c) => c.id === selectedInvoice.customerId,
+            );
+            // Resolved once: the header band and the customer card both show it.
+            const customerLabel = getCustomerName(
+              selectedInvoice.customerId,
+              selectedInvoice.customerName,
+            );
+            const projectTitle = projects?.find(
+              (p) => p.id === selectedInvoice.projectId,
+            )?.title;
+            const fromQuotation = quotations?.find(
+              (q) => q.id === selectedInvoice.quotationId,
+            )?.quotationNumber;
+            // Drafts and pending invoices cannot hold payments, so the tab is
+            // dropped rather than shown empty — same rule the old section used.
+            const canHavePayments = [
+              "approved",
+              "unpaid",
+              "partially_paid",
+              "overdue",
+              "paid",
+            ].includes(selectedInvoice.status);
+            const hasCommercialTerms = !!(
+              selectedInvoice.paymentTerms ||
+              selectedInvoice.workOrderNumber ||
+              fromQuotation ||
+              projectTitle ||
+              showExchangeRate
+            );
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">
-                      Customer Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Customer:</span>
-                      <span>
-                        {getCustomerName(
-                          selectedInvoice.customerId,
-                          selectedInvoice.customerName,
+            return (
+              <>
+                {/* Header band. Document actions (edit, duplicate, print) live
+                    up here; status-flow actions (submit, approve, pay, cancel)
+                    stay in the footer. pr-5 sm:pr-14 keeps the buttons clear of
+                    the dialog's own X. */}
+                <header className="flex flex-col sm:flex-row sm:items-center gap-4 shrink-0 border-b border-[#E3E7EE] py-4 pl-5 sm:pl-6 pr-5 sm:pr-14 print:border-b-2 print:border-black">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                    <div className="grid place-items-center w-[42px] h-[42px] shrink-0 rounded-[10px] bg-[#EEF2FE] border border-[#DCE4FB] print:bg-blue-100">
+                      <FileText className="w-5 h-5 text-[#2B4ACB] print:text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-[#8A93A3] print:text-gray-700">
+                        Sales invoice
+                      </div>
+                      <div className="flex items-center flex-wrap gap-2.5 mt-px">
+                        {/* DialogTitle rather than a plain h2 so the dialog has
+                            an accessible name. */}
+                        <DialogTitle className="text-[19px] font-semibold tracking-[-0.01em] text-[#171B23] print:text-black">
+                          {selectedInvoice.invoiceNumber || "Draft invoice"}
+                        </DialogTitle>
+                        <span className={`${DOC_STAMP} ${docStatusTone(selectedInvoice.status)}`}>
+                          {selectedInvoice.status.replace(/_/g, " ")}
+                        </span>
+                        {fromQuotation && (
+                          <span className="text-[11px] font-semibold tracking-[0.06em] px-[9px] py-[3px] rounded-[5px] border text-[#5B6472] bg-[#F7F9FC] border-[#E3E7EE]">
+                            &larr; {fromQuotation}
+                          </span>
                         )}
-                      </span>
+                      </div>
+                      <div className="text-[13px] text-[#5B6472] mt-0.5 break-words print:text-gray-700">
+                        <strong className="font-semibold text-[#171B23] print:text-black">
+                          {customerLabel}
+                        </strong>
+                        {projectTitle && <>&nbsp;·&nbsp;{projectTitle}</>}
+                      </div>
                     </div>
-                    {(() => {
-                      const customer = customers?.find(
-                        (c) => c.id === selectedInvoice.customerId,
-                      );
-                      return customer ? (
-                        <>
-                          {customer.email && (
-                            <div className="flex justify-between">
-                              <span className="font-medium">Email:</span>
-                              <span>{customer.email}</span>
-                            </div>
-                          )}
-                          {customer.phone && (
-                            <div className="flex justify-between">
-                              <span className="font-medium">Phone:</span>
-                              <span>{customer.phone}</span>
-                            </div>
-                          )}
-                        </>
-                      ) : null;
-                    })()}
-                    {selectedInvoice.billingAddress && (
-                      <div>
-                        <span className="font-medium">Billing Address:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedInvoice.billingAddress}
-                        </p>
-                      </div>
-                    )}
-                    {selectedInvoice.projectId && (
-                      <div className="flex justify-between">
-                        <span className="font-medium">Project:</span>
-                        <span>
-                          {projects?.find(
-                            (p) => p.id === selectedInvoice.projectId,
-                          )?.title || "N/A"}
-                        </span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 print:hidden">
+                    {(selectedInvoice.status === "draft" ||
+                      (["approved", "pending_approval", "unpaid", "overdue"].includes(selectedInvoice.status) &&
+                        parseFloat(selectedInvoice.paidAmount || "0") === 0 &&
+                        user?.role === "admin")) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setIsInvoiceDetailsOpen(false);
+                            handleEditInvoice(selectedInvoice);
+                          }}
+                          data-testid="button-edit-invoice-header"
+                          className={DOC_BTN}
+                        >
+                          <Pencil className="w-[15px] h-[15px] text-[#5B6472]" />
+                          Edit
+                        </Button>
+                      )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDuplicateInvoice(selectedInvoice)}
+                      data-testid="button-duplicate-invoice-header"
+                      className={DOC_BTN}
+                    >
+                      <Copy className="w-[15px] h-[15px] text-[#5B6472]" />
+                      Duplicate
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePrintInvoice(selectedInvoice)}
+                      data-testid="button-print-invoice-header"
+                      className={DOC_BTN}
+                    >
+                      <Printer className="w-[15px] h-[15px] text-[#5B6472]" />
+                      Print
+                    </Button>
+                  </div>
+                </header>
 
-              {/* Payment Details */}
-              {(selectedInvoice.paymentTerms || selectedInvoice.bankAccount || selectedInvoice.termsAndConditions || selectedInvoice.remarks) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Payment Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {selectedInvoice.paymentTerms && (
-                      <div>
-                        <span className="font-medium">Payment Terms:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400">
-                          {selectedInvoice.paymentTerms}
-                        </p>
+                {/* Key facts. flex rather than a fixed grid so the cells spread
+                    evenly when one of them is absent. */}
+                <div className="flex flex-wrap shrink-0 border-b border-[#E3E7EE] bg-[#F7F9FC] print:bg-white">
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Invoice date</div>
+                    <div className={DOC_META_VALUE}>{formatDate(selectedInvoice.invoiceDate)}</div>
+                  </div>
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Due date</div>
+                    <div className={DOC_META_VALUE}>{formatDate(selectedInvoice.dueDate)}</div>
+                  </div>
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Currency</div>
+                    <div className={DOC_META_VALUE}>{invoiceCurrency}</div>
+                    {showExchangeRate && (
+                      <div className="text-[12px] text-[#8A93A3] mt-px print:text-gray-700">
+                        1 {invoiceCurrency} = {selectedInvoice.exchangeRate} AED
                       </div>
                     )}
-                    {selectedInvoice.bankAccount && (
-                      <div>
-                        <span className="font-medium">Bank Account:</span>
-                        <div
-                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
-                          dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.bankAccount) }}
-                        />
+                  </div>
+                  <div className={DOC_META_CELL}>
+                    <div className={DOC_META_LABEL}>Total amount</div>
+                    <div className={DOC_META_VALUE}>
+                      {formatCurrency(selectedInvoice.totalAmount || "0", invoiceCurrency)}
+                    </div>
+                  </div>
+                  {canHavePayments && (
+                    <div className={DOC_META_CELL}>
+                      <div className={DOC_META_LABEL}>Balance due</div>
+                      <div className={`${DOC_META_VALUE} text-[#B42318] print:text-red-700`}>
+                        {formatCurrency((totalAmount - paidAmount).toFixed(2), invoiceCurrency)}
+                      </div>
+                      <div className="text-[12px] text-[#8A93A3] mt-px print:text-gray-700">
+                        {formatCurrency(paidAmount.toFixed(2), invoiceCurrency)} paid
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-h-0 overflow-y-auto bg-[#FBFCFE] print:overflow-visible print:bg-white">
+                  <div className="flex flex-col gap-4 p-5 sm:p-6 print:gap-3 print:p-0">
+
+                    {/* Customer and commercial terms. flex-wrap rather than a
+                        two-column grid so the customer card still fills the row
+                        when the terms card is dropped entirely. */}
+                    <div className="flex flex-wrap gap-4 items-start">
+                      <div className={`${DOC_CARD} flex-1 min-w-[260px]`}>
+                        <Accordion type="single" collapsible defaultValue="customer" className="w-full">
+                          <AccordionItem value="customer" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <Building2 className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Customer</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div className="text-[15px] font-semibold mb-0.5 break-words print:text-black">
+                                {customerLabel}
+                              </div>
+                              {customer?.email && (
+                                <div className={DOC_KV_ROW}>
+                                  <span className={DOC_KV_LABEL}>Email</span>
+                                  <span className={DOC_KV_VAL}>{customer.email}</span>
+                                </div>
+                              )}
+                              {customer?.phone && (
+                                <div className={DOC_KV_ROW}>
+                                  <span className={DOC_KV_LABEL}>Phone</span>
+                                  <span className={DOC_KV_VAL}>{customer.phone}</span>
+                                </div>
+                              )}
+                              {selectedInvoice.billingAddress && (
+                                <div className="text-[13.5px] leading-[1.55] text-[#333B47] whitespace-pre-wrap break-words mt-2 print:text-black">
+                                  {selectedInvoice.billingAddress}
+                                </div>
+                              )}
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </div>
+                      {hasCommercialTerms && (
+                        <div className={`${DOC_CARD} flex-1 min-w-[260px]`}>
+                          <Accordion type="single" collapsible defaultValue="terms" className="w-full">
+                            <AccordionItem value="terms" className="border-b-0">
+                              <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                                <span className="flex items-center gap-2.5">
+                                  <DollarSign className={DOC_CARD_ICON} />
+                                  <span className={DOC_CARD_TITLE}>Commercial terms</span>
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className={DOC_ACC_BODY}>
+                                <div className="flex flex-col">
+                                  {selectedInvoice.paymentTerms && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Payment terms</span>
+                                      <span className={DOC_KV_VAL}>{selectedInvoice.paymentTerms}</span>
+                                    </div>
+                                  )}
+                                  {selectedInvoice.workOrderNumber && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Work order no.</span>
+                                      <span className={DOC_KV_VAL}>{selectedInvoice.workOrderNumber}</span>
+                                    </div>
+                                  )}
+                                  {fromQuotation && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>From quotation</span>
+                                      <span className={DOC_KV_VAL}>{fromQuotation}</span>
+                                    </div>
+                                  )}
+                                  {projectTitle && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Project</span>
+                                      <span className={DOC_KV_VAL}>{projectTitle}</span>
+                                    </div>
+                                  )}
+                                  {showExchangeRate && (
+                                    <div className={DOC_KV_ROW}>
+                                      <span className={DOC_KV_LABEL}>Exchange rate</span>
+                                      <span className={`${DOC_KV_VAL} text-[12.5px]`}>
+                                        1 {invoiceCurrency} = {selectedInvoice.exchangeRate} AED
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Subject sits directly above the items and opens by
+                        default — it is what the invoice is for. */}
+                    {selectedInvoice.subject && (
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible defaultValue="subject" className="w-full">
+                          <AccordionItem value="subject" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <AlignLeft className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Subject</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div className={`${DOC_PROSE} whitespace-pre-wrap break-words`}>
+                                {selectedInvoice.subject}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </div>
+                    )}
+
+                    {/* Invoice items, with the ledger totals at the foot of the
+                        same card so the numbers sit under the lines they come
+                        from. */}
+                    <div className={DOC_CARD}>
+                      <div className={DOC_CARD_HEAD}>
+                        <Package className={DOC_CARD_ICON} />
+                        <span className={DOC_CARD_TITLE}>Services / items</span>
+                        <span className={DOC_COUNT}>{selectedInvoice.items?.length || 0} items</span>
+                      </div>
+                      {selectedInvoice.items && selectedInvoice.items.length > 0 ? (
+                        <>
+                          <div className="relative w-full overflow-auto">
+                            <table className="w-full caption-bottom text-sm">
+                              <thead>
+                                <tr className="border-b border-[#E3E7EE]">
+                                  <th className={`${DOC_TH} w-9`}>#</th>
+                                  <th className={DOC_TH}>Description</th>
+                                  <th className={`${DOC_TH} text-right`}>Qty</th>
+                                  <th className={`${DOC_TH} text-right`}>Unit price</th>
+                                  <th className={`${DOC_TH} text-right`}>Discount</th>
+                                  <th className={`${DOC_TH} text-right`}>Tax rate</th>
+                                  <th className={`${DOC_TH} text-right`}>Tax</th>
+                                  <th className={`${DOC_TH} text-right`}>Line total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedInvoice.items.map((item, index) => {
+                                  const lineSubtotal = item.quantity * item.unitPrice;
+                                  const lineDiscount =
+                                    (item as any).discountType === "percentage"
+                                      ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
+                                      : Math.min(Number((item as any).discount) || 0, lineSubtotal);
+                                  const taxRate = item.taxRate || 0;
+                                  const taxable = lineSubtotal - lineDiscount;
+                                  const calculatedTaxAmount = taxable * (taxRate / 100);
+                                  const taxAmount =
+                                    item.taxAmount !== undefined
+                                      ? parseFloat(item.taxAmount.toString())
+                                      : calculatedTaxAmount;
+                                  const lineTotal = taxable + taxAmount;
+
+                                  return (
+                                    <tr key={index} className="border-b border-[#EDF0F5] last:border-b-0 hover:bg-[#F7F9FC]">
+                                      <td className={`${DOC_TD} text-[12.5px] text-[#8A93A3] print:text-black`}>{index + 1}</td>
+                                      <td className={DOC_TD}>
+                                        <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words print:text-black">
+                                          {item.description}
+                                        </span>
+                                      </td>
+                                      <td className={DOC_TDN}>{item.quantity}</td>
+                                      <td className={DOC_TDN}>
+                                        {formatAmount(item.unitPrice)}
+                                      </td>
+                                      <td className={DOC_TDN}>
+                                        {(Number((item as any).discount) || 0) > 0
+                                          ? (item as any).discountType === "percentage"
+                                            ? `${(item as any).discount}%`
+                                            : formatAmount((item as any).discount)
+                                          : "—"}
+                                      </td>
+                                      <td className={DOC_TDN}>{taxRate}%</td>
+                                      <td className={DOC_TDN}>
+                                        {formatAmount(taxAmount)}
+                                      </td>
+                                      <td className={`${DOC_TDN} font-semibold`}>
+                                        {formatAmount(lineTotal)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="flex justify-end px-[18px] pt-3.5 pb-4 bg-[#F7F9FC] border-t border-[#EDF0F5] print:bg-white">
+                            <div className="w-full sm:w-[320px] text-[13.5px]">
+                              <div className={DOC_TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Subtotal</span>
+                                <span className="font-medium">
+                                  {formatCurrency(selectedInvoice.subtotal || "0", invoiceCurrency)}
+                                </span>
+                              </div>
+                              {totalDiscount > 0.005 && (
+                                <div className={DOC_TROW}>
+                                  <span className="text-[#5B6472] print:text-gray-700">Total discount</span>
+                                  <span className="font-medium text-[#B42318] print:text-red-700">
+                                    −{formatCurrency(totalDiscount.toFixed(2), invoiceCurrency)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className={DOC_TROW}>
+                                <span className="text-[#5B6472] print:text-gray-700">Tax</span>
+                                <span className="font-medium">
+                                  {formatCurrency(selectedInvoice.taxAmount || "0", invoiceCurrency)}
+                                </span>
+                              </div>
+                              <div className={`${DOC_TROW} mt-[7px] pt-[9px] border-t-[3px] border-double border-[#171B23]`}>
+                                <span className="text-sm font-semibold text-[#171B23] print:text-black">
+                                  Total ({invoiceCurrency})
+                                </span>
+                                <span className="text-[17px] font-semibold text-[#2B4ACB] print:text-blue-600">
+                                  {formatCurrency(selectedInvoice.totalAmount || "0", invoiceCurrency)}
+                                </span>
+                              </div>
+                              {paidAmount > 0 && (
+                                <>
+                                  <div className={`${DOC_TROW} mt-1`}>
+                                    <span className="text-[#5B6472] print:text-gray-700">Paid amount</span>
+                                    <span className="font-medium text-[#027A48] print:text-green-700">
+                                      − {formatCurrency(selectedInvoice.paidAmount || "0", invoiceCurrency)}
+                                    </span>
+                                  </div>
+                                  <div className={`${DOC_TROW} pt-2 border-t border-[#E3E7EE]`}>
+                                    <span className="text-sm font-semibold text-[#171B23] print:text-black">
+                                      Balance due ({invoiceCurrency})
+                                    </span>
+                                    <span className="text-[17px] font-semibold text-[#B42318] print:text-red-700">
+                                      {formatCurrency((totalAmount - paidAmount).toFixed(2), invoiceCurrency)}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+                              {showExchangeRate && (
+                                <div className="text-right text-[11.5px] text-[#8A93A3] mt-2.5 print:text-gray-700">
+                                  Exchange rate 1 {invoiceCurrency} = {selectedInvoice.exchangeRate} AED
+                                  <br />
+                                  AED equivalent: AED {(totalAmount * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className={DOC_CARD_BODY}>
+                          <p className="text-sm text-muted-foreground italic">No items found.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Notes and terms are reference text, not something a
+                        reader needs on opening the document, so both stay
+                        collapsed. */}
+                    {selectedInvoice.remarks && (
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="notes" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <Pencil className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Notes</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div
+                                className={`${DOC_PROSE} break-words rich-text-content`}
+                                dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.remarks) }}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
                     {selectedInvoice.termsAndConditions && (
-                      <div>
-                        <span className="font-medium">Terms & Conditions:</span>
-                        <p className="mt-1 text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                          {selectedInvoice.termsAndConditions}
-                        </p>
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="terms-and-conditions" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <FileText className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Terms &amp; conditions</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <p className={`${DOC_PROSE} whitespace-pre-wrap break-words`}>
+                                {selectedInvoice.termsAndConditions}
+                              </p>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
-                    {selectedInvoice.remarks && (
-                      <div>
-                        <span className="font-medium">Notes:</span>
-                        <div
-                          className="mt-1 text-slate-600 dark:text-slate-400 rich-text-content"
-                          dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.remarks) }}
-                        />
+
+                    {/* Bank account sits after the notes and terms: it is
+                        settlement reference detail, read last. */}
+                    {selectedInvoice.bankAccount && (
+                      <div className={DOC_CARD}>
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="bank" className="border-b-0">
+                            <AccordionTrigger className={DOC_ACC_TRIGGER}>
+                              <span className="flex items-center gap-2.5">
+                                <CreditCard className={DOC_CARD_ICON} />
+                                <span className={DOC_CARD_TITLE}>Bank account</span>
+                              </span>
+                            </AccordionTrigger>
+                            <AccordionContent className={DOC_ACC_BODY}>
+                              <div
+                                className="text-[13px] leading-[1.6] text-[#333B47] break-words rich-text-content print:text-black"
+                                dangerouslySetInnerHTML={{ __html: sanitize(selectedInvoice.bankAccount) }}
+                              />
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              )}
 
-              {/* Items Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Services / Items</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedInvoice.items && selectedInvoice.items.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left p-3 font-medium">
-                              Description
-                            </th>
-                            <th className="text-right p-3 font-medium">Qty</th>
-                            <th className="text-right p-3 font-medium">
-                              Unit Price
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Discount
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Tax Rate
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Tax Amount
-                            </th>
-                            <th className="text-right p-3 font-medium">
-                              Line Total
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedInvoice.items.map((item, index) => {
-                            const lineSubtotal = item.quantity * item.unitPrice;
-                            const lineDiscount =
-                              (item as any).discountType === "percentage"
-                                ? lineSubtotal * ((Number((item as any).discount) || 0) / 100)
-                                : Math.min(Number((item as any).discount) || 0, lineSubtotal);
-                            const taxRate = item.taxRate || 0;
-                            const taxable = lineSubtotal - lineDiscount;
-                            const calculatedTaxAmount = taxable * (taxRate / 100);
-                            const taxAmount =
-                              item.taxAmount !== undefined
-                                ? parseFloat(item.taxAmount.toString())
-                                : calculatedTaxAmount;
-                            const lineTotal = taxable + taxAmount;
-
-                            return (
-                              <tr key={index} className="border-b">
-                                <td className="p-3 whitespace-pre-wrap break-words">{item.description}</td>
-                                <td className="text-right p-3">
-                                  {item.quantity}
-                                </td>
-                                <td className="text-right p-3">
-                                  {formatCurrency(item.unitPrice, selectedInvoice?.currency)}
-                                </td>
-                                <td className="text-right p-3">
-                                  {(Number((item as any).discount) || 0) > 0
-                                    ? (item as any).discountType === "percentage"
-                                      ? `${(item as any).discount}%`
-                                      : formatCurrency((item as any).discount, selectedInvoice?.currency)
-                                    : "-"}
-                                </td>
-                                <td className="text-right p-3">{taxRate}%</td>
-                                <td className="text-right p-3">
-                                  {formatCurrency(taxAmount, selectedInvoice?.currency)}
-                                </td>
-                                <td className="text-right p-3 font-medium">
-                                  {formatCurrency(lineTotal, selectedInvoice?.currency)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">
-                      No items found
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Financial Summary */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 sm:p-6 print:bg-blue-50 print:border print:border-blue-300">
-                <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-gray-900 dark:text-white print:text-black flex items-center gap-2">
-                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-                  Financial Summary
-                </h3>
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                    <span className="font-medium">Subtotal:</span>
-                    <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.subtotal || "0", selectedInvoice?.currency)}</span>
-                  </div>
-                  {(() => {
-                    // Total discount (header + line) derived from stored fields;
-                    // equals discountTotal to the cent. The `discount` column
-                    // itself now holds only the header portion.
-                    const totalDiscount =
-                      parseFloat(selectedInvoice.subtotal || "0") +
-                      parseFloat(selectedInvoice.taxAmount || "0") -
-                      parseFloat(selectedInvoice.totalAmount || "0");
-                    return totalDiscount > 0.005 ? (
-                      <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                        <span className="font-medium">Total Discount:</span>
-                        <span className="text-lg font-semibold text-red-600">- {formatCurrency(totalDiscount.toFixed(2), selectedInvoice?.currency)}</span>
-                      </div>
-                    ) : null;
-                  })()}
-                  <div className="flex justify-between items-center text-gray-700 dark:text-gray-300 print:text-black">
-                    <span className="font-medium">Tax Amount:</span>
-                    <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.taxAmount || "0", selectedInvoice?.currency)}</span>
-                  </div>
-                  <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3 flex justify-between items-center">
-                    <span className="text-lg font-bold text-gray-900 dark:text-white print:text-black">Total Amount:</span>
-                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 print:text-blue-600">{formatCurrency(selectedInvoice.totalAmount || "0", selectedInvoice?.currency)}</span>
-                  </div>
-                  {selectedInvoice.currency && selectedInvoice.currency !== "AED" && (
-                    <div className="text-xs text-muted-foreground mt-2 text-right">
-                      Exchange Rate: 1 {selectedInvoice.currency} = {selectedInvoice.exchangeRate} AED
-                      <br />
-                      AED Equivalent: AED {(parseFloat(selectedInvoice.totalAmount || "0") * parseFloat(selectedInvoice.exchangeRate || "1")).toFixed(2)}
-                    </div>
-                  )}
-                  {selectedInvoice.paidAmount && parseFloat(selectedInvoice.paidAmount) > 0 && (
-                    <div className="border-t border-gray-300 dark:border-gray-600 print:border-gray-400 pt-3">
-                      <div className="flex justify-between items-center text-green-700 dark:text-green-400 print:text-green-700">
-                        <span className="font-medium">Paid Amount:</span>
-                        <span className="text-lg font-semibold">{formatCurrency(selectedInvoice.paidAmount, selectedInvoice?.currency)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-red-700 dark:text-red-400 print:text-red-700 mt-1">
-                        <span className="font-bold">Outstanding Balance:</span>
-                        <span className="text-xl font-bold">
-                          {formatCurrency(
-                            parseFloat(selectedInvoice.totalAmount || "0") -
-                            parseFloat(selectedInvoice.paidAmount),
-                            selectedInvoice?.currency,
+                    {/* Activity — approval trail, payments and edit history in
+                        one tabbed block rather than three stacked cards. The
+                        whole card is collapsed on open so the dialog leads with
+                        the document; payments and edit history fetch on first
+                        click of their tab, so expanding costs one request. */}
+                    <div className={`${DOC_CARD} print:hidden`}>
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceActivityOpen((o) => !o)}
+                        aria-expanded={invoiceActivityOpen}
+                        className={`${DOC_CARD_HEAD} w-full text-left cursor-pointer hover:bg-[#F7F9FC] ${invoiceActivityOpen ? "" : "border-b-0"}`}
+                        data-testid="button-toggle-invoice-activity"
+                      >
+                        <History className={DOC_CARD_ICON} />
+                        <span className={DOC_CARD_TITLE}>Activity</span>
+                        <span className="ml-auto">
+                          {invoiceActivityOpen ? (
+                            <ChevronUp className="w-4 h-4 text-[#8A93A3]" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-[#8A93A3]" />
                           )}
                         </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+                      </button>
+                      {invoiceActivityOpen && (
+                        <div className={DOC_CARD_BODY}>
+                          <Tabs value={invoiceActivityTab} onValueChange={setInvoiceActivityTab}>
+                            <TabsList>
+                              <TabsTrigger value="approval" data-testid="tab-invoice-approval">
+                                Approval
+                              </TabsTrigger>
+                              {canHavePayments && (
+                                <TabsTrigger value="payments" data-testid="tab-invoice-payments">
+                                  Payments
+                                  {invoicePayments ? ` (${invoicePayments.length})` : ""}
+                                </TabsTrigger>
+                              )}
+                              <TabsTrigger value="history" data-testid="tab-invoice-edit-history">
+                                Edit History
+                                {invoiceEditHistory ? ` (${invoiceEditHistory.length})` : ""}
+                              </TabsTrigger>
+                            </TabsList>
 
-              {/* Approval trail — submitted, approved, rejected. Mirrors the
-                  purchase order view. The names are resolved server-side on the
-                  list rows: /api/users is admin-only while finance can open this
-                  dialog, so looking them up from here would 403 for them. */}
-              {((selectedInvoice as any).submittedAt || (selectedInvoice as any).approvedAt || (selectedInvoice as any).rejectionReason) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
-                      Approval Information
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(selectedInvoice as any).submittedAt && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-3 border-b">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted By</span>
-                          <p className="text-sm font-medium mt-1">{(selectedInvoice as any).submittedByName || "—"}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted Date</span>
-                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).submittedAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(selectedInvoice as any).approvedAt && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved By</span>
-                          <p className="text-sm font-medium mt-1">{(selectedInvoice as any).approvedByName || "—"}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Approved Date</span>
-                          <p className="text-sm font-medium mt-1">{new Date((selectedInvoice as any).approvedAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-                    )}
-                    {(selectedInvoice as any).rejectionReason && (
-                      <div className="pt-1">
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rejection Reason</span>
-                        <p className="text-sm font-medium mt-1 text-red-600 whitespace-pre-wrap">{(selectedInvoice as any).rejectionReason}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Payment History — only meaningful once the invoice is past
-                  approval; drafts and pending invoices cannot hold payments. */}
-              {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
-                selectedInvoice.status,
-              ) && (
-                  <div
-                    id={`payment-history-${selectedInvoice.id}`}
-                    style={{ display: "none" }}
-                  >
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Payment History</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {invoicePayments && invoicePayments.length > 0 ? (
-                          <div className="space-y-2">
-                            {invoicePayments.map((payment, index) => (
-                              <div key={payment.id} className="border rounded-lg">
-                                <div
-                                  className="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                                  onClick={() =>
-                                    startTransition(() =>
-                                      setExpandedPayment(
-                                        expandedPayment === payment.id
-                                          ? null
-                                          : payment.id,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                                      <span className="font-medium text-green-600">
-                                        {formatCurrency(payment.amount, selectedInvoice?.currency)}
-                                      </span>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                                        {formatDate(payment.paymentDate)}
-                                      </span>
-                                      <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
-                                        {payment.paymentMethod?.replace("_", " ") ||
-                                          "N/A"}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-500">
-                                        Recorded: {formatDate(payment.recordedAt)}
-                                      </span>
-                                      <svg
-                                        className={`h-4 w-4 transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M19 9l-7 7-7-7"
-                                        />
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {expandedPayment === payment.id && (
-                                  <div className="px-4 pb-4 border-t bg-gray-50 dark:bg-gray-800/50">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
-                                      <div>
-                                        <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                          Reference Number:
-                                        </label>
-                                        <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
-                                          {payment.referenceNumber ||
-                                            "No reference provided"}
-                                        </p>
+                            {/* Approval trail. The names are resolved
+                                server-side on the list rows: /api/users is
+                                admin-only while finance can open this dialog,
+                                so looking them up from here would 403. */}
+                            <TabsContent value="approval" className="mt-4">
+                              {(selectedInvoice as any).submittedAt ||
+                              (selectedInvoice as any).approvedAt ||
+                              (selectedInvoice as any).rejectionReason ? (
+                                <ul className={DOC_TIMELINE}>
+                                  {(selectedInvoice as any).submittedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#8A93A3]`} />
+                                      <div className="text-[13.5px] font-semibold">Submitted for approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedInvoice as any).submittedByName || "—"} ·{" "}
+                                        {new Date((selectedInvoice as any).submittedAt).toLocaleString()}
                                       </div>
-                                      <div>
-                                        <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                          Payment ID:
-                                        </label>
-                                        <p className="text-sm mt-1 p-2 bg-white dark:bg-gray-700 rounded border">
-                                          #{payment.id}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="mt-4">
-                                      <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                        Notes:
-                                      </label>
-                                      <p className="text-sm mt-1 p-3 bg-white dark:bg-gray-700 rounded border min-h-[60px]">
-                                        {payment.notes || "No notes provided"}
-                                      </p>
-                                    </div>
-
-                                    <div className="mt-4">
-                                      <label className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                        Attachments:
-                                      </label>
-                                      <div className="mt-1">
-                                        {(() => {
-                                          const filesQuery = paymentFilesQueries[index];
-                                          const files = filesQuery?.data || [];
-
-                                          if (filesQuery?.isLoading) {
-                                            return <p className="text-sm text-gray-500">Loading attachments...</p>;
-                                          }
-
-                                          if (files.length === 0) {
-                                            return <p className="text-sm text-gray-500 italic">No attachments</p>;
-                                          }
-
-                                          return (
-                                            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                              {files.map((file: any) => (
-                                                <li
-                                                  key={file.id}
-                                                  className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border"
-                                                >
-                                                  <div className="flex items-center gap-2 overflow-hidden">
-                                                    <Download className="h-4 w-4 flex-shrink-0 text-blue-600" />
-                                                    <span className="text-sm truncate" title={file.originalName}>
-                                                      {file.originalName}
-                                                    </span>
-                                                  </div>
-                                                  <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    asChild
-                                                    className="h-8 ml-2"
-                                                  >
-                                                    <a
-                                                      href={`/api/payment-files/${file.id}/download`}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                    >
-                                                      Download
-                                                    </a>
-                                                  </Button>
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          );
-                                        })()}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-
-                            <div className="mt-6 pt-4 border-t">
-                              <div className="flex justify-between text-lg font-bold">
-                                <span>Total Payments:</span>
-                                <span className="text-green-600">
-                                  {formatCurrency(
-                                    invoicePayments
-                                      .reduce(
-                                        (sum, payment) =>
-                                          sum + parseFloat(payment.amount),
-                                        0,
-                                      )
-                                      .toFixed(2),
-                                    selectedInvoice?.currency,
+                                    </li>
                                   )}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8">
-                            <p className="text-gray-500">
-                              No payments recorded for this invoice yet.
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
+                                  {(selectedInvoice as any).approvedAt && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#12B76A]`} />
+                                      <div className="text-[13.5px] font-semibold">Approved</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">
+                                        {(selectedInvoice as any).approvedByName || "—"} ·{" "}
+                                        {new Date((selectedInvoice as any).approvedAt).toLocaleString()}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {(selectedInvoice as any).rejectionReason && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#B42318]`} />
+                                      <div className="text-[13.5px] font-semibold">Rejected</div>
+                                      <div className="mt-2 text-[13px] text-[#912018] bg-[#FEF3F2] border border-[#F0C5C1] rounded-[7px] px-[11px] py-2 whitespace-pre-wrap break-words">
+                                        {(selectedInvoice as any).rejectionReason}
+                                      </div>
+                                    </li>
+                                  )}
+                                  {selectedInvoice.status === "pending_approval" && (
+                                    <li className="relative pb-4 last:pb-0">
+                                      <span className={`${DOC_DOT} border-[#E3E7EE]`} />
+                                      <div className="text-[13.5px] font-semibold text-[#5B6472]">Awaiting approval</div>
+                                      <div className="text-[12.5px] text-[#8A93A3] mt-px">Pending review</div>
+                                    </li>
+                                  )}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">
+                                  This invoice has not been submitted for approval yet.
+                                </p>
+                              )}
+                            </TabsContent>
 
-              {/* Edit History */}
-              {invoiceEditHistory && invoiceEditHistory.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <History className="h-5 w-5" />
-                      Edit History ({invoiceEditHistory.length})
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {invoiceEditHistory.map((entry: any) => (
-                        <div key={entry.id} className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                            <span className="font-medium text-sm">{entry.editedByName || "Unknown"}</span>
-                            <span className="text-xs text-gray-500">{new Date(entry.editedAt).toLocaleString()}</span>
-                          </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">{entry.editNote}</p>
-                          {entry.changes && Object.keys(entry.changes).length > 0 && (
-                            <div className="text-xs space-y-1">
-                              {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
-                                field !== "items" ? (
-                                  <div key={field} className="flex gap-2">
-                                    <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
-                                    <span className="text-red-500 line-through">{String(change.old || "—")}</span>
-                                    <span className="text-green-600">{String(change.new || "—")}</span>
+                            {canHavePayments && (
+                              <TabsContent value="payments" className="mt-4">
+                                {isLoadingPayments ? (
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                    Loading payments…
+                                  </div>
+                                ) : invoicePayments && invoicePayments.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {invoicePayments.map((payment, index) => (
+                                      <div key={payment.id} className="border border-[#E3E7EE] rounded-lg overflow-hidden">
+                                        <div
+                                          className="p-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
+                                          onClick={() =>
+                                            startTransition(() =>
+                                              setExpandedPayment(
+                                                expandedPayment === payment.id ? null : payment.id,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                              <span className="font-semibold text-[#027A48]">
+                                                {formatCurrency(payment.amount, invoiceCurrency)}
+                                              </span>
+                                              <span className="text-[13px] text-[#5B6472]">
+                                                {formatDate(payment.paymentDate)}
+                                              </span>
+                                              <span className="text-[13px] text-[#5B6472] capitalize">
+                                                {payment.paymentMethod?.replace("_", " ") || "N/A"}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[11.5px] text-[#8A93A3]">
+                                                Recorded: {formatDate(payment.recordedAt)}
+                                              </span>
+                                              <ChevronDown
+                                                className={`h-4 w-4 text-[#8A93A3] transition-transform ${expandedPayment === payment.id ? "rotate-180" : ""}`}
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {expandedPayment === payment.id && (
+                                          <div className="px-3 pb-3 border-t border-[#EDF0F5] bg-[#F7F9FC]">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3">
+                                              <div>
+                                                <div className="text-[11px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3]">
+                                                  Reference number
+                                                </div>
+                                                <p className="text-[13px] mt-1 p-2 bg-white rounded border border-[#E3E7EE]">
+                                                  {payment.referenceNumber || "No reference provided"}
+                                                </p>
+                                              </div>
+                                              <div>
+                                                <div className="text-[11px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3]">
+                                                  Payment ID
+                                                </div>
+                                                <p className="text-[13px] mt-1 p-2 bg-white rounded border border-[#E3E7EE]">
+                                                  #{payment.id}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <div className="mt-3">
+                                              <div className="text-[11px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3]">
+                                                Notes
+                                              </div>
+                                              <p className="text-[13px] mt-1 p-3 bg-white rounded border border-[#E3E7EE] min-h-[60px]">
+                                                {payment.notes || "No notes provided"}
+                                              </p>
+                                            </div>
+                                            <div className="mt-3">
+                                              <div className="text-[11px] font-semibold tracking-[0.07em] uppercase text-[#8A93A3]">
+                                                Attachments
+                                              </div>
+                                              <div className="mt-1">
+                                                {(() => {
+                                                  const filesQuery = paymentFilesQueries[index];
+                                                  const files = filesQuery?.data || [];
+
+                                                  if (filesQuery?.isLoading) {
+                                                    return <p className="text-[13px] text-[#8A93A3]">Loading attachments...</p>;
+                                                  }
+
+                                                  if (files.length === 0) {
+                                                    return <p className="text-[13px] text-[#8A93A3] italic">No attachments</p>;
+                                                  }
+
+                                                  return (
+                                                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                      {files.map((file: any) => (
+                                                        <li
+                                                          key={file.id}
+                                                          className="flex items-center justify-between p-2 bg-white rounded border border-[#E3E7EE]"
+                                                        >
+                                                          <div className="flex items-center gap-2 overflow-hidden">
+                                                            <Download className="h-4 w-4 flex-shrink-0 text-[#2B4ACB]" />
+                                                            <span className="text-[13px] truncate" title={file.originalName}>
+                                                              {file.originalName}
+                                                            </span>
+                                                          </div>
+                                                          <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            asChild
+                                                            className="h-8 ml-2 text-[13px]"
+                                                          >
+                                                            <a
+                                                              href={`/api/payment-files/${file.id}/download`}
+                                                              target="_blank"
+                                                              rel="noopener noreferrer"
+                                                            >
+                                                              Download
+                                                            </a>
+                                                          </Button>
+                                                        </li>
+                                                      ))}
+                                                    </ul>
+                                                  );
+                                                })()}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+
+                                    <div className="mt-4 pt-3 border-t border-[#E3E7EE] flex justify-between text-[15px] font-semibold">
+                                      <span>Total payments</span>
+                                      <span className="text-[#027A48]">
+                                        {formatCurrency(
+                                          invoicePayments
+                                            .reduce((sum, payment) => sum + parseFloat(payment.amount), 0)
+                                            .toFixed(2),
+                                          invoiceCurrency,
+                                        )}
+                                      </span>
+                                    </div>
                                   </div>
                                 ) : (
-                                  <div key={field} className="text-gray-500 italic">Line items were modified</div>
-                                )
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                                  <p className="text-sm text-muted-foreground italic">
+                                    No payments recorded for this invoice yet.
+                                  </p>
+                                )}
+                              </TabsContent>
+                            )}
 
-              {/* Action Buttons */}
-              <div className="flex flex-col gap-3 pt-4 border-t">
-                {/* Primary Actions Row */}
-                <div className="flex flex-col sm:flex-row justify-end gap-3">
+                            <TabsContent value="history" className="mt-4">
+                              {invoiceEditHistory && invoiceEditHistory.length > 0 ? (
+                                <div className="space-y-3">
+                                  {invoiceEditHistory.map((entry: any) => (
+                                    <div key={entry.id} className="border border-[#E3E7EE] rounded-lg p-3 bg-[#F7F9FC]">
+                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                                        <span className="font-semibold text-[13.5px]">{entry.editedByName || "Unknown"}</span>
+                                        <span className="text-[11.5px] text-[#8A93A3]">
+                                          {new Date(entry.editedAt).toLocaleString()}
+                                        </span>
+                                      </div>
+                                      <p className="text-[13px] text-[#333B47] mb-2">{entry.editNote}</p>
+                                      {entry.changes && Object.keys(entry.changes).length > 0 && (
+                                        <div className="text-[12px] space-y-1">
+                                          {Object.entries(entry.changes).map(([field, change]: [string, any]) => (
+                                            field !== "items" ? (
+                                              <div key={field} className="flex gap-2">
+                                                <span className="font-medium capitalize">{field.replace(/([A-Z])/g, " $1")}:</span>
+                                                <span className="text-[#B42318] line-through">{String(change.old || "—")}</span>
+                                                <span className="text-[#027A48]">{String(change.new || "—")}</span>
+                                              </div>
+                                            ) : (
+                                              <div key={field} className="text-[#8A93A3] italic">Line items were modified</div>
+                                            )
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic">
+                                  No edits have been recorded for this invoice.
+                                </p>
+                              )}
+                            </TabsContent>
+                          </Tabs>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer band — status-flow actions only; document actions
+                    live in the header. */}
+                <div className="flex flex-col sm:flex-row sm:justify-end gap-3 shrink-0 border-t border-[#E3E7EE] bg-white px-5 sm:px-6 py-3.5 print:hidden">
                   {selectedInvoice.status === "draft" && (
-                    <>
-                      <Button
-                        onClick={() =>
-                          startTransition(() =>
-                            submitInvoiceMutation.mutate(selectedInvoice.id),
-                          )
-                        }
-                        disabled={submitInvoiceMutation.isPending}
-                        className="w-full sm:w-auto"
-                        data-testid="button-submit-invoice-dialog"
-                      >
-                        <Send className="h-4 w-4 mr-1" />
-                        {submitInvoiceMutation.isPending
-                          ? "Submitting..."
-                          : "Submit"}
-                      </Button>
-                    </>
+                    <Button
+                      onClick={() =>
+                        startTransition(() =>
+                          submitInvoiceMutation.mutate(selectedInvoice.id),
+                        )
+                      }
+                      disabled={submitInvoiceMutation.isPending}
+                      className="w-full sm:w-auto"
+                      data-testid="button-submit-invoice-dialog"
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      {submitInvoiceMutation.isPending ? "Submitting..." : "Submit"}
+                    </Button>
                   )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "pending_approval" && (
@@ -5860,9 +6261,7 @@ export default function SalesIndex() {
                           data-testid="button-approve-invoice-dialog"
                         >
                           <CheckCircle className="h-4 w-4 mr-1" />
-                          {approveInvoiceMutation.isPending
-                            ? "Approving..."
-                            : "Approve"}
+                          {approveInvoiceMutation.isPending ? "Approving..." : "Approve"}
                         </Button>
                         <Button
                           variant="outline"
@@ -5914,30 +6313,23 @@ export default function SalesIndex() {
                         Record Payment
                       </Button>
                     )}
-                  {["approved", "unpaid", "partially_paid", "overdue", "paid"].includes(
-                    selectedInvoice.status,
-                  ) && (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          // Toggle the payment history section visibility
-                          const paymentHistorySection = document.getElementById(
-                            `payment-history-${selectedInvoice.id}`,
-                          );
-                          if (paymentHistorySection) {
-                            paymentHistorySection.style.display =
-                              paymentHistorySection.style.display === "none"
-                                ? "block"
-                                : "none";
-                          }
-                        }}
-                        className="w-full sm:w-auto"
-                        data-testid="button-view-payment-history"
-                      >
-                        <History className="h-4 w-4 mr-1" />
-                        Payment History
-                      </Button>
-                    )}
+                  {canHavePayments && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        // Payments are a tab on the Activity card now, so this
+                        // expands the card and switches to it rather than
+                        // toggling a hidden section's display style.
+                        setInvoiceActivityOpen(true);
+                        setInvoiceActivityTab("payments");
+                      }}
+                      className="w-full sm:w-auto"
+                      data-testid="button-view-payment-history"
+                    >
+                      <History className="h-4 w-4 mr-1" />
+                      Payment History
+                    </Button>
+                  )}
                   {user?.role === "admin" &&
                     selectedInvoice.status === "approved" &&
                     parseFloat(selectedInvoice.paidAmount || "0") === 0 && (
@@ -5971,9 +6363,7 @@ export default function SalesIndex() {
                               }
                               disabled={cancelInvoiceMutation.isPending}
                             >
-                              {cancelInvoiceMutation.isPending
-                                ? "Cancelling..."
-                                : "Cancel Invoice"}
+                              {cancelInvoiceMutation.isPending ? "Cancelling..." : "Cancel Invoice"}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -5988,10 +6378,13 @@ export default function SalesIndex() {
                     Close
                   </Button>
                 </div>
-              </div>
+              </>
+            );
+          })() : (
+            <div className="p-6">
+              <DialogTitle className="text-base font-semibold">Invoice Details</DialogTitle>
+              <p className="mt-2 text-sm text-muted-foreground">No invoice selected.</p>
             </div>
-          ) : (
-            <p>No invoice selected.</p>
           )}
         </DialogContent>
       </Dialog>
