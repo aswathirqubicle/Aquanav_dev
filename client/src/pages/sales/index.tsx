@@ -787,6 +787,7 @@ export default function SalesIndex() {
         `/api/sales-quotations/${quotationId}/submit`,
         {
           method: "PATCH",
+          body: {},
         },
       );
       return response;
@@ -813,6 +814,7 @@ export default function SalesIndex() {
         `/api/sales-quotations/${quotationId}/approve`,
         {
           method: "PATCH",
+          body: {},
         },
       );
       return response;
@@ -1068,6 +1070,7 @@ export default function SalesIndex() {
         `/api/sales-invoices/${invoiceId}/submit`,
         {
           method: "PATCH",
+          body: {},
         },
       );
       return response;
@@ -1095,6 +1098,7 @@ export default function SalesIndex() {
         `/api/sales-invoices/${invoiceId}/approve`,
         {
           method: "PATCH",
+          body: {},
         },
       );
       return response;
@@ -1154,7 +1158,7 @@ export default function SalesIndex() {
     mutationFn: async (invoiceId: number) => {
       const response = await apiRequest(
         `/api/sales-invoices/${invoiceId}/cancel`,
-        { method: "PATCH" },
+        { method: "PATCH", body: {} },
       );
       return response;
     },

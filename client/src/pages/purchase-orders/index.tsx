@@ -467,7 +467,7 @@ export default function PurchaseOrdersIndex() {
 
   const approveOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
-      const response = await apiRequest(`/api/purchase-orders/${orderId}/approve`, { method: "PATCH" });
+      const response = await apiRequest(`/api/purchase-orders/${orderId}/approve`, { method: "PATCH", body: {} });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Failed to approve order");
