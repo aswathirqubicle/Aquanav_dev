@@ -1101,6 +1101,10 @@ export class SalesStorage extends LedgerStorage {
           workOrderNumber: salesInvoices.workOrderNumber,
           projectTitle: projects.title,
           quotationId: salesInvoices.quotationId,
+          // Resolved here for the same reason as customerName and projectTitle:
+          // the details dialog is fed from these rows, and it shows which
+          // quotation the invoice came from.
+          quotationNumber: salesQuotations.quotationNumber,
           status: salesInvoices.status,
           invoiceDate: salesInvoices.invoiceDate,
           dueDate: salesInvoices.dueDate,
@@ -1135,6 +1139,10 @@ export class SalesStorage extends LedgerStorage {
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
         .leftJoin(projects, eq(salesInvoices.projectId, projects.id))
+        .leftJoin(
+          salesQuotations,
+          eq(salesInvoices.quotationId, salesQuotations.id),
+        )
         .leftJoin(submitter, eq(salesInvoices.submittedById, submitter.id))
         .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
         .leftJoin(approver, eq(salesInvoices.approvedById, approver.id))

@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,7 +18,8 @@ import ProjectsIndex from "@/pages/projects/index";
 import ProjectCreate from "@/pages/projects/create";
 import ProjectDetail from "@/pages/projects/[id]";
 import EmployeesIndex from "@/pages/employees/enhanced-index";
-import SalesIndex from "@/pages/sales";
+import SalesQuotationsPage from "@/pages/sales/quotations";
+import SalesInvoicesPage from "@/pages/sales/invoices";
 import ProformaInvoicesIndex from "./pages/proforma-invoices";
 import CreditNotesIndex from "./pages/credit-notes";
 import PayrollIndex from "@/pages/payroll";
@@ -60,6 +61,16 @@ const ReimbursementsIndex = lazy(() => import("./pages/reimbursements/index"));
 const MyPayslips = lazy(() => import("./pages/my-payslips"));
 
 
+// The old combined page. Sends /sales on to the quotations page rather than
+// dropping bookmarks and older links onto NotFound.
+function SalesRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/sales-quotations", { replace: true });
+  }, [setLocation]);
+  return null;
+}
+
 function Router() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ocean-600"></div></div>}>
@@ -82,7 +93,11 @@ function Router() {
               <Route path="/inventory/goods-issue" component={GoodsIssue} />
 
               <Route path="/asset-inventory" component={AssetInventoryIndex} />
-              <Route path="/sales" component={SalesIndex} />
+              <Route path="/sales-quotations" component={SalesQuotationsPage} />
+              <Route path="/sales-invoices" component={SalesInvoicesPage} />
+              {/* Quotations and invoices were one page at /sales. Kept so
+                  existing bookmarks and links land somewhere sensible. */}
+              <Route path="/sales" component={SalesRedirect} />
               <Route path="/proforma-invoices" component={() => <ProformaInvoicesIndex />} />
               <Route path="/credit-notes" component={CreditNotesIndex} />
               <Route path="/reports" component={ReportsIndex} />

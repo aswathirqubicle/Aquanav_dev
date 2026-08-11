@@ -620,6 +620,9 @@ export default function ProjectDetail() {
   // Activity record ids of the day being edited, in the same order as
   // completedActivities. Empty when adding a new day.
   const [editingDayActivityIds, setEditingDayActivityIds] = useState<number[]>([]);
+  // Set while the photo group dialog is editing an existing group rather than
+  // creating one. Photos are not editable, so the file input is hidden then.
+  const [editingPhotoGroupId, setEditingPhotoGroupId] = useState<number | null>(null);
   const [photoGroupData, setPhotoGroupData] = useState({
     title: "",
     date: new Date().toISOString().split('T')[0],
@@ -1585,6 +1588,36 @@ export default function ProjectDetail() {
     },
   });
 
+  const updatePhotoGroupMutation = useMutation({
+    mutationFn: async (data: { groupId: number; title: string; date: string; description?: string; dailyActivityId?: string }) => {
+      const { groupId, ...body } = data;
+      return await apiRequest(`/api/projects/${id}/photo-groups/${groupId}`, {
+        method: "PUT",
+        body: {
+          ...body,
+          // An empty selection clears the link: linking is optional.
+          dailyActivityId: body.dailyActivityId || null,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "photo-groups"] });
+      toast({
+        title: "Photo Group Updated",
+        description: "Photo group has been updated successfully.",
+      });
+      setIsPhotoGroupDialogOpen(false);
+      resetPhotoGroupForm();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update photo group",
+        variant: "destructive",
+      });
+    },
+  });
+
   const deletePhotoGroupMutation = useMutation({
     mutationFn: async (groupId: number) => {
       const response = await apiRequest(`/api/projects/${id}/photo-groups/${groupId}`, { method: "DELETE" });
@@ -1731,6 +1764,22 @@ export default function ProjectDetail() {
       dailyActivityId: "",
     });
     setSelectedFiles(null);
+    setEditingPhotoGroupId(null);
+  };
+
+  // Loads an existing group into the same dialog used for creating one.
+  const openEditPhotoGroupDialog = (group: PhotoGroupWithPhotos) => {
+    setEditingPhotoGroupId(group.id);
+    setPhotoGroupData({
+      title: group.title || "",
+      date: group.date ? new Date(group.date).toISOString().split('T')[0] : "",
+      description: group.description || "",
+      dailyActivityId: (group as any).dailyActivityId
+        ? String((group as any).dailyActivityId)
+        : "",
+    });
+    setSelectedFiles(null);
+    setIsPhotoGroupDialogOpen(true);
   };
 
   const handlePhotoGroupSubmit = (e: React.FormEvent) => {
@@ -1740,6 +1789,15 @@ export default function ProjectDetail() {
         title: "Error",
         description: "Please enter a title for the photo group",
         variant: "destructive",
+      });
+      return;
+    }
+
+    // Editing never touches the photos, so the group keeps the ones it has.
+    if (editingPhotoGroupId !== null) {
+      updatePhotoGroupMutation.mutate({
+        groupId: editingPhotoGroupId,
+        ...photoGroupData,
       });
       return;
     }
@@ -4361,7 +4419,15 @@ export default function ProjectDetail() {
               <div className="flex items-center justify-between">
                 <CardTitle>Project Photos</CardTitle>
                 {canEdit && (
-                  <Dialog open={isPhotoGroupDialogOpen} onOpenChange={setIsPhotoGroupDialogOpen}>
+                  <Dialog
+                    open={isPhotoGroupDialogOpen}
+                    onOpenChange={(open) => {
+                      setIsPhotoGroupDialogOpen(open);
+                      // Closing without saving must not leave an edited group
+                      // loaded, or the next Create would reopen on top of it.
+                      if (!open) resetPhotoGroupForm();
+                    }}
+                  >
                     <DialogTrigger asChild>
                       <Button size="sm">
                         <Plus className="h-4 w-4 mr-2" />
@@ -4370,7 +4436,9 @@ export default function ProjectDetail() {
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-lg">
                       <DialogHeader>
-                        <DialogTitle>Create Photo Group</DialogTitle>
+                        <DialogTitle>
+                          {editingPhotoGroupId !== null ? "Edit Photo Group" : "Create Photo Group"}
+                        </DialogTitle>
                       </DialogHeader>
                       <form onSubmit={handlePhotoGroupSubmit} className="space-y-4">
                         <div className="space-y-2">
@@ -4407,7 +4475,22 @@ export default function ProjectDetail() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="dailyActivity">Link to Daily Activity</Label>
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="dailyActivity">Link to Daily Activity</Label>
+                            {/* The Autocomplete only reports a value when an option
+                                is picked, so clearing its text cannot unlink. */}
+                            {photoGroupData.dailyActivityId && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto py-0 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                                onClick={() => setPhotoGroupData(prev => ({ ...prev, dailyActivityId: "" }))}
+                              >
+                                Remove link
+                              </Button>
+                            )}
+                          </div>
                           <Autocomplete
                             options={(allActivities || []).map(activity => ({
                               value: activity.id.toString(),
@@ -4419,34 +4502,45 @@ export default function ProjectDetail() {
                             onValueChange={(value) => setPhotoGroupData(prev => ({ ...prev, dailyActivityId: value }))}
                             placeholder="Search daily activity by date, location or tasks..."
                           />
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            Optional. Leave empty to keep this group unlinked.
+                          </p>
                         </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="photos">Select Photos *</Label>
-                          <Input
-                            id="photos"
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => setSelectedFiles(e.target.files)}
-                          />
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            You can select multiple photos. Supported formats: JPG, PNG, GIF
-                          </p>
-                          {selectedFiles && selectedFiles.length > 0 && (
-                            <p className="text-sm text-slate-600 dark:text-slate-300">
-                              {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                        {editingPhotoGroupId === null && (
+                          <div className="space-y-2">
+                            <Label htmlFor="photos">Select Photos *</Label>
+                            <Input
+                              id="photos"
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => setSelectedFiles(e.target.files)}
+                            />
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              You can select multiple photos. Supported formats: JPG, PNG, GIF
                             </p>
-                          )}
-                        </div>
+                            {selectedFiles && selectedFiles.length > 0 && (
+                              <p className="text-sm text-slate-600 dark:text-slate-300">
+                                {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                              </p>
+                            )}
+                          </div>
+                        )}
 
                         <div className="flex justify-end space-x-2">
                           <Button type="button" variant="outline" onClick={() => setIsPhotoGroupDialogOpen(false)}>
                             Cancel
                           </Button>
-                          <Button type="submit" disabled={createPhotoGroupMutation.isPending}>
-                            {createPhotoGroupMutation.isPending ? "Creating..." : "Create Group"}
-                          </Button>
+                          {editingPhotoGroupId !== null ? (
+                            <Button type="submit" disabled={updatePhotoGroupMutation.isPending}>
+                              {updatePhotoGroupMutation.isPending ? "Saving..." : "Save Changes"}
+                            </Button>
+                          ) : (
+                            <Button type="submit" disabled={createPhotoGroupMutation.isPending}>
+                              {createPhotoGroupMutation.isPending ? "Creating..." : "Create Group"}
+                            </Button>
+                          )}
                         </div>
                       </form>
                     </DialogContent>
@@ -4501,14 +4595,23 @@ export default function ProjectDetail() {
                             )}
                           </div>
                           {canEdit && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeletePhotoGroup(group.id)}
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditPhotoGroupDialog(group)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeletePhotoGroup(group.id)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           )}
                         </div>
 
