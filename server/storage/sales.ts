@@ -19,6 +19,7 @@ import {
   SalesQuotation,
   creditNotes,
   customers,
+  employees,
   generalLedgerEntries,
   invoiceEditHistory,
   invoicePayments,
@@ -27,6 +28,7 @@ import {
   projects,
   salesInvoices,
   salesQuotations,
+  users,
 } from "@shared/schema";
 import {
   computeDocumentTotals,
@@ -46,6 +48,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db";
 
 export class SalesStorage extends LedgerStorage {
@@ -915,6 +918,16 @@ export class SalesStorage extends LedgerStorage {
       const finalConditions =
         queryConditions.length > 0 ? and(...queryConditions) : undefined;
 
+      // Resolve submitter / approver to a person's name in SQL, same as the
+      // purchase documents. /api/users is admin-only while finance can also
+      // open this document, so the client cannot look these ids up itself and
+      // the view fell back to "User ID: n". Employee name where the login is
+      // linked to an employee row, else the username.
+      const submitter = alias(users, "quotationSubmitter");
+      const submitterEmp = alias(employees, "quotationSubmitterEmp");
+      const approver = alias(users, "quotationApprover");
+      const approverEmp = alias(employees, "quotationApproverEmp");
+
       const dataQueryBuilder = db
         .select({
           id: salesQuotations.id,
@@ -940,8 +953,10 @@ export class SalesStorage extends LedgerStorage {
           // The details dialog is fed from these rows, so the approval trail
           // has to travel with them or it can never be displayed.
           submittedById: salesQuotations.submittedById,
+          submittedByName: sql<string>`COALESCE(NULLIF(CONCAT(${submitterEmp.firstName}, ' ', ${submitterEmp.lastName}), ' '), ${submitter.username}, '')`,
           submittedAt: salesQuotations.submittedAt,
           approvedById: salesQuotations.approvedById,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: salesQuotations.approvedAt,
           rejectionReason: salesQuotations.rejectionReason,
           isArchived: salesQuotations.isArchived,
@@ -949,6 +964,10 @@ export class SalesStorage extends LedgerStorage {
         })
         .from(salesQuotations)
         .leftJoin(customers, eq(salesQuotations.customerId, customers.id))
+        .leftJoin(submitter, eq(salesQuotations.submittedById, submitter.id))
+        .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
+        .leftJoin(approver, eq(salesQuotations.approvedById, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
         .where(finalConditions)
         .orderBy(desc(salesQuotations.createdDate));
 
@@ -1062,6 +1081,13 @@ export class SalesStorage extends LedgerStorage {
       const finalConditions =
         queryConditions.length > 0 ? and(...queryConditions) : undefined;
 
+      // Resolve submitter / approver to a person's name in SQL, same as the
+      // quotation query above and the purchase documents.
+      const submitter = alias(users, "invoiceSubmitter");
+      const submitterEmp = alias(employees, "invoiceSubmitterEmp");
+      const approver = alias(users, "invoiceApprover");
+      const approverEmp = alias(employees, "invoiceApproverEmp");
+
       const dataQueryBuilder = db
         .select({
           id: salesInvoices.id,
@@ -1093,14 +1119,20 @@ export class SalesStorage extends LedgerStorage {
           // The details dialog is fed from these rows, so the approval trail
           // has to travel with them or it can never be displayed.
           submittedById: salesInvoices.submittedById,
+          submittedByName: sql<string>`COALESCE(NULLIF(CONCAT(${submitterEmp.firstName}, ' ', ${submitterEmp.lastName}), ' '), ${submitter.username}, '')`,
           submittedAt: salesInvoices.submittedAt,
           approvedById: salesInvoices.approvedById,
+          approvedByName: sql<string>`COALESCE(NULLIF(CONCAT(${approverEmp.firstName}, ' ', ${approverEmp.lastName}), ' '), ${approver.username}, '')`,
           approvedAt: salesInvoices.approvedAt,
           rejectionReason: salesInvoices.rejectionReason,
         })
         .from(salesInvoices)
         .leftJoin(customers, eq(salesInvoices.customerId, customers.id))
         .leftJoin(projects, eq(salesInvoices.projectId, projects.id))
+        .leftJoin(submitter, eq(salesInvoices.submittedById, submitter.id))
+        .leftJoin(submitterEmp, eq(submitter.id, submitterEmp.userId))
+        .leftJoin(approver, eq(salesInvoices.approvedById, approver.id))
+        .leftJoin(approverEmp, eq(approver.id, approverEmp.userId))
         .where(finalConditions)
         .orderBy(desc(salesInvoices.id));
 
