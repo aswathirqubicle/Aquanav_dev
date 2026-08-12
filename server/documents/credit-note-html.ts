@@ -63,6 +63,7 @@ export function generateCreditNoteHTML(
     htmlTitle: `${label} ${val(creditNote.creditNoteNumber)}`,
     documentNumber: val(creditNote.creditNoteNumber),
     draft: !isIssued,
+    cancelled: isCancelled,
     currency,
     highlight: { label: "Total", value: money(totals.total) },
     parties: [
