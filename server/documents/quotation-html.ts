@@ -37,16 +37,27 @@ export function generateQuotationHTML(
   // should not present itself as one the customer can accept. draft and
   // pending_approval are pre-approval and rejected never reached it; sent,
   // approved and converted are all live offers.
+  // A cancelled quotation is a price that has been withdrawn. The customer may
+  // be holding the copy it was sent, so it says so in red rather than printing
+  // as an offer that still stands.
   const status = String(quotation.status || "").toLowerCase();
+  const isCancelled = status === "cancelled";
   const isIssued =
     status !== "draft" && status !== "pending_approval" && status !== "rejected";
 
+  const label = isCancelled
+    ? "Cancelled Quotation"
+    : isIssued
+      ? "Quotation"
+      : "Draft Quotation";
+
   return renderDocument({
     company,
-    title: isIssued ? "QUOTATION" : "DRAFT QUOTATION",
-    htmlTitle: `${isIssued ? "Quotation" : "Draft Quotation"} ${val(quotation.quotationNumber)}`,
+    title: label.toUpperCase(),
+    htmlTitle: `${label} ${val(quotation.quotationNumber)}`,
     documentNumber: val(quotation.quotationNumber),
     draft: !isIssued,
+    cancelled: isCancelled,
     currency,
     highlight: { label: "Total", value: money(totals.total) },
     parties: [

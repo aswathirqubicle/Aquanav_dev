@@ -78,6 +78,15 @@ export interface RenderDocumentOptions {
    * skimming the page from mistaking a working document for a committed one.
    */
   draft?: boolean;
+  /**
+   * A cancelled document has been reversed and is not payable or actionable.
+   * Unlike a draft it may already be in the counterparty's hands, so the title
+   * is printed in red rather than merely muted — grey reads as "not final yet",
+   * which is the opposite of what a void document needs to say.
+   *
+   * Takes precedence over `draft`: a cancelled document is never a draft.
+   */
+  cancelled?: boolean;
   currency: string;
   /** The figure worth reading first: Balance Due on an invoice, Total elsewhere. */
   highlight?: { label: string; value: string };
@@ -154,6 +163,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
     htmlTitle,
     documentNumber,
     draft,
+    cancelled,
     currency,
     highlight,
     parties,
@@ -240,10 +250,12 @@ export function renderDocument(opts: RenderDocumentOptions): string {
           --rule:       #D8DEE8;  /* borders */
           --ink:        #2C2C2C;  /* body text */
           --ink-muted:  #5A6270;
+          --danger:     #B42318;  /* cancelled title — same red the app uses */
         }
         body { color: var(--ink); }
         .doc-title { font-size: 22px; letter-spacing: 3px; font-weight: 700; text-align: right; margin: 0; color: var(--brand); }
         .doc-title.doc-draft { color: var(--ink-muted); }
+        .doc-title.doc-cancelled { color: var(--danger); }
         .doc-number { text-align: right; font-size: 12px; margin: 2px 0 14px; color: var(--brand); font-weight: 600; }
         .doc-highlight { text-align: right; margin-bottom: 18px; }
         .doc-highlight .label { font-size: 11px; color: var(--ink-muted); }
@@ -297,7 +309,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
           <tr>
             <td class="report-content-cell">
 
-              <h1 class="doc-title${draft ? " doc-draft" : ""}">${title}</h1>
+              <h1 class="doc-title${cancelled ? " doc-cancelled" : draft ? " doc-draft" : ""}">${title}</h1>
               ${documentNumber ? `<p class="doc-number"># ${val(documentNumber)}</p>` : ""}
 
               ${

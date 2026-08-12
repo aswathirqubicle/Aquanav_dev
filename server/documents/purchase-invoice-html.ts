@@ -72,16 +72,26 @@ export function generatePurchaseInvoiceHTML(
   // An invoice that has not been approved has posted nothing to the ledger and
   // can still change. draft/pending_approval/rejected matches how the edit gate
   // defines pre-approval in purchase-invoices.routes.ts.
+  // A cancelled invoice has been reversed — ledger entries backed out, stock and
+  // project cost unwound — so it prints in red rather than as a live liability.
   const status = String(invoice.status || "").toLowerCase();
+  const isCancelled = status === "cancelled";
   const isApproved =
     status !== "draft" && status !== "pending_approval" && status !== "rejected";
 
+  const label = isCancelled
+    ? "Cancelled Purchase Invoice"
+    : isApproved
+      ? "Purchase Invoice"
+      : "Draft Purchase Invoice";
+
   return renderDocument({
     company,
-    title: isApproved ? "PURCHASE INVOICE" : "DRAFT PURCHASE INVOICE",
-    htmlTitle: `${isApproved ? "Purchase Invoice" : "Draft Purchase Invoice"} ${val(invoice.invoiceNumber)}`,
+    title: label.toUpperCase(),
+    htmlTitle: `${label} ${val(invoice.invoiceNumber)}`,
     documentNumber: val(invoice.invoiceNumber),
     draft: !isApproved,
+    cancelled: isCancelled,
     currency,
     highlight: { label: "Balance Due", value: money(balanceDue) },
     parties: [

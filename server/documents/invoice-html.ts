@@ -37,16 +37,34 @@ export function generateInvoiceHTML(
   // document a customer could act on. Rejected never reached approval either.
   // draft/pending_approval matches how the edit-note gate defines pre-approval
   // in sales-invoices.routes.ts, so the two cannot drift apart.
+  // A cancelled invoice has been reversed: its ledger entries are backed out and
+  // nothing is owed on it. It was a tax invoice, and the customer may still hold
+  // a copy, so it says so in red rather than quietly printing as a live one.
   const status = String(invoice.status || "").toLowerCase();
+  const isCancelled = status === "cancelled";
   const isApproved =
     status !== "draft" && status !== "pending_approval" && status !== "rejected";
 
+  const label = isCancelled
+    ? "Cancelled Tax Invoice"
+    : isApproved
+      ? "Tax Invoice"
+      : "Draft Invoice";
+  // The tab title drives the filename the browser suggests when printing to
+  // PDF, so it keeps the shorter wording it has always used.
+  const fileLabel = isCancelled
+    ? "Cancelled Invoice"
+    : isApproved
+      ? "Invoice"
+      : "Draft Invoice";
+
   return renderDocument({
     company,
-    title: isApproved ? "TAX INVOICE" : "DRAFT INVOICE",
-    htmlTitle: `${isApproved ? "Invoice" : "Draft Invoice"} ${val(invoice.invoiceNumber)}`,
+    title: label.toUpperCase(),
+    htmlTitle: `${fileLabel} ${val(invoice.invoiceNumber)}`,
     documentNumber: val(invoice.invoiceNumber),
     draft: !isApproved,
+    cancelled: isCancelled,
     currency,
     highlight: { label: "Balance Due", value: money(balanceDue) },
     parties: [
