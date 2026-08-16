@@ -531,6 +531,9 @@ export default function EmployeesIndex() {
 
   const [createUserAccount, setCreateUserAccount] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  // Active by default: the list is for working with current staff, and leavers
+  // are kept rather than deleted so they would otherwise crowd it.
+  const [statusFilter, setStatusFilter] = useState("active");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -624,6 +627,9 @@ export default function EmployeesIndex() {
   });
 
   const filteredEmployees = employees?.filter((emp) => {
+    if (statusFilter === "active" && !emp.isActive) return false;
+    if (statusFilter === "inactive" && emp.isActive) return false;
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -1984,21 +1990,41 @@ export default function EmployeesIndex() {
               <User className="h-5 w-5 mr-2" />
               Employees ({filteredEmployees?.length || 0})
             </CardTitle>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Search by name, email or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search by name, email or phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
-            {filteredEmployees?.length === 0 && searchQuery.trim() && (
-              <p className="text-sm text-muted-foreground text-center py-4">No employees found matching "{searchQuery}"</p>
+            {/* Also covers an empty result from the status filter alone, which
+                previously left the list blank with nothing to explain it. */}
+            {filteredEmployees?.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {searchQuery.trim()
+                  ? `No employees found matching "${searchQuery}"`
+                  : statusFilter === "all"
+                    ? "No employees found"
+                    : `No ${statusFilter} employees found`}
+              </p>
             )}
             {filteredEmployees?.map((employee) => (
               <div
