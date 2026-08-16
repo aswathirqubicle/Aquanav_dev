@@ -88,6 +88,13 @@ export interface RenderDocumentOptions {
    */
   cancelled?: boolean;
   currency: string;
+  /**
+   * The document's rate against AED, as stored. Used only by the tax summary,
+   * which states its figures in AED whatever currency the document is priced
+   * in — see the conversion in renderDocument. Absent or unusable on a
+   * non-AED document, the summary stays in the document's own currency.
+   */
+  exchangeRate?: string | number | null;
   /** The figure worth reading first: Balance Due on an invoice, Total elsewhere. */
   highlight?: { label: string; value: string };
   /** The company's own block sits left; these stack beneath it. */
@@ -165,6 +172,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
     draft,
     cancelled,
     currency,
+    exchangeRate,
     highlight,
     parties,
     meta,
@@ -176,6 +184,22 @@ export function renderDocument(opts: RenderDocumentOptions): string {
   } = opts;
 
   const money = moneyIn(currency);
+
+  // The tax summary states its figures in AED even when the document is priced
+  // in another currency: the tax is owed in dirhams, and a summary that names
+  // only the foreign amount leaves the reader — and the FTA — to do the
+  // conversion themselves. Everything else on the page stays in the document's
+  // own currency, so the item table and the totals block are untouched.
+  //
+  // The rate has to be a usable number for that. Without one, converting would
+  // mean printing the document's own amounts relabelled AED, which is worse
+  // than staying in the document currency and claiming nothing about dirhams.
+  const rate = Number(exchangeRate);
+  const toAED =
+    currency !== "AED" && Number.isFinite(rate) && rate > 0 ? rate : null;
+  const taxCurrency = toAED ? "AED" : currency;
+  const taxMoney = moneyIn(taxCurrency);
+  const inAED = (amount: number) => (toAED ? amount * toAED : amount);
 
   // The Discount column only appears when something was actually discounted,
   // so an ordinary document keeps the wider Description of the client's format.
@@ -292,6 +316,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
         .doc-taxsummary td { font-size: 10.5px; padding: 6px; text-align: right; border-bottom: 1px solid var(--rule); }
         .doc-taxsummary td.l { text-align: left; }
         .doc-taxsummary tr.tot td { font-weight: 700; border-top: 1px solid var(--rule); color: var(--navy); }
+        .doc-fxnote { margin: 2px 0 0; font-size: 10px; color: var(--ink-muted); text-align: right; }
         .doc-section-h { font-size: 12px; font-weight: 700; margin: 18px 0 4px; color: var(--navy); }
         .doc-block { font-size: 10.5px; white-space: pre-wrap; }
         .doc-keep { page-break-inside: avoid; break-inside: avoid; }
@@ -430,8 +455,8 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                   <thead>
                     <tr>
                       <th class="l">Tax Details</th>
-                      <th>Taxable Amount (${currency})</th>
-                      <th>Tax Amount (${currency})</th>
+                      <th>Taxable Amount (${taxCurrency})</th>
+                      <th>Tax Amount (${taxCurrency})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -440,18 +465,23 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                         ([rate, b]) => `
                     <tr>
                       <td class="l">${rateLabel(rate)}</td>
-                      <td>${num(b.taxable)}</td>
-                      <td>${num(b.tax)}</td>
+                      <td>${num(inAED(b.taxable))}</td>
+                      <td>${num(inAED(b.tax))}</td>
                     </tr>`,
                       )
                       .join("")}
                     <tr class="tot">
                       <td class="l">Total</td>
-                      <td>${money(totals.taxableTotal)}</td>
-                      <td>${money(totals.taxTotal)}</td>
+                      <td>${taxMoney(inAED(totals.taxableTotal))}</td>
+                      <td>${taxMoney(inAED(totals.taxTotal))}</td>
                     </tr>
                   </tbody>
                 </table>
+                ${
+                  toAED
+                    ? `<p class="doc-fxnote">Exchange Rate: 1 ${currency} = ${val(exchangeRate)} AED</p>`
+                    : ""
+                }
               </div>
 
               ${sectionBlocks}

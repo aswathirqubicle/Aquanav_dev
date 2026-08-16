@@ -683,6 +683,13 @@ export class SalesStorage extends LedgerStorage {
           discountPercentage: creditNotes.discountPercentage,
           discount: creditNotes.discount,
           totalAmount: creditNotes.totalAmount,
+          // The list feeds the table, the view dialog and the edit form, so
+          // every figure on the page is formatted from these two. Left out,
+          // they arrived undefined and the page's `|| "AED"` fallback labelled
+          // a USD note's amounts as AED, disagreeing with the PDF — which
+          // reads the row through getCreditNote and had the currency all along.
+          currency: creditNotes.currency,
+          exchangeRate: creditNotes.exchangeRate,
           createdAt: creditNotes.createdAt,
           // Joined fields
           customerName: customers.name,

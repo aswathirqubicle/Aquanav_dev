@@ -93,6 +93,7 @@ export function generatePurchaseInvoiceHTML(
     draft: !isApproved,
     cancelled: isCancelled,
     currency,
+    exchangeRate: invoice.exchangeRate,
     highlight: { label: "Balance Due", value: money(balanceDue) },
     parties: [
       {

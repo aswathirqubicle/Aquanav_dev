@@ -61,6 +61,7 @@ export function generatePurchaseOrderHTML(
     documentNumber: val(order.poNumber),
     draft: !isApproved,
     currency,
+    exchangeRate: order.exchangeRate,
     highlight: { label: "Order Total", value: money(totals.total) },
     parties: [
       {
