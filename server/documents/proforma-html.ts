@@ -54,6 +54,7 @@ export function generateProformaHTML(
     documentNumber: val(proforma.proformaNumber),
     draft: !isIssued,
     currency,
+    exchangeRate: proforma.exchangeRate,
     highlight: { label: "Total", value: money(totals.total) },
     parties: [
       {

@@ -65,6 +65,7 @@ export function generateCreditNoteHTML(
     draft: !isIssued,
     cancelled: isCancelled,
     currency,
+    exchangeRate: creditNote.exchangeRate,
     highlight: { label: "Total", value: money(totals.total) },
     parties: [
       {

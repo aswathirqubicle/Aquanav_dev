@@ -59,6 +59,7 @@ export function generateQuotationHTML(
     draft: !isIssued,
     cancelled: isCancelled,
     currency,
+    exchangeRate: quotation.exchangeRate,
     highlight: { label: "Total", value: money(totals.total) },
     parties: [
       {
