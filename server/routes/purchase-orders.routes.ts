@@ -3,6 +3,7 @@ import { generatePurchaseOrderHTML } from "../documents/purchase-order-html";
 import {
   requireAuth,
   requireRole,
+  canAccessOwnDocument,
 } from "../middleware/auth";
 import { checkSupplierDocumentCurrency } from "../lib/document-currency";
 import {
@@ -66,6 +67,10 @@ purchaseOrdersRoutes.get(
         search,
         status,
         supplierId,
+        // Narrows the list to the caller's own orders for any role that is not
+        // admin or finance.
+        userId: req.session.userId,
+        userRole: req.session.userRole,
       });
       res.json(result);
     } catch (error) {
@@ -91,6 +96,16 @@ purchaseOrdersRoutes.get(
         return res.status(404).json({ message: "Purchase order not found" });
       }
 
+      if (
+        !canAccessOwnDocument(
+          (order as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
       res.json(order);
     } catch (error) {
       console.error("Get purchase order error:", error);
@@ -102,7 +117,7 @@ purchaseOrdersRoutes.get(
 purchaseOrdersRoutes.post(
   "/api/purchase-orders",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   upload.array("files"),
   async (req, res) => {
     try {
@@ -110,7 +125,9 @@ purchaseOrdersRoutes.post(
         ...req.body,
         items: JSON.parse(req.body.items || "[]"),
         files: req.files,
-        createdBy: req.session.userId,
+        // From the session, never the body: this is what a project manager is
+        // scoped on, so the client must not be able to name someone else.
+        createdById: req.session.userId,
       };
 
       const currencyError = await checkSupplierDocumentCurrency(
@@ -133,7 +150,7 @@ purchaseOrdersRoutes.post(
 purchaseOrdersRoutes.put(
   "/api/purchase-orders/:id",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   upload.array("files"),
   async (req, res) => {
     try {
@@ -141,6 +158,16 @@ purchaseOrdersRoutes.put(
       const existingOrder = await storage.getPurchaseOrder(id);
       if (!existingOrder) {
         return res.status(404).json({ message: "Purchase order not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (existingOrder as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       const isAdmin = req.session.userRole === "admin";
@@ -298,6 +325,8 @@ purchaseOrdersRoutes.put(
 purchaseOrdersRoutes.delete(
   "/api/purchase-orders/:id",
   requireAuth,
+  // Deliberately not project_manager: they may raise, edit and submit their own
+  // orders, not delete them.
   requireRole(["admin", "finance"]),
   async (req, res) => {
     try {
@@ -324,6 +353,21 @@ purchaseOrdersRoutes.post(
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+
+      const existing = await storage.getPurchaseOrder(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Purchase order not found" });
+      }
+      if (
+        !canAccessOwnDocument(
+          (existing as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
       const order = await storage.submitPurchaseOrderForApproval(
         id,
         req.session.userId!,
@@ -451,6 +495,16 @@ purchaseOrdersRoutes.get(
         return res
           .status(404)
           .json({ message: "Purchase order or related data not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (order as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       const html = generatePurchaseOrderHTML(order, supplier, company);

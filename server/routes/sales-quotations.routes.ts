@@ -4,6 +4,7 @@ import { generateQuotationHTML } from "../documents/quotation-html";
 import {
   requireAuth,
   requireRole,
+  canAccessOwnDocument,
 } from "../middleware/auth";
 import { checkCustomerDocumentCurrency } from "../lib/document-currency";
 import {
@@ -20,10 +21,23 @@ export const salesQuotationsRoutes = Router();
 salesQuotationsRoutes.get(
   "/api/sales-quotations/:id/edit-history",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+
+      const quotation = await storage.getSalesQuotation(id);
+      if (
+        quotation &&
+        !canAccessOwnDocument(
+          (quotation as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
       const history = await storage.getInvoiceEditHistory(
         "sales_quotation",
         id,
@@ -40,7 +54,7 @@ salesQuotationsRoutes.get(
 salesQuotationsRoutes.get(
   "/api/sales-quotations",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
@@ -59,6 +73,10 @@ salesQuotationsRoutes.get(
               : undefined,
         startDate: req.query.startDate as string,
         endDate: req.query.endDate as string,
+        // Narrows the list to the caller's own quotations for any role that is
+        // not admin or finance.
+        userId: req.session.userId,
+        userRole: req.session.userRole,
       };
 
       const result = await storage.getSalesQuotationsPaginated(
@@ -77,10 +95,15 @@ salesQuotationsRoutes.get(
 salesQuotationsRoutes.post(
   "/api/sales-quotations",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
-      const quotationData = { ...req.body };
+      // Taken from the session, never the body: this is what a project manager
+      // is scoped on, so the client must not be able to name someone else.
+      const quotationData = {
+        ...req.body,
+        createdById: req.session.userId,
+      };
 
       const currencyError = await checkCustomerDocumentCurrency(
         quotationData.customerId,
@@ -143,7 +166,7 @@ salesQuotationsRoutes.post(
 salesQuotationsRoutes.get(
   "/api/sales-quotations/:id",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -151,6 +174,16 @@ salesQuotationsRoutes.get(
 
       if (!quotation) {
         return res.status(404).json({ message: "Sales quotation not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (quotation as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       res.json(quotation);
@@ -164,13 +197,23 @@ salesQuotationsRoutes.get(
 salesQuotationsRoutes.put(
   "/api/sales-quotations/:id",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const quotationId = parseInt(req.params.id);
       const existingQuotation = await storage.getSalesQuotation(quotationId);
       if (!existingQuotation) {
         return res.status(404).json({ message: "Quotation not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (existingQuotation as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       const editableStatuses = [
@@ -303,6 +346,11 @@ salesQuotationsRoutes.put(
 salesQuotationsRoutes.patch(
   "/api/sales-quotations/:id/submit",
   requireAuth,
+  // Was requireAuth alone, so any signed-in user — including an employee or a
+  // customer — could send any draft for approval. Gated now that project
+  // managers submit their own, since scoping the rest would mean nothing while
+  // this stayed open.
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -310,6 +358,16 @@ salesQuotationsRoutes.patch(
 
       if (!quotation) {
         return res.status(404).json({ message: "Sales quotation not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (quotation as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       if (quotation.status !== "draft") {
@@ -442,7 +500,7 @@ salesQuotationsRoutes.patch(
 salesQuotationsRoutes.get(
   "/api/sales-quotations/:id/pdf",
   requireAuth,
-  requireRole(["admin", "finance"]),
+  requireRole(["admin", "finance", "project_manager"]),
   async (req, res) => {
     try {
       const quotationId = parseInt(req.params.id);
@@ -454,6 +512,16 @@ salesQuotationsRoutes.get(
         return res
           .status(404)
           .json({ message: "Quotation or related data not found" });
+      }
+
+      if (
+        !canAccessOwnDocument(
+          (quotation as any).createdById,
+          req.session.userId,
+          req.session.userRole,
+        )
+      ) {
+        return res.status(403).json({ message: "Insufficient permissions" });
       }
 
       const html = generateQuotationHTML(quotation, customer, company);

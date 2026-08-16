@@ -442,6 +442,10 @@ export const salesQuotations = pgTable("sales_quotations", {
   }).default("0"),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  // Who raised it. Distinct from submittedById, which is null until the
+  // quotation is sent for approval. Project managers are scoped to their own
+  // documents on this column. Null on everything created before it existed.
+  createdById: integer("created_by_id").references(() => users.id),
   submittedById: integer("submitted_by_id").references(() => users.id),
   submittedAt: timestamp("submitted_at"),
   approvedById: integer("approved_by_id").references(() => users.id),
@@ -952,6 +956,10 @@ export const purchaseOrders = pgTable("purchase_orders", {
   }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+  // Who raised it. Distinct from submittedById, which is null until the order
+  // is sent for approval. Project managers are scoped to their own documents on
+  // this column. Null on everything created before it existed.
+  createdById: integer("created_by_id").references(() => users.id),
   submittedById: integer("submitted_by_id").references(() => users.id),
   submittedAt: timestamp("submitted_at"),
   approvedById: integer("approved_by_id").references(() => users.id),

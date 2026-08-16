@@ -21,6 +21,23 @@ export const requireRole = (roles: string[]) => {
   };
 };
 
+// ─── Own-document access check ──────────────────────────────────────────────
+// Sales quotations and purchase orders are visible to a project manager only
+// when they raised them; admin and finance see everything. Same rule the
+// purchase request list already applies through requestedBy.
+//
+// A null creator belongs to nobody, so it is nobody's to open. Every row that
+// predates created_by_id is null, which is what keeps the existing documents
+// out of a project manager's view.
+export function canAccessOwnDocument(
+  createdById: number | null | undefined,
+  userId: number | undefined,
+  userRole: string | undefined,
+): boolean {
+  if (userRole === "admin" || userRole === "finance") return true;
+  return !!createdById && !!userId && createdById === userId;
+}
+
 // ─── Completion report: project-level access check helper ───────────────────
 export async function checkProjectAccess(
   projectId: number,

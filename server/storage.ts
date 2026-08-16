@@ -741,6 +741,8 @@ export interface IStorage {
       supplierId?: number;
       startDate?: string;
       endDate?: string;
+      userId?: number;
+      userRole?: string;
     },
   ): Promise<PaginatedResponse<any>>;
   getPurchaseOrders(): Promise<any[]>;

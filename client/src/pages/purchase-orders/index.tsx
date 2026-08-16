@@ -1236,7 +1236,16 @@ export default function PurchaseOrdersIndex() {
     return order.status === "approved";
   };
 
-  const canEdit = user?.role === "admin" || user?.role === "finance";
+  // Project managers raise, edit and submit their own orders — the list they
+  // see is already narrowed to those, so no further per-row check is needed
+  // here. Converting one into a purchase invoice is not theirs: that route is
+  // admin and finance only, so the button would dead-end.
+  const canEdit =
+    user?.role === "admin" ||
+    user?.role === "finance" ||
+    user?.role === "project_manager";
+  const canConvertToInvoice =
+    user?.role === "admin" || user?.role === "finance";
 
   const filteredOrders = orders;
 
@@ -3220,7 +3229,7 @@ export default function PurchaseOrdersIndex() {
                         {approveOrderMutation.isPending ? "Approving..." : "Approve"}
                       </Button>
                     )}
-                    {canEdit && canCreateInvoice(viewingOrder) && (
+                    {canConvertToInvoice && canCreateInvoice(viewingOrder) && (
                       <Button
                         onClick={() => {
                           setIsViewDialogOpen(false);

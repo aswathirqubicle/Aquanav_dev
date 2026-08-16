@@ -876,10 +876,22 @@ export class SalesStorage extends LedgerStorage {
       archived?: boolean;
       startDate?: string;
       endDate?: string;
+      userId?: number;
+      userRole?: string;
     },
   ): Promise<PaginatedResponse<SalesQuotationWithCustomerName>> {
     try {
       const queryConditions = [];
+      // A project manager sees only the quotations they raised. Same narrowing
+      // the purchase request list applies on requestedBy.
+      if (
+        filters?.userRole &&
+        filters.userRole !== "admin" &&
+        filters.userRole !== "finance" &&
+        filters.userId
+      ) {
+        queryConditions.push(eq(salesQuotations.createdById, filters.userId));
+      }
       // Search filter
       if (filters?.search && filters.search.trim()) {
         queryConditions.push(

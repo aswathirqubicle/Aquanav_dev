@@ -694,10 +694,23 @@ export class PurchaseStorage extends SalesStorage {
       supplierId?: number;
       startDate?: string;
       endDate?: string;
+      userId?: number;
+      userRole?: string;
     },
   ): Promise<PaginatedResponse<any>> {
     try {
       const queryConditions = [];
+
+      // A project manager sees only the orders they raised. Same narrowing the
+      // purchase request list applies on requestedBy.
+      if (
+        filters?.userRole &&
+        filters.userRole !== "admin" &&
+        filters.userRole !== "finance" &&
+        filters.userId
+      ) {
+        queryConditions.push(eq(purchaseOrders.createdById, filters.userId));
+      }
 
       if (filters?.search && filters.search.trim()) {
         queryConditions.push(
@@ -1021,6 +1034,10 @@ export class PurchaseStorage extends SalesStorage {
           termsAndConditions: orderData.termsAndConditions || null,
           currency: orderData.currency || "AED",
           exchangeRate: orderData.exchangeRate || "1",
+          // The route has always passed the session user in as createdBy, but
+          // there was no column to put it in, so it was dropped here. It is what
+          // scopes a project manager to their own orders.
+          createdById: orderData.createdById ?? orderData.createdBy ?? null,
         })
         .returning();
 

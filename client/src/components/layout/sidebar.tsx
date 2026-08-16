@@ -100,13 +100,15 @@ const navigation: NavItem[] = [
   {
     title: "Sales",
     icon: FileText,
-    roles: ["admin", "finance"],
+    roles: ["admin", "finance", "project_manager"],
     subItems: [
       {
         title: "Sales Quotations",
         href: "/sales-quotations",
         icon: FileText,
-        roles: ["admin", "finance"],
+        // Quotations only for a project manager, and only their own. Invoices,
+        // proforma invoices and credit notes stay admin and finance.
+        roles: ["admin", "finance", "project_manager"],
       },
       {
         title: "Sales Invoices",
@@ -143,7 +145,7 @@ const navigation: NavItem[] = [
         title: "Purchase Orders",
         href: "/purchase-orders",
         icon: FileText,
-        roles: ["admin", "finance"],
+        roles: ["admin", "finance", "project_manager"],
       },
       {
         title: "Purchase Invoices",
