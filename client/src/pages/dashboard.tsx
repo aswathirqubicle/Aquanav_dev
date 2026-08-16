@@ -59,6 +59,126 @@ const formatCurrency = (amount: string | number) => {
   }).format(num);
 };
 
+// Shared by the admin and project manager dashboards, which show the same
+// active projects table. Module scope rather than a copy in each.
+const getStatusBadge = (status: string) => {
+  const statusClasses = {
+    in_progress: "status-in-progress",
+    completed: "status-completed",
+    on_hold: "status-on-hold",
+    not_started: "status-not-started",
+  };
+
+  const statusLabels = {
+    in_progress: "In Progress",
+    completed: "Completed",
+    on_hold: "On Hold",
+    not_started: "Not Started",
+  };
+
+  return (
+    <Badge className={`status-badge ${statusClasses[status as keyof typeof statusClasses] || 'status-not-started'}`}>
+      {statusLabels[status as keyof typeof statusLabels] || status}
+    </Badge>
+  );
+};
+
+// The active projects table, shown on both the admin and project manager
+// dashboards. Every in-progress project, not a truncated selection.
+function ActiveProjectsCard({
+  projects,
+  isLoading,
+  setLocation,
+}: {
+  projects: Project[] | undefined;
+  isLoading: boolean;
+  setLocation: (to: string) => void;
+}) {
+  const activeProjects = projects?.filter(p => p.status === 'in_progress') || [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Active Projects</CardTitle>
+          <div className="flex items-center space-x-3">
+            <Button size="sm" onClick={() => setLocation("/projects/create")}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Project
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">
+            <p className="text-slate-500 dark:text-slate-400">Loading projects...</p>
+          </div>
+        ) : activeProjects.length === 0 ? (
+          <div className="text-center py-8">
+            <Ship className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+            <p className="text-slate-500 dark:text-slate-400">No active projects found</p>
+            <Button className="mt-4" onClick={() => setLocation("/projects/create")}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create First Project
+            </Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-700">
+                  <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Project</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Vessel</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Status</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">End Date</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Budget</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeProjects.map((project) => (
+                  <tr
+                    key={project.id}
+                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                    onClick={() => setLocation(`/projects/${project.id}`)}
+                  >
+                    <td className="py-4 px-4">
+                      <div className="flex items-center">
+                        {project.vesselImage && (
+                          <img
+                            src={project.vesselImage}
+                            alt={project.vesselName || 'Vessel'}
+                            className="h-10 w-10 rounded-full object-cover mr-3"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium text-slate-900 dark:text-slate-100">{project.title}</div>
+                          <div className="text-sm text-slate-500 dark:text-slate-400">Project #{project.id}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-slate-900 dark:text-slate-100">{project.vesselName || "N/A"}</td>
+                    <td className="py-4 px-4">{getStatusBadge(project.status)}</td>
+                    <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
+                      {project.plannedEndDate
+                        ? formatDisplayDate(project.plannedEndDate)
+                        : "N/A"
+                      }
+                    </td>
+                    <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
+                      {project.estimatedBudget ? formatCurrency(project.estimatedBudget) : "N/A"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function FinanceDashboard() {
   const [, setLocation] = useLocation();
 
@@ -449,6 +569,19 @@ function ProjectManagerDashboard() {
     queryKey: ["/api/dashboard/pm-stats"],
   });
 
+  // The same two queries the admin dashboard runs, so the summary row and the
+  // projects table read identically for both roles. A project manager already
+  // has full access to each: /api/projects returns every project for them, and
+  // the stats endpoint is not role-scoped.
+  const { data: adminStats, isLoading: adminStatsLoading } =
+    useQuery<DashboardStats>({
+      queryKey: ["/api/dashboard/stats"],
+    });
+
+  const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+
   return (
     <div className="p-6">
       <div className="mb-8">
@@ -458,22 +591,33 @@ function ProjectManagerDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                <Briefcase className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="p-2 bg-ocean-100 dark:bg-ocean-900/20 rounded-lg">
+                <Ship className="h-6 w-6 text-ocean-600 dark:text-ocean-400" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Active Projects</p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {isLoading ? "..." : stats?.activeProjects || 0}
+                  {adminStatsLoading ? "..." : adminStats?.activeProjects || 0}
                 </p>
               </div>
             </div>
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              {isLoading ? "..." : `${stats?.totalProjects || 0} total projects`}
+            <div className="mt-4">
+              <div className="flex items-center text-sm">
+                <span className={`font-medium ${
+                  (adminStats?.activeProjectsChange || 0) >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}>
+                  {adminStatsLoading ? "..." : ((adminStats?.activeProjectsChange || 0) >= 0 ? `+${adminStats?.activeProjectsChange || 0}` : (adminStats?.activeProjectsChange || 0))}
+                </span>
+                <span className="text-slate-500 dark:text-slate-400 ml-1">
+                  {adminStatsLoading ? "..." : "from last month"}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -485,14 +629,48 @@ function ProjectManagerDashboard() {
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Completed</p>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Completed</p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                   {isLoading ? "..." : stats?.completedProjects || 0}
                 </p>
               </div>
             </div>
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              {isLoading ? "..." : `${stats?.onHoldProjects || 0} on hold`}
+            <div className="mt-4">
+              <div className="flex items-center text-sm">
+                <span className="text-slate-500 dark:text-slate-400">
+                  {isLoading ? "..." : `${stats?.onHoldProjects || 0} on hold`}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setLocation("/inventory")}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
+                <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Low Stock Alerts</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                  {isLoading ? "..." : stats?.lowStockItems || 0}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="flex items-center text-sm">
+                <span className={`font-medium ${
+                  (stats?.lowStockItems || 0) > 0
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-green-600 dark:text-green-400'
+                }`}>
+                  {isLoading ? "..." : "Items below minimum level"}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -500,18 +678,22 @@ function ProjectManagerDashboard() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
-                <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                <Briefcase className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Low Stock Items</p>
+                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Projects</p>
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {isLoading ? "..." : stats?.lowStockItems || 0}
+                  {isLoading ? "..." : stats?.totalProjects || 0}
                 </p>
               </div>
             </div>
-            <div className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              Items below minimum level
+            <div className="mt-4">
+              <div className="flex items-center text-sm">
+                <span className="text-slate-500 dark:text-slate-400">
+                  {isLoading ? "..." : "All statuses"}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -544,7 +726,15 @@ function ProjectManagerDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="mb-6">
+        <ActiveProjectsCard
+          projects={projects}
+          isLoading={projectsLoading}
+          setLocation={setLocation}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -584,64 +774,6 @@ function ProjectManagerDashboard() {
             )}
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Anchor className="h-5 w-5 text-blue-500" />
-              Active Projects
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-4 text-slate-500">Loading...</div>
-            ) : !stats?.recentProjects?.length ? (
-              <div className="text-center py-4 text-slate-500 dark:text-slate-400">No active projects</div>
-            ) : (
-              <div className="space-y-3">
-                {stats.recentProjects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
-                    onClick={() => setLocation(`/projects/${project.id}`)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{project.title}</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">{project.vesselName}</p>
-                    </div>
-                    {/* <div className="text-right ml-4">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{formatCurrency(project.actualCost || "0")}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">of {formatCurrency(project.estimatedBudget || "0")}</p>
-                    </div> */}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/projects")}>
-          <FolderOpen className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
-          <span className="text-sm">All Projects</span>
-        </Button>
-        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/projects/create")}>
-          <Plus className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
-          <span className="text-sm">New Project</span>
-        </Button>
-        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/purchase-requests")}>
-          <ClipboardList className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
-          <span className="text-sm">Purchase Requests</span>
-        </Button>
-        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/reimbursements")}>
-          <Wallet className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
-          <span className="text-sm">Reimbursements</span>
-        </Button>
-        <Button variant="outline" className="h-auto py-4 flex flex-col items-center gap-2" onClick={() => setLocation("/my-payslips")}>
-          <FileText className="h-5 w-5 text-ocean-600 dark:text-ocean-400" />
-          <span className="text-sm">My Payslips</span>
-        </Button>
       </div>
     </div>
   );
@@ -855,30 +987,6 @@ function AdminDashboard() {
     queryKey: ["/api/projects"],
   });
 
-  const getStatusBadge = (status: string) => {
-    const statusClasses = {
-      in_progress: "status-in-progress",
-      completed: "status-completed",
-      on_hold: "status-on-hold",
-      not_started: "status-not-started",
-    };
-
-    const statusLabels = {
-      in_progress: "In Progress",
-      completed: "Completed",
-      on_hold: "On Hold",
-      not_started: "Not Started",
-    };
-
-    return (
-      <Badge className={`status-badge ${statusClasses[status as keyof typeof statusClasses] || 'status-not-started'}`}>
-        {statusLabels[status as keyof typeof statusLabels] || status}
-      </Badge>
-    );
-  };
-
-  const activeProjects = projects?.filter(p => p.status === 'in_progress') || [];
-
   return (
     <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -996,85 +1104,11 @@ function AdminDashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Active Projects</CardTitle>
-            <div className="flex items-center space-x-3">
-              <Button size="sm" onClick={() => setLocation("/projects/create")}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Project
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {projectsLoading ? (
-            <div className="text-center py-8">
-              <p className="text-slate-500 dark:text-slate-400">Loading projects...</p>
-            </div>
-          ) : activeProjects.length === 0 ? (
-            <div className="text-center py-8">
-              <Ship className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400">No active projects found</p>
-              <Button className="mt-4" onClick={() => setLocation("/projects/create")}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Project
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700">
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Project</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Vessel</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">End Date</th>
-                    <th className="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Budget</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeProjects.map((project) => (
-                    <tr 
-                      key={project.id} 
-                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
-                      onClick={() => setLocation(`/projects/${project.id}`)}
-                    >
-                      <td className="py-4 px-4">
-                        <div className="flex items-center">
-                          {project.vesselImage && (
-                            <img
-                              src={project.vesselImage}
-                              alt={project.vesselName || 'Vessel'}
-                              className="h-10 w-10 rounded-full object-cover mr-3"
-                            />
-                          )}
-                          <div>
-                            <div className="font-medium text-slate-900 dark:text-slate-100">{project.title}</div>
-                            <div className="text-sm text-slate-500 dark:text-slate-400">Project #{project.id}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4 text-slate-900 dark:text-slate-100">{project.vesselName || "N/A"}</td>
-                      <td className="py-4 px-4">{getStatusBadge(project.status)}</td>
-                      <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
-                        {project.plannedEndDate
-                          ? formatDisplayDate(project.plannedEndDate)
-                          : "N/A"
-                        }
-                      </td>
-                      <td className="py-4 px-4 text-slate-900 dark:text-slate-100">
-                        {project.estimatedBudget ? formatCurrency(project.estimatedBudget) : "N/A"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ActiveProjectsCard
+        projects={projects}
+        isLoading={projectsLoading}
+        setLocation={setLocation}
+      />
     </>
   );
 }

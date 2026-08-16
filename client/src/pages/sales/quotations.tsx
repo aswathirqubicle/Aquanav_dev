@@ -152,6 +152,14 @@ export default function SalesQuotationsPage() {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // A project manager sees only the quotations they raised, so the company-wide
+  // summary figures are not theirs, and converting one is not theirs either —
+  // the invoices page is admin and finance only, so the button would dead-end.
+  const canSeeCompanyTotals =
+    user?.role === "admin" || user?.role === "finance";
+  const canConvertToInvoice = canSeeCompanyTotals;
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedQuotation, setSelectedQuotation] =
     useState<SalesQuotation | null>(null);
@@ -277,7 +285,11 @@ export default function SalesQuotationsPage() {
   useEffect(() => {
     if (!isAuthenticated) {
       setLocation("/login");
-    } else if (user?.role !== "admin" && user?.role !== "finance") {
+    } else if (
+      user?.role !== "admin" &&
+      user?.role !== "finance" &&
+      user?.role !== "project_manager"
+    ) {
       setLocation("/dashboard");
     }
   }, [isAuthenticated, user, setLocation]);
@@ -358,7 +370,10 @@ export default function SalesQuotationsPage() {
     totalReceivablesValue: string;
   }>({
     queryKey: ["/api/sales/stats"],
-    enabled: isAuthenticated,
+    // Company-wide totals across every quotation. A project manager only sees
+    // their own documents, so the figures are not theirs to see and the request
+    // is not made rather than merely hidden.
+    enabled: isAuthenticated && canSeeCompanyTotals,
   });
 
   const { data: quotationsResponse, isLoading: quotationsLoading } = useQuery<{
@@ -878,7 +893,9 @@ export default function SalesQuotationsPage() {
 
   if (
     !isAuthenticated ||
-    (user?.role !== "admin" && user?.role !== "finance")
+    (user?.role !== "admin" &&
+      user?.role !== "finance" &&
+      user?.role !== "project_manager")
   ) {
     return null;
   }
@@ -1778,46 +1795,48 @@ export default function SalesQuotationsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Quotations
-                </p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {salesStats?.totalQuotations || 0}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                <FileText className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                  Quotation Value
-                </p>
-                <div className="flex flex-col">
-                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {formatCurrency(totalQuotationValue, "AED")}
+      {canSeeCompanyTotals && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
+                  <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    Quotations
                   </p>
-                  <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                  <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                    {salesStats?.totalQuotations || 0}
+                  </p>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
+                  <FileText className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                    Quotation Value
+                  </p>
+                  <div className="flex flex-col">
+                    <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                      {formatCurrency(totalQuotationValue, "AED")}
+                    </p>
+                    <p className="text-xs text-slate-500 italic">AED Equivalent</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Collapsible Filters */}
@@ -2208,7 +2227,7 @@ export default function SalesQuotationsPage() {
                               </Button>
                             )
                           ))}
-                        {quotation.status === "approved" && (
+                        {quotation.status === "approved" && canConvertToInvoice && (
                           <Button
                             size="sm"
                             onClick={(e) => {
@@ -2925,7 +2944,7 @@ export default function SalesQuotationsPage() {
                         </Button>
                       </>
                     )}
-                  {selectedQuotation.status === "approved" && (
+                  {selectedQuotation.status === "approved" && canConvertToInvoice && (
                     <Button
                       onClick={() => handleConvertToInvoice(selectedQuotation)}
                       className="w-full sm:w-auto"

@@ -694,10 +694,23 @@ export class PurchaseStorage extends SalesStorage {
       supplierId?: number;
       startDate?: string;
       endDate?: string;
+      userId?: number;
+      userRole?: string;
     },
   ): Promise<PaginatedResponse<any>> {
     try {
       const queryConditions = [];
+
+      // A project manager sees only the orders they raised. Same narrowing the
+      // purchase request list applies on requestedBy.
+      if (
+        filters?.userRole &&
+        filters.userRole !== "admin" &&
+        filters.userRole !== "finance" &&
+        filters.userId
+      ) {
+        queryConditions.push(eq(purchaseOrders.createdById, filters.userId));
+      }
 
       if (filters?.search && filters.search.trim()) {
         queryConditions.push(
@@ -864,7 +877,9 @@ export class PurchaseStorage extends SalesStorage {
       // project_manager can both open this document, so the client cannot look
       // these ids up itself and the view fell back to "User ID: n". Employee
       // name where the login is linked to an employee row, else the username.
-      // purchase_orders has no created_by column, so there are only two pairs.
+      // Only the submitter and approver are resolved to names; the creator is
+      // selected as a raw id below because it is used for an access check
+      // rather than displayed.
       const submitter = alias(users, "poSubmitter");
       const submitterEmp = alias(employees, "poSubmitterEmp");
       const approver = alias(users, "poApprover");
@@ -897,6 +912,11 @@ export class PurchaseStorage extends SalesStorage {
           exchangeRate: purchaseOrders.exchangeRate,
           supplierCurrency: suppliers.currency,
           supplierVatTreatment: suppliers.vatTreatment,
+          // Required, not decorative: the routes that open, edit, submit or
+          // print one order check it to decide whether the caller owns the
+          // document. Leaving it out of this select made every one of those
+          // checks see undefined and refuse a project manager their own order.
+          createdById: purchaseOrders.createdById,
           submittedById: purchaseOrders.submittedById,
           submittedByName: sql<string>`COALESCE(NULLIF(CONCAT(${submitterEmp.firstName}, ' ', ${submitterEmp.lastName}), ' '), ${submitter.username}, '')`,
           submittedAt: purchaseOrders.submittedAt,
@@ -1021,6 +1041,10 @@ export class PurchaseStorage extends SalesStorage {
           termsAndConditions: orderData.termsAndConditions || null,
           currency: orderData.currency || "AED",
           exchangeRate: orderData.exchangeRate || "1",
+          // The route has always passed the session user in as createdBy, but
+          // there was no column to put it in, so it was dropped here. It is what
+          // scopes a project manager to their own orders.
+          createdById: orderData.createdById ?? orderData.createdBy ?? null,
         })
         .returning();
 
