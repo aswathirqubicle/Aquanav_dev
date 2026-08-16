@@ -84,7 +84,12 @@ export class EmployeeStorage extends SupplierStorage {
   // Employee methods
   async getEmployees(): Promise<Employee[]> {
     try {
-      return await db.select().from(employees);
+      // Every employee list in the app reads from here, so ordering once covers
+      // all of them. By first then last name, which is how they are displayed.
+      return await db
+        .select()
+        .from(employees)
+        .orderBy(asc(employees.firstName), asc(employees.lastName));
     } catch (error: any) {
       await this.createErrorLog({
         message:
