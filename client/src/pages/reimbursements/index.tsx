@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -586,21 +587,26 @@ export default function ReimbursementsIndex() {
             {canCreateForOthers && (
               <div className="space-y-2">
                 <Label htmlFor="employee">Employee</Label>
-                <Select
+                <Autocomplete
+                  // "Myself" carries the empty value the rest of the form
+                  // already treats as "no employee chosen". The field is
+                  // optional, so a type-to-search box needs a way back to that
+                  // once someone has been picked.
+                  options={[
+                    { value: "", label: "Myself" },
+                    ...employees
+                      .filter((employee: any) => employee.isActive)
+                      .map((employee: any) => ({
+                        value: employee.id.toString(),
+                        label: `${employee.firstName} ${employee.lastName} (${employee.employeeCode})`,
+                        searchText: `${employee.firstName} ${employee.lastName} ${employee.employeeCode || ""} ${employee.email || ""}`,
+                      })),
+                  ]}
                   value={formData.employeeId}
                   onValueChange={(value) => setFormData({ ...formData, employeeId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Myself (leave empty for own request)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((employee: any) => (
-                      <SelectItem key={employee.id} value={employee.id.toString()}>
-                        {employee.firstName} {employee.lastName} ({employee.employeeCode})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Search by name or employee code..."
+                  emptyMessage="No active employees found"
+                />
                 <p className="text-xs text-muted-foreground">
                   Leave empty to create for yourself, or select an employee
                 </p>
