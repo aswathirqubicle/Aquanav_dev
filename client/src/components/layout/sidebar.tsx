@@ -207,7 +207,7 @@ const navigation: NavItem[] = [
     title: "Employee Management",
     href: "/employees",
     icon: Users,
-    roles: ["admin"],
+    roles: ["admin", "project_manager"],
   },
   {
     title: "Customers",

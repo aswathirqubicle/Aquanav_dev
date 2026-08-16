@@ -434,6 +434,16 @@ export default function EmployeesIndex() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Salary and contract salary are for admins only. Project managers reach this
+  // page for everything else about an employee, but not pay. Admin and project
+  // manager are the only roles that get past the guard below, so admin-only is
+  // the whole rule.
+  //
+  // The values still arrive with the employee record and stay in formData, so a
+  // project manager editing an employee saves them back untouched rather than
+  // blanking them. This hides the fields; it does not restrict the API.
+  const canSeeSalary = user?.role === "admin";
+
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -1438,17 +1448,19 @@ export default function EmployeesIndex() {
                       onChange={(e) => setFormData(prev => ({ ...prev, hireDate: e.target.value || null }))}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="salary">Salary (AED)</Label>
-                    <Input
-                      id="salary"
-                      type="number"
-                      step="any"
-                      value={formData.salary || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
-                  </div>
+                  {canSeeSalary && (
+                    <div>
+                      <Label htmlFor="salary">Salary (AED)</Label>
+                      <Input
+                        id="salary"
+                        type="number"
+                        step="any"
+                        value={formData.salary || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="contractCurrency">Contract Currency</Label>
                     <Select value={formData.contractCurrency || "AED"} onValueChange={(value) => setFormData(prev => ({ ...prev, contractCurrency: value }))}>
@@ -1464,16 +1476,18 @@ export default function EmployeesIndex() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="contractSalary">Contract Salary</Label>
-                    <Input
-                      id="contractSalary"
-                      type="number"
-                      step="any"
-                      value={formData.contractSalary || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
-                    />
-                  </div>
+                  {canSeeSalary && (
+                    <div>
+                      <Label htmlFor="contractSalary">Contract Salary</Label>
+                      <Input
+                        id="contractSalary"
+                        type="number"
+                        step="any"
+                        value={formData.contractSalary || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -1724,17 +1738,19 @@ export default function EmployeesIndex() {
                       onChange={(e) => setFormData(prev => ({ ...prev, hireDate: e.target.value || null }))}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="editSalary">Salary (AED)</Label>
-                    <Input
-                      id="editSalary"
-                      type="number"
-                      step="any"
-                      value={formData.salary || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
-                  </div>
+                  {canSeeSalary && (
+                    <div>
+                      <Label htmlFor="editSalary">Salary (AED)</Label>
+                      <Input
+                        id="editSalary"
+                        type="number"
+                        step="any"
+                        value={formData.salary || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="editGrade">Grade (Integer)</Label>
                     <Input
@@ -1759,16 +1775,18 @@ export default function EmployeesIndex() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="editContractSalary">Contract Salary</Label>
-                    <Input
-                      id="editContractSalary"
-                      type="number"
-                      step="any"
-                      value={formData.contractSalary || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
-                    />
-                  </div>
+                  {canSeeSalary && (
+                    <div>
+                      <Label htmlFor="editContractSalary">Contract Salary</Label>
+                      <Input
+                        id="editContractSalary"
+                        type="number"
+                        step="any"
+                        value={formData.contractSalary || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, contractSalary: e.target.value || null }))}
+                      />
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="editIsActive">Status *</Label>
                     <Select value={formData.isActive ? "active" : "inactive"} onValueChange={(value) => setFormData(prev => ({ ...prev, isActive: value === "active" }))}>
@@ -2119,14 +2137,18 @@ export default function EmployeesIndex() {
                         <Label className="text-sm font-medium text-gray-600">Hire Date</Label>
                         <p className="font-semibold">{formatDate(selectedEmployee.hireDate)}</p>
                       </div>
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">Salary (AED)</Label>
-                        <p className="font-semibold">{selectedEmployee.salary ? `${parseFloat(selectedEmployee.salary).toLocaleString()} AED` : "Not specified"}</p>
-                      </div>
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600">Contract Salary</Label>
-                        <p className="font-semibold">{selectedEmployee.contractSalary ? `${parseFloat(selectedEmployee.contractSalary).toLocaleString()} ${selectedEmployee.contractCurrency || "AED"}` : "Not specified"}</p>
-                      </div>
+                      {canSeeSalary && (
+                        <>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Salary (AED)</Label>
+                            <p className="font-semibold">{selectedEmployee.salary ? `${parseFloat(selectedEmployee.salary).toLocaleString()} AED` : "Not specified"}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Contract Salary</Label>
+                            <p className="font-semibold">{selectedEmployee.contractSalary ? `${parseFloat(selectedEmployee.contractSalary).toLocaleString()} ${selectedEmployee.contractCurrency || "AED"}` : "Not specified"}</p>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
 
