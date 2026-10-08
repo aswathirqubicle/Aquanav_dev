@@ -3237,6 +3237,7 @@ export default function EmployeesIndex() {
                               <SelectItem value="ilo_medical">ILO DG Medical Certificate</SelectItem>
                               <SelectItem value="yellow_fever">Yellow Fever Document</SelectItem>
                               <SelectItem value="pp_photos">PP Photos</SelectItem>
+                              <SelectItem value="other">Others</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -3389,8 +3390,11 @@ export default function EmployeesIndex() {
 
                 <div className="space-y-4">
                   {(() => {
+                    // 'other' belongs here, not with the visas: both tabs filter to
+                    // their own type list, so a type absent from both saves fine
+                    // and then appears nowhere.
                     const maritimeDocuments = selectedEmployeeDocuments?.filter(doc =>
-                      ['passport', 'cdc', 'covid_vaccination', 'stcw_course', 'sid', 'ilo_medical', 'yellow_fever', 'pp_photos'].includes(doc.documentType)
+                      ['passport', 'cdc', 'covid_vaccination', 'stcw_course', 'sid', 'ilo_medical', 'yellow_fever', 'pp_photos', 'other'].includes(doc.documentType)
                     ) || [];
 
                     if (maritimeDocuments.length === 0) {
