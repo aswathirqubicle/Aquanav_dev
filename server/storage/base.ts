@@ -18,6 +18,9 @@ import {
 import { db } from "../db";
 
 export class StorageBase {
+  /** The first serial of any year. Below this, a number is pre-1000 legacy. */
+  private static readonly FIRST_SERIAL = 1000;
+
   public async generateNextNumber(
     prefix: string,
     table: any,
@@ -26,23 +29,27 @@ export class StorageBase {
     const year = new Date().getFullYear();
     const pattern = `${prefix}-AQNV-${year}-%`;
 
+    // Order on the serial as an integer, not on the whole string: once serials
+    // run to four digits, a lexical sort puts "999" above "1000" and the next
+    // number collides with one already issued.
     const latest = await db
       .select({ number: column })
       .from(table)
       .where(sql`${column} LIKE ${pattern}`)
-      .orderBy(desc(column))
+      .orderBy(desc(sql`CAST(split_part(${column}, '-', 4) AS INTEGER)`))
       .limit(1);
 
-    let nextSerial = 1;
+    let nextSerial = StorageBase.FIRST_SERIAL;
     if (latest.length > 0 && latest[0].number) {
       const parts = latest[0].number.split("-");
       const lastSerial = parseInt(parts[parts.length - 1]);
-      if (!isNaN(lastSerial)) {
+      // A legacy serial below the floor yields the floor, never a step back.
+      if (!isNaN(lastSerial) && lastSerial >= StorageBase.FIRST_SERIAL) {
         nextSerial = lastSerial + 1;
       }
     }
 
-    return `${prefix}-AQNV-${year}-${nextSerial.toString().padStart(3, "0")}`;
+    return `${prefix}-AQNV-${year}-${nextSerial.toString().padStart(4, "0")}`;
   }
 
   protected _cleanDateValue(value: any): Date | null | undefined {
