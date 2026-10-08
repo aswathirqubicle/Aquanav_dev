@@ -325,6 +325,10 @@ export interface IStorage {
     assignments: AssignEmployeeData[],
   ): Promise<ProjectEmployee[]>;
   recalculateProjectCost(projectId: number): Promise<void>;
+  syncTeamEndDatesToProjectEnd(
+    projectId: number,
+    actualEndDate: Date,
+  ): Promise<number>;
   updateProjectEndDateAndRecalculate(
     projectId: number,
     endDate: Date,

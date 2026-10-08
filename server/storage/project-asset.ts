@@ -887,21 +887,33 @@ export class ProjectAssetStorage extends InventoryStorage {
       const project = await this.getProject(projectId);
       if (!project) throw new Error("Project not found");
 
+      // Both dates are required on every assignment. Payroll pro-rates contract
+      // and consultant pay on these dates alone, and a permanent member's
+      // salary is split across projects by them, so a missing one is not a blank
+      // field — it is an unknown period that used to resolve to "all month".
+      // Checked here as well as in the route: this is the only path that writes
+      // the table, so the guarantee belongs where the write happens.
+      for (const assignment of assignments) {
+        if (!assignment.startDate || !assignment.endDate) {
+          const employee = await this.getEmployee(assignment.employeeId);
+          const who = employee
+            ? `${employee.firstName || ""} ${employee.lastName || ""}`.trim()
+            : `employee ${assignment.employeeId}`;
+          throw new Error(
+            `Start and end dates are required for ${who}. Every team member ` +
+              `must have both dates before they can be assigned to a project.`,
+          );
+        }
+      }
+
       // Validate contract employee availability
       for (const assignment of assignments) {
         const employee = await this.getEmployee(assignment.employeeId);
         if (employee && employee.category === "contract") {
-          // Use assignment dates if provided, otherwise fallback to project dates
-          const newStart = assignment.startDate
-            ? new Date(assignment.startDate)
-            : project.startDate
-              ? new Date(project.startDate)
-              : new Date();
-          const newEnd = assignment.endDate
-            ? new Date(assignment.endDate)
-            : project.plannedEndDate
-              ? new Date(project.plannedEndDate)
-              : null;
+          // Assignment dates only — guaranteed present by the check above, so
+          // there is nothing to fall back to and no project date is consulted.
+          const newStart = new Date(assignment.startDate as string);
+          const newEnd = new Date(assignment.endDate as string);
 
           // Check for overlapping assignments in OTHER projects
           const existingAssignments = await db
@@ -956,8 +968,9 @@ export class ProjectAssetStorage extends InventoryStorage {
       const assignmentData = assignments.map((assignment) => ({
         projectId: projectId,
         employeeId: assignment.employeeId,
-        startDate: assignment.startDate ? new Date(assignment.startDate) : null,
-        endDate: assignment.endDate ? new Date(assignment.endDate) : null,
+        // Non-null by the guard at the top of this method.
+        startDate: new Date(assignment.startDate as string),
+        endDate: new Date(assignment.endDate as string),
         assignedAt: new Date(),
       }));
 
@@ -1164,6 +1177,50 @@ export class ProjectAssetStorage extends InventoryStorage {
           (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "recalculateProjectCost",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Push a project's actual end date onto every team member assigned to it.
+   *
+   * The assignment dates are what payroll pro-rates on, so when a project
+   * finishes they are the figures that have to move — otherwise the next run
+   * pays against a period that has already ended. Front Polaris is the case
+   * this exists for: the project closed on 7 August, nobody touched the
+   * assignments, and the August run paid five people a full month.
+   *
+   * Applied to EVERY member, in both directions — a member whose end date is
+   * later is pulled back, and a member who finished earlier is pushed out to
+   * the project's end. That is deliberate: the project's actual end is treated
+   * as the authority for everyone on it. A member who genuinely demobilised
+   * early therefore needs their own end date re-entered afterwards, which is
+   * why the count of rows changed is returned for the caller to report.
+   *
+   * Does not touch payroll. Entries already generated keep the basis they were
+   * generated on; this only changes what the NEXT run will read.
+   */
+  async syncTeamEndDatesToProjectEnd(
+    projectId: number,
+    actualEndDate: Date,
+  ): Promise<number> {
+    try {
+      const updated = await db
+        .update(projectEmployees)
+        .set({ endDate: actualEndDate })
+        .where(eq(projectEmployees.projectId, projectId))
+        .returning({ id: projectEmployees.id });
+      return updated.length;
+    } catch (error: any) {
+      console.error("Original error in syncTeamEndDatesToProjectEnd:", error);
+      await this.createErrorLog({
+        message:
+          `Error in syncTeamEndDatesToProjectEnd (projectId: ${projectId}): ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "syncTeamEndDatesToProjectEnd",
         severity: "error",
       });
       throw error;

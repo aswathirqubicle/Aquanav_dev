@@ -177,7 +177,9 @@ describe("Provident fund base (D2) — via the real computePfAmount", () => {
   // wrong — the R1 falsifiability trap. `additions` are {type, amount} objects
   // exactly as getPayrollAdditions returns them.
   //
-  // The rule: PF = 5% of EARNINGS (basic + additions), excluding reimbursements.
+  // The rule: PF = 5% of CONTRACTUAL pay — basic salary plus project fees, and
+  // nothing else. A bonus, overtime or any ad-hoc addition does not raise it,
+  // and neither does a reimbursement (the employee's own money coming back).
   // Deductions never enter the base — otherwise two people earning the same
   // accrue different funds purely because one took an advance.
   const pf = (basic: number, additions: { type: string; amount: string }[] = []) =>
@@ -191,8 +193,12 @@ describe("Provident fund base (D2) — via the real computePfAmount", () => {
     expect(pf(10000)).toBe(500.0);
   });
 
-  it("T2.8 — basic 10,000 + overtime 1,000 → PF 550.00 (additions included)", () => {
-    expect(pf(10000, [{ type: "overtime", amount: "1000" }])).toBe(550.0);
+  it("T2.8 — basic 10,000 + overtime 1,000 → PF stays 500.00 (overtime excluded)", () => {
+    // Overtime is not contractual pay, so it does not enter the base. The same
+    // amount booked as a project fee WOULD — asserted below so this proves the
+    // filter rather than merely returning the basic-only figure.
+    expect(pf(10000, [{ type: "overtime", amount: "1000" }])).toBe(500.0);
+    expect(pf(10000, [{ type: "project_fee", amount: "1000" }])).toBe(550.0);
   });
 
   it("T2.9 — deductions are not an input to the base → PF stays 500.00", () => {
@@ -204,23 +210,25 @@ describe("Provident fund base (D2) — via the real computePfAmount", () => {
   });
 
   it("T2.10 — a reimbursement addition does NOT attract PF", () => {
-    // pfEligibleAdditionsSum filters reimbursements out by type. The identical
-    // amount booked as a genuine earning WOULD raise PF — proving the filter,
-    // not just a zero.
+    // pfEligibleAdditionsSum admits project fees only. The identical amount
+    // booked as a project fee WOULD raise PF — proving the filter, not just a
+    // zero. 'other' is checked too: the catch-all must not slip into the base.
     expect(pf(10000, [{ type: "reimbursement", amount: "500" }])).toBe(500.0);
-    expect(pf(10000, [{ type: "overtime", amount: "500" }])).toBe(525.0);
+    expect(pf(10000, [{ type: "other", amount: "500" }])).toBe(500.0);
+    expect(pf(10000, [{ type: "project_fee", amount: "500" }])).toBe(525.0);
   });
 
   it("UAT entry 28 shape — project fee 2,002.91, later overtime 690.43", () => {
-    // A consultant's basic is 0; pay arrives as project-fee additions. This is
-    // the shape that was under-deducted: PF fixed at generation, never redone.
+    // A consultant's basic is 0; pay arrives as project-fee additions, so the
+    // project fee alone IS the base. Overtime added afterwards leaves PF where
+    // it was — the figure tracks the contract, not the month's extras.
     expect(pf(0, [{ type: "project_fee", amount: "2002.91" }])).toBe(100.15);
     expect(
       pf(0, [
         { type: "project_fee", amount: "2002.91" },
         { type: "overtime", amount: "690.43" },
       ]),
-    ).toBe(134.67);
+    ).toBe(100.15);
   });
 
   it("UAT entry 26 shape — project fee 1,736.09 → PF 86.80", () => {
@@ -244,9 +252,34 @@ describe("updatePayrollEntryTotals recomputes PF when additions change (2.3)", (
   // employee result short-circuits the GL branch, which is P4's concern.
   const setCalls = () => (db.set as jest.Mock).mock.calls.map((c: any[]) => c[0]);
 
-  it("T2.11 — adding a 2,000 bonus lifts PF 500 → 600 and rewrites the PF row", async () => {
+  it("T2.11 — adding a 2,000 bonus does NOT lift PF, but still raises net pay", async () => {
     (db as any).__queueResults(
       [{ id: 1, type: "bonus", amount: "2000" }], //                 getPayrollAdditions
+      [{ id: 99, type: "provident_fund", amount: "500.00" }], //     getPayrollDeductions
+      [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
+      [], //                                                         PF-row UPDATE (not expected)
+      [], //                                                         entry UPDATE
+      [], //                                                         employees select -> empty -> GL skipped
+    );
+
+    await storage.updatePayrollEntryTotals(7);
+
+    // The bonus is not contractual pay, so the base stays at the basic salary:
+    // 5% x 10,000 = 500.00. The already-correct PF row is left untouched.
+    expect(setCalls()).not.toContainEqual({ amount: "600.00" });
+    // The bonus still reaches the employee — it is excluded from PF, not from
+    // earnings: 12,000 - 500 = 11,500.
+    expect(setCalls()).toContainEqual(
+      expect.objectContaining({ totalDeductions: "500.00", totalAmount: "11500.00" }),
+    );
+  });
+
+  it("T2.11b — adding a 2,000 project fee DOES lift PF 500 → 600", async () => {
+    // The counterpart to T2.11: the recompute still happens, and still rewrites
+    // the PF row, when the addition is contractual pay. Without this, T2.11
+    // would pass just as well against a recompute that had been deleted.
+    (db as any).__queueResults(
+      [{ id: 1, type: "project_fee", amount: "2000" }], //           getPayrollAdditions
       [{ id: 99, type: "provident_fund", amount: "500.00" }], //     getPayrollDeductions (stale)
       [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
       [], //                                                         PF-row UPDATE
@@ -256,9 +289,7 @@ describe("updatePayrollEntryTotals recomputes PF when additions change (2.3)", (
 
     await storage.updatePayrollEntryTotals(7);
 
-    // PF row rewritten to the recomputed 5% x (10,000 + 2,000) = 600.00
     expect(setCalls()).toContainEqual({ amount: "600.00" });
-    // net reflects it: earnings 12,000 - PF 600 = 11,400
     expect(setCalls()).toContainEqual(
       expect.objectContaining({ totalDeductions: "600.00", totalAmount: "11400.00" }),
     );

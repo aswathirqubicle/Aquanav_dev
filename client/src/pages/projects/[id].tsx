@@ -1451,31 +1451,36 @@ export default function ProjectDetail() {
       return;
     }
 
-    // Build assignments array with dates, ensuring proper validation
+    // Build assignments array. Both dates are mandatory — payroll pro-rates
+    // contract and consultant pay on them, and splits a permanent member's
+    // salary across projects by them, so a blank one is not an empty field but
+    // an unknown period. Nothing is substituted from the project's own dates.
     const assignments = selectedEmployees.map(employeeId => {
       const assignment = employeeAssignments.find(a => a.employeeId === employeeId);
+      const employee = employees?.find((e: any) => e.id === employeeId);
+      const who = employee
+        ? `${employee.firstName || ""} ${employee.lastName || ""}`.trim()
+        : "this team member";
 
-      // Validate dates if provided
-      let startDate = assignment?.startDate || "";
-      let endDate = assignment?.endDate || "";
+      const startDate = assignment?.startDate || "";
+      const endDate = assignment?.endDate || "";
 
-      // If end date is provided but no start date, use project start date or current date
-      if (endDate && !startDate) {
-        startDate = project?.startDate ? new Date(project.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      if (!startDate || !endDate) {
+        toast({
+          title: "Dates required",
+          description: `Enter both a start and an end date for ${who}.`,
+          variant: "destructive",
+        });
+        return null;
       }
 
-      // Validate that end date is not before start date
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        if (end < start) {
-          toast({
-            title: "Error",
-            description: "End date cannot be before start date",
-            variant: "destructive",
-          });
-          return null;
-        }
+      if (new Date(endDate) < new Date(startDate)) {
+        toast({
+          title: "Error",
+          description: `End date cannot be before start date for ${who}.`,
+          variant: "destructive",
+        });
+        return null;
       }
 
       return {

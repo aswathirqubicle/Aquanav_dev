@@ -228,6 +228,25 @@ projectsRoutes.put(
         return res.status(404).json({ message: "Project not found" });
       }
 
+      // A project's actual end date is the authority for everyone on it, so push
+      // it onto their assignment end dates — those are what payroll pro-rates
+      // on, and leaving them behind is how a finished project keeps paying.
+      // Applied in both directions, so a member who demobilised earlier is
+      // extended to the project's end; `teamEndDatesUpdated` is returned so the
+      // caller can prompt for those to be re-entered.
+      // Keyed on the INCOMING change, not on the stored value: an unrelated edit
+      // to a finished project must not re-stamp the team, or a member's own
+      // corrected end date would be overwritten the next time anyone touches
+      // the vessel name. The status->completed branch above sets this field, so
+      // closing a project cascades through here too.
+      let teamEndDatesUpdated = 0;
+      if (projectData.actualEndDate) {
+        teamEndDatesUpdated = await storage.syncTeamEndDatesToProjectEnd(
+          id,
+          new Date(projectData.actualEndDate),
+        );
+      }
+
       // Recalculate cost if the project dates changed or status changed
       if (
         projectData.startDate ||
@@ -237,7 +256,7 @@ projectsRoutes.put(
         await storage.recalculateProjectCost(id);
       }
 
-      res.json(project);
+      res.json({ ...project, teamEndDatesUpdated });
     } catch (error) {
       console.error("Project update error:", error);
       res.status(500).json({ message: "Failed to update project" });
@@ -358,23 +377,35 @@ projectsRoutes.post(
           });
         }
 
-        // Validate date formats if provided
-        if (assignment.startDate && assignment.startDate.trim()) {
-          const startDate = new Date(assignment.startDate);
-          if (isNaN(startDate.getTime())) {
-            return res
-              .status(400)
-              .json({ message: "Invalid start date format" });
-          }
+        // Both dates are REQUIRED, not optional. Payroll pro-rates contract and
+        // consultant pay on these dates alone, and splits a permanent member's
+        // salary across projects by them, so letting one through blank used to
+        // mean "paid for the whole month" rather than "not recorded yet".
+        if (!assignment.startDate || !String(assignment.startDate).trim()) {
+          return res
+            .status(400)
+            .json({ message: "A start date is required for every team member" });
+        }
+        if (!assignment.endDate || !String(assignment.endDate).trim()) {
+          return res
+            .status(400)
+            .json({ message: "An end date is required for every team member" });
         }
 
-        if (assignment.endDate && assignment.endDate.trim()) {
-          const endDate = new Date(assignment.endDate);
-          if (isNaN(endDate.getTime())) {
-            return res
-              .status(400)
-              .json({ message: "Invalid end date format" });
-          }
+        const startDate = new Date(assignment.startDate);
+        if (isNaN(startDate.getTime())) {
+          return res.status(400).json({ message: "Invalid start date format" });
+        }
+        const endDate = new Date(assignment.endDate);
+        if (isNaN(endDate.getTime())) {
+          return res.status(400).json({ message: "Invalid end date format" });
+        }
+        // Checked here and not only in the form: an inverted range produces a
+        // negative day count, and the client is not the only possible caller.
+        if (endDate < startDate) {
+          return res.status(400).json({
+            message: "A team member's end date cannot be before their start date",
+          });
         }
       }
 
