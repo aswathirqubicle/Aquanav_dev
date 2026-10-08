@@ -12,8 +12,8 @@ export default function Login() {
   const { login, isAuthenticated, loading } = useAuth();
   const { toast } = useToast();
   const [formData, setFormData] = useState({
-    username: "admin",
-    password: "admin123",
+    username: "",
+    password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -128,14 +128,6 @@ export default function Login() {
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
-            
-            <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-              <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-2">Test Account:</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Username: <span className="font-mono bg-white dark:bg-slate-700 px-1 rounded">admin</span><br />
-                Password: <span className="font-mono bg-white dark:bg-slate-700 px-1 rounded">admin123</span>
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>
