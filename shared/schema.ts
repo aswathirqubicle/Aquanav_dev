@@ -1551,6 +1551,10 @@ export const insertEmployeeDocumentSchema = createInsertSchema(
       "singapore_visa",
       "work_permit",
       "residence_permit",
+      // Catch-all for a document that fits none of the above. Several per
+      // employee are expected, told apart by their number and notes, so
+      // nothing here or downstream assumes one row per type.
+      "other",
     ]),
     dateOfIssue: z.coerce
       .date()
