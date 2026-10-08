@@ -1041,16 +1041,26 @@ export class PayrollStorage extends PurchaseStorage {
   private readonly PF_RATE = 0.05;
 
   /**
-   * Sum of additions that count toward the Provident Fund base. Everything an
-   * employee earns counts EXCEPT reimbursements, which are the employee's own
-   * money being returned, not pay (D2). Reimbursements are identified by their
-   * `type`, never by a description prefix.
+   * Sum of additions that count toward the Provident Fund base.
+   *
+   * ONLY project fees count. The base is contractual pay — basic salary for
+   * permanent staff, project fees for contract and consultant staff — so a
+   * bonus, overtime or an ad-hoc addition does not raise PF, and neither does a
+   * reimbursement (the employee's own money coming back, never pay).
+   *
+   * This is also what makes the two PF paths agree. Generation computes the
+   * base as basic + project fees; recalculation comes through here. While this
+   * counted every non-reimbursement addition, adding a bonus to an entry raised
+   * its PF above the figure generation would ever have produced, so the same
+   * entry had two different correct answers depending on which path last ran.
+   *
+   * Matched on `type`, never on a description prefix.
    */
   private pfEligibleAdditionsSum(
     additions: { type?: string | null; amount?: string | null }[],
   ): number {
     return additions
-      .filter((a) => a.type !== "reimbursement")
+      .filter((a) => a.type === "project_fee")
       .reduce((sum, a) => sum + parseFloat(a.amount || "0"), 0);
   }
 
@@ -1134,9 +1144,6 @@ export class PayrollStorage extends PurchaseStorage {
         assignmentStartDate: projectEmployees.startDate,
         assignmentEndDate: projectEmployees.endDate,
         projectTitle: projects.title,
-        projectStartDate: projects.startDate,
-        projectPlannedEndDate: projects.plannedEndDate,
-        projectActualEndDate: projects.actualEndDate,
       })
       .from(projectEmployees)
       .leftJoin(projects, eq(projectEmployees.projectId, projects.id))
@@ -1151,18 +1158,23 @@ export class PayrollStorage extends PurchaseStorage {
     for (const assignment of assignments) {
       if (!assignment.projectId) continue;
 
+      // The ASSIGNMENT dates decide the period, and nothing else. The project's
+      // own dates are deliberately not a fallback: every rung of the old chain
+      // — actual end, then PLANNED end — resolved to a date at or beyond the end
+      // of the month, so a missing assignment end date silently paid a whole
+      // month. That is what happened on Front Polaris: the project finished on
+      // 7 August, the August run read the planned end of 17 September, and five
+      // people were paid a full month for under a week aboard.
+      //
+      // Assignment dates are mandatory when a member is assigned, so in practice
+      // neither branch below falls through. The month bounds remain only so a
+      // legacy row written before that rule cannot zero someone's pay.
       const pStart = assignment.assignmentStartDate
         ? new Date(assignment.assignmentStartDate)
-        : assignment.projectStartDate
-          ? new Date(assignment.projectStartDate)
-          : monthStart;
+        : monthStart;
       const pEnd = assignment.assignmentEndDate
         ? new Date(assignment.assignmentEndDate)
-        : assignment.projectActualEndDate
-          ? new Date(assignment.projectActualEndDate)
-          : assignment.projectPlannedEndDate
-            ? new Date(assignment.projectPlannedEndDate)
-            : monthEnd;
+        : monthEnd;
 
       const effectiveStart = pStart > monthStart ? pStart : monthStart;
       const effectiveEnd = pEnd < monthEnd ? pEnd : monthEnd;
