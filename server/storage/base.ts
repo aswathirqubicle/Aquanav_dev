@@ -18,8 +18,21 @@ import {
 import { db } from "../db";
 
 export class StorageBase {
-  /** The first serial of any year. Below this, a number is pre-1000 legacy. */
-  private static readonly FIRST_SERIAL = 1000;
+  /**
+   * Where each document type picks up from, continuing the numbering the
+   * client kept before this system: the FIRST purchase order issued is 0142,
+   * the first sales invoice 0165, and so on. Types not listed start at 1.
+   *
+   * These apply to BASELINE_YEAR alone. Every later year restarts at 1, the
+   * year in the number keeping it unique (PO-AQNV-2027-0001).
+   */
+  private static readonly FIRST_SERIAL: Record<string, number> = {
+    PO: 142,
+    QTN: 92,
+    INV: 165,
+    CN: 14,
+  };
+  private static readonly BASELINE_YEAR = 2026;
 
   public async generateNextNumber(
     prefix: string,
@@ -28,6 +41,10 @@ export class StorageBase {
   ): Promise<string> {
     const year = new Date().getFullYear();
     const pattern = `${prefix}-AQNV-${year}-%`;
+    const firstSerial =
+      year === StorageBase.BASELINE_YEAR
+        ? (StorageBase.FIRST_SERIAL[prefix] ?? 1)
+        : 1;
 
     // Order on the serial as an integer, not on the whole string: once serials
     // run to four digits, a lexical sort puts "999" above "1000" and the next
@@ -39,13 +56,13 @@ export class StorageBase {
       .orderBy(desc(sql`CAST(split_part(${column}, '-', 4) AS INTEGER)`))
       .limit(1);
 
-    let nextSerial = StorageBase.FIRST_SERIAL;
+    let nextSerial = firstSerial;
     if (latest.length > 0 && latest[0].number) {
       const parts = latest[0].number.split("-");
       const lastSerial = parseInt(parts[parts.length - 1]);
-      // A legacy serial below the floor yields the floor, never a step back.
-      if (!isNaN(lastSerial) && lastSerial >= StorageBase.FIRST_SERIAL) {
-        nextSerial = lastSerial + 1;
+      // Never step back below the starting point, whatever is already stored.
+      if (!isNaN(lastSerial)) {
+        nextSerial = Math.max(lastSerial + 1, firstSerial);
       }
     }
 
