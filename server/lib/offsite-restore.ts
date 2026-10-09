@@ -1,0 +1,304 @@
+/**
+ * Restoring from the offsite backup account, pulled by the server itself.
+ *
+ * The archives are several gigabytes, so the browser never carries them: the
+ * admin supplies the backup account's details and the age private key for one
+ * operation, and the server fetches, decrypts and restores over its own link.
+ *
+ * NOTHING HERE IS STORED. The FTP credentials and the private key arrive with
+ * the request, are used, and are gone. The app deliberately cannot read
+ * /etc/aquanav-backup.env (root-only, for the backup job), so an attacker who
+ * compromises the application still cannot reach the backup account or read a
+ * single archive.
+ */
+import { execFile } from "child_process";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { promisify } from "util";
+import { restoreFromDump } from "./db-restore";
+
+const execFileAsync = promisify(execFile);
+
+/** Remote layout written by ops/backup/aquanav-backup.sh. */
+export const REMOTE_DIR = "/aquanav";
+export const REMOTE_FILES: Record<RestorePart, string> = {
+  db: "db.tar.age",
+  uploads: "uploads.tar.age",
+};
+
+export type RestorePart = "db" | "uploads";
+
+export interface OffsiteCredentials {
+  host: string;
+  user: string;
+  password: string;
+}
+
+export interface RemoteFile {
+  name: string;
+  bytes: number;
+  modified: string | null;
+}
+
+/** An age private key, as `age-keygen` prints it. */
+export function assertAgeIdentity(identity: string): void {
+  const trimmed = identity.trim();
+  if (!trimmed) throw new Error("The backup key is required to decrypt an archive");
+  if (trimmed.startsWith("age1") && !trimmed.includes("AGE-SECRET-KEY-")) {
+    throw new Error(
+      "That looks like the public key (age1...). Decryption needs the private " +
+        "key, the line beginning AGE-SECRET-KEY-.",
+    );
+  }
+  if (!/AGE-SECRET-KEY-1[0-9A-Z]+/i.test(trimmed)) {
+    throw new Error(
+      "That is not an age private key. Paste the line beginning " +
+        "AGE-SECRET-KEY- from your backup key file.",
+    );
+  }
+}
+
+export function assertCredentials(c: Partial<OffsiteCredentials>): OffsiteCredentials {
+  for (const field of ["host", "user", "password"] as const) {
+    if (!c[field]?.trim()) {
+      throw new Error(`The backup account's ${field} is required`);
+    }
+  }
+  // A host with a scheme or path would be passed to lftp verbatim and fail
+  // obscurely; say so plainly instead.
+  const host = c.host!.trim().replace(/^ftps?:\/\//i, "").replace(/\/.*$/, "");
+  if (!host) throw new Error("The backup account's host is required");
+  return { host, user: c.user!.trim(), password: c.password! };
+}
+
+/**
+ * Parse an FTP LIST listing into files. Field 5 is the size and field 9 on is
+ * the name; anything that does not match that shape is skipped rather than
+ * guessed at.
+ */
+export function parseRemoteListing(listing: string): RemoteFile[] {
+  const files: RemoteFile[] = [];
+  for (const line of listing.split("\n")) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 9 || line.startsWith("d")) continue;
+    const bytes = Number(parts[4]);
+    const name = parts.slice(8).join(" ");
+    if (!Number.isFinite(bytes) || !name || name === "." || name === "..") continue;
+    files.push({
+      name,
+      bytes,
+      modified: parts.slice(5, 8).join(" ") || null,
+    });
+  }
+  return files;
+}
+
+/** lftp invocation shared by listing and fetching. */
+async function lftp(
+  creds: OffsiteCredentials,
+  commands: string,
+): Promise<string> {
+  // The password goes in the environment, never argv, which `ps` exposes.
+  const script = [
+    "set ssl:verify-certificate no",
+    "set ftp:ssl-force true",
+    "set ftp:ssl-protect-data true",
+    "set net:max-retries 2",
+    "set net:timeout 60",
+    `open -u '${creds.user}' --env-password '${creds.host}'`,
+    commands,
+    "bye",
+  ].join("; ");
+  const { stdout } = await execFileAsync("lftp", ["-c", script], {
+    env: { ...process.env, LFTP_PASSWORD: creds.password },
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+export async function listOffsiteBackups(
+  creds: OffsiteCredentials,
+): Promise<RemoteFile[]> {
+  let listing: string;
+  try {
+    listing = await lftp(creds, `cd ${REMOTE_DIR}; ls -la`);
+  } catch (err: any) {
+    const detail = (err?.stderr || err?.message || "").trim();
+    if (/Login failed|530/i.test(detail)) {
+      throw new Error("The backup account rejected those details");
+    }
+    if (/No such file|550/i.test(detail)) {
+      throw new Error(
+        `Connected, but ${REMOTE_DIR} does not exist on that account — no backup has been uploaded to it`,
+      );
+    }
+    throw new Error(`Could not reach the backup account: ${detail || "unknown error"}`);
+  }
+  return parseRemoteListing(listing).filter((f) =>
+    Object.values(REMOTE_FILES).includes(f.name),
+  );
+}
+
+export interface OffsiteRestoreOptions {
+  credentials: OffsiteCredentials;
+  identity: string;
+  parts: RestorePart[];
+  /** The app's working directory; `uploads` sits inside it. */
+  appDir: string;
+  databaseUrl: string;
+  backupDir: string;
+  auditPath: string;
+  actor: string;
+  now?: Date;
+}
+
+export interface OffsiteRestoreResult {
+  parts: RestorePart[];
+  databaseSafetyDump?: string;
+  uploadsSafetyDir?: string;
+  filesRestored?: number;
+  warnings: string[];
+}
+
+/** Free bytes on the filesystem holding `dir`, or null if it cannot be read. */
+async function freeBytes(dir: string): Promise<number | null> {
+  try {
+    const s: any = await (fs as any).statfs(dir);
+    return Number(s.bsize) * Number(s.bavail);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pull the requested archives, decrypt them and restore. Both halves get a
+ * safety copy first: the database as a dump, the uploads tree as a renamed
+ * directory (instant, same filesystem, and trivially reversible).
+ */
+export async function restoreFromOffsite(
+  opts: OffsiteRestoreOptions,
+): Promise<OffsiteRestoreResult> {
+  const now = opts.now ?? new Date();
+  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\..+/, "");
+  const creds = assertCredentials(opts.credentials);
+  assertAgeIdentity(opts.identity);
+  if (opts.parts.length === 0) {
+    throw new Error("Choose what to restore: the database, the files, or both");
+  }
+
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), "aquanav-offsite-"));
+  const identityPath = path.join(work, "identity");
+  await fs.writeFile(identityPath, opts.identity.trim() + "\n", { mode: 0o600 });
+
+  const result: OffsiteRestoreResult = { parts: opts.parts, warnings: [] };
+
+  try {
+    const available = await listOffsiteBackups(creds);
+    for (const part of opts.parts) {
+      const wanted = REMOTE_FILES[part];
+      const found = available.find((f) => f.name === wanted);
+      if (!found) {
+        throw new Error(
+          `${wanted} is not on the backup account, so ${part === "db" ? "the database" : "the files"} cannot be restored`,
+        );
+      }
+      // Downloaded archive, plus its decrypted form, plus the extracted tree.
+      const free = await freeBytes(work);
+      if (free !== null && free < found.bytes * 3) {
+        throw new Error(
+          `Not enough free disk space: ${wanted} needs roughly ${Math.ceil((found.bytes * 3) / 1e9)} GB free to restore and only ${Math.floor(free / 1e9)} GB is available`,
+        );
+      }
+
+      const archive = path.join(work, wanted);
+      await lftp(creds, `cd ${REMOTE_DIR}; get ${wanted} -o '${archive}'`);
+      const tarPath = archive.replace(/\.age$/, "");
+      await execFileAsync("age", ["-d", "-i", identityPath, "-o", tarPath, archive], {
+        maxBuffer: 16 * 1024 * 1024,
+      }).catch((err: any) => {
+        const detail = (err?.stderr || err?.message || "").trim();
+        throw new Error(
+          /no identity matched|failed to decrypt/i.test(detail)
+            ? `That key cannot decrypt ${wanted}. It must be the key the backups were made with.`
+            : `Could not decrypt ${wanted}: ${detail}`,
+        );
+      });
+      await fs.rm(archive, { force: true });
+
+      if (part === "db") {
+        const extracted = path.join(work, "db");
+        await fs.mkdir(extracted, { recursive: true });
+        await execFileAsync("tar", ["-xf", tarPath, "-C", extracted]);
+        const dumpPath = path.join(extracted, "uae.dump");
+        try {
+          await fs.access(dumpPath);
+        } catch {
+          const found = (await fs.readdir(extracted)).join(", ");
+          throw new Error(`uae.dump is not in that archive (it holds: ${found})`);
+        }
+        const dbResult = await restoreFromDump({
+          dumpPath,
+          databaseUrl: opts.databaseUrl,
+          backupDir: opts.backupDir,
+          auditPath: opts.auditPath,
+          actor: opts.actor,
+          now,
+        });
+        result.databaseSafetyDump = dbResult.safetyDumpPath;
+        if (dbResult.warnings) result.warnings.push(dbResult.warnings);
+      } else {
+        const uploads = path.join(opts.appDir, "uploads");
+        const safety = path.join(opts.appDir, `uploads.pre-restore-${stamp}`);
+        let moved = false;
+        try {
+          await fs.rename(uploads, safety);
+          moved = true;
+        } catch (err: any) {
+          if (err?.code !== "ENOENT") throw err; // nothing to preserve is fine
+        }
+        try {
+          // The archive carries a leading `uploads/`, so it unpacks into place.
+          await execFileAsync("tar", ["-xf", tarPath, "-C", opts.appDir], {
+            maxBuffer: 16 * 1024 * 1024,
+          });
+        } catch (err: any) {
+          if (moved) {
+            // Put the old tree back rather than leave the app with no files.
+            await fs.rm(uploads, { recursive: true, force: true }).catch(() => {});
+            await fs.rename(safety, uploads).catch(() => {});
+          }
+          throw new Error(
+            `Extracting the files failed, the previous files were put back: ${(err?.stderr || err?.message || "").trim()}`,
+          );
+        }
+        if (moved) result.uploadsSafetyDir = safety;
+        result.filesRestored = await countFiles(uploads);
+      }
+
+      await fs.rm(tarPath, { force: true });
+    }
+    return result;
+  } finally {
+    // Takes the identity file and every decrypted archive with it.
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function countFiles(dir: string): Promise<number> {
+  let total = 0;
+  const walk = async (d: string) => {
+    let entries;
+    try {
+      entries = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) await walk(path.join(d, e.name));
+      else total += 1;
+    }
+  };
+  await walk(dir);
+  return total;
+}

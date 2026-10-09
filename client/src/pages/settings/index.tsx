@@ -32,6 +32,51 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { z } from "zod";
 
+/** Offsite backup status, as reported by GET /api/system/backup-status. */
+interface BackupJobStatus {
+  job: string;
+  ok: boolean;
+  finishedAt: string | null;
+  ageHours: number | null;
+  stale: boolean;
+  bytes: number | null;
+  remote: string | null;
+  message: string | null;
+}
+interface BackupStatus {
+  configured: boolean;
+  jobs: BackupJobStatus[];
+  error?: string;
+}
+
+/** Must match CONFIRMATION_PHRASE in server/lib/db-restore.ts. */
+const RESTORE_CONFIRMATION = "REPLACE ALL DATA";
+
+const BACKUP_JOB_LABELS: Record<string, string> = {
+  db: "Database (nightly)",
+  uploads: "Uploaded files (weekly)",
+};
+
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+function formatAge(ageHours: number | null): string {
+  if (ageHours === null) return "unknown";
+  if (ageHours < 1) return `${Math.max(1, Math.round(ageHours * 60))} min ago`;
+  if (ageHours < 48) return `${Math.round(ageHours)} h ago`;
+  return `${Math.round(ageHours / 24)} days ago`;
+}
+
 const updateCompanySchema = insertCompanySchema.extend({
   address: z.string().optional().nullable(),
   bankAccount: z.string().optional().nullable(),
@@ -273,6 +318,18 @@ export default function SettingsIndex() {
     enabled: isAuthenticated && user?.role === "admin",
   });
 
+  const {
+    data: backupStatus,
+    isLoading: isLoadingBackup,
+    refetch: refetchBackup,
+    isRefetching: isRefetchingBackup,
+  } = useQuery<BackupStatus>({
+    queryKey: ["/api/system/backup-status"],
+    enabled: isAuthenticated && user?.role === "admin",
+    // The host writes this once a night; polling harder would tell us nothing.
+    refetchInterval: 15 * 60 * 1000,
+  });
+
   useEffect(() => {
     if (company) {
       console.log("company", company)
@@ -372,6 +429,20 @@ export default function SettingsIndex() {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
+  const [ftpHost, setFtpHost] = useState("");
+  const [ftpUser, setFtpUser] = useState("");
+  const [ftpPass, setFtpPass] = useState("");
+  const [offsiteKey, setOffsiteKey] = useState("");
+  const [restoreDatabase, setRestoreDatabase] = useState(true);
+  const [restoreFiles, setRestoreFiles] = useState(true);
+  const [offsiteFiles, setOffsiteFiles] = useState<{ name: string; bytes: number; modified: string | null }[] | null>(null);
+  const [isListingOffsite, setIsListingOffsite] = useState(false);
+  const [isOffsiteRestoring, setIsOffsiteRestoring] = useState(false);
+  const [offsiteResult, setOffsiteResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState("");
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [healthData, setHealthData] = useState<any>(null);
   const [optimizeResult, setOptimizeResult] = useState<any>(null);
 
@@ -443,6 +514,110 @@ export default function SettingsIndex() {
       toast({ title: "Optimization Failed", description: error.message || "Failed to optimize database", variant: "destructive" });
     } finally {
       setIsOptimizing(false);
+    }
+  };
+
+  const handleListOffsite = async () => {
+    setIsListingOffsite(true);
+    setOffsiteFiles(null);
+    setOffsiteResult(null);
+    try {
+      const response = await fetch("/api/system/restore-offsite/list", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host: ftpHost, user: ftpUser, password: ftpPass }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Could not list backups");
+      setOffsiteFiles(data.files ?? []);
+      if ((data.files ?? []).length === 0) {
+        toast({
+          title: "No backups found",
+          description: "Connected to the account, but it holds no backup archives.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      setOffsiteResult({ ok: false, message: error.message });
+      toast({ title: "Could not reach the backup account", description: error.message, variant: "destructive" });
+    } finally {
+      setIsListingOffsite(false);
+    }
+  };
+
+  const handleOffsiteRestore = async () => {
+    const parts = [
+      ...(restoreDatabase ? ["db"] : []),
+      ...(restoreFiles ? ["uploads"] : []),
+    ];
+    setIsOffsiteRestoring(true);
+    setOffsiteResult(null);
+    try {
+      const response = await fetch("/api/system/restore-offsite", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: ftpHost,
+          user: ftpUser,
+          password: ftpPass,
+          identity: offsiteKey,
+          parts,
+          confirm: RESTORE_CONFIRMATION,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Restore failed");
+      setOffsiteResult({
+        ok: true,
+        message:
+          `${data.message}` +
+          (data.filesRestored ? ` ${data.filesRestored.toLocaleString()} files restored.` : ""),
+      });
+      // Nothing held in memory survives: it all described the replaced data.
+      setOffsiteKey("");
+      setFtpPass("");
+      queryClient.clear();
+      toast({ title: "Restore complete", description: data.message });
+    } catch (error: any) {
+      setOffsiteResult({ ok: false, message: error.message || "Restore failed" });
+      toast({ title: "Restore failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsOffsiteRestoring(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!restoreFile) return;
+    setIsRestoring(true);
+    setRestoreResult(null);
+    try {
+      const form = new FormData();
+      form.append("dump", restoreFile);
+      form.append("confirm", RESTORE_CONFIRMATION);
+      const response = await fetch("/api/system/restore", {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Restore failed");
+      setRestoreResult({ ok: true, message: data.message });
+      setRestoreFile(null);
+      setRestoreConfirm("");
+      // Everything on screen came from the database that was just replaced.
+      queryClient.clear();
+      toast({ title: "Restore complete", description: data.message });
+    } catch (error: any) {
+      setRestoreResult({ ok: false, message: error.message || "Restore failed" });
+      toast({
+        title: "Restore failed",
+        description: error.message || "Restore failed",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -1006,6 +1181,367 @@ export default function SettingsIndex() {
 
         <TabsContent value="system">
           <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="flex items-center">
+                      <Database className="h-5 w-5 mr-2" />
+                      Offsite Backup
+                    </CardTitle>
+                    <CardDescription>
+                      Encrypted copies sent to the backup server. Each run replaces the previous copy.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchBackup()}
+                    disabled={isLoadingBackup || isRefetchingBackup}
+                  >
+                    {isRefetchingBackup ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoadingBackup ? (
+                  <div className="flex items-center text-sm text-slate-500 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Checking backup status...
+                  </div>
+                ) : !backupStatus?.configured ? (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    <AlertTriangle className="h-5 w-5 mr-3 mt-0.5 text-amber-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        No backup job on this server
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400">
+                        Nothing has reported a backup here. Expected on a development machine;
+                        on the live server it means the scheduled job is not installed.
+                      </p>
+                    </div>
+                  </div>
+                ) : backupStatus.error ? (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        Backup status unreadable
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400">{backupStatus.error}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {backupStatus.jobs.map((job) => {
+                      const failed = !job.ok;
+                      const warn = job.ok && job.stale;
+                      return (
+                        <div
+                          key={job.job}
+                          className="flex items-start justify-between gap-4 p-4 border rounded-lg"
+                        >
+                          <div className="flex items-start min-w-0">
+                            {failed ? (
+                              <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />
+                            ) : warn ? (
+                              <AlertTriangle className="h-5 w-5 mr-3 mt-0.5 text-amber-500 shrink-0" />
+                            ) : (
+                              <CheckCircle className="h-5 w-5 mr-3 mt-0.5 text-green-600 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-900 dark:text-slate-100">
+                                {BACKUP_JOB_LABELS[job.job] ?? job.job}
+                              </p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {job.finishedAt
+                                  ? `${formatDisplayDate(job.finishedAt)} · ${formatAge(job.ageHours)} · ${formatBytes(job.bytes)}`
+                                  : "Never completed"}
+                              </p>
+                              {job.message && (
+                                <p className="text-sm text-red-600 dark:text-red-400 break-words">
+                                  {job.message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Badge
+                            variant={failed ? "destructive" : warn ? "secondary" : "default"}
+                            className="shrink-0"
+                          >
+                            {failed ? "Failed" : warn ? "Overdue" : "Healthy"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-red-200 dark:border-red-900">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-red-500" />
+                  Restore From Offsite Backup
+                </CardTitle>
+                <CardDescription>
+                  Brings back the database and the uploaded files from the backup server.
+                  The server fetches them itself, so nothing large is uploaded from here.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 border border-red-200 dark:border-red-900 rounded-lg bg-red-50 dark:bg-red-950/30 text-sm space-y-2">
+                  <p className="font-medium text-red-900 dark:text-red-200">Before you restore</p>
+                  <ul className="list-disc pl-5 space-y-1 text-red-800 dark:text-red-300">
+                    <li>Everything entered since last night's backup will be gone.</li>
+                    <li>The current database and files are copied aside first, so an administrator with server access can undo this.</li>
+                    <li>Restore both halves together — a database newer than the files shows broken images.</li>
+                    <li>The details below are used once and never saved.</li>
+                  </ul>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="ftp-host">Backup server host</Label>
+                    <Input id="ftp-host" value={ftpHost} disabled={isOffsiteRestoring}
+                      onChange={(e) => setFtpHost(e.target.value)} placeholder="147.93.17.154" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ftp-user">Username</Label>
+                    <Input id="ftp-user" value={ftpUser} disabled={isOffsiteRestoring}
+                      onChange={(e) => setFtpUser(e.target.value)} autoComplete="off" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ftp-pass">Password</Label>
+                    <Input id="ftp-pass" type="password" value={ftpPass} disabled={isOffsiteRestoring}
+                      onChange={(e) => setFtpPass(e.target.value)} autoComplete="off" />
+                  </div>
+                </div>
+
+                <div>
+                  <Button variant="outline" onClick={handleListOffsite}
+                    disabled={isListingOffsite || isOffsiteRestoring || !ftpHost || !ftpUser || !ftpPass}>
+                    {isListingOffsite ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Check available backups
+                  </Button>
+                </div>
+
+                {offsiteFiles && offsiteFiles.length > 0 && (
+                  <div className="border rounded-lg divide-y">
+                    {offsiteFiles.map((f) => (
+                      <div key={f.name} className="flex items-center justify-between p-3 text-sm">
+                        <span className="font-mono">{f.name}</span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {formatBytes(f.bytes)}{f.modified ? ` · ${f.modified}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <Label>What to restore</Label>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Database</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Projects, invoices, employees, payroll</p>
+                    </div>
+                    <Switch checked={restoreDatabase} disabled={isOffsiteRestoring}
+                      onCheckedChange={setRestoreDatabase} />
+                  </div>
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Uploaded files</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Photo groups, documents, report images</p>
+                    </div>
+                    <Switch checked={restoreFiles} disabled={isOffsiteRestoring}
+                      onCheckedChange={setRestoreFiles} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="offsite-key">Backup key (private)</Label>
+                  <Textarea id="offsite-key" value={offsiteKey} disabled={isOffsiteRestoring}
+                    onChange={(e) => setOffsiteKey(e.target.value)} rows={3}
+                    className="font-mono text-xs"
+                    placeholder="AGE-SECRET-KEY-1..." />
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    The key the backups were encrypted with. Used for this restore only and never stored.
+                  </p>
+                </div>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full"
+                      disabled={
+                        isOffsiteRestoring || !ftpHost || !ftpUser || !ftpPass ||
+                        !offsiteKey.trim() || (!restoreDatabase && !restoreFiles)
+                      }>
+                      {isOffsiteRestoring ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Restoring — this can take several minutes</>
+                      ) : (
+                        <><AlertTriangle className="h-4 w-4 mr-2" />Restore From Offsite Backup</>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Replace all data?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {restoreDatabase && restoreFiles
+                          ? "The database and every uploaded file"
+                          : restoreDatabase
+                            ? "The database"
+                            : "Every uploaded file"}{" "}
+                        will be replaced by the contents of last night's backup. Anything
+                        entered since then will be lost. The current data is copied aside
+                        on the server first.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleOffsiteRestore} className="bg-red-600 hover:bg-red-700">
+                        Replace All Data
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                {offsiteResult && (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    {offsiteResult.ok
+                      ? <CheckCircle className="h-5 w-5 mr-3 mt-0.5 text-green-600 shrink-0" />
+                      : <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />}
+                    <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{offsiteResult.message}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-red-200 dark:border-red-900">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-red-500" />
+                  Restore Database From a File
+                </CardTitle>
+                <CardDescription>
+                  For a backup you already hold locally. Database only — use the offsite
+                  restore above to bring back uploaded files too.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 border border-red-200 dark:border-red-900 rounded-lg bg-red-50 dark:bg-red-950/30 text-sm space-y-2">
+                  <p className="font-medium text-red-900 dark:text-red-200">Before you restore</p>
+                  <ul className="list-disc pl-5 space-y-1 text-red-800 dark:text-red-300">
+                    <li>Everything entered since that backup was taken will be gone.</li>
+                    <li>A safety copy of the current data is saved first, so this can be undone by an administrator with server access.</li>
+                    <li>Everyone will be signed out and should stay out until it finishes.</li>
+                    <li>
+                      Upload the <strong>.dump</strong> file from inside the backup, not the
+                      encrypted <strong>.age</strong> file. Decrypt it first with your backup key.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="restore-file">Backup file (.dump)</Label>
+                  <Input
+                    id="restore-file"
+                    type="file"
+                    accept=".dump"
+                    disabled={isRestoring}
+                    onChange={(e) => {
+                      setRestoreFile(e.target.files?.[0] ?? null);
+                      setRestoreResult(null);
+                    }}
+                  />
+                  {restoreFile && (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {restoreFile.name} · {formatBytes(restoreFile.size)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="restore-confirm">
+                    Type <span className="font-mono">{RESTORE_CONFIRMATION}</span> to enable the button
+                  </Label>
+                  <Input
+                    id="restore-confirm"
+                    value={restoreConfirm}
+                    disabled={isRestoring}
+                    onChange={(e) => setRestoreConfirm(e.target.value)}
+                    placeholder={RESTORE_CONFIRMATION}
+                  />
+                </div>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      disabled={
+                        isRestoring ||
+                        !restoreFile ||
+                        restoreConfirm !== RESTORE_CONFIRMATION
+                      }
+                    >
+                      {isRestoring ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Restoring — do not close this page
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-4 w-4 mr-2" />
+                          Restore From This Backup
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Replace all data?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Every project, invoice, employee record and document in this system
+                        will be replaced by the contents of {restoreFile?.name}. Anything
+                        entered since that backup was taken will be lost. A safety copy of
+                        the current data is saved on the server first.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleRestore}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Replace All Data
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                {restoreResult && (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    {restoreResult.ok ? (
+                      <CheckCircle className="h-5 w-5 mr-3 mt-0.5 text-green-600 shrink-0" />
+                    ) : (
+                      <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />
+                    )}
+                    <p className="text-sm text-slate-700 dark:text-slate-300 break-words">
+                      {restoreResult.message}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">

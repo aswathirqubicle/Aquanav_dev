@@ -47,9 +47,15 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     if (err.name === 'MulterError' && err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ message: "File exceeds the 25MB limit" });
+      // Routes have different ceilings: documents and photos are capped at
+      // 25MB, database restores at 1GB. Naming the wrong one sends people
+      // looking for a problem that isn't there.
+      const limit = req.path.startsWith("/api/system/restore")
+        ? "1GB"
+        : "25MB";
+      return res.status(400).json({ message: `File exceeds the ${limit} limit` });
     }
 
     const status = err.status || err.statusCode || 500;

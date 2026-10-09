@@ -9,8 +9,199 @@ import {
 } from "../middleware/auth";
 import { sql as sqlRaw } from "../db";
 import { storage } from "../storage";
+import {
+  BACKUP_STATUS_PATH,
+  readBackupStatus,
+} from "../lib/backup-status";
+import {
+  CONFIRMATION_PHRASE,
+  restoreFromDump,
+} from "../lib/db-restore";
+import {
+  RestorePart,
+  listOffsiteBackups,
+  restoreFromOffsite,
+} from "../lib/offsite-restore";
+import multer from "multer";
+import os from "os";
+import fsp from "fs/promises";
 
 export const systemRoutes = Router();
+
+// Uploaded dumps go to the system temp directory, never into uploads/, and are
+// deleted whatever the outcome. 1 GB covers a database far larger than this one.
+const dumpUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) => cb(null, `aquanav-restore-${Date.now()}.dump`),
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+});
+
+/** One restore at a time: two concurrent ones would fight over the same tables. */
+let restoreInProgress = false;
+
+/** Where safety dumps and the restore audit log are written. */
+const BACKUP_DIR = process.env.BACKUP_DIR ?? "/srv/aquanav/backups";
+
+// Restore the database from an uploaded pg_dump archive. This replaces every
+// row, so it is gated three ways: admin only, an exact confirmation phrase,
+// and a safety dump taken before anything is touched. The restore itself runs
+// in a single transaction, so a failure leaves the data exactly as it was.
+systemRoutes.post(
+  "/api/system/restore",
+  requireAuth,
+  requireRole(["admin"]),
+  dumpUpload.single("dump"),
+  async (req: any, res) => {
+    const uploaded = req.file?.path;
+    const cleanup = async () => {
+      if (uploaded) await fsp.rm(uploaded, { force: true }).catch(() => {});
+    };
+
+    try {
+      if (!uploaded) {
+        return res.status(400).json({ message: "No backup file was uploaded" });
+      }
+      if (req.body?.confirm !== CONFIRMATION_PHRASE) {
+        await cleanup();
+        return res.status(400).json({
+          message: `Type ${CONFIRMATION_PHRASE} to confirm. Nothing was changed.`,
+        });
+      }
+      if (!process.env.DATABASE_URL) {
+        await cleanup();
+        return res
+          .status(500)
+          .json({ message: "DATABASE_URL is not set on this server" });
+      }
+      if (restoreInProgress) {
+        await cleanup();
+        return res
+          .status(409)
+          .json({ message: "A restore is already running. Wait for it to finish." });
+      }
+
+      restoreInProgress = true;
+      const result = await restoreFromDump({
+        dumpPath: uploaded,
+        databaseUrl: process.env.DATABASE_URL,
+        backupDir: BACKUP_DIR,
+        auditPath: `${BACKUP_DIR}/restore-audit.log`,
+        actor: `user:${req.session?.userId ?? "unknown"}`,
+      });
+
+      res.json({
+        message:
+          "Restore complete. Everyone will need to sign in again, and anything " +
+          "entered after the backup was taken is no longer present.",
+        ...result,
+      });
+    } catch (error: any) {
+      // The message from restoreFromDump already says whether data changed.
+      console.error("Restore error:", error);
+      res.status(500).json({ message: error?.message || "Restore failed" });
+    } finally {
+      restoreInProgress = false;
+      await cleanup();
+    }
+  },
+);
+
+// List what the backup account currently holds. The credentials arrive with
+// the request and are never stored: the app cannot read the backup job's own
+// config (root-only), so compromising the app does not reach the backups.
+systemRoutes.post(
+  "/api/system/restore-offsite/list",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req, res) => {
+    try {
+      const { host, user, password } = req.body ?? {};
+      res.json({ files: await listOffsiteBackups({ host, user, password }) });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || "Could not list backups" });
+    }
+  },
+);
+
+// Restore from the offsite account: the server pulls the archives over its own
+// link, decrypts them with the key supplied for this one request, and restores
+// the database and/or the uploaded files. Both get a safety copy first.
+systemRoutes.post(
+  "/api/system/restore-offsite",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req: any, res) => {
+    try {
+      const { host, user, password, identity, parts, confirm } = req.body ?? {};
+      if (confirm !== CONFIRMATION_PHRASE) {
+        return res.status(400).json({
+          message: `Type ${CONFIRMATION_PHRASE} to confirm. Nothing was changed.`,
+        });
+      }
+      if (!process.env.DATABASE_URL) {
+        return res
+          .status(500)
+          .json({ message: "DATABASE_URL is not set on this server" });
+      }
+      if (restoreInProgress) {
+        return res
+          .status(409)
+          .json({ message: "A restore is already running. Wait for it to finish." });
+      }
+
+      const wanted: RestorePart[] = Array.isArray(parts)
+        ? parts.filter((p: unknown): p is RestorePart => p === "db" || p === "uploads")
+        : [];
+
+      restoreInProgress = true;
+      const result = await restoreFromOffsite({
+        credentials: { host, user, password },
+        identity: typeof identity === "string" ? identity : "",
+        parts: wanted,
+        appDir: process.cwd(),
+        databaseUrl: process.env.DATABASE_URL,
+        backupDir: BACKUP_DIR,
+        auditPath: `${BACKUP_DIR}/restore-audit.log`,
+        actor: `user:${req.session?.userId ?? "unknown"}`,
+      });
+
+      res.json({
+        message:
+          "Restore complete. Everyone will need to sign in again, and anything " +
+          "entered after that backup was taken is no longer present.",
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("Offsite restore error:", error);
+      res.status(500).json({ message: error?.message || "Restore failed" });
+    } finally {
+      restoreInProgress = false;
+    }
+  },
+);
+
+// Offsite backup status, as last recorded by the host's backup timer. The job
+// runs outside the app, so this only ever reports what that job wrote; a
+// missing status file means the job is not installed on this server.
+systemRoutes.get(
+  "/api/system/backup-status",
+  requireAuth,
+  requireRole(["admin"]),
+  async (_req, res) => {
+    try {
+      res.json(await readBackupStatus(BACKUP_STATUS_PATH));
+    } catch (error: any) {
+      // readBackupStatus is written not to throw; this is belt and braces so a
+      // backup panel can never take the Settings page down with it.
+      console.error("Backup status error:", error);
+      res
+        .status(500)
+        .json({ message: error?.message || "Failed to read backup status" });
+    }
+  },
+);
 
 // System Health Check
 systemRoutes.get(
