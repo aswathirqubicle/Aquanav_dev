@@ -126,7 +126,9 @@ case "$MODE" in
   db)
     OUT=$STAGE/aquanav-db.tar.age
     TMP=$(mktemp -d); trap 'rm -rf "$TMP"; on_exit' EXIT
-    for env in uae uae-staging; do
+    # Production only. Staging holds a copy plus test data that nobody needs
+    # back; backing it up would double the archive for nothing.
+    for env in uae; do
       [ -r "/srv/aquanav/$env/.env" ] || continue
       ( set -a; . "/srv/aquanav/$env/.env"; set +a
         pg_dump -Fc "$DATABASE_URL" -f "$TMP/$env.dump" )
