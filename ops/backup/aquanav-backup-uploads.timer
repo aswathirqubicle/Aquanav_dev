@@ -1,8 +1,8 @@
 [Unit]
-Description=Weekly Aquanav uploads backup
+Description=Nightly Aquanav uploads backup
 
 [Timer]
-OnCalendar=Sun *-*-* 03:00:00
+OnCalendar=*-*-* 00:45:00
 Persistent=true
 RandomizedDelaySec=600
 

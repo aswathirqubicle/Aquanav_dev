@@ -1,0 +1,54 @@
+# Nginx vhost for one Aquanav instance. Install per environment as
+# /etc/nginx/sites-available/<hostname>, symlink into sites-enabled, then run
+# `certbot --nginx -d <hostname>` to add the TLS block and the HTTP redirect.
+#
+# Replace <hostname> and the proxy port: uae 5000, uae-staging 5001,
+# future offices 5002, 5003.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name <hostname>;
+
+    # Document and photo uploads. The app caps individual files at 25MB.
+    client_max_body_size 30M;
+
+    access_log /var/log/nginx/<hostname>.access.log;
+    error_log  /var/log/nginx/<hostname>.error.log;
+
+    # Database restore: uploads a pg_dump archive and may run for minutes, so
+    # the site-wide 30M cap and 300s read timeout would reject or cut off a
+    # legitimate restore. Request buffering is off so a large upload streams
+    # through rather than being spooled to nginx's own disk first.
+    #
+    # This prefix also covers /api/system/restore-offsite, where the server
+    # pulls multi-gigabyte archives from the backup account itself — the
+    # request body is tiny but the response can be many minutes away.
+    location /api/system/restore {
+        client_max_body_size 2G;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://127.0.0.1:<port>;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:<port>;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+
+# Required once, in /etc/nginx/conf.d/upgrade-map.conf:
+#   map $http_upgrade $connection_upgrade { default upgrade; '' close; }
