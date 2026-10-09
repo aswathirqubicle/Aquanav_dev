@@ -9,6 +9,7 @@ import {
   REMOTE_FILES,
   assertAgeIdentity,
   assertCredentials,
+  dumpNameForDatabase,
   parseRemoteListing,
 } from "./lib/offsite-restore";
 
@@ -91,5 +92,21 @@ describe("parseRemoteListing", () => {
   it("returns nothing for empty or malformed output rather than guessing", () => {
     expect(parseRemoteListing("")).toEqual([]);
     expect(parseRemoteListing("some error text\nanother line")).toEqual([]);
+  });
+});
+
+describe("dumpNameForDatabase", () => {
+  it("picks each environment's own dump, so staging does not restore production over itself", () => {
+    expect(dumpNameForDatabase("aquanav_uae")).toBe("uae.dump");
+    expect(dumpNameForDatabase("aquanav_uae_staging")).toBe("uae-staging.dump");
+  });
+
+  it("derives a name for an office added later", () => {
+    expect(dumpNameForDatabase("aquanav_in")).toBe("in.dump");
+    expect(dumpNameForDatabase("aquanav_in_staging")).toBe("in-staging.dump");
+  });
+
+  it("falls back to production's name for an unrecognisable database name", () => {
+    expect(dumpNameForDatabase("")).toBe("uae.dump");
   });
 });

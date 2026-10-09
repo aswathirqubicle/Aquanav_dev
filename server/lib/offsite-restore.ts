@@ -13,7 +13,6 @@
  */
 import { execFile } from "child_process";
 import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import { promisify } from "util";
 import { restoreFromDump } from "./db-restore";
@@ -28,6 +27,16 @@ export const REMOTE_FILES: Record<RestorePart, string> = {
 };
 
 export type RestorePart = "db" | "uploads";
+
+/**
+ * Which dump inside db.tar.age belongs to a given database. The archive holds
+ * one per environment, named after its directory (uae.dump, uae-staging.dump),
+ * so staging restores staging rather than overwriting itself with production.
+ */
+export function dumpNameForDatabase(databaseName: string): string {
+  const env = databaseName.replace(/^aquanav_/, "").replace(/_/g, "-");
+  return `${env || "uae"}.dump`;
+}
 
 export interface OffsiteCredentials {
   host: string;
@@ -144,6 +153,12 @@ export interface OffsiteRestoreOptions {
   credentials: OffsiteCredentials;
   identity: string;
   parts: RestorePart[];
+  /**
+   * Scratch space for the downloaded archives. Must be on real disk: the
+   * service runs with PrivateTmp=true, so /tmp is a RAM-backed tmpfs of a few
+   * GB and a 5 GB archive written there would consume the server's memory.
+   */
+  workDir: string;
   /** The app's working directory; `uploads` sits inside it. */
   appDir: string;
   databaseUrl: string;
@@ -155,6 +170,8 @@ export interface OffsiteRestoreOptions {
 
 export interface OffsiteRestoreResult {
   parts: RestorePart[];
+  /** Which dump inside the archive was restored. */
+  databaseDumpUsed?: string;
   databaseSafetyDump?: string;
   uploadsSafetyDir?: string;
   filesRestored?: number;
@@ -187,7 +204,8 @@ export async function restoreFromOffsite(
     throw new Error("Choose what to restore: the database, the files, or both");
   }
 
-  const work = await fs.mkdtemp(path.join(os.tmpdir(), "aquanav-offsite-"));
+  await fs.mkdir(opts.workDir, { recursive: true });
+  const work = await fs.mkdtemp(path.join(opts.workDir, "offsite-"));
   const identityPath = path.join(work, "identity");
   await fs.writeFile(identityPath, opts.identity.trim() + "\n", { mode: 0o600 });
 
@@ -230,13 +248,28 @@ export async function restoreFromOffsite(
         const extracted = path.join(work, "db");
         await fs.mkdir(extracted, { recursive: true });
         await execFileAsync("tar", ["-xf", tarPath, "-C", extracted]);
-        const dumpPath = path.join(extracted, "uae.dump");
-        try {
-          await fs.access(dumpPath);
-        } catch {
-          const found = (await fs.readdir(extracted)).join(", ");
-          throw new Error(`uae.dump is not in that archive (it holds: ${found})`);
+        // Prefer this environment's own dump; fall back to production's, which
+        // is what a single-environment archive will contain.
+        const dbName = new URL(opts.databaseUrl).pathname.replace(/^\//, "");
+        const candidates = [dumpNameForDatabase(dbName), "uae.dump"];
+        let dumpPath = "";
+        for (const candidate of candidates) {
+          const p = path.join(extracted, candidate);
+          try {
+            await fs.access(p);
+            dumpPath = p;
+            break;
+          } catch {
+            /* try the next name */
+          }
         }
+        if (!dumpPath) {
+          const found = (await fs.readdir(extracted)).join(", ");
+          throw new Error(
+            `Neither ${candidates.join(" nor ")} is in that archive (it holds: ${found})`,
+          );
+        }
+        result.databaseDumpUsed = path.basename(dumpPath);
         const dbResult = await restoreFromDump({
           dumpPath,
           databaseUrl: opts.databaseUrl,

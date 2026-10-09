@@ -23,16 +23,21 @@ import {
   restoreFromOffsite,
 } from "../lib/offsite-restore";
 import multer from "multer";
-import os from "os";
+import fs from "fs";
 import fsp from "fs/promises";
 
 export const systemRoutes = Router();
 
-// Uploaded dumps go to the system temp directory, never into uploads/, and are
-// deleted whatever the outcome. 1 GB covers a database far larger than this one.
+// Uploaded dumps are spooled to real disk under the backup directory, never to
+// /tmp: the service runs with PrivateTmp=true, so /tmp is a RAM-backed tmpfs of
+// a few GB. They are deleted whatever the outcome. 1 GB covers a database far
+// larger than this one.
 const dumpUpload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(RESTORE_WORK_DIR, { recursive: true });
+      cb(null, RESTORE_WORK_DIR);
+    },
     filename: (_req, _file, cb) => cb(null, `aquanav-restore-${Date.now()}.dump`),
   }),
   limits: { fileSize: 1024 * 1024 * 1024 },
@@ -43,6 +48,9 @@ let restoreInProgress = false;
 
 /** Where safety dumps and the restore audit log are written. */
 const BACKUP_DIR = process.env.BACKUP_DIR ?? "/srv/aquanav/backups";
+
+/** Scratch space for restores. On real disk, for the PrivateTmp reason above. */
+const RESTORE_WORK_DIR = `${BACKUP_DIR}/restore-work`;
 
 // Restore the database from an uploaded pg_dump archive. This replaces every
 // row, so it is gated three ways: admin only, an exact confirmation phrase,
@@ -161,6 +169,7 @@ systemRoutes.post(
         identity: typeof identity === "string" ? identity : "",
         parts: wanted,
         appDir: process.cwd(),
+        workDir: RESTORE_WORK_DIR,
         databaseUrl: process.env.DATABASE_URL,
         backupDir: BACKUP_DIR,
         auditPath: `${BACKUP_DIR}/restore-audit.log`,

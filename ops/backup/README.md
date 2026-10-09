@@ -121,6 +121,19 @@ health. `server/lib/backup-status.ts` reads it and flags a job as overdue after
 36 hours (`db`) or 10 days (`uploads`). Override the path with
 `BACKUP_STATUS_PATH` if the layout differs.
 
+## Scratch space
+
+Restores download and unpack under `/srv/aquanav/backups/restore-work`, on real
+disk. Not `/tmp`: the app's systemd units set `PrivateTmp=true`, which gives
+each service a RAM-backed tmpfs of a few GB, and writing a 5 GB archive there
+would consume the server's memory rather than its disk. Allow roughly three
+times the archive size free — the download, the decrypted tar, and the
+extracted tree.
+
+A database restore picks the dump matching the database it is connected to
+(`uae-staging.dump` on staging, `uae.dump` on production), falling back to
+`uae.dump`, so restoring on staging does not overwrite it with production data.
+
 ## Known limits
 
 - **One copy per job.** If data is corrupted or deleted and nobody notices for
