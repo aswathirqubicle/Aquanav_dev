@@ -7,6 +7,10 @@ vite.config.ts.*
 .env
 uploads
 
+# curl cookie jars from manual API testing — these hold session cookies
+cookies.txt
+*.cookies
+
 # Claude Code — local only, not shared with the team
 .claude/
 CLAUDE.md
