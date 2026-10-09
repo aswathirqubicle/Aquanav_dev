@@ -31,6 +31,7 @@ module.exports = {
     '<rootDir>/server/storage.purchase-invoice-update.test.ts',
     '<rootDir>/server/secret-box.test.ts',
     '<rootDir>/server/notifications.expiry.test.ts',
+    '<rootDir>/server/storage.document-numbers.test.ts',
   ],
 
   transform: {
