@@ -32,6 +32,7 @@ module.exports = {
     '<rootDir>/server/secret-box.test.ts',
     '<rootDir>/server/notifications.expiry.test.ts',
     '<rootDir>/server/storage.document-numbers.test.ts',
+    '<rootDir>/server/backup-status.test.ts',
   ],
 
   transform: {

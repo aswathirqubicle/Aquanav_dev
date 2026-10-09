@@ -9,8 +9,33 @@ import {
 } from "../middleware/auth";
 import { sql as sqlRaw } from "../db";
 import { storage } from "../storage";
+import {
+  BACKUP_STATUS_PATH,
+  readBackupStatus,
+} from "../lib/backup-status";
 
 export const systemRoutes = Router();
+
+// Offsite backup status, as last recorded by the host's backup timer. The job
+// runs outside the app, so this only ever reports what that job wrote; a
+// missing status file means the job is not installed on this server.
+systemRoutes.get(
+  "/api/system/backup-status",
+  requireAuth,
+  requireRole(["admin"]),
+  async (_req, res) => {
+    try {
+      res.json(await readBackupStatus(BACKUP_STATUS_PATH));
+    } catch (error: any) {
+      // readBackupStatus is written not to throw; this is belt and braces so a
+      // backup panel can never take the Settings page down with it.
+      console.error("Backup status error:", error);
+      res
+        .status(500)
+        .json({ message: error?.message || "Failed to read backup status" });
+    }
+  },
+);
 
 // System Health Check
 systemRoutes.get(

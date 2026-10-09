@@ -32,6 +32,48 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { z } from "zod";
 
+/** Offsite backup status, as reported by GET /api/system/backup-status. */
+interface BackupJobStatus {
+  job: string;
+  ok: boolean;
+  finishedAt: string | null;
+  ageHours: number | null;
+  stale: boolean;
+  bytes: number | null;
+  remote: string | null;
+  message: string | null;
+}
+interface BackupStatus {
+  configured: boolean;
+  jobs: BackupJobStatus[];
+  error?: string;
+}
+
+const BACKUP_JOB_LABELS: Record<string, string> = {
+  db: "Database (nightly)",
+  uploads: "Uploaded files (weekly)",
+};
+
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+function formatAge(ageHours: number | null): string {
+  if (ageHours === null) return "unknown";
+  if (ageHours < 1) return `${Math.max(1, Math.round(ageHours * 60))} min ago`;
+  if (ageHours < 48) return `${Math.round(ageHours)} h ago`;
+  return `${Math.round(ageHours / 24)} days ago`;
+}
+
 const updateCompanySchema = insertCompanySchema.extend({
   address: z.string().optional().nullable(),
   bankAccount: z.string().optional().nullable(),
@@ -271,6 +313,18 @@ export default function SettingsIndex() {
   const { data: company, isLoading } = useQuery<Company>({
     queryKey: ["/api/company"],
     enabled: isAuthenticated && user?.role === "admin",
+  });
+
+  const {
+    data: backupStatus,
+    isLoading: isLoadingBackup,
+    refetch: refetchBackup,
+    isRefetching: isRefetchingBackup,
+  } = useQuery<BackupStatus>({
+    queryKey: ["/api/system/backup-status"],
+    enabled: isAuthenticated && user?.role === "admin",
+    // The host writes this once a night; polling harder would tell us nothing.
+    refetchInterval: 15 * 60 * 1000,
   });
 
   useEffect(() => {
@@ -1006,6 +1060,109 @@ export default function SettingsIndex() {
 
         <TabsContent value="system">
           <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="flex items-center">
+                      <Database className="h-5 w-5 mr-2" />
+                      Offsite Backup
+                    </CardTitle>
+                    <CardDescription>
+                      Encrypted copies sent to the backup server. Each run replaces the previous copy.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchBackup()}
+                    disabled={isLoadingBackup || isRefetchingBackup}
+                  >
+                    {isRefetchingBackup ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoadingBackup ? (
+                  <div className="flex items-center text-sm text-slate-500 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Checking backup status...
+                  </div>
+                ) : !backupStatus?.configured ? (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    <AlertTriangle className="h-5 w-5 mr-3 mt-0.5 text-amber-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        No backup job on this server
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400">
+                        Nothing has reported a backup here. Expected on a development machine;
+                        on the live server it means the scheduled job is not installed.
+                      </p>
+                    </div>
+                  </div>
+                ) : backupStatus.error ? (
+                  <div className="flex items-start p-4 border rounded-lg">
+                    <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        Backup status unreadable
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400">{backupStatus.error}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {backupStatus.jobs.map((job) => {
+                      const failed = !job.ok;
+                      const warn = job.ok && job.stale;
+                      return (
+                        <div
+                          key={job.job}
+                          className="flex items-start justify-between gap-4 p-4 border rounded-lg"
+                        >
+                          <div className="flex items-start min-w-0">
+                            {failed ? (
+                              <XCircle className="h-5 w-5 mr-3 mt-0.5 text-red-500 shrink-0" />
+                            ) : warn ? (
+                              <AlertTriangle className="h-5 w-5 mr-3 mt-0.5 text-amber-500 shrink-0" />
+                            ) : (
+                              <CheckCircle className="h-5 w-5 mr-3 mt-0.5 text-green-600 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-900 dark:text-slate-100">
+                                {BACKUP_JOB_LABELS[job.job] ?? job.job}
+                              </p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {job.finishedAt
+                                  ? `${formatDisplayDate(job.finishedAt)} · ${formatAge(job.ageHours)} · ${formatBytes(job.bytes)}`
+                                  : "Never completed"}
+                              </p>
+                              {job.message && (
+                                <p className="text-sm text-red-600 dark:text-red-400 break-words">
+                                  {job.message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Badge
+                            variant={failed ? "destructive" : warn ? "secondary" : "default"}
+                            className="shrink-0"
+                          >
+                            {failed ? "Failed" : warn ? "Overdue" : "Healthy"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">

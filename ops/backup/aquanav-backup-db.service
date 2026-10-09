@@ -1,0 +1,9 @@
+[Unit]
+Description=Aquanav offsite database backup
+After=network-online.target postgresql@17-main.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aquanav-backup.sh db
+User=root
