@@ -17,6 +17,7 @@ import 'react-quill/dist/quill.snow.css';
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { compressImages } from "@/lib/image-compression";
 import {
   Ship,
   Calendar,
@@ -1607,7 +1608,10 @@ export default function ProjectDetail() {
         formData.append('dailyActivityId', data.dailyActivityId);
       }
       if (data.photos) {
-        for (const file of data.photos) {
+        // Downscaled here rather than server-side so the upload itself is
+        // smaller — site connections are the slow part.
+        const photos = await compressImages(data.photos);
+        for (const file of photos) {
           formData.append('photos', file);
         }
       }
