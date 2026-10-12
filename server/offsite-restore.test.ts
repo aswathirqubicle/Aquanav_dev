@@ -5,12 +5,16 @@
  * parser, because a misread listing could have the server restore the wrong
  * archive.
  */
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import {
   REMOTE_FILES,
   assertAgeIdentity,
   assertCredentials,
   dumpNameForDatabase,
   parseRemoteListing,
+  sweepRestoreWorkDir,
 } from "./lib/offsite-restore";
 
 describe("assertAgeIdentity", () => {
@@ -108,5 +112,37 @@ describe("dumpNameForDatabase", () => {
 
   it("falls back to production's name for an unrecognisable database name", () => {
     expect(dumpNameForDatabase("")).toBe("uae.dump");
+  });
+});
+
+describe("sweepRestoreWorkDir", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "sweep-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("removes what a killed restore left behind, archive and all", async () => {
+    const leftover = path.join(dir, "offsite-abc123");
+    await fs.mkdir(leftover);
+    await fs.writeFile(path.join(leftover, "uploads.tar.age"), "partial download");
+    await fs.writeFile(path.join(dir, "aquanav-restore-1760000000.dump"), "abandoned upload");
+
+    expect(await sweepRestoreWorkDir(dir)).toBe(2);
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it("leaves anything it did not create alone", async () => {
+    await fs.writeFile(path.join(dir, "keep-me.txt"), "not ours");
+    expect(await sweepRestoreWorkDir(dir)).toBe(0);
+    expect(await fs.readdir(dir)).toEqual(["keep-me.txt"]);
+  });
+
+  it("is silent when the directory does not exist", async () => {
+    await expect(sweepRestoreWorkDir(path.join(dir, "absent"))).resolves.toBe(0);
   });
 });

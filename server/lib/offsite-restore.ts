@@ -11,7 +11,7 @@
  * compromises the application still cannot reach the backup account or read a
  * single archive.
  */
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
@@ -193,6 +193,80 @@ async function freeBytes(dir: string): Promise<number | null> {
  * safety copy first: the database as a dump, the uploads tree as a renamed
  * directory (instant, same filesystem, and trivially reversible).
  */
+/**
+ * Decrypt with the key passed through a FIFO rather than a file.
+ *
+ * A private key written to disk outlives a crash: an earlier version wrote it
+ * to the work directory, and a service restart during a restore left it there
+ * for twenty minutes. A FIFO holds no data on disk — the bytes pass through
+ * kernel memory between the two processes — so the worst a crash can leave
+ * behind is an empty pipe.
+ */
+async function decryptWithIdentity(
+  identity: string,
+  archivePath: string,
+  outPath: string,
+  fifoDir: string,
+): Promise<void> {
+  const fifo = path.join(fifoDir, "identity.fifo");
+  await execFileAsync("mkfifo", ["-m", "600", fifo]);
+  try {
+    const age = spawn("age", ["-d", "-i", fifo, "-o", outPath, archivePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    age.stderr.on("data", (c) => {
+      stderr += c.toString();
+    });
+
+    // Opening a FIFO for writing blocks until the reader opens it, so this has
+    // to happen after age is spawned.
+    const writing = fs
+      .writeFile(fifo, identity.trim() + "\n")
+      .catch(() => {
+        /* age exited before reading; its own error is the useful one */
+      });
+
+    const code: number = await new Promise((resolve, reject) => {
+      age.once("error", reject);
+      age.once("close", resolve);
+    });
+    await writing;
+
+    if (code !== 0) {
+      const detail = stderr.trim();
+      throw new Error(
+        /no identity matched|failed to decrypt/i.test(detail)
+          ? `That key cannot decrypt ${path.basename(archivePath)}. It must be the key the backups were made with.`
+          : `Could not decrypt ${path.basename(archivePath)}: ${detail || `age exited with ${code}`}`,
+      );
+    }
+  } finally {
+    await fs.rm(fifo, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Remove anything a previous restore left behind. A killed process — a deploy
+ * mid-restore, an OOM, a reboot — skips its own cleanup, and a half-downloaded
+ * 5 GB archive should not sit there until someone notices.
+ */
+export async function sweepRestoreWorkDir(workDir: string): Promise<number> {
+  let removed = 0;
+  let entries: string[];
+  try {
+    entries = await fs.readdir(workDir);
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (!entry.startsWith("offsite-") && !entry.startsWith("aquanav-restore-")) continue;
+    await fs.rm(path.join(workDir, entry), { recursive: true, force: true }).catch(() => {});
+    removed += 1;
+  }
+  return removed;
+}
+
 export async function restoreFromOffsite(
   opts: OffsiteRestoreOptions,
 ): Promise<OffsiteRestoreResult> {
@@ -206,8 +280,6 @@ export async function restoreFromOffsite(
 
   await fs.mkdir(opts.workDir, { recursive: true });
   const work = await fs.mkdtemp(path.join(opts.workDir, "offsite-"));
-  const identityPath = path.join(work, "identity");
-  await fs.writeFile(identityPath, opts.identity.trim() + "\n", { mode: 0o600 });
 
   const result: OffsiteRestoreResult = { parts: opts.parts, warnings: [] };
 
@@ -232,16 +304,7 @@ export async function restoreFromOffsite(
       const archive = path.join(work, wanted);
       await lftp(creds, `cd ${REMOTE_DIR}; get ${wanted} -o '${archive}'`);
       const tarPath = archive.replace(/\.age$/, "");
-      await execFileAsync("age", ["-d", "-i", identityPath, "-o", tarPath, archive], {
-        maxBuffer: 16 * 1024 * 1024,
-      }).catch((err: any) => {
-        const detail = (err?.stderr || err?.message || "").trim();
-        throw new Error(
-          /no identity matched|failed to decrypt/i.test(detail)
-            ? `That key cannot decrypt ${wanted}. It must be the key the backups were made with.`
-            : `Could not decrypt ${wanted}: ${detail}`,
-        );
-      });
+      await decryptWithIdentity(opts.identity, archive, tarPath, work);
       await fs.rm(archive, { force: true });
 
       if (part === "db") {
@@ -313,7 +376,7 @@ export async function restoreFromOffsite(
     }
     return result;
   } finally {
-    // Takes the identity file and every decrypted archive with it.
+    // Takes every downloaded and decrypted archive with it.
     await fs.rm(work, { recursive: true, force: true }).catch(() => {});
   }
 }

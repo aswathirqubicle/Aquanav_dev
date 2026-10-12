@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializeDatabase } from "./init-db";
 import { startOverdueInvoiceJob, startNotificationJob } from "./jobs";
+import { sweepRestoreWorkDir } from "./lib/offsite-restore";
 
 const app = express();
 app.use(express.json());
@@ -44,6 +45,13 @@ app.use((req, res, next) => {
 
   startOverdueInvoiceJob();
   startNotificationJob();
+
+  // A restore killed mid-flight (a deploy, an OOM, a reboot) never runs its own
+  // cleanup, leaving a part-downloaded archive behind. Clear that on the way up.
+  const workDir = `${process.env.BACKUP_DIR ?? "/srv/aquanav/backups"}/restore-work`;
+  sweepRestoreWorkDir(workDir)
+    .then((n) => n > 0 && log(`[restore] cleared ${n} leftover work director${n === 1 ? "y" : "ies"}`))
+    .catch(() => {});
 
   const server = await registerRoutes(app);
 

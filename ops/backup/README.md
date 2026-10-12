@@ -8,7 +8,7 @@ what they last recorded (Settings → System → Offsite Backup, admin only).
 
 | Job | Schedule | Contents | Remote file |
 |---|---|---|---|
-| `db` | daily 00:30 (host time) | `pg_dump -Fc` of `aquanav_uae` and `aquanav_uae_staging`, plus a `TAKEN_AT` marker | `/aquanav/db.tar.age` |
+| `db` | daily 00:30 (host time) | `pg_dump -Fc` of `aquanav_uae` (production only), plus a `TAKEN_AT` marker | `/aquanav/db.tar.age` |
 | `uploads` | daily 00:45 (host time) | the whole `uploads` tree (~5 GB) | `/aquanav/uploads.tar.age` |
 
 One copy per job; each run replaces it. The new file is uploaded as
@@ -130,9 +130,11 @@ would consume the server's memory rather than its disk. Allow roughly three
 times the archive size free — the download, the decrypted tar, and the
 extracted tree.
 
-A database restore picks the dump matching the database it is connected to
-(`uae-staging.dump` on staging, `uae.dump` on production), falling back to
-`uae.dump`, so restoring on staging does not overwrite it with production data.
+A database restore picks the dump matching the database it is connected to,
+falling back to `uae.dump`. Only production is backed up, so a restore run on
+staging falls back to production's dump and replaces staging with production
+data — the result message names the dump used, so this is visible rather than
+silent.
 
 ## Known limits
 

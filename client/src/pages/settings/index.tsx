@@ -53,8 +53,8 @@ interface BackupStatus {
 const RESTORE_CONFIRMATION = "REPLACE ALL DATA";
 
 const BACKUP_JOB_LABELS: Record<string, string> = {
-  db: "Database (nightly)",
-  uploads: "Uploaded files (weekly)",
+  db: "Whole database (nightly)",
+  uploads: "All uploaded files (nightly)",
 };
 
 function formatBytes(bytes: number | null): string {
@@ -1349,16 +1349,16 @@ export default function SettingsIndex() {
                   <Label>What to restore</Label>
                   <div className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Database</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Projects, invoices, employees, payroll</p>
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Whole database</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Every table — projects, invoices, employees, payroll, settings, users</p>
                     </div>
                     <Switch checked={restoreDatabase} disabled={isOffsiteRestoring}
                       onCheckedChange={setRestoreDatabase} />
                   </div>
                   <div className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Uploaded files</p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Photo groups, documents, report images</p>
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">All uploaded files</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Every uploaded file — photo groups, employee and supplier documents, report images</p>
                     </div>
                     <Switch checked={restoreFiles} disabled={isOffsiteRestoring}
                       onCheckedChange={setRestoreFiles} />
