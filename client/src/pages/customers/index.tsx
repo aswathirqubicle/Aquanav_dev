@@ -124,7 +124,7 @@ export default function CustomersIndex() {
   useEffect(() => {
     if (!isAuthenticated) {
       setLocation("/login");
-    } else if (user?.role !== "admin" && user?.role !== "project_manager") {
+    } else if (user?.role !== "admin" && user?.role !== "project_manager" && user?.role !== "finance") {
       setLocation("/dashboard");
     }
   }, [isAuthenticated, user, setLocation]);
@@ -409,7 +409,7 @@ export default function CustomersIndex() {
     });
   };
 
-  if (!isAuthenticated || (user?.role !== "admin" && user?.role !== "project_manager")) {
+  if (!isAuthenticated || (user?.role !== "admin" && user?.role !== "project_manager" && user?.role !== "finance")) {
     return null;
   }
 
