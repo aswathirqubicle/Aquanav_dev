@@ -22,6 +22,10 @@ import {
   listOffsiteBackups,
   restoreFromOffsite,
 } from "../lib/offsite-restore";
+import {
+  getVesselFinderSettingsPublic,
+  saveVesselFinderSettings,
+} from "../lib/vessel-finder-settings";
 import multer from "multer";
 import fs from "fs";
 import fsp from "fs/promises";
@@ -558,6 +562,53 @@ systemRoutes.post(
     } catch (error: any) {
       console.error("GL rebuild error:", error);
       res.status(500).json({ message: error?.message || "Failed to rebuild ledger" });
+    }
+  },
+);
+
+/**
+ * VesselFinder API key.
+ *
+ * The response can never contain the key: getVesselFinderSettingsPublic returns
+ * a type without that field, so it cannot be leaked by spreading. The UI is
+ * told only WHETHER one is stored.
+ */
+systemRoutes.get(
+  "/api/system/vessel-finder-settings",
+  requireAuth,
+  requireRole(["admin"]),
+  async (_req, res) => {
+    try {
+      res.json(await getVesselFinderSettingsPublic());
+    } catch (error) {
+      console.error("VesselFinder settings fetch error:", error);
+      res.status(500).json({ message: "Failed to load VesselFinder settings" });
+    }
+  },
+);
+
+systemRoutes.put(
+  "/api/system/vessel-finder-settings",
+  requireAuth,
+  requireRole(["admin"]),
+  async (req, res) => {
+    try {
+      const { apiKey } = req.body ?? {};
+
+      await saveVesselFinderSettings(
+        // Blank means "leave the stored one alone".
+        { apiKey: apiKey || undefined },
+        req.session.userId || null,
+      );
+
+      res.json(await getVesselFinderSettingsPublic());
+    } catch (error: any) {
+      // Surfaced rather than swallowed: the most likely cause is a missing
+      // EMAIL_ENCRYPTION_KEY, and the admin needs to be told exactly that.
+      console.error("VesselFinder settings save error:", error?.message);
+      res
+        .status(400)
+        .json({ message: error?.message || "Failed to save VesselFinder settings" });
     }
   },
 );

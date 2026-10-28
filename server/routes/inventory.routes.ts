@@ -34,7 +34,7 @@ inventoryRoutes.get("/api/inventory", requireAuth, async (req, res) => {
 inventoryRoutes.post(
   "/api/inventory",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const { initialQuantity, unitPrice, ...itemData } =
@@ -64,7 +64,7 @@ inventoryRoutes.post(
 inventoryRoutes.put(
   "/api/inventory/:id",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);

@@ -122,6 +122,13 @@ export const CURRENCIES: Record<string, Currency> = {
     decimals: 2,
     rateToAED: 0.51, // 1 CNY = 0.51 AED
   },
+  SGD: {
+    code: 'SGD',
+    name: 'Singapore Dollar',
+    symbol: 'S$',
+    decimals: 2,
+    rateToAED: 2.85, // 1 SGD = 2.85 AED
+  },
 };
 
 export const DEFAULT_CURRENCY = 'AED';
