@@ -128,6 +128,11 @@ employeesRoutes.post(
       ) {
         return res.status(400).json({ message: "Employee code is required" });
       }
+      if (employeeData.category === "permanent" && !employeeData.hireDate) {
+        return res
+          .status(400)
+          .json({ message: "Hire date is required for permanent employees" });
+      }
 
       employeeData.employeeCode = employeeData.employeeCode.trim();
 
@@ -248,6 +253,12 @@ employeesRoutes.patch(
     try {
       const id = Number(req.params.id);
       const raw = { ...req.body };
+
+      if (raw.category === "permanent" && !raw.hireDate) {
+        return res
+          .status(400)
+          .json({ message: "Hire date is required for permanent employees" });
+      }
 
       // First parse/coerce with Zod (this converts strings to Date for date fields)
       const parsed = updateEmployeeSchema.parse(raw);

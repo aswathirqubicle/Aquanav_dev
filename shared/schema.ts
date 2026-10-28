@@ -126,6 +126,7 @@ export const employees = pgTable("employees", {
   contractSalary: decimal("contract_salary", { precision: 10, scale: 2 }),
   hireDate: timestamp("hire_date"),
   isActive: boolean("is_active").notNull().default(true),
+  pfApplicable: boolean("pf_applicable").notNull().default(true),
   userId: integer("user_id").references(() => users.id),
 
   // Personal Particulars
