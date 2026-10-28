@@ -1012,10 +1012,29 @@ export default function PurchaseOrdersIndex() {
     }
   };
 
-  const openConvertDialog = (order?: PurchaseOrder) => {
-    const target = order || viewingOrder;
+  // A list row carries no items (the list query leaves them off), so when the
+  // row's Convert button passes one in, load the full order by id first. The
+  // view dialog's Convert already holds the full order from viewOrder.
+  const openConvertDialog = async (order?: PurchaseOrder) => {
+    let target = order || viewingOrder;
     if (!target) return;
-    if (order) setViewingOrder(order);
+    if (order) {
+      try {
+        const response = await apiRequest(`/api/purchase-orders/${order.id}`, { method: "GET" });
+        if (!response.ok) {
+          throw new Error("Failed to load purchase order details");
+        }
+        target = await response.json() as PurchaseOrder;
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load purchase order details",
+          variant: "destructive",
+        });
+        return;
+      }
+      setViewingOrder(target);
+    }
     setInvoiceData({
       invoiceDate: new Date().toISOString().split('T')[0],
       dueDate: target.expectedDeliveryDate ? target.expectedDeliveryDate.split('T')[0] : "",
