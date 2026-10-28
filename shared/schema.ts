@@ -8,6 +8,7 @@ import {
   varchar,
   decimal,
   json,
+  jsonb,
   numeric,
   date,
 } from "drizzle-orm/pg-core";
@@ -245,6 +246,8 @@ export const projects = pgTable("projects", {
   workRemainingDays: json("work_remaining_days")
     .$type<{ location: string; days: string }[]>()
     .default([]),
+  vesselLocationData: jsonb("vessel_location_data"),
+  vesselLocationFetchedAt: timestamp("vessel_location_fetched_at"),
 });
 
 // Locations
@@ -1348,6 +1351,15 @@ export const emailSettings = pgTable("email_settings", {
   updatedById: integer("updated_by_id").references(() => users.id),
 });
 
+// The VesselFinder API key. One row. apiKeyEncrypted holds CIPHERTEXT, like
+// emailSettings.clientSecretEncrypted. See server/lib/secret-box.ts.
+export const vesselFinderSettings = pgTable("vessel_finder_settings", {
+  id: serial("id").primaryKey(),
+  apiKeyEncrypted: text("api_key_encrypted"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  updatedById: integer("updated_by_id").references(() => users.id),
+});
+
 // What makes sending idempotent. A reminder fires once per (notification,
 // milestone) and never again — a restart, a job running twice, or two app
 // instances sharing this database cannot re-send it. The unique index in
@@ -1580,7 +1592,12 @@ export const insertLocationSchema = createInsertSchema(locations).omit({
 });
 
 export const insertProjectSchema = createInsertSchema(projects)
-  .omit({ id: true, actualCost: true })
+  .omit({
+    id: true,
+    actualCost: true,
+    vesselLocationData: true,
+    vesselLocationFetchedAt: true,
+  })
   .extend({
     description: z.string().optional(),
     vesselName: z.string().optional(),

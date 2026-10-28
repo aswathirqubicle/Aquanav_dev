@@ -177,6 +177,8 @@ export class ProjectAssetStorage extends InventoryStorage {
           dewPointTemperature: projects.dewPointTemperature,
           dewPointSurfaceDiff: projects.dewPointSurfaceDiff,
           workRemainingDays: projects.workRemainingDays,
+          vesselLocationData: projects.vesselLocationData,
+          vesselLocationFetchedAt: projects.vesselLocationFetchedAt,
         })
         .from(projects)
         .leftJoin(customers, eq(projects.customerId, customers.id))
