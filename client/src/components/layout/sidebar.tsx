@@ -184,19 +184,19 @@ const navigation: NavItem[] = [
     title: "Goods Receipt",
     href: "/inventory/goods-receipt",
     icon: ArrowDownLeft,
-    roles: ["admin", "finance"],
+    roles: ["admin", "finance", "project_manager"],
   },
   {
     title: "Goods Issue",
     href: "/inventory/goods-issue",
     icon: ArrowUpRight,
-    roles: ["admin", "finance"],
+    roles: ["admin", "finance", "project_manager"],
   },
   {
     title: "Inventory",
     href: "/inventory",
     icon: Package,
-    roles: ["admin", "finance"],
+    roles: ["admin", "finance", "project_manager"],
   },
 
   {
