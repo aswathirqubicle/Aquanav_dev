@@ -435,6 +435,12 @@ function VesselLocationTracker({ projectId, vesselName, canRequestSatellite }: V
 
       const data = await response.json();
       setVesselData(data);
+      if (satellite && data.source !== "Satellite") {
+        toast({
+          title: "No new satellite position",
+          description: `Satellite has no position newer than the last ${(data.source || "known").toLowerCase()} one${data.timestamp ? `, reported ${new Date(data.timestamp).toLocaleString()}` : ""}.`,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch vessel location');
     } finally {
