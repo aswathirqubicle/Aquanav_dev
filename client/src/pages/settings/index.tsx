@@ -181,6 +181,50 @@ export default function SettingsIndex() {
     }
   };
 
+  // ---- VesselFinder API key ----
+  // Same shape as the email secret: never returned by the server, blank keeps
+  // the stored one.
+  const [vesselFinderKey, setVesselFinderKey] = useState("");
+  const [vesselFinderStatus, setVesselFinderStatus] = useState<any>(null);
+  const [isSavingVesselFinder, setIsSavingVesselFinder] = useState(false);
+
+  const loadVesselFinderSettings = async () => {
+    try {
+      const response = await apiRequest("/api/system/vessel-finder-settings");
+      const data = await response.json();
+      setVesselFinderStatus(data);
+      setVesselFinderKey("");
+    } catch {
+      // Non-admins never see this tab; a failure here should not break Settings.
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) loadVesselFinderSettings();
+  }, [isAdmin]);
+
+  const handleSaveVesselFinder = async () => {
+    setIsSavingVesselFinder(true);
+    try {
+      const response = await apiRequest("/api/system/vessel-finder-settings", {
+        method: "PUT",
+        body: { apiKey: vesselFinderKey },
+      });
+      const data = await response.json();
+      setVesselFinderStatus(data);
+      setVesselFinderKey("");
+      toast({ title: "Saved", description: "VesselFinder settings updated." });
+    } catch (error: any) {
+      toast({
+        title: "Could not save",
+        description: error.message || "Failed to save VesselFinder settings.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingVesselFinder(false);
+    }
+  };
+
   const handleSendTest = async () => {
     setIsSendingTest(true);
     try {
@@ -1887,6 +1931,64 @@ export default function SettingsIndex() {
                       </div>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {isAdmin && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Vessel tracking (VesselFinder)</CardTitle>
+                  <CardDescription>
+                    The account key used for the Live Location tab on projects.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {vesselFinderStatus && !vesselFinderStatus.encryptionConfigured && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
+                      <p className="font-medium text-amber-900 dark:text-amber-200">
+                        EMAIL_ENCRYPTION_KEY is not set on the server
+                      </p>
+                      <p className="text-amber-800 dark:text-amber-300 mt-1">
+                        The API key is encrypted before it is stored, so it
+                        cannot be saved until that key exists in the server
+                        environment.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="vesselFinderApiKey">
+                      API key
+                      {vesselFinderStatus?.hasApiKey && (
+                        <Badge variant="secondary" className="ml-2 text-xs">stored</Badge>
+                      )}
+                    </Label>
+                    <Input
+                      id="vesselFinderApiKey"
+                      type="password"
+                      value={vesselFinderKey}
+                      onChange={(e) => setVesselFinderKey(e.target.value)}
+                      placeholder={
+                        vesselFinderStatus?.hasApiKey
+                          ? "Leave blank to keep the stored key"
+                          : "Paste your VesselFinder API key"
+                      }
+                      data-testid="input-vessel-finder-api-key"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Encrypted before it is stored and never sent back to this
+                      page. Leave blank to keep the existing one.
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={handleSaveVesselFinder}
+                    disabled={isSavingVesselFinder}
+                    data-testid="button-save-vessel-finder-settings"
+                  >
+                    {isSavingVesselFinder ? "Saving..." : "Save"}
+                  </Button>
                 </CardContent>
               </Card>
             )}

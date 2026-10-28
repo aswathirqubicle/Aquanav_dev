@@ -48,6 +48,7 @@ import {
   ChevronUp,
   Image,
   X,
+  Satellite,
 } from "lucide-react";
 import { Project, DailyActivity, Employee, insertDailyActivitySchema, ProjectPhotoGroup, ProjectPhoto, GENERAL_PHOTO_LOCATION } from "@shared/schema";
 import { Autocomplete } from "@/components/ui/autocomplete";
@@ -369,8 +370,9 @@ function ExpenseDetailsDialog({
 
 // Vessel Location Tracker Component
 interface VesselLocationTrackerProps {
-  imoNumber: string;
+  projectId: number;
   vesselName: string;
+  canRequestSatellite?: boolean;
 }
 
 interface VesselData {
@@ -385,31 +387,54 @@ interface VesselData {
   destination: string;
   eta: string;
   status: string;
+  source?: string;
+  fetchedVia?: string;
+  fetchedAt: string;
 }
 
-function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerProps) {
+function VesselLocationTracker({ projectId, vesselName, canRequestSatellite }: VesselLocationTrackerProps) {
+  const { toast } = useToast();
   const [vesselData, setVesselData] = useState<VesselData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
-  const fetchVesselLocation = async () => {
+  const fetchVesselLocation = async (satellite?: boolean) => {
     setLoading(true);
     setError(null);
+    setErrorCode(null);
 
     try {
       // Using VesselFinder API through our backend to avoid CORS issues
-      const response = await fetch(`/api/vessel-location/${imoNumber}`, {
+      const response = await fetch(`/api/projects/${projectId}/vessel-location${satellite ? "?source=satellite" : ""}`, {
         credentials: "include",
       });
 
       if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        if (satellite && response.status === 403) {
+          // Keep the data already on screen
+          toast({
+            title: "Error",
+            description: body?.message || "Access denied",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (
+          body &&
+          ["IMO_MISSING", "IMO_INVALID", "VESSEL_NOT_FOUND"].includes(body.code)
+        ) {
+          setVesselData(null);
+          setErrorCode(body.code);
+          setError(body.message);
+          return;
+        }
         throw new Error(`Failed to fetch vessel location: ${response.statusText}`);
       }
 
       const data = await response.json();
       setVesselData(data);
-      setLastUpdated(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch vessel location');
     } finally {
@@ -418,11 +443,9 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
   };
 
   useEffect(() => {
+    // The server caches for 4 hours, so fetch only on opening the tab and on Refresh
     fetchVesselLocation();
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(fetchVesselLocation, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [imoNumber]);
+  }, [projectId]);
 
   const formatSpeed = (speed: number) => `${speed.toFixed(1)} knots`;
   const formatCourse = (course: number) => `${Math.round(course)}°`;
@@ -438,13 +461,22 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
     );
   }
 
+  if (errorCode && !vesselData) {
+    return (
+      <div className="text-center py-8">
+        <MapPin className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+        <p className="text-slate-500 dark:text-slate-400">{error}</p>
+      </div>
+    );
+  }
+
   if (error && !vesselData) {
     return (
       <div className="text-center py-8">
         <MapPin className="h-12 w-12 text-red-300 mx-auto mb-4" />
         <p className="text-red-600 dark:text-red-400 mb-2">Failed to load vessel location</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{error}</p>
-        <Button onClick={fetchVesselLocation} size="sm" variant="outline">
+        <Button onClick={() => fetchVesselLocation()} size="sm" variant="outline">
           Retry
         </Button>
       </div>
@@ -456,7 +488,7 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
       <div className="text-center py-8">
         <MapPin className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
         <p className="text-slate-500 dark:text-slate-400">No vessel data available</p>
-        <Button onClick={fetchVesselLocation} size="sm" variant="outline" className="mt-4">
+        <Button onClick={() => fetchVesselLocation()} size="sm" variant="outline" className="mt-4">
           Fetch Location
         </Button>
       </div>
@@ -468,12 +500,41 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
       {/* Refresh Controls */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-slate-600 dark:text-slate-400">
-          {lastUpdated && (
-            <span>Last updated: {lastUpdated.toLocaleString()}</span>
+          {vesselData.fetchedAt && (
+            <div>Last updated: {new Date(vesselData.fetchedAt).toLocaleString()}</div>
           )}
+          {vesselData.timestamp && (
+            <div>Position reported: {new Date(vesselData.timestamp).toLocaleString()}</div>
+          )}
+          {vesselData.source && <div>Source: {vesselData.source}</div>}
         </div>
+        <div className="flex items-center gap-2">
+        {canRequestSatellite && (
+          <Button
+            onClick={() => {
+              if (!confirm("Satellite positions cost 10 VesselFinder credits (1 if no newer satellite position exists). Continue?")) return;
+              fetchVesselLocation(true);
+            }}
+            disabled={
+              loading ||
+              ((vesselData.fetchedVia ?? vesselData.source) === "Satellite" &&
+                Date.now() - new Date(vesselData.fetchedAt).getTime() < 4 * 60 * 60 * 1000)
+            }
+            title={
+              (vesselData.fetchedVia ?? vesselData.source) === "Satellite" &&
+              Date.now() - new Date(vesselData.fetchedAt).getTime() < 4 * 60 * 60 * 1000
+                ? "Satellite data is less than 4 hours old"
+                : undefined
+            }
+            size="sm"
+            variant="outline"
+          >
+            <Satellite className="h-4 w-4 mr-2" />
+            Satellite update
+          </Button>
+        )}
         <Button
-          onClick={fetchVesselLocation}
+          onClick={() => fetchVesselLocation()}
           disabled={loading}
           size="sm"
           variant="outline"
@@ -490,6 +551,7 @@ function VesselLocationTracker({ imoNumber, vesselName }: VesselLocationTrackerP
             </>
           )}
         </Button>
+        </div>
       </div>
 
       {/* Vessel Info Cards */}
@@ -6154,7 +6216,7 @@ export default function ProjectDetail() {
                   </p>
                 </div>
               ) : (
-                <VesselLocationTracker imoNumber={project.vesselImoNumber} vesselName={project.vesselName || 'Unknown Vessel'} />
+                <VesselLocationTracker projectId={project.id} vesselName={project.vesselName || 'Unknown Vessel'} canRequestSatellite={user?.role === "admin" || user?.role === "project_manager"} />
               )}
             </CardContent>
           </Card>

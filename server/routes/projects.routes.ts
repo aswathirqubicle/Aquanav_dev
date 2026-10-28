@@ -28,6 +28,7 @@ import {
 } from "@shared/schema";
 import { parseProjectDataFromFormData } from "../lib/parse-project-form";
 import { storage } from "../storage";
+import { getVesselFinderApiKey } from "../lib/vessel-finder-settings";
 import { upload } from "../middleware/upload";
 
 export const projectsRoutes = Router();
@@ -171,6 +172,199 @@ projectsRoutes.get(
     } catch (error) {
       console.error("Completion report photos error:", error);
       res.status(500).json({ message: "Failed to fetch photo groups" });
+    }
+  },
+);
+
+// ─── Live vessel location (VesselFinder, cached on the project) ─────────────
+const VESSEL_LOCATION_CACHE_MS = 4 * 60 * 60 * 1000;
+
+const AIS_NAV_STATUS: Record<number, string> = {
+  0: "Under way using engine",
+  1: "At anchor",
+  2: "Not under command",
+  3: "Restricted manoeuvrability",
+  4: "Constrained by her draught",
+  5: "Moored",
+  6: "Aground",
+  7: "Engaged in fishing",
+  8: "Under way sailing",
+  9: "Reserved",
+  10: "Reserved",
+  11: "Reserved",
+  12: "Reserved",
+  13: "Reserved",
+  14: "AIS-SART active",
+  15: "Not defined",
+};
+
+// IMO numbers are 7 digits; the last is a check digit over the first six
+// weighted 7,6,5,4,3,2.
+const isValidImo = (imo: string) => {
+  if (!/^\d{7}$/.test(imo)) return false;
+  const weights = [7, 6, 5, 4, 3, 2];
+  const sum = weights.reduce((acc, w, i) => acc + w * Number(imo[i]), 0);
+  return sum % 10 === Number(imo[6]);
+};
+
+// VesselFinder sends "YYYY-MM-DD HH:MM:SS[ UTC]"; returns an ISO string or "".
+const vesselTimeToIso = (value: unknown) => {
+  if (typeof value !== "string") return "";
+  const match = value
+    .trim()
+    .match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)(?:\s*UTC)?$/);
+  if (!match) return "";
+  const date = new Date(`${match[1]}T${match[2]}${match[2].length === 5 ? ":00" : ""}Z`);
+  return isNaN(date.getTime()) ? "" : date.toISOString();
+};
+
+projectsRoutes.get(
+  "/api/projects/:id/vessel-location",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      if (isNaN(projectId))
+        return res.status(400).json({ message: "Invalid project ID" });
+      const userRole = req.session.userRole || "";
+      const userId = req.session.userId!;
+      const hasAccess = await checkProjectAccess(projectId, userId, userRole);
+      if (!hasAccess)
+        return res.status(403).json({ message: "Access denied" });
+
+      const project = await storage.getProject(projectId);
+      if (!project)
+        return res.status(404).json({ message: "Project not found" });
+
+      const imo = (project.vesselImoNumber || "").trim();
+      if (!imo) {
+        return res.status(400).json({
+          code: "IMO_MISSING",
+          message: "This project has no vessel IMO number.",
+        });
+      }
+      if (!isValidImo(imo)) {
+        return res.status(400).json({
+          code: "IMO_INVALID",
+          message: `"${imo}" is not a valid IMO number. An IMO number is 7 digits, the last being a check digit.`,
+        });
+      }
+
+      const wantsSatellite = req.query.source === "satellite";
+      if (wantsSatellite && userRole !== "admin" && userRole !== "project_manager") {
+        return res.status(403).json({
+          message: "Only admins and project managers can request satellite positions",
+        });
+      }
+
+      // Serve the stored position if it is for this IMO and under four hours old.
+      // A satellite request only accepts a cached satellite position.
+      const cached = project.vesselLocationData as any;
+      const cachedAt = project.vesselLocationFetchedAt;
+      if (
+        cached &&
+        cachedAt &&
+        String(cached.imo) === imo &&
+        Date.now() - new Date(cachedAt).getTime() < VESSEL_LOCATION_CACHE_MS &&
+        (!wantsSatellite || (cached.fetchedVia ?? cached.source) === "Satellite")
+      ) {
+        return res.json({
+          ...cached,
+          fetchedAt: new Date(cachedAt).toISOString(),
+        });
+      }
+
+      const vesselFinderApiKey = await getVesselFinderApiKey();
+
+      if (!vesselFinderApiKey) {
+        // Return mock data for development (never cached)
+        return res.json({
+          imo: imo,
+          name: "Sample Vessel",
+          lat: 25.276987,
+          lon: 55.296249, // Dubai coordinates as example
+          course: 45,
+          speed: 12.5,
+          heading: 42,
+          timestamp: new Date().toISOString(),
+          destination: "DUBAI",
+          eta: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          status: "Under way using engine",
+          source: "Terrestrial",
+          fetchedVia: "Terrestrial",
+          fetchedAt: new Date().toISOString(),
+        });
+      }
+
+      // sat=0: terrestrial AIS only (1 credit); sat=1 may return a satellite position (10 credits)
+      const vesselFinderUrl = `https://api.vesselfinder.com/vessels?userkey=${vesselFinderApiKey}&imo=${encodeURIComponent(imo)}&format=json&sat=${wantsSatellite ? 1 : 0}`;
+
+      const apiResponse = await fetch(vesselFinderUrl);
+
+      if (!apiResponse.ok) {
+        throw new Error(`VesselFinder API error: ${apiResponse.statusText}`);
+      }
+
+      const apiData = await apiResponse.json();
+
+      if (!Array.isArray(apiData)) {
+        throw new Error("VesselFinder API returned an unexpected response");
+      }
+
+      const ais = apiData[0]?.AIS;
+      if (!ais) {
+        return res.status(404).json({
+          code: "VESSEL_NOT_FOUND",
+          message: `No position was found for IMO ${imo}. The vessel may not be reporting on terrestrial AIS.`,
+        });
+      }
+
+      const mapped = {
+        imo: String(ais.IMO || imo),
+        name: ais.NAME || "Unknown",
+        lat: parseFloat(ais.LATITUDE) || 0,
+        lon: parseFloat(ais.LONGITUDE) || 0,
+        course: parseFloat(ais.COURSE) || 0,
+        speed: parseFloat(ais.SPEED) || 0,
+        heading: parseFloat(ais.HEADING) || 0,
+        timestamp: vesselTimeToIso(ais.TIMESTAMP),
+        destination: ais.DESTINATION || "",
+        eta: vesselTimeToIso(ais.ETA),
+        status: AIS_NAV_STATUS[Number(ais.NAVSTAT)] ?? "Unknown",
+        source:
+          ais.SRC === "SAT"
+            ? "Satellite"
+            : ais.SRC === "TER"
+              ? "Terrestrial"
+              : "Unknown",
+      };
+
+      // Keep a saved satellite position when the new reply is older than it
+      const { fetchedAt: _oldFetchedAt, ...cachedPosition } = cached || {};
+      const keepCached =
+        cached &&
+        String(cached.imo) === imo &&
+        cached.source === "Satellite" &&
+        cached.timestamp &&
+        (!mapped.timestamp ||
+          new Date(mapped.timestamp) < new Date(cached.timestamp));
+      const vesselData = keepCached
+        ? { ...cachedPosition, fetchedVia: mapped.source }
+        : { ...mapped, fetchedVia: mapped.source };
+
+      const fetchedAt = new Date();
+      await storage.updateProject(projectId, {
+        vesselLocationData: vesselData,
+        vesselLocationFetchedAt: fetchedAt,
+      });
+
+      res.json({ ...vesselData, fetchedAt: fetchedAt.toISOString() });
+    } catch (error) {
+      console.error("Vessel location fetch error:", error);
+      res.status(500).json({
+        message: "Failed to fetch vessel location",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   },
 );
