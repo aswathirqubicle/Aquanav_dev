@@ -639,7 +639,7 @@ export default function SettingsIndex() {
   };
 
 
-  const SUPPORTED_CURRENCIES = ["AED", "USD", "EUR", "GBP", "SAR", "INR", "PKR", "PHP", "BDT", "NPR", "LKR", "EGP", "JOD", "KWD", "BHD", "OMR", "QAR"];
+  const SUPPORTED_CURRENCIES = ["AED", "USD", "EUR", "GBP", "SAR", "INR", "PKR", "PHP", "BDT", "NPR", "LKR", "EGP", "JOD", "KWD", "BHD", "OMR", "QAR", "SGD"];
 
   const { data: exchangeRatesData = [], isLoading: isLoadingRates } = useQuery<ExchangeRate[]>({
     queryKey: ["/api/exchange-rates"],

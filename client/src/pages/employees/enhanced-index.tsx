@@ -434,15 +434,13 @@ export default function EmployeesIndex() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Salary and contract salary are for admins only. Project managers reach this
-  // page for everything else about an employee, but not pay. Admin and project
-  // manager are the only roles that get past the guard below, so admin-only is
-  // the whole rule.
+  // Salary and contract salary are for admins and project managers. Those are
+  // the only roles that get past the guard below, so today every user on this
+  // page sees pay; the flag stays so a role added to the guard later does not
+  // get salary by accident.
   //
-  // The values still arrive with the employee record and stay in formData, so a
-  // project manager editing an employee saves them back untouched rather than
-  // blanking them. This hides the fields; it does not restrict the API.
-  const canSeeSalary = user?.role === "admin";
+  // This hides the fields; it does not restrict the API.
+  const canSeeSalary = user?.role === "admin" || user?.role === "project_manager";
 
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
