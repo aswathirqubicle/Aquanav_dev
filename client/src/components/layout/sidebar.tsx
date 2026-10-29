@@ -221,7 +221,7 @@ const navigation: NavItem[] = [
     title: "Suppliers",
     href: "/suppliers",
     icon: Users,
-    roles: ["admin", "finance"],
+    roles: ["admin", "finance", "project_manager"],
   },
   {
     title: "General Ledger",

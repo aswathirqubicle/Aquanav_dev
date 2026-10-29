@@ -55,7 +55,7 @@ suppliersRoutes.get("/api/suppliers/stats", requireAuth, async (req, res) => {
 suppliersRoutes.post(
   "/api/suppliers",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const supplierData = insertSupplierSchema.parse(req.body);
@@ -76,7 +76,7 @@ suppliersRoutes.post(
 suppliersRoutes.put(
   "/api/suppliers/:id",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -118,7 +118,7 @@ suppliersRoutes.put(
 suppliersRoutes.delete(
   "/api/suppliers/:id",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -189,7 +189,7 @@ suppliersRoutes.get("/api/suppliers/:id/products", async (req, res) => {
 suppliersRoutes.put(
   "/api/suppliers/:id/archive",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -209,7 +209,7 @@ suppliersRoutes.put(
 suppliersRoutes.put(
   "/api/suppliers/:id/unarchive",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -244,7 +244,7 @@ suppliersRoutes.get("/api/suppliers/:id/documents", requireAuth, async (req, res
 suppliersRoutes.post(
   "/api/suppliers/:id/documents",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -290,7 +290,7 @@ suppliersRoutes.post(
 suppliersRoutes.put(
   "/api/suppliers/:supplierId/documents/:documentId",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -336,7 +336,7 @@ suppliersRoutes.put(
 suppliersRoutes.delete(
   "/api/suppliers/:supplierId/documents/:documentId",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const documentId = parseInt(req.params.documentId);
