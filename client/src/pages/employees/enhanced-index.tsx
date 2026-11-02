@@ -469,6 +469,7 @@ export default function EmployeesIndex() {
     contractSalary: null,
     hireDate: null,
     salary: null,
+    pfApplicable: true,
     isActive: true,
     dateOfBirth: null,
     height: null,
@@ -755,6 +756,14 @@ export default function EmployeesIndex() {
   // Two employees sharing an email address is allowed, but it is usually a
   // mistake, so warn and let the admin decide instead of blocking the save.
   const handleCreateEmployee = () => {
+    if (formData.category === "permanent" && !formData.hireDate) {
+      toast({
+        title: "Validation Error",
+        description: "Hire date is required for permanent employees",
+        variant: "destructive",
+      });
+      return;
+    }
     const email = formData.email?.trim();
     if (email) {
       const clash = employees?.find(
@@ -1219,6 +1228,7 @@ export default function EmployeesIndex() {
       contractSalary: null,
       hireDate: null,
       salary: null,
+      pfApplicable: true,
       isActive: true,
       dateOfBirth: null,
       height: null,
@@ -1258,6 +1268,7 @@ export default function EmployeesIndex() {
       contractSalary: employee.contractSalary,
       hireDate: employee.hireDate ? new Date(employee.hireDate).toISOString().split('T')[0] : null,
       salary: employee.salary,
+      pfApplicable: employee.pfApplicable ?? true,
       isActive: employee.isActive,
       dateOfBirth: employee.dateOfBirth ? new Date(employee.dateOfBirth).toISOString().split('T')[0] : null,
       height: employee.height,
@@ -1444,7 +1455,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="hireDate">Hire Date</Label>
+                    <Label htmlFor="hireDate">Hire Date{formData.category === "permanent" ? " *" : ""}</Label>
                     <Input
                       id="hireDate"
                       type="date"
@@ -1463,6 +1474,16 @@ export default function EmployeesIndex() {
                         onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
                       />
                       <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
+                    </div>
+                  )}
+                  {canSeeSalary && (
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="pfApplicable"
+                        checked={formData.pfApplicable ?? true}
+                        onCheckedChange={(checked) => setFormData(prev => ({ ...prev, pfApplicable: checked }))}
+                      />
+                      <Label htmlFor="pfApplicable">PF applicable</Label>
                     </div>
                   )}
                   <div>
@@ -1734,7 +1755,7 @@ export default function EmployeesIndex() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="editHireDate">Hire Date</Label>
+                    <Label htmlFor="editHireDate">Hire Date{formData.category === "permanent" ? " *" : ""}</Label>
                     <Input
                       id="editHireDate"
                       type="date"
@@ -1753,6 +1774,16 @@ export default function EmployeesIndex() {
                         onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value || null }))}
                       />
                       <p className="text-xs text-muted-foreground mt-1">This salary will be used for Payroll</p>
+                    </div>
+                  )}
+                  {canSeeSalary && (
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="editpfApplicable"
+                        checked={formData.pfApplicable ?? true}
+                        onCheckedChange={(checked) => setFormData(prev => ({ ...prev, pfApplicable: checked }))}
+                      />
+                      <Label htmlFor="editpfApplicable">PF applicable</Label>
                     </div>
                   )}
                   <div>
@@ -1926,7 +1957,17 @@ export default function EmployeesIndex() {
                 Cancel
               </Button>
               <Button
-                onClick={() => updateEmployeeMutation.mutate({ id: editingEmployee!.id, data: formData })}
+                onClick={() => {
+                  if (formData.category === "permanent" && !formData.hireDate) {
+                    toast({
+                      title: "Validation Error",
+                      description: "Hire date is required for permanent employees",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  updateEmployeeMutation.mutate({ id: editingEmployee!.id, data: formData });
+                }}
                 disabled={updateEmployeeMutation.isPending || !editingEmployee}
               >
                 {updateEmployeeMutation.isPending ? "Updating..." : "Update Employee"}
@@ -2166,6 +2207,10 @@ export default function EmployeesIndex() {
                           <div>
                             <Label className="text-sm font-medium text-gray-600">Salary (AED)</Label>
                             <p className="font-semibold">{selectedEmployee.salary ? `${parseFloat(selectedEmployee.salary).toLocaleString()} AED` : "Not specified"}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">PF applicable</Label>
+                            <p className="font-semibold">{selectedEmployee.pfApplicable === false ? "No" : "Yes"}</p>
                           </div>
                           <div>
                             <Label className="text-sm font-medium text-gray-600">Contract Salary</Label>

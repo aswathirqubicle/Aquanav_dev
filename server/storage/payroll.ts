@@ -172,10 +172,12 @@ export class PayrollStorage extends PurchaseStorage {
           employeeCode: employees.employeeCode,
           category: employees.category,
           salary: employees.salary,
+          hireDate: employees.hireDate,
           grade: employees.grade,
           contractCurrency: employees.contractCurrency,
           contractSalary: employees.contractSalary,
           isActive: employees.isActive,
+          pfApplicable: employees.pfApplicable,
         })
         .from(employees)
         .where(eq(employees.isActive, true));
@@ -242,8 +244,9 @@ export class PayrollStorage extends PurchaseStorage {
         let basicSalary = "0";
         let consultantFee = 0;
         // Feeds payroll_entries.working_days. Despite the column name this now
-        // holds CALENDAR days, for both permanent staff (whole month) and
-        // consultants (days assigned) — payroll pro-rates on calendar days.
+        // holds CALENDAR days, for both permanent staff (whole month, or days
+        // from the hire date in the hire month) and consultants (days
+        // assigned) — payroll pro-rates on calendar days.
         // The column and the payslip's "Working Days" label are left alone
         // here; renaming them is a migration plus a UI change.
         let workingDays = this.getCalendarDaysInMonth(month, year);
@@ -255,7 +258,39 @@ export class PayrollStorage extends PurchaseStorage {
         }> = [];
 
         if (employee.category === "permanent") {
-          basicSalary = parseFloat(salaryToUse || "0").toFixed(2);
+          // Permanent staff are paid from their hire date. A full month (hired
+          // on or before the 1st) pays exactly the monthly salary; a partial
+          // month pays salary / 30 per calendar day from the hire date to the
+          // month end, inclusive. No hire date, or a hire date after the month,
+          // means no entry.
+          if (!employee.hireDate) {
+            console.log(
+              `Skipping payroll for ${logFirstName} ${logLastName} (${employee.category}) — no hire date recorded`,
+            );
+            continue;
+          }
+          const hire = new Date(employee.hireDate);
+          const hireDay = new Date(
+            hire.getFullYear(),
+            hire.getMonth(),
+            hire.getDate(),
+          );
+          const monthEnd = new Date(year, month, 0);
+          if (hireDay > monthEnd) {
+            console.log(
+              `Skipping payroll for ${logFirstName} ${logLastName} (${employee.category}) — hired after ${this.getMonthName(month)} ${year}`,
+            );
+            continue;
+          }
+          const daysInMonth = this.getCalendarDaysInMonth(month, year);
+          const paidDays = this.calculateCalendarDays(hireDay, monthEnd);
+          const monthlySalary = parseFloat(salaryToUse || "0");
+          if (paidDays >= daysInMonth) {
+            basicSalary = monthlySalary.toFixed(2);
+          } else {
+            basicSalary = ((monthlySalary / 30) * paidDays).toFixed(2);
+            workingDays = paidDays;
+          }
         } else if (
           employee.category === "consultant" ||
           employee.category === "contract"
@@ -289,10 +324,11 @@ export class PayrollStorage extends PurchaseStorage {
         // Manual additions and reimbursements do not exist yet at generation,
         // so the base here is basic + consultant project fees. It is recomputed
         // by updatePayrollEntryTotals when additions change (2.3).
-        const pfAmount = this.computePfAmount(
-          parseFloat(basicSalary),
-          consultantFee,
-        );
+        // Employees not marked PF applicable get no PF at all.
+        const pfAmount =
+          employee.pfApplicable === false
+            ? 0
+            : this.computePfAmount(parseFloat(basicSalary), consultantFee);
         const netAmount = calculatedTotalEarnings - pfAmount;
 
         // Create payroll entry
@@ -526,12 +562,21 @@ export class PayrollStorage extends PurchaseStorage {
     if (posts.accrual) {
       required.add("Salary Expense");
       required.add("Salary Payable");
-      required.add("Provident Fund Contribution");
       required.add("Employee Advances");
     }
     if (posts.payment) {
       required.add("Salary Payable");
       required.add("Cash/Bank");
+    }
+
+    // The PF account is needed only when this entry actually carries PF —
+    // employees who are not PF applicable have no PF row and post no PF credit.
+    if (posts.accrual) {
+      const entryDeductions = await this.getPayrollDeductions(entryId);
+      const entryPf = entryDeductions
+        .filter((d) => d.type === "provident_fund")
+        .reduce((sum, d) => sum + parseFloat(d.amount || "0"), 0);
+      if (entryPf > 0) required.add("Provident Fund Contribution");
     }
 
     const missing: string[] = [];
@@ -1110,7 +1155,9 @@ export class PayrollStorage extends PurchaseStorage {
   /**
    * Per-project earnings for a consultant/contract employee in a month, split by
    * the CALENDAR days each assignment overlaps the month (the same basis as the
-   * payslip). Contract assignments do not overlap, so their days sum cleanly to
+   * payslip), at salary / 30 per day; a full month, or assignments that cover
+   * the month exactly once between them, pay exactly the monthly salary.
+   * Contract assignments do not overlap, so their days sum cleanly to
    * at most the month; consultants may hold overlapping assignments and are paid
    * per project, so their days — and pay — can exceed a single month. Used at
    * generation AND when posting the accrual at approval, so the Salary Expense
@@ -1151,9 +1198,10 @@ export class PayrollStorage extends PurchaseStorage {
 
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
-    const dailyRate =
-      parseFloat(employee.salary || "0") /
-      this.getCalendarDaysInMonth(month, year);
+    const monthlySalary = parseFloat(employee.salary || "0");
+    const daysInMonth = this.getCalendarDaysInMonth(month, year);
+    // 30-day basis: daily rate is salary / 30 whatever the month length.
+    const dailyRate = monthlySalary / 30;
 
     for (const assignment of assignments) {
       if (!assignment.projectId) continue;
@@ -1169,11 +1217,19 @@ export class PayrollStorage extends PurchaseStorage {
       // Assignment dates are mandatory when a member is assigned, so in practice
       // neither branch below falls through. The month bounds remain only so a
       // legacy row written before that rule cannot zero someone's pay.
-      const pStart = assignment.assignmentStartDate
+      // Read as a calendar date at local midnight: the DB value is UTC midnight,
+      // which sits at 04:00 in Dubai and would trail a monthEnd on the same day.
+      const startRaw = assignment.assignmentStartDate
         ? new Date(assignment.assignmentStartDate)
-        : monthStart;
-      const pEnd = assignment.assignmentEndDate
+        : null;
+      const endRaw = assignment.assignmentEndDate
         ? new Date(assignment.assignmentEndDate)
+        : null;
+      const pStart = startRaw
+        ? new Date(startRaw.getFullYear(), startRaw.getMonth(), startRaw.getDate())
+        : monthStart;
+      const pEnd = endRaw
+        ? new Date(endRaw.getFullYear(), endRaw.getMonth(), endRaw.getDate())
         : monthEnd;
 
       const effectiveStart = pStart > monthStart ? pStart : monthStart;
@@ -1181,7 +1237,9 @@ export class PayrollStorage extends PurchaseStorage {
       if (effectiveStart > effectiveEnd) continue;
 
       const days = this.calculateCalendarDays(effectiveStart, effectiveEnd);
-      const earnings = dailyRate * days;
+      // An assignment covering the whole month pays exactly the monthly
+      // salary (31/30 or 28/30 of it would be wrong).
+      const earnings = days === daysInMonth ? monthlySalary : dailyRate * days;
       if (earnings > 0) {
         totalEarnings += earnings;
         totalWorkingDays += days;
@@ -1191,6 +1249,25 @@ export class PayrollStorage extends PurchaseStorage {
           earnings,
         });
       }
+    }
+
+    // Assignments that between them cover the month exactly once (e.g. a
+    // mid-month project switch) also pay exactly the monthly salary, re-split
+    // across the projects by their earned weights. Overlapping assignments
+    // (totalWorkingDays beyond the month) stay on the per-assignment rule.
+    if (
+      projectEarningsList.length > 1 &&
+      totalWorkingDays === daysInMonth &&
+      monthlySalary > 0
+    ) {
+      const split = this.splitAmountAcrossRows(
+        projectEarningsList.map((p) => p.earnings),
+        monthlySalary,
+      );
+      projectEarningsList.forEach((p, i) => {
+        p.earnings = split[i];
+      });
+      totalEarnings = monthlySalary;
     }
 
     return { projectEarningsList, totalEarnings, totalWorkingDays };
@@ -1215,18 +1292,19 @@ export class PayrollStorage extends PurchaseStorage {
 
       const basicSalary = parseFloat(payrollEntry[0].basicSalary || "0");
 
-      // Recompute Provident Fund before summing deductions (2.3). PF tracks the
-      // additions (a bonus raises it); it does not track deductions, so this is
-      // a no-op when only a deduction changed. The system-generated PF row is
-      // updated in place to the new figure so it flows into totalDeductions and
-      // net below; it is identified by type, and is not hand-editable (2.4).
-      const pfAmount = this.computePfAmount(
-        basicSalary,
-        this.pfEligibleAdditionsSum(additions),
-      );
-      const newPf = pfAmount.toFixed(2);
+      // Provident Fund. Whether an entry carries PF is decided once, at
+      // generation, from the employee's PF-applicable flag. Recalculation keeps
+      // an existing PF row in step with basic + project fees (a bonus raises
+      // it; a deduction does not change it) and never adds or removes one, so
+      // the flag takes effect from the next generation. The PF row is
+      // identified by type and is not hand-editable (2.4).
       const pfRow = deductions.find((d) => d.type === "provident_fund");
       if (pfRow) {
+        const pfAmount = this.computePfAmount(
+          basicSalary,
+          this.pfEligibleAdditionsSum(additions),
+        );
+        const newPf = pfAmount.toFixed(2);
         if (pfRow.amount !== newPf) {
           await db
             .update(payrollDeductions)
@@ -1234,20 +1312,6 @@ export class PayrollStorage extends PurchaseStorage {
             .where(eq(payrollDeductions.id, pfRow.id));
           pfRow.amount = newPf;
         }
-      } else if (pfAmount > 0) {
-        // No PF row yet — e.g. an entry generated with zero earnings that has
-        // since received an addition. Create it so PF stays consistent.
-        const [created] = await db
-          .insert(payrollDeductions)
-          .values({
-            payrollEntryId: payrollEntryId,
-            type: "provident_fund",
-            description: "Provident Fund Contribution",
-            amount: newPf,
-            note: "5% of PF base (basic + additions excluding reimbursements)",
-          })
-          .returning();
-        deductions.push(created);
       }
 
       const totalAdditions = additions.reduce(
