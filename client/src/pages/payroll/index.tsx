@@ -1928,12 +1928,33 @@ function GeneratePayslipButton({
       // Then update status to paid (this will also create double-entry accounting records on the server)
       await updatePayrollStatusMutation.mutateAsync(payrollEntry.id);
 
+      // Email the payslip PDF to the employee. A problem here is reported but
+      // never undoes the payment.
+      let emailStatus = "";
+      try {
+        const emailResponse = await apiRequest(
+          `/api/payroll/${payrollEntry.id}/email-payslip`,
+          { method: "POST" },
+        );
+        const emailResult = await emailResponse.json();
+        emailStatus = emailResult.sent
+          ? ` Payslip emailed to ${emailResult.toEmail}.`
+          : emailResult.reason === "no_email"
+            ? " Not emailed: the employee has no email address."
+            : emailResult.reason === "not_configured"
+              ? " Not emailed: email is not configured in Settings."
+              : " Not emailed: the email could not be sent (details in the Email Log).";
+      } catch (error) {
+        console.error("Error emailing payslip:", error);
+        emailStatus = " Not emailed: the email could not be sent.";
+      }
+
       // Close the dialog after successful completion
       setIsDialogOpen(false);
 
       toast({
         title: "Success",
-        description: "Payslip generated successfully and payroll entry marked as paid.",
+        description: `Payslip generated successfully and payroll entry marked as paid.${emailStatus}`,
       });
     } catch (error) {
       console.error("Error in payslip generation process:", error);
