@@ -40,6 +40,12 @@ export default function Dashboard() {
     enabled: isAuthenticated,
   });
 
+  // Only projects that can still have a week to report on. On Hold is kept
+  // because a project may have been paused partway through the week.
+  const activeProjects = (projects ?? []).filter(
+    (p) => p.status === "in_progress" || p.status === "on_hold",
+  );
+
   if (!isAuthenticated) return null;
 
   return (
@@ -80,7 +86,7 @@ export default function Dashboard() {
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects?.map((project) => (
+                  {activeProjects.map((project) => (
                     <SelectItem
                       key={project.id}
                       value={project.id.toString()}
