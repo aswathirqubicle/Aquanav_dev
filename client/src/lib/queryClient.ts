@@ -1,4 +1,4 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -54,7 +54,19 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
-export const queryClient = new QueryClient({
+/** Side menu approval badges; see server/routes/approvals.routes.ts. */
+export const PENDING_APPROVALS_KEY = ["/api/approvals/pending-counts"];
+
+export const queryClient: QueryClient = new QueryClient({
+  // Submitting, approving or rejecting anything can change what's waiting, and
+  // those mutations live on a dozen pages. Refreshing the badge counts after
+  // every successful mutation keeps them right without wiring each one; it is
+  // one small request.
+  mutationCache: new MutationCache({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PENDING_APPROVALS_KEY });
+    },
+  }),
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),

@@ -509,6 +509,52 @@ employeesRoutes.delete(
 );
 
 // Employee Documents routes
+
+// Admin and project managers manage anyone's documents. An employee may add
+// and edit documents on their own record only (deleting stays with admin/PM,
+// so expiry tracking can't silently lose a visa). Runs before multer so a
+// refused request never leaves uploaded files on disk.
+const DOCUMENT_MANAGERS = ["admin", "project_manager"];
+
+const allowOwnEmployeeRecord = async (req: any, res: any, next: any) => {
+  const role = req.session.userRole;
+  if (DOCUMENT_MANAGERS.includes(role)) return next();
+  if (role !== "employee") {
+    return res.status(403).json({ message: "Insufficient permissions" });
+  }
+  try {
+    const own = await storage.getEmployeeByUserId(req.session.userId!);
+    if (!own || own.id !== Number(req.params.id)) {
+      return res
+        .status(403)
+        .json({ message: "You can only add documents to your own record" });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Failed to check document access" });
+  }
+};
+
+const allowOwnEmployeeDocument = async (req: any, res: any, next: any) => {
+  const role = req.session.userRole;
+  if (DOCUMENT_MANAGERS.includes(role)) return next();
+  if (role !== "employee") {
+    return res.status(403).json({ message: "Insufficient permissions" });
+  }
+  try {
+    const own = await storage.getEmployeeByUserId(req.session.userId!);
+    const documentId = Number(req.params.id);
+    const ownDocuments = own ? await storage.getEmployeeDocuments(own.id) : [];
+    if (!ownDocuments.some((d: any) => d.id === documentId)) {
+      return res
+        .status(403)
+        .json({ message: "You can only edit your own documents" });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Failed to check document access" });
+  }
+};
 employeesRoutes.get("/api/employees/:id/documents", requireAuth, async (req, res) => {
   try {
     const employeeId = parseInt(req.params.id);
@@ -522,7 +568,7 @@ employeesRoutes.get("/api/employees/:id/documents", requireAuth, async (req, res
 employeesRoutes.post(
   "/api/employees/:id/documents",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  allowOwnEmployeeRecord,
   upload.array("files", 10),
   async (req, res) => {
     try {
@@ -560,12 +606,17 @@ employeesRoutes.post(
 employeesRoutes.put(
   "/api/employees/documents/:id",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  allowOwnEmployeeDocument,
   upload.array("files", 10),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const updateData = req.body;
+      // An employee edits a document in place; it can't be moved to someone
+      // else's record.
+      if (req.session.userRole === "employee") {
+        delete updateData.employeeId;
+      }
       if (req.files && Array.isArray(req.files) && req.files.length > 0) {
         var f = [];
         for (const file of req.files) {

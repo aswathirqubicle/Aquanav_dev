@@ -2472,6 +2472,9 @@ export default function ProjectDetail() {
   };
 
   const canEdit = user?.role === "admin" || user?.role === "project_manager";
+  // Employees can view their project but not generate reports or see any
+  // money figures (asset rates, consumable costs).
+  const isEmployee = user?.role === "employee";
 
   // Filter activities based on date range
   const filteredActivities = activities?.filter(activity => {
@@ -3693,6 +3696,7 @@ export default function ProjectDetail() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {!isEmployee && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -3702,6 +3706,7 @@ export default function ProjectDetail() {
                     <FileText className="h-4 w-4 mr-2" />
                     Completion Report
                   </Button>
+                  )}
                 {canEdit && (
                   <Dialog open={isActivityDialogOpen} onOpenChange={(isOpen) => {
                     setIsActivityDialogOpen(isOpen);
@@ -5583,7 +5588,7 @@ export default function ProjectDetail() {
                             )}
                           </div>
 
-                          {assignment.monthlyRate && (
+                          {!isEmployee && assignment.monthlyRate && (
                             <div className="text-sm text-slate-600 dark:text-slate-400 ml-7">
                               <span className="font-medium">Monthly Rate:</span> {assignment.currency || 'AED'} {parseFloat(assignment.monthlyRate).toFixed(2)}
                               {assignment.totalCost && (
@@ -5825,7 +5830,7 @@ export default function ProjectDetail() {
                                     </div>
                                     <div className="text-sm text-slate-600 dark:text-slate-400">
                                       Quantity: {item.quantity}{item.itemUnit ? ` ${item.itemUnit}` : ''}
-                                      {item.isManual && item.unitCost && parseFloat(item.unitCost) > 0 ? ` | Cost: AED ${item.unitCost}/unit` : ''}
+                                      {!isEmployee && item.isManual && item.unitCost && parseFloat(item.unitCost) > 0 ? ` | Cost: AED ${item.unitCost}/unit` : ''}
                                     </div>
                                   </div>
                                   <Button
@@ -6264,6 +6269,8 @@ export default function ProjectDetail() {
                 )}
 
                 {/* New Entries Section */}
+                {canEdit && (
+                <>
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium">Add New Entries</h3>
                   <div className="space-y-4">
@@ -6320,6 +6327,8 @@ export default function ProjectDetail() {
                     {saveWorkRemainingMutation.isPending ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
+                </>
+                )}
               </div>
             </CardContent>
           </Card>

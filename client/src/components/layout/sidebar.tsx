@@ -1,6 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
+import { PENDING_APPROVALS_KEY } from "@/lib/queryClient";
 import { hasPermission, roleDisplayNames } from "@/lib/auth";
 import {
   BarChart3,
@@ -66,6 +68,47 @@ interface NavItem {
   subItems?: NavItem[];
 }
 
+// Which menu entry each pending-approval count belongs to (the keys of
+// GET /api/approvals/pending-counts).
+type PendingCounts = {
+  purchaseRequests: number;
+  purchaseOrders: number;
+  purchaseInvoices: number;
+  salesQuotations: number;
+  salesInvoices: number;
+  reimbursements: number;
+};
+
+const PENDING_COUNT_BY_TITLE: Record<string, keyof PendingCounts> = {
+  "Purchase Requests": "purchaseRequests",
+  "Purchase Orders": "purchaseOrders",
+  "Purchase Invoices": "purchaseInvoices",
+  "Sales Quotations": "salesQuotations",
+  "Sales Invoices": "salesInvoices",
+  Reimbursements: "reimbursements",
+};
+
+// Only these roles approve anything; see server/routes/approvals.routes.ts.
+const APPROVER_ROLES = ["admin", "finance"];
+
+/** A count on a menu entry. */
+const CountBadge = ({ count }: { count: number }) => (
+  <span
+    className="ml-auto shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-semibold leading-5 text-center tabular-nums"
+    aria-label={`${count} waiting for your approval`}
+  >
+    {count > 99 ? "99+" : count}
+  </span>
+);
+
+/** A plain mark on a group heading whose sub-items have something waiting. */
+const PendingDot = () => (
+  <span
+    className="ml-auto h-2 w-2 rounded-full bg-red-500"
+    aria-label="Approvals waiting"
+  />
+);
+
 const navigation: NavItem[] = [
   {
     title: "Dashboard",
@@ -77,7 +120,15 @@ const navigation: NavItem[] = [
     title: "All Projects",
     href: "/projects",
     icon: Ship,
-    roles: ["admin", "project_manager", "finance", "employee"],
+    roles: ["admin", "project_manager", "finance"],
+  },
+  // Same page; the API already narrows it to the projects the employee is
+  // assigned to, so for them it is "theirs", not "all".
+  {
+    title: "My Projects",
+    href: "/projects",
+    icon: Ship,
+    roles: ["employee"],
   },
   {
     title: "Daily Report",
@@ -280,6 +331,7 @@ const sections = [
     items: [
       "Dashboard",
       "All Projects",
+      "My Projects",
       "Daily Report",
       "Consume Report",
     ],
@@ -315,6 +367,22 @@ export function Sidebar() {
   const { user } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
 
+  const isApprover = !!user?.role && APPROVER_ROLES.includes(user.role);
+  const { data: pendingCounts } = useQuery<PendingCounts>({
+    queryKey: PENDING_APPROVALS_KEY,
+    enabled: isApprover,
+    // Other users submit things too, so poll as well as refreshing after
+    // this user's own changes.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+
+  const pendingFor = (item: NavItem) => {
+    const key = PENDING_COUNT_BY_TITLE[item.title];
+    return key && pendingCounts ? pendingCounts[key] ?? 0 : 0;
+  };
+
   const filteredNavigation = navigation.filter(
     (item) => user?.role && hasPermission(user.role, item.roles),
   );
@@ -330,6 +398,12 @@ export function Sidebar() {
 
     // Handle items with submenus
     if (item.subItems) {
+      const groupHasPending = item.subItems.some(
+        (subItem) =>
+          !!user?.role &&
+          hasPermission(user.role, subItem.roles) &&
+          pendingFor(subItem) > 0,
+      );
       const hasActiveSubItem = item.subItems.some(
         (subItem) =>
           location === subItem.href ||
@@ -343,7 +417,13 @@ export function Sidebar() {
               <SidebarMenuButton>
                 <Icon className="h-4 w-4" />
                 <span>{item.title}</span>
-                <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                {groupHasPending && <PendingDot />}
+                <ChevronRight
+                  className={cn(
+                    "h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90",
+                    groupHasPending ? "ml-2" : "ml-auto",
+                  )}
+                />
               </SidebarMenuButton>
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -364,7 +444,10 @@ export function Sidebar() {
                         <SidebarMenuSubButton asChild isActive={isSubActive}>
                           <Link href={subItem.href!} onClick={handleNavigation}>
                             <SubIcon className="h-4 w-4" />
-                            <span>{subItem.title}</span>
+                            <span className="truncate">{subItem.title}</span>
+                            {pendingFor(subItem) > 0 && (
+                              <CountBadge count={pendingFor(subItem)} />
+                            )}
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
@@ -388,6 +471,7 @@ export function Sidebar() {
           <Link href={item.href!} onClick={handleNavigation}>
             <Icon className="h-4 w-4" />
             <span>{item.title}</span>
+            {pendingFor(item) > 0 && <CountBadge count={pendingFor(item)} />}
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
