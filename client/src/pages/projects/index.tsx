@@ -106,8 +106,14 @@ export default function ProjectsIndex() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Projects</h1>
-          <p className="text-slate-600 dark:text-slate-400">Manage marine operations and vessel projects</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            {user?.role === "employee" ? "My Projects" : "Projects"}
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400">
+            {user?.role === "employee"
+              ? "Projects you are assigned to"
+              : "Manage marine operations and vessel projects"}
+          </p>
 
           {customerId && (
             <Button

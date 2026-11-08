@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { AuthUser, authService } from "@/lib/auth";
 import { logApiError } from "@/lib/error-logger";
+import { queryClient } from "@/lib/queryClient";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -47,6 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string) => {
     try {
       const response = await authService.login({ username, password });
+      // The cache never goes stale (staleTime: Infinity) and its keys don't
+      // carry the user, so anything left from an earlier login in this tab
+      // would be shown to this user as their own.
+      queryClient.clear();
       setUser(response.user);
     } catch (error: any) {
       logApiError(error, "Login", "/api/auth/login");
@@ -62,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logApiError(error, "Logout", "/api/auth/logout");
     } finally {
       setUser(null);
+      // Same reason as in login: don't leave this user's data for the next one.
+      queryClient.clear();
     }
   };
 

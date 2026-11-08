@@ -16,6 +16,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
+import { MyDocumentDialog } from "@/components/profile/my-document-dialog";
+import { Pencil, Plus } from "lucide-react";
 
 interface ProfileEmployee {
   id: number;
@@ -58,6 +60,8 @@ interface EmployeeDoc {
   expiryDate: string | null;
   validTill: string | null;
   status: string;
+  notes?: string | null;
+  attachmentPaths?: Array<{ originalName?: string; filePath?: string }> | null;
 }
 
 interface ReadinessHistoryEntry {
@@ -109,6 +113,8 @@ export default function ProfileIndex() {
   const employee = data?.employee ?? null;
 
   const [readinessDate, setReadinessDate] = useState("");
+  const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
+  const [editingDocument, setEditingDocument] = useState<EmployeeDoc | null>(null);
 
   // Seeded from the server rather than held as the only copy, so a save
   // elsewhere (an admin setting it) is reflected when the query refetches.
@@ -406,6 +412,19 @@ export default function ProfileIndex() {
 
         <TabsContent value="documents" className="mt-4">
           <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">My Documents</CardTitle>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingDocument(null);
+                  setDocumentDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Document
+              </Button>
+            </CardHeader>
             <CardContent className="p-0">
               {(data?.documents ?? []).length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground">
@@ -422,6 +441,9 @@ export default function ProfileIndex() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issued</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expires</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <span className="sr-only">Actions</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -443,6 +465,19 @@ export default function ProfileIndex() {
                               {titleise(doc.status)}
                             </Badge>
                           </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingDocument(doc);
+                                setDocumentDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -452,6 +487,13 @@ export default function ProfileIndex() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <MyDocumentDialog
+          open={documentDialogOpen}
+          onOpenChange={setDocumentDialogOpen}
+          employeeId={employee.id}
+          document={editingDocument}
+        />
 
         <TabsContent value="readiness" className="mt-4 space-y-4">
           <Card>
