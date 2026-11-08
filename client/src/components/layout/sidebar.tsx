@@ -77,6 +77,8 @@ type PendingCounts = {
   salesQuotations: number;
   salesInvoices: number;
   reimbursements: number;
+  /** Months with payroll entries still to approve, not entries. */
+  payroll: number;
 };
 
 const PENDING_COUNT_BY_TITLE: Record<string, keyof PendingCounts> = {
@@ -86,6 +88,8 @@ const PENDING_COUNT_BY_TITLE: Record<string, keyof PendingCounts> = {
   "Sales Quotations": "salesQuotations",
   "Sales Invoices": "salesInvoices",
   Reimbursements: "reimbursements",
+  // The sub-item, not the group of the same name: groups only get the dot.
+  Payroll: "payroll",
 };
 
 // Only these roles approve anything; see server/routes/approvals.routes.ts.

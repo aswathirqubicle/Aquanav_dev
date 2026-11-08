@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { and, count, eq, ne } from "drizzle-orm";
+import { and, count, countDistinct, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
+  payrollEntries,
   purchaseInvoices,
   purchaseOrders,
   purchaseRequests,
@@ -26,6 +27,12 @@ export const approvalsRoutes = Router();
 //   reimbursements      pending           admin, finance — but finance can't
 //                                          approve a finance user's claim, so
 //                                          those don't count for finance.
+//   payroll             draft / generated admin, finance — counted as MONTHS
+//                                          with any such entry, not entries,
+//                                          since payroll is reviewed by period.
+//                                          There is no /approve route: the
+//                                          Payroll page sets status "approved"
+//                                          through PUT /api/payroll/:id.
 //
 // Keep this in step with the requireRole lists on those approve routes.
 type Counts = {
@@ -35,6 +42,20 @@ type Counts = {
   salesQuotations: number;
   salesInvoices: number;
   reimbursements: number;
+  payroll: number;
+};
+
+// Months (year + month) that still have an entry waiting for approval.
+const countPendingPayrollMonths = async () => {
+  const [row] = await db
+    .select({
+      n: countDistinct(
+        sql`(${payrollEntries.year}, ${payrollEntries.month})`,
+      ),
+    })
+    .from(payrollEntries)
+    .where(inArray(payrollEntries.status, ["draft", "generated"]));
+  return Number(row?.n ?? 0);
 };
 
 const countWhere = async (table: any, where: any) => {
@@ -54,17 +75,19 @@ approvalsRoutes.get(
       salesQuotations: 0,
       salesInvoices: 0,
       reimbursements: 0,
+      payroll: 0,
     };
 
     try {
       if (role === "admin") {
-        const [pr, po, pi, sq, si, rb] = await Promise.all([
+        const [pr, po, pi, sq, si, rb, pay] = await Promise.all([
           countWhere(purchaseRequests, eq(purchaseRequests.status, "pending")),
           countWhere(purchaseOrders, eq(purchaseOrders.status, "pending_approval")),
           countWhere(purchaseInvoices, eq(purchaseInvoices.status, "pending_approval")),
           countWhere(salesQuotations, eq(salesQuotations.status, "pending_approval")),
           countWhere(salesInvoices, eq(salesInvoices.status, "pending_approval")),
           countWhere(reimbursements, eq(reimbursements.status, "pending")),
+          countPendingPayrollMonths(),
         ]);
         Object.assign(counts, {
           purchaseRequests: pr,
@@ -73,9 +96,10 @@ approvalsRoutes.get(
           salesQuotations: sq,
           salesInvoices: si,
           reimbursements: rb,
+          payroll: pay,
         });
       } else if (role === "finance") {
-        const [pr, [rb]] = await Promise.all([
+        const [pr, [rb], pay] = await Promise.all([
           countWhere(purchaseRequests, eq(purchaseRequests.status, "pending")),
           db
             .select({ n: count() })
@@ -87,9 +111,11 @@ approvalsRoutes.get(
                 ne(users.role, "finance"),
               ),
             ),
+          countPendingPayrollMonths(),
         ]);
         counts.purchaseRequests = pr;
         counts.reimbursements = Number(rb?.n ?? 0);
+        counts.payroll = pay;
       }
 
       res.json(counts);
