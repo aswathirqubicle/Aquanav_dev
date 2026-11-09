@@ -4,6 +4,13 @@ import {
   requireRole,
 } from "../middleware/auth";
 import { storage } from "../storage";
+import { sendMail } from "../lib/graph-mail";
+import { renderPayslipEmail } from "../notifications/templates";
+import {
+  generatePayslipPdf,
+  loadPayslipLogo,
+  payslipMonthName,
+} from "../documents/payslip-pdf";
 
 export const payrollRoutes = Router();
 
@@ -222,6 +229,99 @@ payrollRoutes.put(
       res.status(500).json({
         message: error?.message || "Failed to update payroll entry",
       });
+    }
+  },
+);
+
+// Emails the payslip PDF to the employee. Called by the Generate Payslip button
+// once the entry is marked paid. Every outcome is a 200 with a reason, so the
+// UI can tell "no address" and "email not set up" apart from a real failure —
+// none of them undoes the payment.
+payrollRoutes.post(
+  "/api/payroll/:id/email-payslip",
+  requireAuth,
+  requireRole(["admin", "finance"]),
+  async (req, res) => {
+    try {
+      const payrollId = parseInt(req.params.id);
+      const entry = await storage.getPayrollEntry(payrollId);
+      if (!entry) {
+        return res.status(404).json({ message: "Payroll entry not found" });
+      }
+      if (entry.status !== "paid") {
+        return res
+          .status(400)
+          .json({ message: "Only a paid payroll entry's payslip can be emailed" });
+      }
+
+      const employee = entry.employeeId
+        ? await storage.getEmployee(entry.employeeId)
+        : undefined;
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // The employee's own address first, then the login linked to them.
+      let toEmail = employee.email?.trim() || "";
+      if (!toEmail && employee.userId) {
+        const user = await storage.getUser(employee.userId);
+        toEmail = user?.email?.trim() || "";
+      }
+      if (!toEmail) {
+        return res.json({ sent: false, reason: "no_email" });
+      }
+
+      const [additions, deductions, company] = await Promise.all([
+        storage.getPayrollAdditions(payrollId),
+        storage.getPayrollDeductions(payrollId),
+        storage.getCompany(),
+      ]);
+
+      const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
+      const periodLabel = `${payslipMonthName(entry.month)} ${entry.year}`;
+      const pdf = generatePayslipPdf({
+        entry,
+        employee,
+        additions,
+        deductions,
+        company,
+        logo: loadPayslipLogo(company?.logo),
+      });
+      const { subject, html } = renderPayslipEmail({
+        employeeName,
+        periodLabel,
+        companyName: company?.name,
+      });
+
+      const result = await sendMail({
+        to: [toEmail],
+        subject,
+        html,
+        recipientNames: { [toEmail]: employeeName },
+        attachments: [
+          {
+            name: `Payslip-${employee.employeeCode}-${entry.year}-${String(entry.month).padStart(2, "0")}.pdf`,
+            contentType: "application/pdf",
+            content: pdf,
+          },
+        ],
+        template: "payslip",
+        relatedType: "payroll_entry",
+        relatedId: payrollId,
+      });
+
+      if (result.sent) {
+        return res.json({ sent: true, toEmail });
+      }
+      if (result.skipped === "not_configured") {
+        return res.json({ sent: false, reason: "not_configured" });
+      }
+      return res.json({ sent: false, reason: "failed", error: result.error });
+    } catch (error: any) {
+      console.error("Email payslip error:", error);
+      res
+        .status(500)
+        .json({ message: error?.message || "Failed to email payslip" });
     }
   },
 );

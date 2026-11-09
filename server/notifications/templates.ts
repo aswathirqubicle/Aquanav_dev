@@ -251,3 +251,26 @@ export function renderMonthlyDigest(input: {
 
   return { subject, html: shell(`Document expiry digest — ${input.monthLabel}`, intro + sections) };
 }
+
+/**
+ * The email that carries a payslip PDF. Deliberately no figures in the body:
+ * the amounts are in the attachment, and the body is what email_send_log keeps.
+ */
+export function renderPayslipEmail(input: {
+  employeeName: string;
+  periodLabel: string;
+  companyName?: string | null;
+}): { subject: string; html: string } {
+  const subject = `Payslip for ${input.periodLabel}`;
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:14px;">Dear ${esc(input.employeeName)},</p>
+    <p style="margin:0 0 16px;font-size:14px;">
+      Please find attached your payslip for <strong>${esc(input.periodLabel)}</strong>.
+    </p>
+    <p style="margin:0;font-size:13px;color:#52606d;">
+      If anything on it looks wrong, please contact ${input.companyName ? esc(input.companyName) + " " : ""}HR or Finance.
+    </p>`;
+
+  return { subject, html: shell("Your payslip", body) };
+}
