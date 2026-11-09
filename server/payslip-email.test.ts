@@ -225,7 +225,9 @@ describe("POST /api/payroll/:id/email-payslip", () => {
     expect(body).toContain("₹ 86,765.00");
     expect(body).toContain("AED 3,350.00");
     expect(body).toContain("1 AED = 25.9 INR");
-    expect(body).toContain("05 Nov 2026");
+    expect(body).toContain(
+      "the final conversion rate may change based on the banks forex rates at the time of transaction.",
+    );
   });
 
   it("leaves the INR line out when no rate is saved", async () => {

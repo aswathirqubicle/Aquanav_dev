@@ -255,15 +255,6 @@ export function renderMonthlyDigest(input: {
 const formatMoney = (value: number, locale: string): string =>
   value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** "05 Nov 2026" from a Date, in the client's timezone. */
-const shortDate = (date: Date): string =>
-  new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dubai",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
-
 export interface PayslipInrTotal {
   /** Net pay in AED, as on the payslip. */
   netAed: number;
@@ -298,7 +289,7 @@ export function renderPayslipEmail(input: {
       ${row("Net pay (INR)", `<span style="font-size:15px;">₹ ${esc(formatMoney(inr.netInr, "en-IN"))}</span>`)}
     </table>
     <p style="margin:0 0 16px;font-size:12px;color:#7b8794;">
-      Converted at 1 AED = ${esc(inr.rate.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""))} INR, the latest rate saved on ${esc(shortDate(inr.rateSavedAt))}. The INR figure is for reference; the payslip amount in AED is final.
+      Converted at 1 AED = ${esc(inr.rate.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""))} INR, the final conversion rate may change based on the banks forex rates at the time of transaction.
     </p>`
     : "";
 
