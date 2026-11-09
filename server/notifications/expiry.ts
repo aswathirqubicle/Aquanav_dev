@@ -105,10 +105,74 @@ export function milestonesDue(
   };
 }
 
-/** Whether a date falls inside the client-timezone month that `today` is in. */
-export function expiresInSameMonth(expiryDate: string, today: string): boolean {
-  return (
-    typeof expiryDate === "string" &&
-    expiryDate.slice(0, 7) === today.slice(0, 7)
-  );
+/** The monthly digest's sections, most urgent first. */
+export const DIGEST_SECTIONS = [
+  { key: 1, maxDays: 30, label: "Expiring within 1 month" },
+  { key: 2, maxDays: 60, label: "Expiring in 1 to 2 months" },
+  { key: 3, maxDays: 90, label: "Expiring in 2 to 3 months" },
+] as const;
+
+export type DigestSection = (typeof DIGEST_SECTIONS)[number]["key"];
+
+/**
+ * Which digest section an expiry date belongs in, counted in whole days from
+ * `today`: 0–30 days is section 1, 31–60 section 2, 61–90 section 3. Already
+ * expired or further than 90 days out returns null and is left out.
+ */
+export function digestSectionFor(
+  expiryDate: string,
+  today: string,
+): DigestSection | null {
+  const days = daysBetween(today, expiryDate);
+  if (Number.isNaN(days) || days < 0) return null;
+  const section = DIGEST_SECTIONS.find((s) => days <= s.maxDays);
+  return section ? section.key : null;
+}
+
+export interface ExpiringDocumentWarning {
+  employeeId: number;
+  employeeName: string;
+  employeeCode: string;
+  documentLabel: string;
+  expiryDate: string;
+  /** Negative when the document has already expired. */
+  daysRemaining: number;
+}
+
+/** Three months, matching the 3-month reminder milestone. */
+export const ASSIGNMENT_WARNING_DAYS = 90;
+
+/**
+ * Which of these items belong to the given employees and expire within
+ * `withinDays` of `today`. Already-expired items are included (they are the
+ * most urgent), most urgent first.
+ */
+export function selectExpiringForEmployees(
+  items: Array<{
+    employeeId: number;
+    employeeName: string;
+    employeeCode: string;
+    label: string;
+    expiryDate: string;
+  }>,
+  employeeIds: number[],
+  today: string,
+  withinDays: number = ASSIGNMENT_WARNING_DAYS,
+): ExpiringDocumentWarning[] {
+  const wanted = new Set(employeeIds);
+  const warnings: ExpiringDocumentWarning[] = [];
+  for (const item of items) {
+    if (!wanted.has(item.employeeId)) continue;
+    const daysRemaining = daysBetween(today, item.expiryDate);
+    if (Number.isNaN(daysRemaining) || daysRemaining > withinDays) continue;
+    warnings.push({
+      employeeId: item.employeeId,
+      employeeName: item.employeeName,
+      employeeCode: item.employeeCode,
+      documentLabel: item.label,
+      expiryDate: item.expiryDate,
+      daysRemaining,
+    });
+  }
+  return warnings.sort((a, b) => a.daysRemaining - b.daysRemaining);
 }

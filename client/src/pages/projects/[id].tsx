@@ -1,5 +1,5 @@
 import { formatDisplayDate } from "@/lib/utils";
-import { useEffect, useRef, useState, startTransition } from "react";
+import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -944,6 +944,42 @@ export default function ProjectDetail() {
     queryKey: ["/api/employees"],
     enabled: isAuthenticated,
   });
+
+  // Documents expiring within 3 months (or already expired), shown under each
+  // name in the team picker. Loaded only while the picker is open.
+  const { data: expiryWarnings } = useQuery<
+    Array<{
+      employeeId: number;
+      documentLabel: string;
+      expiryDate: string;
+      daysRemaining: number;
+    }>
+  >({
+    queryKey: ["/api/document-expiry/warnings"],
+    enabled: isAuthenticated && isTeamDialogOpen,
+  });
+
+  const expiryWarningsByEmployee = useMemo(() => {
+    const map = new Map<number, NonNullable<typeof expiryWarnings>>();
+    for (const w of expiryWarnings ?? []) {
+      map.set(w.employeeId, [...(map.get(w.employeeId) ?? []), w]);
+    }
+    return map;
+  }, [expiryWarnings]);
+
+  const describeExpiry = (w: { documentLabel: string; expiryDate: string; daysRemaining: number }) => {
+    const date = new Date(`${w.expiryDate}T00:00:00`).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+    if (w.daysRemaining < 0) {
+      const ago = -w.daysRemaining;
+      return `${w.documentLabel} expired ${ago} day${ago === 1 ? "" : "s"} ago (${date})`;
+    }
+    if (w.daysRemaining === 0) return `${w.documentLabel} expires today (${date})`;
+    return `${w.documentLabel} expires in ${w.daysRemaining} day${w.daysRemaining === 1 ? "" : "s"} (${date})`;
+  };
 
   const { data: projectEmployees } = useQuery<Employee[]>({
     queryKey: ["/api/projects", id, "employees"],
@@ -4962,6 +4998,14 @@ export default function ProjectDetail() {
                                                   endDate: project?.plannedEndDate ? new Date(project.plannedEndDate).toISOString().split('T')[0] : ""
                                                 }
                                               ]);
+                                              const warnings = expiryWarningsByEmployee.get(employee.id);
+                                              if (warnings?.length) {
+                                                toast({
+                                                  title: `${employee.firstName} ${employee.lastName}: document expiring soon`,
+                                                  description: warnings.map(describeExpiry).join(". ") + ".",
+                                                  className: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100",
+                                                });
+                                              }
                                             } else {
                                               setSelectedEmployees(prev => prev.filter(id => id !== employee.id));
                                               setEmployeeAssignments(prev => prev.filter(a => a.employeeId !== employee.id));
@@ -4982,6 +5026,16 @@ export default function ProjectDetail() {
                                                   </Badge>
                                                 )}
                                               </div>
+                                              {expiryWarningsByEmployee.get(employee.id)?.map((w, i) => (
+                                                <p
+                                                  key={i}
+                                                  className={`mt-1 flex items-start gap-1 text-xs ${w.daysRemaining < 0 ? "text-red-600 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}
+                                                  data-testid={`expiry-warning-${employee.id}`}
+                                                >
+                                                  <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                                                  <span>{describeExpiry(w)}</span>
+                                                </p>
+                                              ))}
                                               <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-xs text-slate-500 dark:text-slate-400">
                                                 {employee.position && (
                                                   <span className="flex items-center">

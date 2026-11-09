@@ -11,7 +11,8 @@ import { getEmailConfig } from "../lib/email-settings";
 import { sendMail } from "../lib/graph-mail";
 import { renderExpiryReminder, renderMonthlyDigest, type DigestRow } from "./templates";
 import {
-  expiresInSameMonth,
+  daysBetween,
+  digestSectionFor,
   milestonesDue,
   monthKeyInClientTz,
   todayInClientTz,
@@ -49,14 +50,14 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   ilo_medical: "ILO Medical Certificate",
 };
 
-const labelForDocumentType = (value: string): string =>
+export const labelForDocumentType = (value: string): string =>
   DOCUMENT_TYPE_LABELS[value] ??
   value
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-interface ExpiringItem {
+export interface ExpiringItem {
   kind: "employee_document" | "training_record";
   id: number;
   employeeId: number;
@@ -68,23 +69,39 @@ interface ExpiringItem {
   expiryDate: string;
 }
 
-/** Active admins are the standing audience for every notification. */
-async function getAdmins(): Promise<Array<{ email: string; name: string }>> {
+/** Active users with one of these roles who have an email address, de-duplicated. */
+async function getUsersByRole(
+  roles: string[],
+): Promise<Array<{ email: string; name: string }>> {
   const rows = await db
     .select({ email: users.email, username: users.username })
     .from(users)
-    .where(and(eq(users.role, "admin"), eq(users.isActive, true)));
-  return rows
-    .filter((r): r is { email: string; username: string } => !!r.email)
-    .map((r) => ({ email: r.email, name: r.username || r.email }));
+    .where(and(inArray(users.role, roles), eq(users.isActive, true)));
+  const seen = new Set<string>();
+  const recipients: Array<{ email: string; name: string }> = [];
+  for (const r of rows) {
+    const email = r.email?.trim();
+    if (!email || seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    recipients.push({ email, name: r.username || email });
+  }
+  return recipients;
 }
+
+/**
+ * Who gets what:
+ *   - the employee: every per-document reminder (6, 3 and 1 month)
+ *   - project managers: the 3-month and 1-month reminders only
+ *   - admins: no per-document reminders, only the monthly digest
+ */
+const PM_MILESTONES: ReadonlySet<string> = new Set(["3_months", "1_month"]);
 
 /**
  * Everything with an expiry date that a reminder could apply to: employee
  * documents (including validTill, which the ILO medical uses instead of
  * expiryDate) and training records.
  */
-async function getExpiringItems(): Promise<ExpiringItem[]> {
+export async function getExpiringItems(): Promise<ExpiringItem[]> {
   const items: ExpiringItem[] = [];
 
   const docs = await db
@@ -225,10 +242,10 @@ export async function runExpiryReminders(
     }
 
     const today = todayInClientTz(now);
-    const [items, sentMap, admins] = await Promise.all([
+    const [items, sentMap, managers] = await Promise.all([
       getExpiringItems(),
       getSentMilestones(),
-      getAdmins(),
+      getUsersByRole(["project_manager"]),
     ]);
 
     summary.checked = items.length;
@@ -238,20 +255,26 @@ export async function runExpiryReminders(
       const due = milestonesDue(item.expiryDate, today, alreadySent);
       if (!due.send) continue;
 
+      const employeeEmail = item.employeeEmail?.trim() || null;
+      // Project managers only from the 3-month milestone on; never a copy of
+      // a message going to their own address as the employee.
+      const pmRecipients = PM_MILESTONES.has(due.send.key)
+        ? managers.filter(
+            (m) =>
+              !employeeEmail ||
+              m.email.toLowerCase() !== employeeEmail.toLowerCase(),
+          )
+        : [];
+
+      // Nobody to write to (e.g. a 6-month reminder for an employee with no
+      // address): skip WITHOUT claiming, so it still goes out on the first run
+      // after an address is added. The digest covers the document meanwhile.
+      if (!employeeEmail && pmRecipients.length === 0) continue;
+
       const claimed = await claimMilestones(item.kind, item.id, due.suppress);
       if (!claimed) continue;
 
-      // Admins always; the employee too when we have an address for them.
-      // A missing employee address must not suppress the admin notification.
-      const recipients = admins.map((a) => a.email);
-      const recipientNames: Record<string, string> = {};
-      for (const admin of admins) recipientNames[admin.email] = admin.name;
-      if (item.employeeEmail) {
-        recipients.push(item.employeeEmail);
-        recipientNames[item.employeeEmail] = item.employeeName;
-      }
-
-      const { subject, html } = renderExpiryReminder({
+      const reminder = {
         employeeName: item.employeeName,
         employeeCode: item.employeeCode,
         documentLabel: item.label,
@@ -259,21 +282,56 @@ export async function runExpiryReminders(
         expiryDate: item.expiryDate,
         daysRemaining: due.daysRemaining,
         milestoneLabel: due.send.label,
-        forEmployee: false,
-      });
+      };
 
-      const result = await sendMail({
-        to: recipients,
-        subject,
-        html,
-        recipientNames,
-        template: "expiry_reminder",
-        relatedType: item.kind,
-        relatedId: item.id,
-      });
+      // Separate messages: the employee reads "your document", managers read
+      // "a document belonging to X", and nobody sees anyone else's address.
+      const results = [];
 
-      if (result.sent) {
+      if (employeeEmail) {
+        const { subject, html } = renderExpiryReminder({
+          ...reminder,
+          forEmployee: true,
+        });
+        results.push(
+          await sendMail({
+            to: [employeeEmail],
+            subject,
+            html,
+            recipientNames: { [employeeEmail]: item.employeeName },
+            template: "expiry_reminder_employee",
+            relatedType: item.kind,
+            relatedId: item.id,
+          }),
+        );
+      }
+
+      if (pmRecipients.length > 0) {
+        const { subject, html } = renderExpiryReminder({
+          ...reminder,
+          forEmployee: false,
+        });
+        results.push(
+          await sendMail({
+            to: pmRecipients.map((m) => m.email),
+            subject,
+            html,
+            recipientNames: Object.fromEntries(
+              pmRecipients.map((m) => [m.email, m.name]),
+            ),
+            template: "expiry_reminder_pm",
+            relatedType: item.kind,
+            relatedId: item.id,
+          }),
+        );
+      }
+
+      if (results.some((r) => r.sent)) {
+        // At least one audience was reached, so the claim stands. If the other
+        // message failed it is recorded in email_send_log; retrying it would
+        // mean re-sending to the audience that already has it.
         summary.sent += 1;
+        if (results.some((r) => !r.sent)) summary.failed += 1;
       } else {
         // Release the claim so the next run retries. Graph failures are usually
         // transient — a token blip or a 5xx — and permanently losing a reminder
@@ -282,7 +340,7 @@ export async function runExpiryReminders(
         // email_send_log records both attempts either way.
         summary.failed += 1;
         await releaseMilestones(item.kind, item.id, due.suppress);
-        if (result.skipped === "not_configured") {
+        if (results.some((r) => r.skipped === "not_configured")) {
           summary.skippedNotConfigured = true;
           return summary;
         }
@@ -297,7 +355,12 @@ export async function runExpiryReminders(
 
 export async function runMonthlyDigest(
   now: Date = new Date(),
-): Promise<{ sent: boolean; skippedNotConfigured?: boolean; rows?: number }> {
+): Promise<{
+  sent: boolean;
+  skippedNotConfigured?: boolean;
+  noRecipients?: boolean;
+  rows?: number;
+}> {
   try {
     // Same reason as the expiry run: never claim a month we cannot send.
     if (!(await getEmailConfig())) {
@@ -306,6 +369,19 @@ export async function runMonthlyDigest(
 
     const today = todayInClientTz(now);
     const monthKey = monthKeyInClientTz(now);
+
+    // Everything that can throw or come back empty happens BEFORE the claim,
+    // so a claimed month always reaches a send attempt.
+    const [items, recipients] = await Promise.all([
+      getExpiringItems(),
+      getUsersByRole(["admin"]),
+    ]);
+
+    // No active admin: leave the month unclaimed, so the
+    // digest goes out on the first run after one is added, and say so in the log.
+    if (recipients.length === 0) {
+      return { sent: false, noRecipients: true };
+    }
 
     // Keyed on the month, so "the 1st" means "the first run during that month".
     // A restart on the 1st cannot skip the digest — the next tick sends it.
@@ -325,20 +401,21 @@ export async function runMonthlyDigest(
 
     if (!claimed) return { sent: false };
 
-    const [items, admins] = await Promise.all([
-      getExpiringItems(),
-      getAdmins(),
-    ]);
-
-    const rows: DigestRow[] = items
-      .filter((item) => expiresInSameMonth(item.expiryDate, today))
-      .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate))
-      .map((item) => ({
+    // Everything expiring in the next 90 days, each in its 1/2/3-month section.
+    const rows: DigestRow[] = [];
+    for (const item of items) {
+      const section = digestSectionFor(item.expiryDate, today);
+      if (section === null) continue;
+      rows.push({
+        section,
         employeeName: item.employeeName,
         employeeCode: item.employeeCode,
         documentLabel: item.label,
         expiryDate: item.expiryDate,
-      }));
+        daysRemaining: daysBetween(today, item.expiryDate),
+      });
+    }
+    rows.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
 
     const monthLabel = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Dubai",
@@ -348,29 +425,45 @@ export async function runMonthlyDigest(
 
     const { subject, html } = renderMonthlyDigest({ monthLabel, rows });
     const result = await sendMail({
-      to: admins.map((a) => a.email),
+      to: recipients.map((r) => r.email),
       subject,
       html,
       recipientNames: Object.fromEntries(
-        admins.map((a) => [a.email, a.name]),
+        recipients.map((r) => [r.email, r.name]),
       ),
       template: "monthly_digest",
     });
 
-    if (result.skipped === "not_configured") {
-      // Release the claim so the digest is not lost for this month.
-      await db
-        .delete(notificationLog)
-        .where(
-          and(
-            eq(notificationLog.notificationType, "monthly_digest"),
-            eq(notificationLog.milestone, monthKey),
-          ),
+    if (!result.sent) {
+      // Release the claim on ANY failure, not only "not configured", so the
+      // next hourly run retries. Previously a Graph error (expired secret,
+      // outage) kept the claim and that month's digest was never sent. Each
+      // failed attempt is still recorded in email_send_log.
+      try {
+        await db
+          .delete(notificationLog)
+          .where(
+            and(
+              eq(notificationLog.notificationType, "monthly_digest"),
+              eq(notificationLog.milestone, monthKey),
+            ),
+          );
+      } catch (releaseError) {
+        console.error(
+          "[notifications] Failed to release monthly digest claim:",
+          releaseError,
         );
-      return { sent: false, skippedNotConfigured: true };
+      }
+      if (result.skipped === "not_configured") {
+        return { sent: false, skippedNotConfigured: true };
+      }
+      console.error(
+        `[notifications] Monthly digest for ${monthKey} failed and will be retried: ${result.error}`,
+      );
+      return { sent: false };
     }
 
-    return { sent: result.sent, rows: rows.length };
+    return { sent: true, rows: rows.length };
   } catch (error) {
     console.error("[notifications] Monthly digest run failed:", error);
     return { sent: false };

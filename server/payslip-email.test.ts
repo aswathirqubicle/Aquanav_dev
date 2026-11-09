@@ -10,6 +10,10 @@ jest.mock("./db", () => ({
   db: { insert: jest.fn(() => ({ values: jest.fn(async () => undefined) })) },
 }));
 jest.mock("./lib/email-settings", () => ({ getEmailConfig: jest.fn() }));
+jest.mock("./lib/latest-exchange-rate", () => ({
+  ...(jest.requireActual("./lib/latest-exchange-rate") as object),
+  getLatestSavedRate: jest.fn(),
+}));
 jest.mock("./storage", () => ({
   storage: {
     getPayrollEntry: jest.fn(),
@@ -28,6 +32,7 @@ jest.mock("./middleware/auth", () => ({
 import { generatePayslipPdf } from "./documents/payslip-pdf";
 import { sendMail } from "./lib/graph-mail";
 import { getEmailConfig } from "./lib/email-settings";
+import { getLatestSavedRate } from "./lib/latest-exchange-rate";
 import { storage } from "./storage";
 import { payrollRoutes } from "./routes/payroll.routes";
 
@@ -201,6 +206,31 @@ describe("POST /api/payroll/:id/email-payslip", () => {
       clientSecret: "secret",
       senderEmail: "hr@example.test",
     });
+    (getLatestSavedRate as jest.Mock<any>).mockResolvedValue(null);
+  });
+
+  const sentBody = () => {
+    const sendCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/sendMail"))!;
+    return JSON.parse(sendCall[1].body).message.body.content as string;
+  };
+
+  it("adds the net pay in INR at the latest saved rate", async () => {
+    (getLatestSavedRate as jest.Mock<any>).mockResolvedValue({
+      rate: 25.9,
+      updatedAt: new Date("2026-11-05T08:00:00Z"),
+    });
+    await call();
+    const body = sentBody();
+    // 3350.00 AED x 25.9 = 86,765.00 INR, in Indian digit grouping.
+    expect(body).toContain("₹ 86,765.00");
+    expect(body).toContain("AED 3,350.00");
+    expect(body).toContain("1 AED = 25.9 INR");
+    expect(body).toContain("05 Nov 2026");
+  });
+
+  it("leaves the INR line out when no rate is saved", async () => {
+    await call();
+    expect(sentBody()).not.toContain("INR");
   });
 
   it("404s for a missing entry", async () => {
@@ -227,7 +257,8 @@ describe("POST /api/payroll/:id/email-payslip", () => {
     expect(
       Buffer.from(message.attachments[0].contentBytes, "base64").subarray(0, 5).toString(),
     ).toBe("%PDF-");
-    // No salary figures in the body, which is what email_send_log keeps.
+    // With no AED->INR rate saved, no salary figures appear in the body.
+    expect(message.body.content).not.toContain("3,350");
     expect(message.body.content).not.toContain("3350");
   });
 
@@ -259,5 +290,22 @@ describe("POST /api/payroll/:id/email-payslip", () => {
     expect(res.body.sent).toBe(false);
     expect(res.body.reason).toBe("failed");
     expect(res.body.error).toContain("403");
+  });
+});
+
+describe("convertAmount", () => {
+  const { convertAmount } = jest.requireActual(
+    "./lib/latest-exchange-rate",
+  ) as typeof import("./lib/latest-exchange-rate");
+
+  it("multiplies and rounds to 2 decimals", () => {
+    expect(convertAmount("3350.00", 25.9)).toBe(86765);
+    expect(convertAmount(100.005, 1)).toBe(100.01);
+    expect(convertAmount(1, 1 / 3)).toBe(0.33);
+  });
+
+  it("returns null for an unreadable amount", () => {
+    expect(convertAmount(null, 25.9)).toBeNull();
+    expect(convertAmount("abc", 25.9)).toBeNull();
   });
 });

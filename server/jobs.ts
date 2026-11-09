@@ -61,6 +61,11 @@ async function runNotifications(): Promise<void> {
     }
 
     const digest = await runMonthlyDigest();
+    if (digest.noRecipients) {
+      console.warn(
+        "[notifications] Monthly digest not sent: no active admin user. It will go out once one exists.",
+      );
+    }
     if (digest.sent) {
       console.log(
         `[notifications] Monthly digest sent (${digest.rows ?? 0} items).`,
