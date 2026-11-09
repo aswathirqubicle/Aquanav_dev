@@ -4,7 +4,6 @@ import { and, eq } from "drizzle-orm";
 import { getEmailConfig } from "../lib/email-settings";
 import { sendMail } from "../lib/graph-mail";
 import { renderDocumentChange } from "./templates";
-import { loadEmailBrand } from "./brand";
 import { labelForDocumentType } from "./runner";
 import { CLIENT_TIMEZONE } from "./expiry";
 
@@ -69,7 +68,6 @@ export async function notifyEmployeeDocumentChange(input: {
         ? document.attachmentPaths.length
         : 0,
       changedAt,
-      brand: await loadEmailBrand(),
     };
 
     if (managers.length > 0) {

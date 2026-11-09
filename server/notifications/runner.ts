@@ -10,7 +10,6 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getEmailConfig } from "../lib/email-settings";
 import { sendMail } from "../lib/graph-mail";
 import { renderExpiryReminder, renderMonthlyDigest, type DigestRow } from "./templates";
-import { loadEmailBrand } from "./brand";
 import {
   daysBetween,
   digestSectionFor,
@@ -243,11 +242,10 @@ export async function runExpiryReminders(
     }
 
     const today = todayInClientTz(now);
-    const [items, sentMap, managers, brand] = await Promise.all([
+    const [items, sentMap, managers] = await Promise.all([
       getExpiringItems(),
       getSentMilestones(),
       getUsersByRole(["project_manager"]),
-      loadEmailBrand(),
     ]);
 
     summary.checked = items.length;
@@ -284,7 +282,6 @@ export async function runExpiryReminders(
         expiryDate: item.expiryDate,
         daysRemaining: due.daysRemaining,
         milestoneLabel: due.send.label,
-        brand,
       };
 
       // Separate messages: the employee reads "your document", managers read
@@ -426,11 +423,7 @@ export async function runMonthlyDigest(
       year: "numeric",
     }).format(now);
 
-    const { subject, html } = renderMonthlyDigest({
-      monthLabel,
-      rows,
-      brand: await loadEmailBrand(),
-    });
+    const { subject, html } = renderMonthlyDigest({ monthLabel, rows });
     const result = await sendMail({
       to: recipients.map((r) => r.email),
       subject,

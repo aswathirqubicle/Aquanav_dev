@@ -4,7 +4,6 @@ import { db } from "../db";
 import { emailSendLog } from "@shared/schema";
 import { getEmailConfig, type EmailConfig } from "./email-settings";
 import { renderTestEmail } from "../notifications/templates";
-import { loadEmailBrand } from "../notifications/brand";
 
 /**
  * The Aquanav logo, embedded in every templated email as an inline image
@@ -238,6 +237,6 @@ async function logSend(
 
 /** Proves the credentials work without waiting for a scheduled run. */
 export async function sendTestEmail(to: string): Promise<SendMailResult> {
-  const { subject, html } = renderTestEmail(await loadEmailBrand());
+  const { subject, html } = renderTestEmail();
   return sendMail({ to: [to], subject, html, template: "test" });
 }
