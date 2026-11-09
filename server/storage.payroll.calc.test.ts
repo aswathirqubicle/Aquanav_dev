@@ -34,38 +34,108 @@ describe("Payroll calculation — calendar-day basis (§1.6)", () => {
   const calDays = (from: string, to: string): number =>
     storage.calculateCalendarDays(new Date(from), new Date(to));
 
-  const dailyRate = () => MONTHLY_SALARY / storage.getCalendarDaysInMonth(JULY.month, JULY.year);
+  // 30-day basis: the daily rate does not depend on the month's length.
+  const dailyRate = () => MONTHLY_SALARY / 30;
+
+  // Drives the real computeProjectEarnings with the given assignments.
+  const earn = async (
+    salary: string,
+    month: number,
+    year: number,
+    ranges: Array<[Date, Date]>,
+  ) => {
+    (db as any).__queueResults(
+      ranges.map(([s, e], i) => ({
+        projectId: 100 + i,
+        assignmentStartDate: s,
+        assignmentEndDate: e,
+        projectTitle: `P${i}`,
+      })),
+    );
+    return storage.computeProjectEarnings({ id: 1, salary }, month, year);
+  };
 
   it("counts July 2026 as 31 calendar days, not 23 working days", () => {
     expect(storage.getCalendarDaysInMonth(JULY.month, JULY.year)).toBe(31);
   });
 
-  it("T2.1 — a whole-month assignment earns the full salary", () => {
+  it("T2.1 — a whole-month assignment earns the full salary", async () => {
     const days = calDays("2026-07-01", "2026-07-31");
     expect(days).toBe(31);
-    expect(dailyRate() * days).toBeCloseTo(10000.0, 2);
+    const r = await earn("10000", 7, 2026, [[new Date(2026, 6, 1), new Date(2026, 6, 31)]]);
+    expect(r.totalEarnings).toBe(10000); // not 31/30 of it
   });
 
-  it("T2.2 — 1–15 July earns 4,838.71 (was 4,782.61 on the working-day basis)", () => {
+  it("a full 31-day August earns exactly the salary", async () => {
+    const r = await earn("3672.50", 8, 2026, [[new Date(2026, 7, 1), new Date(2026, 7, 31)]]);
+    expect(r.totalEarnings).toBe(3672.5);
+  });
+
+  it("a full February 2026 (28 days) earns exactly the salary", async () => {
+    const r = await earn("3672.50", 2, 2026, [[new Date(2026, 1, 1), new Date(2026, 1, 28)]]);
+    expect(r.totalEarnings).toBe(3672.5); // not 28/30 of it
+  });
+
+  it("10–31 August 2026 on 3,672.50 earns 2,693.17 (22 days at salary / 30)", async () => {
+    const r = await earn("3672.50", 8, 2026, [[new Date(2026, 7, 10), new Date(2026, 7, 31)]]);
+    expect(r.totalWorkingDays).toBe(22);
+    expect(r.totalEarnings).toBeCloseTo(2693.17, 2);
+  });
+
+  // Drizzle returns timestamp-without-tz columns as UTC midnight, which is
+  // 04:00 local in Asia/Dubai; Date.UTC reproduces that skew.
+  it("an assignment starting on the last day of the month earns that 1 day (UTC-midnight dates)", async () => {
+    const r = await earn("1836.45", 9, 2026, [[new Date(Date.UTC(2026, 8, 30)), new Date(Date.UTC(2026, 9, 16))]]);
+    expect(r.totalWorkingDays).toBe(1);
+    expect(r.totalEarnings).toBeCloseTo(61.22, 2);
+  });
+
+  it("an assignment ending on the 1st of the month earns that 1 day (UTC-midnight dates)", async () => {
+    const r = await earn("1836.45", 9, 2026, [[new Date(Date.UTC(2026, 7, 20)), new Date(Date.UTC(2026, 8, 1))]]);
+    expect(r.totalWorkingDays).toBe(1);
+    expect(r.totalEarnings).toBeCloseTo(61.22, 2);
+  });
+
+  it("a whole-month assignment with UTC-midnight dates still earns the full salary", async () => {
+    const r = await earn("1836.45", 9, 2026, [[new Date(Date.UTC(2026, 8, 1)), new Date(Date.UTC(2026, 8, 30))]]);
+    expect(r.totalWorkingDays).toBe(30);
+    expect(r.totalEarnings).toBe(1836.45);
+  });
+
+  it("two non-overlapping assignments covering all of August total exactly the salary", async () => {
+    const r = await earn("3672.50", 8, 2026, [
+      [new Date(2026, 7, 1), new Date(2026, 7, 10)],
+      [new Date(2026, 7, 11), new Date(2026, 7, 31)],
+    ]);
+    expect(r.totalWorkingDays).toBe(31);
+    expect(r.totalEarnings).toBe(3672.5);
+    expect(r.projectEarningsList).toHaveLength(2);
+    const sum = r.projectEarningsList.reduce((a: number, p: any) => a + p.earnings, 0);
+    expect(sum).toBeCloseTo(3672.5, 2);
+    // 10 and 21 days: the split follows time worked
+    expect(r.projectEarningsList[0].earnings).toBeLessThan(r.projectEarningsList[1].earnings);
+  });
+
+  it("T2.2 — 1–15 July earns 5,000.00 (salary / 30 x 15)", () => {
     const days = calDays("2026-07-01", "2026-07-15");
     expect(days).toBe(15); // 11 weekdays under the old basis
-    expect(dailyRate() * days).toBeCloseTo(4838.71, 2);
+    expect(dailyRate() * days).toBeCloseTo(5000.0, 2);
   });
 
-  it("T2.3 — 6–10 July earns 1,612.90, not 2,173.91 — the 35% overpayment", () => {
+  it("T2.3 — 6–10 July earns 1,666.67 (5 days at salary / 30)", () => {
     const days = calDays("2026-07-06", "2026-07-10");
     expect(days).toBe(5);
-    expect(dailyRate() * days).toBeCloseTo(1612.9, 2);
+    expect(dailyRate() * days).toBeCloseTo(1666.67, 2);
   });
 
-  it("T2.4 — a weekend-only assignment earns 645.16 instead of nothing", () => {
+  it("T2.4 — a weekend-only assignment earns 666.67 instead of nothing", () => {
     // 4-5 July 2026 is a Saturday and Sunday. The old basis counted ZERO
     // working days, so earnings were 0 and the employee was dropped from
     // payroll entirely by the `calculatedTotalEarnings === 0` guard.
     const days = calDays("2026-07-04", "2026-07-05");
     expect(days).toBe(2);
     const earnings = dailyRate() * days;
-    expect(earnings).toBeCloseTo(645.16, 2);
+    expect(earnings).toBeCloseTo(666.67, 2);
     expect(earnings).toBeGreaterThan(0); // the employee now appears at all
   });
 
@@ -108,10 +178,10 @@ describe("generateMonthlyPayroll uses the calendar-day basis (§1.6)", () => {
    * asserts on the figure written to payroll_entries.
    *
    * A consultant on 10,000/month assigned 1-15 July 2026:
-   *   calendar basis  10,000 / 31 x 15 = 4,838.71   <- expected
+   *   30-day basis    10,000 / 30 x 15 = 5,000.00   <- expected
    *   working basis   10,000 / 23 x 11 = 4,782.61   <- old behaviour
    */
-  it("T2.2 (end to end) — writes 4,838.71, not the working-day 4,782.61", async () => {
+  it("T2.2 (end to end) — writes 5,000.00, not the working-day 4,782.61", async () => {
     const consultant = {
       id: 501,
       firstName: "Test",
@@ -140,7 +210,7 @@ describe("generateMonthlyPayroll uses the calendar-day basis (§1.6)", () => {
           projectActualEndDate: null,
         },
       ],
-      [{ id: 7001, employeeId: 501, month: 7, year: 2026, basicSalary: "0", totalAdditions: "4838.71", totalDeductions: "241.94", totalAmount: "4596.77", status: "generated" }],
+      [{ id: 7001, employeeId: 501, month: 7, year: 2026, basicSalary: "0", totalAdditions: "5000.00", totalDeductions: "250.00", totalAmount: "4750.00", status: "generated" }],
     );
 
     await storage.generateMonthlyPayroll(7, 2026, 1);
@@ -152,13 +222,74 @@ describe("generateMonthlyPayroll uses the calendar-day basis (§1.6)", () => {
 
     expect(entryInsert).toBeDefined();
 
-    // 10,000 / 31 x 15 = 4,838.7096... The working-day basis would give
+    // 10,000 / 30 x 15 = 5,000.00. The working-day basis would give
     // 4,782.61, so this assertion distinguishes the two.
-    expect(parseFloat(entryInsert.totalAdditions)).toBeCloseTo(4838.71, 2);
+    expect(parseFloat(entryInsert.totalAdditions)).toBeCloseTo(5000.0, 2);
     expect(parseFloat(entryInsert.totalAdditions)).not.toBeCloseTo(4782.61, 2);
 
     // Days recorded must match the basis the money was calculated on.
     expect(entryInsert.workingDays).toBe(15);
+  });
+});
+
+describe("generateMonthlyPayroll pays permanent staff from their hire date", () => {
+  let storage: any;
+
+  beforeEach(() => {
+    storage = new Storage();
+    jest.clearAllMocks();
+    (db as any).__resetQueue();
+  });
+
+  const perm = (hireDate: Date | null) => ({
+    id: 601,
+    firstName: "Perm",
+    lastName: "Staff",
+    employeeCode: "EMP-601",
+    category: "permanent",
+    salary: "4132.00",
+    hireDate,
+    grade: null,
+    contractCurrency: null,
+    contractSalary: null,
+    isActive: true,
+  });
+
+  const run = async (month: number, year: number, hireDate: Date | null) => {
+    (db as any).__queueResults(
+      [], //                                    no existing payroll for the period
+      [perm(hireDate)], //                      active employees
+      [], //                                    active projects
+      [{ id: 7100, employeeId: 601, month, year, status: "generated" }],
+    );
+    await storage.generateMonthlyPayroll(month, year, 1);
+    return (db.values as jest.Mock).mock.calls
+      .map((c) => c[0])
+      .find((v: any) => v && v.month === month && v.year === year && "totalAmount" in v);
+  };
+
+  it("hired 25 July 2026 on 4,132 -> July basic 964.13 for 7 days", async () => {
+    const entry = await run(7, 2026, new Date(2026, 6, 25));
+    expect(entry).toBeDefined();
+    expect(parseFloat(entry.basicSalary)).toBeCloseTo(964.13, 2);
+    expect(entry.workingDays).toBe(7);
+  });
+
+  it("hired 1 September 2026 -> no August entry", async () => {
+    const entry = await run(8, 2026, new Date(2026, 8, 1));
+    expect(entry).toBeUndefined();
+  });
+
+  it("null hire date -> no entry", async () => {
+    const entry = await run(8, 2026, null);
+    expect(entry).toBeUndefined();
+  });
+
+  it("hired in 2025 -> full salary and the month's calendar days", async () => {
+    const entry = await run(8, 2026, new Date(2025, 2, 10));
+    expect(entry).toBeDefined();
+    expect(entry.basicSalary).toBe("4132.00");
+    expect(entry.workingDays).toBe(31);
   });
 });
 
@@ -573,5 +704,171 @@ describe("Payroll accrual + payment posting (Phase 4)", () => {
     // originals + reversals net to zero across the board
     expect(sum(revs, "debitAmount")).toBeCloseTo(sum(revs, "creditAmount"), 2);
     gl.mockRestore();
+  });
+});
+
+describe("PF applicable flag (employees.pf_applicable)", () => {
+  let storage: any;
+
+  beforeEach(() => {
+    storage = new Storage();
+    jest.clearAllMocks();
+    (db as any).__resetQueue();
+  });
+
+  const valuesCalls = () => (db.values as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+  const setCalls = () => (db.set as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+
+  const generate = async (extra: Record<string, unknown>) => {
+    (db as any).__queueResults(
+      [], //                                    no existing payroll for the period
+      [
+        {
+          id: 601,
+          firstName: "Perm",
+          lastName: "Staff",
+          employeeCode: "EMP-601",
+          category: "permanent",
+          salary: "10000.00",
+          hireDate: new Date(2025, 2, 10),
+          grade: null,
+          contractCurrency: null,
+          contractSalary: null,
+          isActive: true,
+          ...extra,
+        },
+      ], //                                    active employees
+      [], //                                    active projects
+      [{ id: 7100, employeeId: 601, month: 7, year: 2026, status: "generated" }],
+    );
+    await storage.generateMonthlyPayroll(7, 2026, 1);
+    return {
+      entry: valuesCalls().find((v: any) => v && v.month === 7 && "totalAmount" in v),
+      pfRow: valuesCalls().find((v: any) => v && v.type === "provident_fund"),
+    };
+  };
+
+  it("generation: pfApplicable false -> no PF row, no deductions, net = gross", async () => {
+    const { entry, pfRow } = await generate({ pfApplicable: false });
+    expect(entry).toBeDefined();
+    expect(pfRow).toBeUndefined();
+    expect(entry.totalDeductions).toBe("0.00");
+    expect(entry.totalAmount).toBe("10000.00");
+  });
+
+  it("generation: pfApplicable true -> PF 500.00 as before", async () => {
+    const { entry, pfRow } = await generate({ pfApplicable: true });
+    expect(pfRow).toEqual(expect.objectContaining({ amount: "500.00" }));
+    expect(entry.totalDeductions).toBe("500.00");
+    expect(entry.totalAmount).toBe("9500.00");
+  });
+
+  it("updatePayrollEntryTotals: pfApplicable false keeps an existing PF row and recomputes it", async () => {
+    (db as any).__queueResults(
+      [{ id: 1, type: "project_fee", amount: "0" }], //              getPayrollAdditions
+      [{ id: 99, type: "provident_fund", amount: "500.00" }], //     getPayrollDeductions
+      [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
+      [], //                                                         entry UPDATE (PF-row UPDATE skipped: amount unchanged)
+    );
+
+    await storage.updatePayrollEntryTotals(7);
+
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(valuesCalls().find((v: any) => v && v.type === "provident_fund")).toBeUndefined();
+    expect(setCalls()).toContainEqual(
+      expect.objectContaining({ totalDeductions: "500.00", totalAmount: "9500.00" }),
+    );
+  });
+
+  it("updatePayrollEntryTotals: no PF row -> no PF row inserted, whatever the flag", async () => {
+    (db as any).__queueResults(
+      [{ id: 1, type: "project_fee", amount: "2000" }], //           additions would attract PF
+      [], //                                                         no PF row
+      [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
+      [], //                                                         entry UPDATE
+    );
+
+    await storage.updatePayrollEntryTotals(7);
+
+    expect(valuesCalls().find((v: any) => v && v.type === "provident_fund")).toBeUndefined();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(setCalls()).toContainEqual(
+      expect.objectContaining({ totalDeductions: "0.00", totalAmount: "12000.00" }),
+    );
+  });
+
+  it("updatePayrollEntry: approving a pf-not-applicable entry keeps its existing PF row", async () => {
+    jest.spyOn(storage, "getPayrollEntry").mockResolvedValue({ id: 7, status: "generated" });
+    jest.spyOn(storage, "assertPayrollPostingAccounts").mockResolvedValue(undefined);
+    jest.spyOn(storage, "postPayrollAccrual").mockResolvedValue(undefined);
+    (db as any).__queueResults(
+      [{ id: 7, status: "approved" }], //                            entry UPDATE ... returning
+      [{ id: 1, type: "project_fee", amount: "0" }], //              getPayrollAdditions
+      [{ id: 99, type: "provident_fund", amount: "500.00" }], //     getPayrollDeductions
+      [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
+      [], //                                                         totals UPDATE (PF-row UPDATE skipped: amount unchanged)
+    );
+
+    await storage.updatePayrollEntry(7, { status: "approved" } as any, 1);
+
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(setCalls()).toContainEqual(
+      expect.objectContaining({ totalDeductions: "500.00", totalAmount: "9500.00" }),
+    );
+  });
+
+  it.each(["approved", "paid"])(
+    "updatePayrollEntry: marking an entry with no PF row %s creates no PF row",
+    async (status) => {
+      jest.spyOn(storage, "getPayrollEntry").mockResolvedValue({ id: 7, status: "generated" });
+      jest.spyOn(storage, "assertPayrollPostingAccounts").mockResolvedValue(undefined);
+      jest.spyOn(storage, "postPayrollAccrual").mockResolvedValue(undefined);
+      jest.spyOn(storage, "postPayrollPayment").mockResolvedValue(undefined);
+      (db as any).__queueResults(
+        [{ id: 7, status }], //                                        entry UPDATE ... returning
+        [{ id: 1, type: "project_fee", amount: "2000" }], //           getPayrollAdditions
+        [], //                                                         no PF row
+        [{ id: 7, basicSalary: "10000", employeeId: 501, month: 7, year: 2026 }], // entry
+        [], //                                                         totals UPDATE
+      );
+
+      await storage.updatePayrollEntry(7, { status } as any, 1);
+
+      expect(valuesCalls().find((v: any) => v && v.type === "provident_fund")).toBeUndefined();
+      expect(db.delete).not.toHaveBeenCalled();
+    },
+  );
+
+  describe("assertPayrollPostingAccounts", () => {
+    const chart = (withPf: boolean) =>
+      ["Salary Expense", "Salary Payable", "Employee Advances", "Cash/Bank"]
+        .concat(withPf ? ["Provident Fund Contribution"] : [])
+        .map((name, i) => ({ code: String(1000 + i), name }));
+
+    const run = (withPf: boolean, deductions: unknown[]) => {
+      (db as any).__queueResults(
+        chart(withPf), //                                              chart of accounts
+        deductions, //                                                 entry deductions
+        [{ id: 7, employeeId: 501, month: 7, year: 2026 }], //         entry
+        [], //                                                         approved reimbursements
+      );
+      return storage.assertPayrollPostingAccounts(7, { accrual: true, payment: false });
+    };
+
+    it("entry with no PF and a chart lacking the PF account -> no error", async () => {
+      await expect(run(false, [])).resolves.toBeUndefined();
+    });
+
+    it("entry with PF > 0 and a chart lacking the PF account -> error naming it", async () => {
+      await expect(
+        run(false, [{ id: 99, type: "provident_fund", amount: "500.00" }]),
+      ).rejects.toThrow(/"Provident Fund Contribution"/);
+    });
+
+    it("entry with PF > 0 and the PF account present -> no error", async () => {
+      await expect(
+        run(true, [{ id: 99, type: "provident_fund", amount: "500.00" }]),
+      ).resolves.toBeUndefined();
+    });
   });
 });
