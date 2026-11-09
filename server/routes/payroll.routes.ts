@@ -7,6 +7,7 @@ import { storage } from "../storage";
 import { sendMail } from "../lib/graph-mail";
 import { convertAmount, getLatestSavedRate } from "../lib/latest-exchange-rate";
 import {
+  brandFromCompany,
   renderPayslipEmail,
   type PayslipInrTotal,
 } from "../notifications/templates";
@@ -314,6 +315,7 @@ payrollRoutes.post(
         periodLabel,
         companyName: company?.name,
         inrTotal,
+        brand: brandFromCompany(company),
       });
 
       const result = await sendMail({

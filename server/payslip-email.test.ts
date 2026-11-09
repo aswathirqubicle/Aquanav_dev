@@ -160,6 +160,23 @@ describe("sendMail attachments", () => {
     ]);
   });
 
+  it("embeds the logo inline when the HTML references it", async () => {
+    await sendMail({
+      to: ["ravi@example.test"],
+      subject: "s",
+      html: '<img src="cid:aquanav-logo" /><p>h</p>',
+    });
+    const [logo] = sentMessage().attachments;
+    expect(logo).toMatchObject({
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: "aquanav-logo.png",
+      contentType: "image/png",
+      isInline: true,
+      contentId: "aquanav-logo",
+    });
+    expect(Buffer.from(logo.contentBytes, "base64").subarray(1, 4).toString()).toBe("PNG");
+  });
+
   it("leaves the message unchanged when there are none", async () => {
     await sendMail({ to: ["ravi@example.test"], subject: "s", html: "<p>h</p>" });
     expect(sentMessage()).not.toHaveProperty("attachments");

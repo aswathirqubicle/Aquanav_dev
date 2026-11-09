@@ -34,29 +34,94 @@ const humanDate = (isoDate: string): string => {
   return name ? `${day} ${name} ${year}` : esc(isoDate);
 };
 
-const BRAND = "#0f4c81";
+/** Aquanav navy, taken from the logo. */
+const BRAND = "#1b2a72";
+const INK = "#1f2933";
+const MUTED = "#6b7785";
+const LINE = "#e4e7eb";
 
-const shell = (title: string, body: string): string => `<!DOCTYPE html>
+/** Company details for the footer, passed in by the caller (no lookups here). */
+export interface EmailBrand {
+  name?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+}
+
+/** Picks the footer fields from a companies row (or anything shaped like it). */
+export function brandFromCompany(
+  company: EmailBrand | null | undefined,
+): EmailBrand | null {
+  if (!company) return null;
+  const { name, address, phone, email, website } = company;
+  return { name, address, phone, email, website };
+}
+
+const DEFAULT_COMPANY = "Aquanav Maritime Services L.L.C";
+
+export const EMAIL_DISCLAIMER =
+  "This email and any attachments are confidential and intended solely for the named recipient. " +
+  "If you have received it in error, please notify the sender and delete it; any use, disclosure, " +
+  "copying or distribution by anyone else is prohibited. The company does not accept liability for " +
+  "any loss or damage arising from this email or its attachments, including from viruses. " +
+  "This message was generated automatically by Aquanav. Please do not reply to it.";
+
+const websiteHref = (website: string): string =>
+  /^https?:\/\//i.test(website) ? website : `https://${website}`;
+
+/**
+ * The branded layout every email uses: logo, navy rule, title, body, sign-off,
+ * a navy footer with the company's details, and the disclaimer. Table-based
+ * with inline styles, which is what Outlook renders reliably. The logo is
+ * cid:aquanav-logo, attached inline by sendMail.
+ */
+const shell = (title: string, body: string, brand?: EmailBrand | null): string => {
+  const company = brand?.name?.trim() || DEFAULT_COMPANY;
+  const details = [
+    brand?.address?.trim() ? esc(brand.address.trim()) : "",
+    brand?.phone?.trim() ? esc(brand.phone.trim()) : "",
+    brand?.email?.trim() ? esc(brand.email.trim()) : "",
+    brand?.website?.trim()
+      ? `<a href="${esc(websiteHref(brand.website.trim()))}" style="color:#ffffff;">${esc(brand.website.trim())}</a>`
+      : "",
+  ].filter(Boolean);
+
+  return `<!DOCTYPE html>
 <html>
-  <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
-    <div style="max-width:640px;margin:0 auto;padding:24px;">
-      <div style="background:${BRAND};color:#ffffff;padding:16px 20px;border-radius:6px 6px 0 0;">
-        <h1 style="margin:0;font-size:18px;">${esc(title)}</h1>
-      </div>
-      <div style="background:#ffffff;padding:20px;border:1px solid #e4e7eb;border-top:none;border-radius:0 0 6px 6px;">
-        ${body}
-      </div>
-      <p style="margin:16px 0 0;font-size:12px;color:#7b8794;">
-        Sent automatically by Aquanav. Please do not reply to this message.
-      </p>
-    </div>
+  <body style="margin:0;padding:0;background:#eef1f6;font-family:Arial,Helvetica,sans-serif;color:${INK};">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;">
+      <tr><td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#ffffff;border:1px solid ${LINE};border-radius:8px;">
+          <tr><td style="padding:22px 28px 18px;border-bottom:3px solid ${BRAND};">
+            <img src="cid:aquanav-logo" width="150" alt="Aquanav" style="display:block;border:0;height:auto;" />
+          </td></tr>
+          <tr><td style="padding:24px 28px 8px;">
+            <h1 style="margin:0 0 16px;font-size:19px;line-height:1.3;color:${BRAND};">${esc(title)}</h1>
+            ${body}
+          </td></tr>
+          <tr><td style="padding:16px 28px 22px;">
+            <p style="margin:0;font-size:12px;color:${MUTED};">Regards,<br /><strong style="color:${INK};">${esc(company)}</strong></p>
+          </td></tr>
+          <tr><td style="background:${BRAND};padding:16px 28px;color:#c9d2ea;font-size:11px;line-height:1.6;border-radius:0 0 7px 7px;">
+            <strong style="color:#ffffff;">${esc(company)}</strong>${details.length ? `<br />${details.join(" &nbsp;·&nbsp; ")}` : ""}
+          </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
+          <tr><td style="padding:16px 8px 0;font-size:10.5px;line-height:1.6;color:#8a94a3;">
+            <strong>Disclaimer:</strong> ${esc(EMAIL_DISCLAIMER)}
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
   </body>
 </html>`;
+};
 
 const row = (label: string, value: string): string => `
   <tr>
-    <td style="padding:6px 12px 6px 0;color:#7b8794;font-size:13px;white-space:nowrap;">${esc(label)}</td>
-    <td style="padding:6px 0;font-size:13px;font-weight:bold;">${value}</td>
+    <td style="padding:7px 16px 7px 0;color:${MUTED};font-size:13px;white-space:nowrap;vertical-align:top;">${esc(label)}</td>
+    <td style="padding:7px 0;font-size:13px;font-weight:bold;color:${INK};">${value}</td>
   </tr>`;
 
 export interface ExpiryReminderInput {
@@ -69,6 +134,7 @@ export interface ExpiryReminderInput {
   milestoneLabel: string;
   /** Softens the wording when it is going to the employee rather than an admin. */
   forEmployee: boolean;
+  brand?: EmailBrand | null;
 }
 
 export function renderExpiryReminder(input: ExpiryReminderInput): {
@@ -99,7 +165,7 @@ export function renderExpiryReminder(input: ExpiryReminderInput): {
       This is the ${esc(input.milestoneLabel)} reminder. You will not receive another for this milestone.
     </p>`;
 
-  return { subject, html: shell("Document expiry reminder", body) };
+  return { subject, html: shell("Document expiry reminder", body, input.brand) };
 }
 
 export interface DocumentChangeInput {
@@ -117,6 +183,7 @@ export interface DocumentChangeInput {
   viewUrl?: string | null;
   /** The project-manager notice, or the employee's own confirmation. */
   forEmployee: boolean;
+  brand?: EmailBrand | null;
 }
 
 /**
@@ -177,6 +244,7 @@ export function renderDocumentChange(input: DocumentChangeInput): {
     html: shell(
       input.forEmployee ? "Your document was saved" : "Employee document updated",
       body,
+      input.brand,
     ),
   };
 }
@@ -192,12 +260,12 @@ export interface DigestRow {
 }
 
 const th = (label: string, align: "left" | "right" = "left"): string =>
-  `<th style="text-align:${align};padding:8px;font-size:12px;color:#52606d;border-bottom:1px solid #e4e7eb;">${esc(label)}</th>`;
+  `<th style="text-align:${align};padding:9px 10px;font-size:12px;color:#ffffff;background:${BRAND};">${esc(label)}</th>`;
 
 const digestTable = (rows: DigestRow[]): string => `
     <table style="border-collapse:collapse;width:100%;margin-bottom:8px;">
       <thead>
-        <tr style="background:#f4f6f8;">
+        <tr>
           ${th("Employee")}${th("Document")}${th("Expires", "right")}${th("Days left", "right")}
         </tr>
       </thead>
@@ -228,6 +296,7 @@ const digestTable = (rows: DigestRow[]): string => `
 export function renderMonthlyDigest(input: {
   monthLabel: string;
   rows: DigestRow[];
+  brand?: EmailBrand | null;
 }): { subject: string; html: string } {
   const subject = `Document expiry digest — ${input.monthLabel}`;
 
@@ -249,7 +318,7 @@ export function renderMonthlyDigest(input: {
     }`;
   }).join("");
 
-  return { subject, html: shell(`Document expiry digest — ${input.monthLabel}`, intro + sections) };
+  return { subject, html: shell(`Document expiry digest — ${input.monthLabel}`, intro + sections, input.brand) };
 }
 
 const formatMoney = (value: number, locale: string): string =>
@@ -278,6 +347,7 @@ export function renderPayslipEmail(input: {
   companyName?: string | null;
   /** Omitted when no AED→INR rate is saved; the INR block is then left out. */
   inrTotal?: PayslipInrTotal | null;
+  brand?: EmailBrand | null;
 }): { subject: string; html: string } {
   const subject = `Payslip for ${input.periodLabel}`;
 
@@ -303,5 +373,21 @@ export function renderPayslipEmail(input: {
       If anything on it looks wrong, please contact ${input.companyName ? esc(input.companyName) + " " : ""}HR or Finance.
     </p>`;
 
-  return { subject, html: shell("Your payslip", body) };
+  return { subject, html: shell("Your payslip", body, input.brand) };
+}
+
+/** The Settings "Send a test message" email. */
+export function renderTestEmail(brand?: EmailBrand | null): {
+  subject: string;
+  html: string;
+} {
+  return {
+    subject: "Aquanav test email",
+    html: shell(
+      "Test email",
+      `<p style="margin:0 0 12px;font-size:14px;">This is a test message from Aquanav.</p>
+       <p style="margin:0;font-size:14px;">If you are reading it, the Microsoft 365 connection is working.</p>`,
+      brand,
+    ),
+  };
 }
