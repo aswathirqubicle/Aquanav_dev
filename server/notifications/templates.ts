@@ -252,22 +252,62 @@ export function renderMonthlyDigest(input: {
   return { subject, html: shell(`Document expiry digest — ${input.monthLabel}`, intro + sections) };
 }
 
+const formatMoney = (value: number, locale: string): string =>
+  value.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** "05 Nov 2026" from a Date, in the client's timezone. */
+const shortDate = (date: Date): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+
+export interface PayslipInrTotal {
+  /** Net pay in AED, as on the payslip. */
+  netAed: number;
+  /** Net pay converted to INR at `rate`. */
+  netInr: number;
+  /** INR per 1 AED. */
+  rate: number;
+  /** When that rate was saved. */
+  rateSavedAt: Date;
+}
+
 /**
- * The email that carries a payslip PDF. Deliberately no figures in the body:
- * the amounts are in the attachment, and the body is what email_send_log keeps.
+ * The email that carries a payslip PDF. The full breakdown is in the
+ * attachment; the body carries only the net pay in INR at the latest saved
+ * rate, which the client asked for. That figure is also kept in
+ * email_send_log, so admins can see it in the Email Log report.
  */
 export function renderPayslipEmail(input: {
   employeeName: string;
   periodLabel: string;
   companyName?: string | null;
+  /** Omitted when no AED→INR rate is saved; the INR block is then left out. */
+  inrTotal?: PayslipInrTotal | null;
 }): { subject: string; html: string } {
   const subject = `Payslip for ${input.periodLabel}`;
+
+  const inr = input.inrTotal;
+  const inrBlock = inr
+    ? `
+    <table style="border-collapse:collapse;margin:0 0 16px;">
+      ${row("Net pay (AED)", `AED ${esc(formatMoney(inr.netAed, "en-US"))}`)}
+      ${row("Net pay (INR)", `<span style="font-size:15px;">₹ ${esc(formatMoney(inr.netInr, "en-IN"))}</span>`)}
+    </table>
+    <p style="margin:0 0 16px;font-size:12px;color:#7b8794;">
+      Converted at 1 AED = ${esc(inr.rate.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""))} INR, the latest rate saved on ${esc(shortDate(inr.rateSavedAt))}. The INR figure is for reference; the payslip amount in AED is final.
+    </p>`
+    : "";
 
   const body = `
     <p style="margin:0 0 16px;font-size:14px;">Dear ${esc(input.employeeName)},</p>
     <p style="margin:0 0 16px;font-size:14px;">
       Please find attached your payslip for <strong>${esc(input.periodLabel)}</strong>.
     </p>
+    ${inrBlock}
     <p style="margin:0;font-size:13px;color:#52606d;">
       If anything on it looks wrong, please contact ${input.companyName ? esc(input.companyName) + " " : ""}HR or Finance.
     </p>`;

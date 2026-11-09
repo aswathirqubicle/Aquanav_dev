@@ -5,7 +5,11 @@ import {
 } from "../middleware/auth";
 import { storage } from "../storage";
 import { sendMail } from "../lib/graph-mail";
-import { renderPayslipEmail } from "../notifications/templates";
+import { convertAmount, getLatestSavedRate } from "../lib/latest-exchange-rate";
+import {
+  renderPayslipEmail,
+  type PayslipInrTotal,
+} from "../notifications/templates";
 import {
   generatePayslipPdf,
   loadPayslipLogo,
@@ -287,10 +291,29 @@ payrollRoutes.post(
         company,
         logo: loadPayslipLogo(company?.logo),
       });
+
+      // Net pay (AED, as on the payslip) in INR at the latest saved rate.
+      // No saved rate, or an unreadable amount: the email simply omits it.
+      let inrTotal: PayslipInrTotal | null = null;
+      const aedToInr = await getLatestSavedRate("AED", "INR");
+      const netAed = convertAmount(entry.totalAmount, 1);
+      if (aedToInr && netAed !== null) {
+        const netInr = convertAmount(netAed, aedToInr.rate);
+        if (netInr !== null) {
+          inrTotal = {
+            netAed,
+            netInr,
+            rate: aedToInr.rate,
+            rateSavedAt: aedToInr.updatedAt,
+          };
+        }
+      }
+
       const { subject, html } = renderPayslipEmail({
         employeeName,
         periodLabel,
         companyName: company?.name,
+        inrTotal,
       });
 
       const result = await sendMail({
