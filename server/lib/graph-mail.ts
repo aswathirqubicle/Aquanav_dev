@@ -81,6 +81,15 @@ export interface SendMailInput {
    * because only it knows whether an address belongs to a user or an employee.
    */
   recipientNames?: Record<string, string>;
+  /**
+   * Files sent with the message. They are not stored in email_send_log.
+   * Graph's sendMail takes attachments up to 3 MB in total this way.
+   */
+  attachments?: Array<{
+    name: string;
+    contentType: string;
+    content: Buffer;
+  }>;
   /** For the audit trail only. */
   template?: string;
   relatedType?: string;
@@ -132,6 +141,16 @@ export async function sendMail(
             toRecipients: recipients.map((address) => ({
               emailAddress: { address },
             })),
+            ...(input.attachments?.length
+              ? {
+                  attachments: input.attachments.map((file) => ({
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    name: file.name,
+                    contentType: file.contentType,
+                    contentBytes: file.content.toString("base64"),
+                  })),
+                }
+              : {}),
           },
           saveToSentItems: true,
         }),
