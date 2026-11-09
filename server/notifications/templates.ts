@@ -40,7 +40,10 @@ const shell = (title: string, body: string): string => `<!DOCTYPE html>
 <html>
   <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
     <div style="max-width:640px;margin:0 auto;padding:24px;">
-      <div style="background:${BRAND};color:#ffffff;padding:16px 20px;border-radius:6px 6px 0 0;">
+      <div style="background:#ffffff;padding:16px 20px;border:1px solid #e4e7eb;border-bottom:none;border-radius:6px 6px 0 0;">
+        <img src="cid:aquanav-logo" width="150" alt="Aquanav" style="display:block;border:0;height:auto;" />
+      </div>
+      <div style="background:${BRAND};color:#ffffff;padding:16px 20px;">
         <h1 style="margin:0;font-size:18px;">${esc(title)}</h1>
       </div>
       <div style="background:#ffffff;padding:20px;border:1px solid #e4e7eb;border-top:none;border-radius:0 0 6px 6px;">
@@ -304,4 +307,16 @@ export function renderPayslipEmail(input: {
     </p>`;
 
   return { subject, html: shell("Your payslip", body) };
+}
+
+/** The Settings "Send a test message" email, in the same layout. */
+export function renderTestEmail(): { subject: string; html: string } {
+  return {
+    subject: "Aquanav test email",
+    html: shell(
+      "Test email",
+      `<p style="margin:0 0 12px;font-size:14px;">This is a test message from Aquanav.</p>
+       <p style="margin:0;font-size:14px;">If you are reading it, the Microsoft 365 connection is working.</p>`,
+    ),
+  };
 }

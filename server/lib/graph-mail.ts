@@ -1,6 +1,25 @@
+import fs from "fs";
+import path from "path";
 import { db } from "../db";
 import { emailSendLog } from "@shared/schema";
 import { getEmailConfig, type EmailConfig } from "./email-settings";
+import { renderTestEmail } from "../notifications/templates";
+
+/**
+ * The Aquanav logo, embedded in every templated email as an inline image
+ * (cid:aquanav-logo) so it shows without the reader allowing remote images.
+ * Read once; null if the file is missing, in which case the email goes out
+ * with the logo's alt text instead.
+ */
+export const LOGO_CONTENT_ID = "aquanav-logo";
+let logoCache: Buffer | null | undefined;
+function loadEmailLogo(): Buffer | null {
+  if (logoCache === undefined) {
+    const file = path.join(process.cwd(), "server/assets/email-logo.png");
+    logoCache = fs.existsSync(file) ? fs.readFileSync(file) : null;
+  }
+  return logoCache;
+}
 
 /**
  * Sending mail through Microsoft Graph with the client-credentials flow.
@@ -89,6 +108,8 @@ export interface SendMailInput {
     name: string;
     contentType: string;
     content: Buffer;
+    /** Set for an image the HTML shows via cid:<contentId>. */
+    contentId?: string;
   }>;
   /** For the audit trail only. */
   template?: string;
@@ -123,6 +144,18 @@ export async function sendMail(
     return { sent: false, skipped: "not_configured" };
   }
 
+  // The branded layout references the logo by content id; attach it inline.
+  const attachments = [...(input.attachments ?? [])];
+  const logo = input.html.includes(`cid:${LOGO_CONTENT_ID}`) ? loadEmailLogo() : null;
+  if (logo) {
+    attachments.push({
+      name: "aquanav-logo.png",
+      contentType: "image/png",
+      content: logo,
+      contentId: LOGO_CONTENT_ID,
+    });
+  }
+
   try {
     const token = await getAccessToken(config);
 
@@ -141,13 +174,16 @@ export async function sendMail(
             toRecipients: recipients.map((address) => ({
               emailAddress: { address },
             })),
-            ...(input.attachments?.length
+            ...(attachments.length
               ? {
-                  attachments: input.attachments.map((file) => ({
+                  attachments: attachments.map((file) => ({
                     "@odata.type": "#microsoft.graph.fileAttachment",
                     name: file.name,
                     contentType: file.contentType,
                     contentBytes: file.content.toString("base64"),
+                    ...(file.contentId
+                      ? { isInline: true, contentId: file.contentId }
+                      : {}),
                   })),
                 }
               : {}),
@@ -201,11 +237,6 @@ async function logSend(
 
 /** Proves the credentials work without waiting for a scheduled run. */
 export async function sendTestEmail(to: string): Promise<SendMailResult> {
-  return sendMail({
-    to: [to],
-    subject: "Aquanav test email",
-    html: `<p>This is a test message from Aquanav.</p>
-           <p>If you are reading it, the Microsoft 365 connection is working.</p>`,
-    template: "test",
-  });
+  const { subject, html } = renderTestEmail();
+  return sendMail({ to: [to], subject, html, template: "test" });
 }
