@@ -23,8 +23,34 @@ import {
 } from "../middleware/auth";
 import { storage } from "../storage";
 import { upload } from "../middleware/upload";
+import {
+  appOriginFrom,
+  notifyEmployeeDocumentChange,
+} from "../notifications/document-change";
+import { findExpiringDocumentWarnings } from "../notifications/expiry-check";
 
 export const employeesRoutes = Router();
+
+/**
+ * Documents and training records expiring within 3 months (or already
+ * expired), for the warning shown under each name in the project team picker.
+ *
+ * Deliberately NOT under /api/employees/...: GET /api/employees/:id is
+ * registered first and would capture the path.
+ */
+employeesRoutes.get(
+  "/api/document-expiry/warnings",
+  requireAuth,
+  requireRole(["admin", "project_manager"]),
+  async (_req, res) => {
+    try {
+      res.json(await findExpiringDocumentWarnings());
+    } catch (error) {
+      console.error("Expiring document warnings failed:", error);
+      res.status(500).json({ message: "Failed to load expiring documents" });
+    }
+  },
+);
 
 // Employee routes
 employeesRoutes.put(
@@ -590,6 +616,15 @@ employeesRoutes.post(
       const parsedData = insertEmployeeDocumentSchema.parse(documentData);
       const result = await storage.createEmployeeDocument(parsedData);
       res.status(201).json(result);
+      // Only when the employee did it themselves; admin/PM edits stay quiet.
+      // After the response, so the save never waits on email.
+      if (req.session.userRole === "employee") {
+        void notifyEmployeeDocumentChange({
+          documentId: result.id,
+          action: "added",
+          appOrigin: appOriginFrom(req.get("origin")),
+        });
+      }
     } catch (error) {
       if (error instanceof ZodError) {
         return res
@@ -637,6 +672,13 @@ employeesRoutes.put(
           .json({ message: "Employee document not found" });
       }
       res.json(result);
+      if (req.session.userRole === "employee") {
+        void notifyEmployeeDocumentChange({
+          documentId: id,
+          action: "updated",
+          appOrigin: appOriginFrom(req.get("origin")),
+        });
+      }
     } catch (error) {
       res.status(500).json({ message: "Failed to update employee document" });
     }

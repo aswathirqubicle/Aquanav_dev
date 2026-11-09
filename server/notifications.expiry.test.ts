@@ -6,7 +6,8 @@
 import { describe, it, expect } from "@jest/globals";
 import {
   daysBetween,
-  expiresInSameMonth,
+  digestSectionFor,
+  selectExpiringForEmployees,
   milestonesDue,
   monthKeyInClientTz,
   todayInClientTz,
@@ -118,12 +119,72 @@ describe("milestonesDue", () => {
   });
 });
 
-describe("expiresInSameMonth — drives the monthly digest", () => {
-  it("matches within the month", () => {
-    expect(expiresInSameMonth("2026-07-31", "2026-07-01")).toBe(true);
+describe("digestSectionFor — the monthly digest's three sections", () => {
+  const today = "2026-11-01";
+
+  it("puts 0 to 30 days in section 1, including expiring today", () => {
+    expect(digestSectionFor("2026-11-01", today)).toBe(1);
+    expect(digestSectionFor("2026-12-01", today)).toBe(1); // 30 days
   });
 
-  it("excludes the next month", () => {
-    expect(expiresInSameMonth("2026-08-01", "2026-07-31")).toBe(false);
+  it("puts 31 to 60 days in section 2", () => {
+    expect(digestSectionFor("2026-12-02", today)).toBe(2); // 31 days
+    expect(digestSectionFor("2026-12-31", today)).toBe(2); // 60 days
+  });
+
+  it("puts 61 to 90 days in section 3", () => {
+    expect(digestSectionFor("2027-01-01", today)).toBe(3); // 61 days
+    expect(digestSectionFor("2027-01-30", today)).toBe(3); // 90 days
+  });
+
+  it("leaves out anything already expired or beyond 90 days", () => {
+    expect(digestSectionFor("2026-10-31", today)).toBeNull();
+    expect(digestSectionFor("2027-01-31", today)).toBeNull(); // 91 days
+  });
+
+  it("ignores an unreadable date", () => {
+    expect(digestSectionFor("not-a-date", today)).toBeNull();
+  });
+});
+
+describe("selectExpiringForEmployees — team picker warnings", () => {
+  const today = "2026-11-10";
+  const item = (employeeId: number, label: string, expiryDate: string) => ({
+    employeeId,
+    employeeName: `Employee ${employeeId}`,
+    employeeCode: `AQ-${employeeId}`,
+    label,
+    expiryDate,
+  });
+
+  it("includes up to and including 90 days, and excludes 91", () => {
+    const result = selectExpiringForEmployees(
+      [item(1, "Passport", "2027-02-08"), item(1, "CDC", "2027-02-09")],
+      [1],
+      today,
+    );
+    expect(result.map((w) => w.documentLabel)).toEqual(["Passport"]);
+    expect(result[0].daysRemaining).toBe(90);
+  });
+
+  it("includes already-expired documents with negative days, most urgent first", () => {
+    const result = selectExpiringForEmployees(
+      [item(1, "Passport", "2026-12-25"), item(1, "CDC", "2026-11-06")],
+      [1],
+      today,
+    );
+    expect(result.map((w) => [w.documentLabel, w.daysRemaining])).toEqual([
+      ["CDC", -4],
+      ["Passport", 45],
+    ]);
+  });
+
+  it("only returns the requested employees", () => {
+    const result = selectExpiringForEmployees(
+      [item(1, "Passport", "2026-12-25"), item(2, "Passport", "2026-12-25")],
+      [2],
+      today,
+    );
+    expect(result.map((w) => w.employeeId)).toEqual([2]);
   });
 });

@@ -12,6 +12,8 @@
  * Styling is inline: Outlook and most webmail strip <style> blocks.
  */
 
+import { DIGEST_SECTIONS, type DigestSection } from "./expiry";
+
 const esc = (value: unknown): string =>
   String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -100,38 +102,107 @@ export function renderExpiryReminder(input: ExpiryReminderInput): {
   return { subject, html: shell("Document expiry reminder", body) };
 }
 
+export interface DocumentChangeInput {
+  action: "added" | "updated";
+  employeeName: string;
+  employeeCode: string;
+  documentLabel: string;
+  documentNumber?: string | null;
+  dateOfIssue?: string | null;
+  expiryDate?: string | null;
+  attachmentCount: number;
+  /** Already formatted in the client's timezone, e.g. "09 Nov 2026, 21:45". */
+  changedAt: string;
+  /** Where "View in Aquanav" points. Omitted when the address is unknown. */
+  viewUrl?: string | null;
+  /** The project-manager notice, or the employee's own confirmation. */
+  forEmployee: boolean;
+}
+
+/**
+ * Sent when an employee adds or edits one of their own documents: a review
+ * notice to project managers and a confirmation to the employee, so a change
+ * made by someone else on their login does not go unnoticed.
+ */
+export function renderDocumentChange(input: DocumentChangeInput): {
+  subject: string;
+  html: string;
+} {
+  const verb = input.action === "added" ? "added" : "updated";
+
+  const subject = input.forEmployee
+    ? `Your ${input.documentLabel} was ${verb} in Aquanav`
+    : `${input.employeeName} ${verb} their ${input.documentLabel}`;
+
+  const details = input.forEmployee
+    ? `
+      ${row("Document", esc(input.documentLabel))}
+      ${input.documentNumber ? row("Number", esc(input.documentNumber)) : ""}
+      ${input.expiryDate ? row("Expires", humanDate(input.expiryDate)) : ""}
+      ${row("Changed on", esc(input.changedAt))}`
+    : `
+      ${row("Employee", `${esc(input.employeeName)} (${esc(input.employeeCode)})`)}
+      ${row("Action", input.action === "added" ? "Added" : "Updated")}
+      ${row("Document", esc(input.documentLabel))}
+      ${input.documentNumber ? row("Number", esc(input.documentNumber)) : ""}
+      ${input.dateOfIssue ? row("Issue date", humanDate(input.dateOfIssue)) : ""}
+      ${input.expiryDate ? row("Expires", humanDate(input.expiryDate)) : ""}
+      ${row(
+        "Attachments",
+        input.attachmentCount === 0
+          ? "None"
+          : `${esc(input.attachmentCount)} file${input.attachmentCount === 1 ? "" : "s"}`,
+      )}
+      ${row("Changed on", esc(input.changedAt))}`;
+
+  const opening = input.forEmployee
+    ? `<p style="margin:0 0 16px;font-size:14px;">Dear ${esc(input.employeeName)},</p>
+       <p style="margin:0 0 16px;font-size:14px;">This confirms that your <strong>${esc(input.documentLabel)}</strong> was ${verb} in Aquanav. Your project manager has been notified.</p>`
+    : `<p style="margin:0 0 16px;font-size:14px;"><strong>${esc(input.employeeName)}</strong> has ${verb} one of their documents in Aquanav. Please review it.</p>`;
+
+  const closing = input.forEmployee
+    ? `<p style="margin:0;font-size:13px;color:#52606d;">If you did not make this change, please contact HR immediately.</p>`
+    : input.viewUrl
+      ? `<p style="margin:0;"><a href="${esc(input.viewUrl)}" style="display:inline-block;background:${BRAND};color:#ffffff;padding:10px 18px;border-radius:6px;font-size:13px;font-weight:bold;text-decoration:none;">View in Aquanav</a></p>`
+      : "";
+
+  const body = `
+    ${opening}
+    <table style="border-collapse:collapse;margin-bottom:16px;">${details}
+    </table>
+    ${closing}`;
+
+  return {
+    subject,
+    html: shell(
+      input.forEmployee ? "Your document was saved" : "Employee document updated",
+      body,
+    ),
+  };
+}
+
 export interface DigestRow {
+  /** 1 = within a month, 2 = 1 to 2 months, 3 = 2 to 3 months. */
+  section: DigestSection;
   employeeName: string;
   employeeCode: string;
   documentLabel: string;
   expiryDate: string;
+  daysRemaining: number;
 }
 
-export function renderMonthlyDigest(input: {
-  monthLabel: string;
-  rows: DigestRow[];
-}): { subject: string; html: string } {
-  const subject = `Documents expiring in ${input.monthLabel}`;
+const th = (label: string, align: "left" | "right" = "left"): string =>
+  `<th style="text-align:${align};padding:8px;font-size:12px;color:#52606d;border-bottom:1px solid #e4e7eb;">${esc(label)}</th>`;
 
-  // An empty month still sends: silence is ambiguous — it could equally mean
-  // the job is broken — whereas "nothing expires" is a useful all-clear.
-  const body =
-    input.rows.length === 0
-      ? `<p style="margin:0;font-size:14px;">No employee documents or training records expire in ${esc(input.monthLabel)}.</p>`
-      : `
-    <p style="margin:0 0 16px;font-size:14px;">
-      ${esc(input.rows.length)} item${input.rows.length === 1 ? "" : "s"} expire in <strong>${esc(input.monthLabel)}</strong>.
-    </p>
-    <table style="border-collapse:collapse;width:100%;">
+const digestTable = (rows: DigestRow[]): string => `
+    <table style="border-collapse:collapse;width:100%;margin-bottom:8px;">
       <thead>
         <tr style="background:#f4f6f8;">
-          <th style="text-align:left;padding:8px;font-size:12px;color:#52606d;border-bottom:1px solid #e4e7eb;">Employee</th>
-          <th style="text-align:left;padding:8px;font-size:12px;color:#52606d;border-bottom:1px solid #e4e7eb;">Document</th>
-          <th style="text-align:right;padding:8px;font-size:12px;color:#52606d;border-bottom:1px solid #e4e7eb;">Expires</th>
+          ${th("Employee")}${th("Document")}${th("Expires", "right")}${th("Days left", "right")}
         </tr>
       </thead>
       <tbody>
-        ${input.rows
+        ${rows
           .map(
             (r) => `
         <tr>
@@ -141,11 +212,42 @@ export function renderMonthlyDigest(input: {
           </td>
           <td style="padding:8px;font-size:13px;border-bottom:1px solid #f0f2f4;">${esc(r.documentLabel)}</td>
           <td style="padding:8px;font-size:13px;text-align:right;border-bottom:1px solid #f0f2f4;white-space:nowrap;">${humanDate(r.expiryDate)}</td>
+          <td style="padding:8px;font-size:13px;text-align:right;border-bottom:1px solid #f0f2f4;">${esc(r.daysRemaining)}</td>
         </tr>`,
           )
           .join("")}
       </tbody>
     </table>`;
 
-  return { subject, html: shell(`Expiring this month — ${input.monthLabel}`, body) };
+/**
+ * The monthly digest: everything expiring in the next three months, in three
+ * sections (within 1 month, 1 to 2 months, 2 to 3 months). A section with
+ * nothing in it says so rather than disappearing, so an empty section reads as
+ * an all-clear and not as a missing part of the email.
+ */
+export function renderMonthlyDigest(input: {
+  monthLabel: string;
+  rows: DigestRow[];
+}): { subject: string; html: string } {
+  const subject = `Document expiry digest — ${input.monthLabel}`;
+
+  const total = input.rows.length;
+  const intro = `<p style="margin:0 0 16px;font-size:14px;">${
+    total === 0
+      ? "No employee documents or training records expire in the next 3 months."
+      : `${esc(total)} item${total === 1 ? "" : "s"} expire in the next 3 months.`
+  }</p>`;
+
+  const sections = DIGEST_SECTIONS.map((section) => {
+    const rows = input.rows.filter((r) => r.section === section.key);
+    return `
+    <h2 style="margin:20px 0 8px;font-size:15px;color:${BRAND};">${esc(section.label)} (${esc(rows.length)})</h2>
+    ${
+      rows.length === 0
+        ? '<p style="margin:0 0 8px;font-size:13px;color:#7b8794;">Nothing in this period.</p>'
+        : digestTable(rows)
+    }`;
+  }).join("");
+
+  return { subject, html: shell(`Document expiry digest — ${input.monthLabel}`, intro + sections) };
 }
