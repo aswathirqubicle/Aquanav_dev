@@ -111,6 +111,11 @@ export interface SendMailInput {
     /** Set for an image the HTML shows via cid:<contentId>. */
     contentId?: string;
   }>;
+  /**
+   * What email_send_log keeps as the body, when it must differ from what is
+   * sent — e.g. the welcome email, whose logged copy masks the password.
+   */
+  logHtml?: string;
   /** For the audit trail only. */
   template?: string;
   relatedType?: string;
@@ -221,7 +226,7 @@ async function logSend(
         toEmail: address,
         recipientName: input.recipientNames?.[address] ?? null,
         subject: input.subject,
-        bodyHtml: input.html,
+        bodyHtml: input.logHtml ?? input.html,
         template: input.template ?? null,
         status,
         error,

@@ -382,3 +382,55 @@ export function renderProfileChange(input: ProfileChangeInput): {
     ),
   };
 }
+
+export interface WelcomeEmailInput {
+  employeeName: string;
+  companyName?: string | null;
+  /** The site the admin created the account on; omitted if unknown. */
+  loginUrl?: string | null;
+  username: string;
+  temporaryPassword: string;
+}
+
+/**
+ * Sent to a new employee when their login is created with the employee
+ * record: login page, username, temporary password and first steps.
+ */
+export function renderWelcomeEmail(input: WelcomeEmailInput): {
+  subject: string;
+  html: string;
+} {
+  const company = input.companyName?.trim() || "Aquanav";
+  const link = input.loginUrl
+    ? row(
+        "Login page",
+        `<a href="${esc(input.loginUrl)}" style="color:${BRAND};">${esc(input.loginUrl)}</a>`,
+      )
+    : "";
+  const button = input.loginUrl
+    ? `<p style="margin:0 0 16px;"><a href="${esc(input.loginUrl)}" style="display:inline-block;background:${BRAND};color:#ffffff;padding:10px 18px;border-radius:6px;font-size:13px;font-weight:bold;text-decoration:none;">Log in to Aquanav</a></p>`
+    : `<p style="margin:0 0 16px;font-size:14px;">Ask HR for the address of the Aquanav login page.</p>`;
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:14px;">Dear ${esc(input.employeeName)},</p>
+    <p style="margin:0 0 16px;font-size:14px;">Welcome to <strong>${esc(company)}</strong>. An account has been created for you in Aquanav, where you can keep your details, documents and training up to date, set your joining readiness and view your payslips.</p>
+    <table style="border-collapse:collapse;margin-bottom:16px;">
+      ${link}
+      ${row("Username", esc(input.username))}
+      ${row("Temporary password", `<span style="font-family:Consolas,Menlo,monospace;">${esc(input.temporaryPassword)}</span>`)}
+    </table>
+    ${button}
+    <p style="margin:0 0 8px;font-size:14px;font-weight:bold;">After you log in</p>
+    <ol style="margin:0 0 16px;padding-left:20px;font-size:14px;line-height:1.6;">
+      <li>Change your password under <strong>My Profile → Change Password</strong>.</li>
+      <li>Check your <strong>Basic Info</strong> and add your <strong>Next of Kin</strong>.</li>
+      <li>Upload your <strong>Documents</strong> (passport, CDC, medical, visas) and <strong>Training</strong> certificates.</li>
+      <li>Set your <strong>Joining Readiness</strong> date.</li>
+    </ol>
+    <p style="margin:0;font-size:13px;color:#52606d;">Keep these details private. If you did not expect this email or have trouble logging in, please contact HR.</p>`;
+
+  return {
+    subject: "Welcome to Aquanav — your login details",
+    html: shell("Welcome to Aquanav", body),
+  };
+}

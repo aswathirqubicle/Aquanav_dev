@@ -28,6 +28,8 @@ import {
   notifyEmployeeDocumentChange,
 } from "../notifications/document-change";
 import { findExpiringDocumentWarnings } from "../notifications/expiry-check";
+import { generateTemporaryPassword } from "../lib/temp-password";
+import { sendWelcomeEmail } from "../notifications/welcome";
 
 export const employeesRoutes = Router();
 
@@ -213,9 +215,9 @@ employeesRoutes.post(
               /\s+/g,
               "",
             );
-          const defaultPassword = `${
-            employee.employeeCode
-          }@${new Date().getFullYear()}`;
+          // Random, not derived from the employee code: the old
+          // "<code>@<year>" default could be guessed by anyone who knew it.
+          const defaultPassword = generateTemporaryPassword();
 
           const userData = {
             username: username,
@@ -237,8 +239,18 @@ employeesRoutes.post(
               username: username,
               password: defaultPassword,
               message:
-                "User account created successfully. Please share these credentials with the employee.",
+                "User account created successfully. A welcome email with these details is being sent to the employee.",
             },
+          });
+
+          // After the response, so creating the employee never waits on
+          // Microsoft or fails because of email. The admin still sees the
+          // credentials above if the email cannot be sent.
+          void sendWelcomeEmail({
+            employee,
+            username,
+            temporaryPassword: defaultPassword,
+            appOrigin: appOriginFrom(req.get("origin")),
           });
         } catch (userError) {
           console.error("User creation error:", userError);
