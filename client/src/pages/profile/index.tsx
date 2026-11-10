@@ -17,6 +17,12 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDateForInput, formatDisplayDate } from "@/lib/utils";
 import { MyDocumentDialog } from "@/components/profile/my-document-dialog";
+import {
+  MyBasicInfoDialog,
+  MyNextOfKinDialog,
+  MyTrainingDialog,
+  type MyTrainingRecord,
+} from "@/components/profile/my-profile-dialogs";
 import { Pencil, Plus } from "lucide-react";
 
 interface ProfileEmployee {
@@ -30,6 +36,12 @@ interface ProfileEmployee {
   department: string | null;
   position: string | null;
   joiningReadinessDate: string | null;
+  address: string | null;
+  dateOfBirth: string | null;
+  height: string | null;
+  weight: string | null;
+  boilerSuitSize: string | null;
+  safetyShoeSize: string | null;
 }
 
 interface NextOfKin {
@@ -41,15 +53,7 @@ interface NextOfKin {
   isPrimary: boolean;
 }
 
-interface TrainingRecord {
-  id: number;
-  trainingName: string;
-  trainingProvider: string;
-  certificationNumber: string | null;
-  trainingDate: string;
-  expiryDate: string | null;
-  status: string;
-}
+type TrainingRecord = MyTrainingRecord;
 
 interface EmployeeDoc {
   id: number;
@@ -115,6 +119,11 @@ export default function ProfileIndex() {
   const [readinessDate, setReadinessDate] = useState("");
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false);
   const [editingDocument, setEditingDocument] = useState<EmployeeDoc | null>(null);
+  const [basicDialogOpen, setBasicDialogOpen] = useState(false);
+  const [kinDialogOpen, setKinDialogOpen] = useState(false);
+  const [editingKin, setEditingKin] = useState<NextOfKin | null>(null);
+  const [trainingDialogOpen, setTrainingDialogOpen] = useState(false);
+  const [editingTraining, setEditingTraining] = useState<TrainingRecord | null>(null);
 
   // Seeded from the server rather than held as the only copy, so a save
   // elsewhere (an admin setting it) is reflected when the query refetches.
@@ -313,22 +322,58 @@ export default function ProfileIndex() {
 
         <TabsContent value="basic" className="mt-4">
           <Card>
-            <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Basic Info</CardTitle>
+              <Button size="sm" variant="outline" onClick={() => setBasicDialogOpen(true)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               <Field label="Employee Code" value={dash(employee.employeeCode)} />
               <Field label="First Name" value={dash(employee.firstName)} />
               <Field label="Last Name" value={dash(employee.lastName)} />
               <Field label="Email" value={dash(employee.email)} />
               <Field label="Phone" value={dash(employee.phone)} />
+              <Field
+                label="Date of Birth"
+                value={employee.dateOfBirth ? formatDisplayDate(employee.dateOfBirth) : "—"}
+              />
               <Field label="Grade" value={dash(employee.grade)} />
               <Field label="Department" value={dash(employee.department)} />
               <Field label="Position" value={dash(employee.position)} />
+              <Field label="Height (cm)" value={dash(employee.height)} />
+              <Field label="Weight (kg)" value={dash(employee.weight)} />
+              <Field label="Boiler Suit Size" value={dash(employee.boilerSuitSize)} />
+              <Field label="Safety Shoe Size" value={dash(employee.safetyShoeSize)} />
+              <div className="sm:col-span-2 lg:col-span-3">
+                <Field label="Address" value={dash(employee.address)} />
+              </div>
             </CardContent>
           </Card>
+          <MyBasicInfoDialog
+            open={basicDialogOpen}
+            onOpenChange={setBasicDialogOpen}
+            current={employee}
+          />
         </TabsContent>
 
         <TabsContent value="nextofkin" className="mt-4">
           <Card>
-            <CardContent className="p-6">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Next of Kin</CardTitle>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingKin(null);
+                  setKinDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Next of Kin
+              </Button>
+            </CardHeader>
+            <CardContent>
               {(data?.nextOfKin ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No next of kin recorded.
@@ -358,7 +403,20 @@ export default function ProfileIndex() {
                         value={dash(titleise(kin.relationship))}
                       />
                       <Field label="Phone" value={dash(kin.phone)} />
-                      <Field label="Email" value={dash(kin.email)} />
+                      <div className="flex items-start justify-between gap-2">
+                        <Field label="Email" value={dash(kin.email)} />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Edit ${kin.name}`}
+                          onClick={() => {
+                            setEditingKin(kin);
+                            setKinDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -369,6 +427,19 @@ export default function ProfileIndex() {
 
         <TabsContent value="training" className="mt-4">
           <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Training</CardTitle>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditingTraining(null);
+                  setTrainingDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Training
+              </Button>
+            </CardHeader>
             <CardContent className="p-0">
               {(data?.trainingRecords ?? []).length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground">
@@ -385,6 +456,7 @@ export default function ProfileIndex() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expires</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -399,6 +471,19 @@ export default function ProfileIndex() {
                             <Badge variant="secondary" className="text-xs">
                               {titleise(record.status)}
                             </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingTraining(record);
+                                setTrainingDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -576,6 +661,17 @@ export default function ProfileIndex() {
           {passwordCard}
         </TabsContent>
       </Tabs>
+
+      <MyNextOfKinDialog
+        open={kinDialogOpen}
+        onOpenChange={setKinDialogOpen}
+        kin={editingKin}
+      />
+      <MyTrainingDialog
+        open={trainingDialogOpen}
+        onOpenChange={setTrainingDialogOpen}
+        record={editingTraining}
+      />
     </div>
   );
 }

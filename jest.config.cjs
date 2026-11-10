@@ -37,6 +37,7 @@ module.exports = {
     '<rootDir>/server/offsite-restore.test.ts',
     '<rootDir>/server/payslip-email.test.ts',
     '<rootDir>/server/email-templates.test.ts',
+    '<rootDir>/server/profile-self-service.test.ts',
   ],
 
   transform: {

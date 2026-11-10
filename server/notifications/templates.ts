@@ -320,3 +320,65 @@ export function renderTestEmail(): { subject: string; html: string } {
     ),
   };
 }
+
+export interface ProfileChangeInput {
+  /** "Basic info", "Next of kin" or "Training". */
+  sectionLabel: string;
+  /** What the change was about, e.g. "Mother — Jane Doe" or "STCW Basic Safety". */
+  itemLabel?: string | null;
+  action: "added" | "updated";
+  employeeName: string;
+  employeeCode: string;
+  /** The changed or entered values. */
+  details: Array<{ label: string; value: string }>;
+  /** Already formatted in the client's timezone. */
+  changedAt: string;
+  viewUrl?: string | null;
+  forEmployee: boolean;
+}
+
+/**
+ * Sent when an employee changes their own basic info, next of kin or training
+ * from My Profile: a notice to project managers and a confirmation to the
+ * employee, so a change made by someone else on their login is noticed.
+ */
+export function renderProfileChange(input: ProfileChangeInput): {
+  subject: string;
+  html: string;
+} {
+  const section = input.sectionLabel.toLowerCase();
+  const what = input.itemLabel ? `${input.sectionLabel}: ${input.itemLabel}` : input.sectionLabel;
+
+  const subject = input.forEmployee
+    ? `Your ${section} was ${input.action} in Aquanav`
+    : `${input.employeeName} ${input.action} their ${section}`;
+
+  const rows = [
+    ...(input.forEmployee
+      ? []
+      : [row("Employee", `${esc(input.employeeName)} (${esc(input.employeeCode)})`)]),
+    row("Section", esc(what)),
+    row("Action", input.action === "added" ? "Added" : "Updated"),
+    ...input.details.map((d) => row(d.label, esc(d.value))),
+    row("Changed on", esc(input.changedAt)),
+  ].join("");
+
+  const opening = input.forEmployee
+    ? `<p style="margin:0 0 16px;font-size:14px;">Dear ${esc(input.employeeName)},</p>
+       <p style="margin:0 0 16px;font-size:14px;">This confirms that your <strong>${esc(section)}</strong> was ${input.action} in Aquanav. Your project manager has been notified.</p>`
+    : `<p style="margin:0 0 16px;font-size:14px;"><strong>${esc(input.employeeName)}</strong> has ${input.action} their ${esc(section)} in Aquanav. Please review it.</p>`;
+
+  const closing = input.forEmployee
+    ? `<p style="margin:0;font-size:13px;color:#52606d;">If you did not make this change, please contact HR immediately.</p>`
+    : input.viewUrl
+      ? `<p style="margin:0;"><a href="${esc(input.viewUrl)}" style="display:inline-block;background:${BRAND};color:#ffffff;padding:10px 18px;border-radius:6px;font-size:13px;font-weight:bold;text-decoration:none;">View in Aquanav</a></p>`
+      : "";
+
+  return {
+    subject,
+    html: shell(
+      input.forEmployee ? "Your profile was updated" : "Employee profile updated",
+      `${opening}<table style="border-collapse:collapse;margin-bottom:16px;">${rows}</table>${closing}`,
+    ),
+  };
+}
