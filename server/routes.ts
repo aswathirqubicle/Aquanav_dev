@@ -10,6 +10,7 @@ import { purchaseInvoicesRoutes } from "./routes/purchase-invoices.routes";
 import { payrollRoutes } from "./routes/payroll.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
 import { salesQuotationsRoutes } from "./routes/sales-quotations.routes";
+import { recurringInvoicesRoutes } from "./routes/recurring-invoices.routes";
 import { reimbursementsRoutes } from "./routes/reimbursements.routes";
 import { printRoutes } from "./routes/print.routes";
 import { purchaseOrdersRoutes } from "./routes/purchase-orders.routes";
@@ -76,6 +77,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(payrollRoutes);
   app.use(dashboardRoutes);
   app.use(salesQuotationsRoutes);
+  app.use(recurringInvoicesRoutes);
   app.use(reimbursementsRoutes);
   app.use(printRoutes);
   app.use(purchaseOrdersRoutes);

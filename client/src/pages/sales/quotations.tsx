@@ -111,6 +111,14 @@ import {
   formatAmount,
   formatDate,
 } from "./shared";
+import {
+  ConvertQuotationDialog,
+  RecurringScheduleCard,
+} from "./recurring-invoice";
+import {
+  BILLING_TYPE_LABELS,
+  type BillingType,
+} from "@shared/recurring-billing";
 
 const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
   validUntil: z.string().optional(),
@@ -124,6 +132,9 @@ const createSalesQuotationSchema = insertSalesQuotationSchema.extend({
         taxAmount: z.number().optional(),
         discount: z.number().optional(),
         discountType: z.enum(["amount", "percentage"]).optional(),
+        billingType: z
+          .enum(["one_time", "monthly_prorata", "monthly_fixed"])
+          .optional(),
       }),
     )
     .default([]),
@@ -145,6 +156,7 @@ interface QuotationItem {
   taxAmount?: number;
   discount?: number;
   discountType?: "amount" | "percentage";
+  billingType?: BillingType;
 }
 
 export default function SalesQuotationsPage() {
@@ -159,6 +171,9 @@ export default function SalesQuotationsPage() {
   const canSeeCompanyTotals =
     user?.role === "admin" || user?.role === "finance";
   const canConvertToInvoice = canSeeCompanyTotals;
+  // Convert to Invoice first asks: one invoice, or a recurring one.
+  const [convertingQuotation, setConvertingQuotation] =
+    useState<SalesQuotation | null>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedQuotation, setSelectedQuotation] =
@@ -223,6 +238,8 @@ export default function SalesQuotationsPage() {
     taxAmount: number;
     discount: number | "";
     discountType: "amount" | "percentage";
+    // How the line bills if the quotation is converted as a recurring invoice.
+    billingType: BillingType;
   }>({
     description: "",
     // Quantity, unit price and discount start blank so the guidance sits in the
@@ -234,6 +251,7 @@ export default function SalesQuotationsPage() {
     taxAmount: 0,
     discount: "",
     discountType: "amount",
+    billingType: "one_time",
   });
 
   // Index of the line being edited, or null when the form is adding a new one.
@@ -738,6 +756,7 @@ export default function SalesQuotationsPage() {
       taxAmount: 0,
       discount: "",
       discountType: "amount",
+      billingType: "one_time",
     });
 
     setEditingItemIndex(null);
@@ -828,6 +847,7 @@ export default function SalesQuotationsPage() {
       taxAmount: calculatedTaxAmount,
       discount,
       discountType,
+      billingType: newItem.billingType,
     };
 
     setFormData(prev => ({
@@ -848,6 +868,7 @@ export default function SalesQuotationsPage() {
       taxAmount: 0,
       discount: "",
       discountType: "amount",
+      billingType: "one_time",
     });
     setEditingItemIndex(null);
   };
@@ -866,6 +887,7 @@ export default function SalesQuotationsPage() {
       taxAmount: item.taxAmount ?? 0,
       discount: Number(item.discount) || 0,
       discountType: item.discountType === "percentage" ? "percentage" : "amount",
+      billingType: (item as any).billingType || "one_time",
     });
     setEditingItemIndex(index);
     focusItemForm(quotationItemFormRef, quotationDescriptionRef);
@@ -880,6 +902,7 @@ export default function SalesQuotationsPage() {
       taxAmount: 0,
       discount: "",
       discountType: "amount",
+      billingType: "one_time",
     });
     setEditingItemIndex(null);
   };
@@ -1491,6 +1514,29 @@ export default function SalesQuotationsPage() {
                               </select>
                             </div>
                           </div>
+                          <div>
+                            <Label className="text-xs text-gray-600">
+                              Billing
+                            </Label>
+                            <select
+                              className="border rounded px-2 h-10 w-full text-sm bg-background"
+                              value={newItem.billingType}
+                              onChange={(e) =>
+                                setNewItem((prev) => ({
+                                  ...prev,
+                                  billingType: e.target.value as BillingType,
+                                }))
+                              }
+                              title="How this line bills if the quotation is converted as a recurring invoice"
+                              data-testid="select-quotation-item-billing"
+                            >
+                              {(Object.keys(BILLING_TYPE_LABELS) as BillingType[]).map((t) => (
+                                <option key={t} value={t}>
+                                  {BILLING_TYPE_LABELS[t]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                         <div className="flex flex-col md:flex-row gap-2">
                           <Button
@@ -1598,6 +1644,13 @@ export default function SalesQuotationsPage() {
                                     >
                                       <td className="px-4 py-3 text-sm whitespace-pre-wrap break-words">
                                         {item.description}
+                                        {item.billingType && item.billingType !== "one_time" && (
+                                          <div className="mt-1">
+                                            <Badge variant="outline" className="text-xs font-normal whitespace-nowrap">
+                                              {BILLING_TYPE_LABELS[item.billingType]}
+                                            </Badge>
+                                          </div>
+                                        )}
                                       </td>
                                       <td className="px-4 py-3 text-sm text-right">
                                         {item.quantity}
@@ -2232,7 +2285,7 @@ export default function SalesQuotationsPage() {
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleConvertToInvoice(quotation);
+                              setConvertingQuotation(quotation);
                             }}
                             data-testid={`button-convert-quotation-${quotation.id}`}
                           >
@@ -2636,6 +2689,11 @@ export default function SalesQuotationsPage() {
                                         <span className="text-[13.5px] font-semibold whitespace-pre-wrap break-words print:text-black">
                                           {item.description}
                                         </span>
+                                        {(item as any).billingType && (item as any).billingType !== "one_time" && (
+                                          <span className="block text-[11.5px] text-[#5B6472] mt-0.5 print:hidden">
+                                            {BILLING_TYPE_LABELS[(item as any).billingType as BillingType]}
+                                          </span>
+                                        )}
                                       </td>
                                       <td className={DOC_TDN}>{item.quantity}</td>
                                       <td className={DOC_TDN}>
@@ -2707,6 +2765,13 @@ export default function SalesQuotationsPage() {
                         </div>
                       )}
                     </div>
+
+                    {canConvertToInvoice && (
+                      <RecurringScheduleCard
+                        quotationId={selectedQuotation.id}
+                        canManage={canConvertToInvoice}
+                      />
+                    )}
 
                     {/* Notes and terms are reference text, not something a
                         reader needs on opening the document, so both stay
@@ -2946,7 +3011,7 @@ export default function SalesQuotationsPage() {
                     )}
                   {selectedQuotation.status === "approved" && canConvertToInvoice && (
                     <Button
-                      onClick={() => handleConvertToInvoice(selectedQuotation)}
+                      onClick={() => setConvertingQuotation(selectedQuotation)}
                       className="w-full sm:w-auto"
                       data-testid="button-convert-quotation-dialog"
                     >
@@ -3119,6 +3184,15 @@ export default function SalesQuotationsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConvertQuotationDialog
+        quotation={convertingQuotation}
+        open={!!convertingQuotation}
+        onOpenChange={(open) => {
+          if (!open) setConvertingQuotation(null);
+        }}
+        onPlainInvoice={handleConvertToInvoice}
+      />
     </div>
   );
 }

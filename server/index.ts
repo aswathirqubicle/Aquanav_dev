@@ -2,7 +2,11 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializeDatabase } from "./init-db";
-import { startOverdueInvoiceJob, startNotificationJob } from "./jobs";
+import {
+  startOverdueInvoiceJob,
+  startNotificationJob,
+  startRecurringInvoiceJob,
+} from "./jobs";
 import { sweepRestoreWorkDir } from "./lib/offsite-restore";
 
 const app = express();
@@ -45,6 +49,7 @@ app.use((req, res, next) => {
 
   startOverdueInvoiceJob();
   startNotificationJob();
+  startRecurringInvoiceJob();
 
   // A restore killed mid-flight (a deploy, an OOM, a reboot) never runs its own
   // cleanup, leaving a part-downloaded archive behind. Clear that on the way up.
