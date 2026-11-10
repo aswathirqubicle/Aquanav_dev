@@ -2,6 +2,7 @@ import { db } from "./db";
 import { salesInvoices } from "@shared/schema";
 import { and, inArray, lt, sql } from "drizzle-orm";
 import { runExpiryReminders, runMonthlyDigest } from "./notifications/runner";
+import { generateDueInvoices } from "./recurring-invoices";
 
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
@@ -80,4 +81,30 @@ export function startNotificationJob(): void {
   runNotifications();
   setInterval(runNotifications, ONE_HOUR);
   console.log("[jobs] Notification job scheduled (runs hourly).");
+}
+
+/**
+ * Recurring invoices: drafts each schedule's invoice once its run date arrives.
+ *
+ * Hourly for the same reason as the notification job — a restart resets
+ * setInterval, so "daily" would drift to whenever the process last booted. A
+ * run that finds nothing due costs one query. Running often or twice cannot
+ * draft a period twice: each period is checked before insert and a unique
+ * index (migration 0086) backs that up.
+ */
+async function runRecurringInvoices(): Promise<void> {
+  try {
+    const created = await generateDueInvoices();
+    if (created > 0) {
+      console.log(`[recurring-invoices] Drafted ${created} invoice(s).`);
+    }
+  } catch (error) {
+    console.error("[recurring-invoices] Run failed:", error);
+  }
+}
+
+export function startRecurringInvoiceJob(): void {
+  runRecurringInvoices();
+  setInterval(runRecurringInvoices, ONE_HOUR);
+  console.log("[jobs] Recurring invoice job scheduled (runs hourly).");
 }

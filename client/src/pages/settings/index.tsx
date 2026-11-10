@@ -85,6 +85,9 @@ const updateCompanySchema = insertCompanySchema.extend({
 
 type UpdateCompanyData = z.infer<typeof updateCompanySchema>;
 
+// The destructive "Rebuild General Ledger" card is hidden from Settings.
+const SHOW_LEDGER_REBUILD = false;
+
 export default function SettingsIndex() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
@@ -1689,7 +1692,12 @@ export default function SettingsIndex() {
               </CardContent>
             </Card>
 
+            {/* Hidden from Settings at the client's request. The card and its
+                handlers stay so it can be shown again by flipping
+                SHOW_LEDGER_REBUILD; the /api/system/gl-rebuild endpoints are
+                unchanged and still admin-only. */}
             {/* ---- Ledger rebuild (Phase 11) — destructive, admin only ---- */}
+            {SHOW_LEDGER_REBUILD && (
             <Card className="border-destructive/40">
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -1837,6 +1845,7 @@ export default function SettingsIndex() {
                 )}
               </CardContent>
             </Card>
+            )}
 
 
             {healthData && (
