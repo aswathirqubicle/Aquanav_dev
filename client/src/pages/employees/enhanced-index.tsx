@@ -740,7 +740,7 @@ export default function EmployeesIndex() {
       toast({
         title: "Employee Created",
         description: result.generatedCredentials
-          ? `Employee and user account created. Username: ${result.generatedCredentials.username}, Password: ${result.generatedCredentials.password}`
+          ? `Employee and user account created. Username: ${result.generatedCredentials.username}, Password: ${result.generatedCredentials.password}. A welcome email with these details is being sent to the employee.`
           : "Employee has been created successfully.",
       });
     },

@@ -38,6 +38,7 @@ module.exports = {
     '<rootDir>/server/payslip-email.test.ts',
     '<rootDir>/server/email-templates.test.ts',
     '<rootDir>/server/profile-self-service.test.ts',
+    '<rootDir>/server/welcome-email.test.ts',
   ],
 
   transform: {
