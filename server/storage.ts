@@ -262,9 +262,26 @@ export interface IStorage {
   getEmployees(): Promise<Employee[]>;
   getEmployeeByUserId(userId: number): Promise<Employee | undefined>;
   getEmployeeNextOfKin(employeeId: number): Promise<EmployeeNextOfKin[]>;
+  createEmployeeNextOfKin(
+    data: InsertEmployeeNextOfKin,
+  ): Promise<EmployeeNextOfKin>;
+  updateEmployeeNextOfKin(
+    id: number,
+    data: Partial<InsertEmployeeNextOfKin>,
+  ): Promise<EmployeeNextOfKin | undefined>;
   getEmployeeTrainingRecords(
     employeeId: number,
   ): Promise<EmployeeTrainingRecord[]>;
+  getEmployeeTrainingRecord(
+    id: number,
+  ): Promise<EmployeeTrainingRecord | undefined>;
+  createEmployeeTrainingRecord(
+    data: InsertEmployeeTrainingRecord,
+  ): Promise<EmployeeTrainingRecord>;
+  updateEmployeeTrainingRecord(
+    id: number,
+    data: Partial<InsertEmployeeTrainingRecord>,
+  ): Promise<EmployeeTrainingRecord | undefined>;
   getEmployeeDocuments(employeeId: number): Promise<EmployeeDocument[]>;
   // Joining readiness: set by the employee from Profile or by an admin from the
   // Basic Info tab; every change is recorded against who made it.
