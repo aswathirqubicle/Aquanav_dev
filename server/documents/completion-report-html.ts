@@ -489,8 +489,8 @@ export function generateCompletionReportHTML(data: any): string {
           return dividerPage + `</div>`;
         }
 
-        // 2. Chunk them into pages based on strictly 5 PHOTO ROWS per page (15 photos)
-        const MAX_PHOTO_ROWS = 5;
+        // 2. Chunk them into pages based on strictly 3 PHOTO ROWS per page (6 photos)
+        const MAX_PHOTO_ROWS = 3;
         const chunks: { title: string; photos: any[] }[][] = [];
         let currentChunk: { title: string; photos: any[] }[] = [];
         let currentPhotoRows = 0;
@@ -517,7 +517,7 @@ export function generateCompletionReportHTML(data: any): string {
           allGroups.push({ title: currentTitle, photos: currentGroupPhotos });
         }
 
-        // Now pack groups into chunks until we hit the 5-row limit
+        // Now pack groups into chunks until we hit the 3-row limit
         for (const group of allGroups) {
           let remainingPhotos = [...group.photos];
 
@@ -532,10 +532,10 @@ export function generateCompletionReportHTML(data: any): string {
             }
 
             // Calculate how many photos we can fit in the available rows
-            const maxPhotosToFit = availableRows * 3;
+            const maxPhotosToFit = availableRows * 2;
             const photosToTake = remainingPhotos.splice(0, maxPhotosToFit);
 
-            const rowsUsed = Math.ceil(photosToTake.length / 3);
+            const rowsUsed = Math.ceil(photosToTake.length / 2);
             currentPhotoRows += rowsUsed;
 
             // Add to current chunk
@@ -566,28 +566,9 @@ export function generateCompletionReportHTML(data: any): string {
         // 3. Render chunks
         const pagesHTML = chunks
           .map((chunk, chunkIndex) => {
-            // Calculate total rows and total titles in this chunk to determine dynamic image height
-            let totalRowsInChunk = 0;
-            let totalTitlesInChunk = chunk.length;
-            chunk.forEach(({ photos }) => {
-              totalRowsInChunk += Math.ceil(photos.length / 3);
-            });
-
-            // The usable vertical space on an A4 page is roughly 850px.
-            // We subtract space for the location title, margins, and the group titles to find available space.
-            const usableHeight = 820;
-            const estimatedTitleSpace = totalTitlesInChunk * 35; // ~35px per title + margins
-            const gapSpace = totalRowsInChunk * 8; // 8px gap between grid rows
-            const availableSpaceForImages = Math.max(
-              100,
-              usableHeight - estimatedTitleSpace - gapSpace,
-            );
-
-            // Calculate target height per row, bounded to a reasonable range so images don't become massive
-            const calculatedRowHeight = Math.floor(
-              availableSpaceForImages / (totalRowsInChunk || 1),
-            );
-            const rowHeight = Math.min(Math.max(calculatedRowHeight, 100), 400);
+            // Fixed row height so every page shows the same 3 x 2 grid. Three rows plus up to
+            // three group titles fit inside the ~900px left on A4 after the 160px header and 60px footer.
+            const rowHeight = 240;
 
             const chunkHTML = chunk
               .map(({ title, photos }) => {
@@ -604,9 +585,9 @@ export function generateCompletionReportHTML(data: any): string {
                 return `
             <div style="margin-bottom: 16px; page-break-inside: avoid;">
               <div style="font-size:14px;font-weight:900;color:#1a1a2e;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;text-align:center;page-break-after:avoid;">${title}</div>
-              <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;width:100%;">
+              <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;width:100%;">
                 ${gridItems}
-                ${photos.length % 3 === 1 ? '<div style="background:transparent;"></div><div style="background:transparent;"></div>' : photos.length % 3 === 2 ? '<div style="background:transparent;"></div>' : ""}
+                ${photos.length % 2 === 1 ? '<div style="background:transparent;"></div>' : ""}
               </div>
             </div>
           `;
