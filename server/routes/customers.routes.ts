@@ -57,7 +57,7 @@ customersRoutes.get("/api/customers/stats", requireAuth, async (req, res) => {
 customersRoutes.post(
   "/api/customers",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const customerData = insertCustomerSchema.parse(req.body);
@@ -82,7 +82,7 @@ customersRoutes.post(
 customersRoutes.put(
   "/api/customers/:id",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -129,7 +129,7 @@ customersRoutes.put(
 customersRoutes.put(
   "/api/customers/:id/archive",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -149,7 +149,7 @@ customersRoutes.put(
 customersRoutes.put(
   "/api/customers/:id/unarchive",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -183,7 +183,7 @@ customersRoutes.get("/api/customers/:id/documents", requireAuth, async (req, res
 customersRoutes.post(
   "/api/customers/:id/documents",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -233,7 +233,7 @@ customersRoutes.post(
 customersRoutes.put(
   "/api/customers/:customerId/documents/:documentId",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -283,7 +283,7 @@ customersRoutes.put(
 customersRoutes.delete(
   "/api/customers/:customerId/documents/:documentId",
   requireAuth,
-  requireRole(["admin", "project_manager"]),
+  requireRole(["admin", "project_manager", "finance"]),
   async (req, res) => {
     try {
       const documentId = parseInt(req.params.documentId);
