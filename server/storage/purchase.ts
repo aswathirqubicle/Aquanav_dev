@@ -1,4 +1,5 @@
 import { SalesStorage } from "./sales";
+import { parseQuantity } from "@shared/quantity";
 import {
   InsertSupplierInventoryItem,
   SupplierInventoryItem,
@@ -587,7 +588,7 @@ export class PurchaseStorage extends SalesStorage {
             itemType: item.itemType || "product",
             inventoryItemId: item.inventoryItemId || null,
             description: item.description || null,
-            quantity: item.quantity,
+            quantity: parseQuantity(item.quantity).toFixed(2),
             unitPrice: item.unitPrice || null,
             notes: item.notes,
           })),
@@ -1055,7 +1056,7 @@ export class PurchaseStorage extends SalesStorage {
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
-          quantity: item.quantity,
+          quantity: parseQuantity(item.quantity).toFixed(2),
           unitPrice: item.unitPrice.toFixed(2),
           discount: (item.discount ?? 0).toString(),
           discountType: item.discountType || "amount",
@@ -1169,7 +1170,7 @@ export class PurchaseStorage extends SalesStorage {
             itemType: item.itemType || "product",
             inventoryItemId: item.inventoryItemId || null,
             description: item.description || null,
-            quantity: item.quantity,
+            quantity: parseQuantity(item.quantity).toFixed(2),
             unitPrice:
               typeof item.unitPrice === "number"
                 ? item.unitPrice.toFixed(2)
@@ -1459,7 +1460,7 @@ export class PurchaseStorage extends SalesStorage {
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
-          quantity: parseFloat(item.quantity),
+          quantity: parseQuantity(item.quantity).toFixed(2),
           unitPrice: parseFloat(item.unitPrice).toFixed(2),
           taxRate: parseFloat(item.taxRate || "0").toFixed(2),
           discount: (parseFloat(item.discount ?? "0") || 0).toString(),
@@ -2137,7 +2138,7 @@ export class PurchaseStorage extends SalesStorage {
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
-          quantity: item.quantity,
+          quantity: parseQuantity(item.quantity).toFixed(2),
           unitPrice: item.unitPrice.toString(),
           discount: (item.discount ?? 0).toString(),
           discountType: item.discountType || "amount",
@@ -2273,7 +2274,7 @@ export class PurchaseStorage extends SalesStorage {
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId || null,
           description: item.description || null,
-          quantity: item.quantity,
+          quantity: parseQuantity(item.quantity).toFixed(2),
           unitPrice: item.unitPrice.toString(),
           discount: (item.discount ?? 0).toString(),
           discountType: item.discountType || "amount",
@@ -2457,7 +2458,7 @@ export class PurchaseStorage extends SalesStorage {
         const exchangeRate = parseFloat(invoice.exchangeRate || "1");
         const grItems = inventoryItems_forGR.map((item) => ({
           inventoryItemId: item.inventoryItemId!,
-          quantity: item.quantity,
+          quantity: Number(item.quantity),
           unitCost: parseFloat(item.unitPrice) * exchangeRate,
         }));
 
@@ -2786,9 +2787,10 @@ export class PurchaseStorage extends SalesStorage {
               createdBy: userId,
             });
 
+            // Both are numeric(10,2) and come back as strings.
             const newStock = Math.max(
               0,
-              inventoryItem.currentStock - item.quantity,
+              Number(inventoryItem.currentStock) - Number(item.quantity),
             );
             await this.updateInventoryItem(item.inventoryItemId!, {
               currentStock: newStock,

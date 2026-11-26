@@ -40,6 +40,7 @@ module.exports = {
     '<rootDir>/server/profile-self-service.test.ts',
     '<rootDir>/server/welcome-email.test.ts',
     '<rootDir>/server/recurring-billing.calc.test.ts',
+    '<rootDir>/server/quantity-and-vat-labels.test.ts',
   ],
 
   transform: {

@@ -87,6 +87,9 @@ export function generateInvoiceHTML(
       { key: "P.O.#", value: val(invoice.workOrderNumber) },
     ],
     subject: val(invoice.subject),
+    // The client's tax invoice says VAT, not Tax: "VAT(AED)" over the item
+    // table's tax column and "VAT Amount" in the tax summary.
+    taxLabel: "VAT",
     items,
     totals,
     extraTotalRows: [

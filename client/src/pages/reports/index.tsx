@@ -1677,6 +1677,11 @@ export default function ReportsIndex() {
           description: "When each employee expects to be available to deploy, grouped by month"
         },
         {
+          id: "employee-documents",
+          name: "Employee Documents & Visas",
+          description: "Every document and visa on file for each employee, with its expiry date"
+        },
+        {
           id: "email-log",
           name: "Email Log",
           description: "Every expiry reminder and digest Aquanav sent, and whether it arrived"
@@ -1945,6 +1950,10 @@ export default function ReportsIndex() {
                         }
                         if (report.id === "employee-readiness") {
                           setLocation("/reports/employee-readiness");
+                          return;
+                        }
+                        if (report.id === "employee-documents") {
+                          setLocation("/reports/employee-documents");
                           return;
                         }
                         if (report.id === "email-log") {

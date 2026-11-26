@@ -474,7 +474,8 @@ export const salesQuotationItems = pgTable("sales_quotation_items", {
     .notNull()
     .references(() => salesQuotations.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
@@ -593,7 +594,8 @@ export const salesInvoiceItems = pgTable("sales_invoice_items", {
     .notNull()
     .references(() => salesInvoices.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
@@ -954,7 +956,8 @@ export const creditNoteItems = pgTable("credit_note_items", {
     .notNull()
     .references(() => creditNotes.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
   taxAmount: decimal("tax_amount", { precision: 10, scale: 2 }).default("0"),
@@ -985,7 +988,8 @@ export const purchaseRequestItems = pgTable("purchase_request_items", {
     () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }), // For budget estimation
   notes: text("notes"),
 });
@@ -1047,7 +1051,8 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
     () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   discountType: text("discount_type").default("amount"), // amount | percentage
@@ -1206,7 +1211,8 @@ export const purchaseInvoiceItems = pgTable("purchase_invoice_items", {
     () => inventoryItems.id,
   ),
   description: text("description"), // For service items or additional details
-  quantity: integer("quantity").notNull(),
+  // Up to 2 decimal places (1.5 hours, 2.25 m), migration 0087.
+  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull(),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
   discountType: text("discount_type").default("amount"), // amount | percentage

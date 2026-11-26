@@ -190,3 +190,23 @@ export interface CreditNoteWithDetails extends CreditNote {
   customerName: string | null;
   invoiceNumber: string | null;
 }
+
+/**
+ * One row of the Employee Documents & Visas report: a document or visa/permit
+ * on file for an employee. Both come from employee_documents, told apart by
+ * document_type; `category` says which tab of the employee page it lives on.
+ */
+export interface EmployeeDocumentReportRow {
+  id: number;
+  employeeId: number;
+  employeeCode: string;
+  employeeName: string;
+  employeeIsActive: boolean;
+  category: "document" | "visa";
+  documentType: string;
+  title: string;
+  documentNumber: string | null;
+  /** expiry_date, or valid_till where only that is set (ILO medical). */
+  expiryDate: string | null;
+  status: string;
+}

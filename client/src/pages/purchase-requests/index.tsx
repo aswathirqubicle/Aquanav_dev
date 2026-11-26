@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, formatQuantity, hasValidQuantityPrecision, parseQuantity } from "@shared/quantity";
 import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useEffect, useState } from "react";
@@ -163,7 +164,7 @@ export default function PurchaseRequestsIndex() {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
         description: item.description || null,
-        quantity: parseInt(item.quantity),
+        quantity: parseQuantity(item.quantity),
         unitPrice: item.unitPrice || null,
         notes: item.notes,
       }));
@@ -307,7 +308,16 @@ export default function PurchaseRequestsIndex() {
       }
     }
 
-    const quantity = parseInt(newItem.quantity);
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const quantity = parseQuantity(newItem.quantity);
     if (quantity <= 0) {
       toast({
         title: "Error",
@@ -926,7 +936,8 @@ export default function PurchaseRequestsIndex() {
                               <Label className="text-sm font-medium">Quantity *</Label>
                               <Input
                                 type="number"
-                                min="1"
+                                min="0.01"
+                                step={QUANTITY_STEP}
                                 value={newItem.quantity}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
                                 placeholder="0"
@@ -958,7 +969,8 @@ export default function PurchaseRequestsIndex() {
                               <Label className="text-sm font-medium">Quantity *</Label>
                               <Input
                                 type="number"
-                                min="1"
+                                min="0.01"
+                                step={QUANTITY_STEP}
                                 value={newItem.quantity}
                                 onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
                                 placeholder="0"
@@ -1044,7 +1056,7 @@ export default function PurchaseRequestsIndex() {
                                 }
                               </TableCell>
                               <TableCell>
-                                {item.quantity}
+                                {formatQuantity(item.quantity)}
                                 {item.itemType === "product" && item.inventoryItemId && ` ${getItemUnit(item.inventoryItemId)}`}
                               </TableCell>
                               <TableCell>
@@ -1191,7 +1203,7 @@ export default function PurchaseRequestsIndex() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              {item.quantity}
+                              {formatQuantity(item.quantity)}
                               {item.itemType === "product" && item.inventoryItemUnit && ` ${item.inventoryItemUnit}`}
                             </TableCell>
                             <TableCell>

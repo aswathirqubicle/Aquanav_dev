@@ -1,3 +1,4 @@
+import { formatQuantity } from "@shared/quantity";
 import {
   renderDocument,
   documentTotalsFor,
@@ -57,8 +58,8 @@ export function generatePurchaseInvoiceHTML(
       // layout treats quantity as a display value and takes every figure from
       // the totals below, which are computed from the raw items.
       quantity: val(item.inventoryItemUnit)
-        ? `${val(item.quantity)} ${val(item.inventoryItemUnit)}`
-        : val(item.quantity),
+        ? `${formatQuantity(item.quantity)} ${val(item.inventoryItemUnit)}`
+        : formatQuantity(item.quantity),
     }),
   );
   const totals = documentTotalsFor(

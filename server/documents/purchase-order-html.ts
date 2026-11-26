@@ -1,3 +1,4 @@
+import { formatQuantity } from "@shared/quantity";
 import {
   renderDocument,
   documentTotalsFor,
@@ -44,8 +45,8 @@ export function generatePurchaseOrderHTML(
             .join("\n") || val(item.description)
         : val(item.description),
     quantity: val(item.inventoryItemUnit)
-      ? `${val(item.quantity)} ${val(item.inventoryItemUnit)}`
-      : val(item.quantity),
+      ? `${formatQuantity(item.quantity)} ${val(item.inventoryItemUnit)}`
+      : formatQuantity(item.quantity),
   }));
 
   // An order that has not been approved commits the company to nothing yet,

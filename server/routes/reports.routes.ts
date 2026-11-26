@@ -284,6 +284,30 @@ reportsRoutes.get(
 );
 
 /**
+ * Employee documents & visas — every document and visa/permit on file, with
+ * its expiry. Filtering by employee, category and expiry happens in the page;
+ * the server only decides whether inactive employees are included (excluded
+ * unless includeInactive=true). Same audience as the readiness report.
+ */
+reportsRoutes.get(
+  "/api/reports/employee-documents",
+  requireAuth,
+  requireRole(["admin", "project_manager", "finance"]),
+  async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === "true";
+      const rows = await storage.getEmployeeDocumentsReport({ includeInactive });
+      res.json({ includeInactive, documents: rows });
+    } catch (error) {
+      console.error("Employee documents report error:", error);
+      res
+        .status(500)
+        .json({ message: "Failed to load employee documents report" });
+    }
+  },
+);
+
+/**
  * Employee readiness — who is becoming available to deploy, and when.
  *
  * Defaults to today onward with no end date, which is the question the report

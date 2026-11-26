@@ -36,6 +36,7 @@ import {
   or,
 } from "drizzle-orm";
 import { db } from "../db";
+import type { EmployeeDocumentReportRow } from "./types";
 import {
   generateCommonFooter,
   generateCommonHeader,
@@ -71,6 +72,23 @@ const VISA_TYPE_LABELS: Record<string, string> = {
   uae_visa: "UAE Visa",
   residence_permit: "Residence Permit",
   work_permit: "Work Permit",
+};
+
+/**
+ * The other document types, labelled as the Documents tab's dropdown in
+ * employees/enhanced-index.tsx labels them, so the report and the employee page
+ * name a document the same way.
+ */
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  passport: "Passport",
+  cdc: "CDC (Seaman Book)",
+  covid_vaccination: "COVID Vaccination Certificate",
+  stcw_course: "STCW Course Certificate",
+  sid: "SID (Seafarer Identity Document)",
+  ilo_medical: "ILO DG Medical Certificate",
+  yellow_fever: "Yellow Fever Document",
+  pp_photos: "PP Photos",
+  other: "Other",
 };
 
 const labelForVisaType = (value: string): string =>
@@ -1077,6 +1095,82 @@ export class EmployeeStorage extends SupplierStorage {
           `Error in getEmployeeReadiness: ` + (error?.message || "Unknown error"),
         stack: error?.stack,
         component: "getEmployeeReadiness",
+        severity: "error",
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Every document and visa/permit on file, for the Employee Documents & Visas
+   * report. Both are employee_documents rows — visas are told apart by type,
+   * see VISA_DOCUMENT_TYPES — whether an admin added them on the employee page
+   * or the employee added them from their own profile.
+   *
+   * The expiry is expiry_date, falling back to valid_till, which is the field
+   * the ILO medical certificate records instead. Rows with no expiry are kept:
+   * the report lists what is on file, not only what expires. Soonest expiry
+   * first, undated last, then by employee name.
+   */
+  async getEmployeeDocumentsReport(options: {
+    includeInactive?: boolean;
+  } = {}): Promise<EmployeeDocumentReportRow[]> {
+    try {
+      const rows = await db
+        .select({ document: employeeDocuments, employee: employees })
+        .from(employeeDocuments)
+        .innerJoin(employees, eq(employeeDocuments.employeeId, employees.id))
+        .where(options.includeInactive ? undefined : eq(employees.isActive, true));
+
+      const visaTypes = new Set(VISA_DOCUMENT_TYPES);
+      const result: EmployeeDocumentReportRow[] = rows.map(
+        ({ document, employee }) => {
+          const isVisa = visaTypes.has(document.documentType);
+          let title = isVisa
+            ? labelForVisaType(document.documentType)
+            : (DOCUMENT_TYPE_LABELS[document.documentType] ??
+              labelForVisaType(document.documentType));
+          // "Other" says nothing on its own; the notes are what name it.
+          if (document.documentType === "other" && document.notes?.trim()) {
+            const note = document.notes.trim().replace(/\s+/g, " ");
+            title = `Other: ${note.length > 80 ? note.slice(0, 77) + "..." : note}`;
+          }
+          return {
+            id: document.id,
+            employeeId: employee.id,
+            employeeCode: employee.employeeCode,
+            employeeName: `${employee.firstName} ${employee.lastName}`.trim(),
+            employeeIsActive: employee.isActive,
+            category: isVisa ? "visa" : "document",
+            documentType: document.documentType,
+            title,
+            documentNumber: document.documentNumber,
+            expiryDate: document.expiryDate ?? document.validTill ?? null,
+            status: document.status,
+          };
+        },
+      );
+
+      // Plain YYYY-MM-DD strings sort correctly as text.
+      result.sort((a, b) => {
+        if (a.expiryDate !== b.expiryDate) {
+          if (!a.expiryDate) return 1;
+          if (!b.expiryDate) return -1;
+          return a.expiryDate < b.expiryDate ? -1 : 1;
+        }
+        return (
+          a.employeeName.localeCompare(b.employeeName) ||
+          a.title.localeCompare(b.title)
+        );
+      });
+      return result;
+    } catch (error: any) {
+      await this.createErrorLog({
+        message:
+          `Error in getEmployeeDocumentsReport: ` +
+          (error?.message || "Unknown error"),
+        stack: error?.stack,
+        component: "getEmployeeDocumentsReport",
         severity: "error",
       });
       throw error;
