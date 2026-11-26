@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, hasValidQuantityPrecision } from "@shared/quantity";
 import { useEffect, useRef, useState, startTransition } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -817,6 +818,15 @@ export default function SalesQuotationsPage() {
       return;
     }
 
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const unitPrice = newItem.unitPrice === "" ? NaN : Number(newItem.unitPrice);
     if (!Number.isFinite(unitPrice)) {
       toast({
@@ -1431,12 +1441,14 @@ export default function SalesQuotationsPage() {
                             </Label>
                             <Input
                               type="number"
-                              placeholder="e.g. 1"
+                              min="0"
+                              step={QUANTITY_STEP}
+                              placeholder="e.g. 1.5"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  quantity: e.target.value === "" ? "" : parseInt(e.target.value),
+                                  quantity: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />

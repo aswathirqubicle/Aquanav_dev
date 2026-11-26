@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, hasValidQuantityPrecision } from "@shared/quantity";
 import { formatDisplayDate } from "@/lib/utils";
 import { useEffect, useRef, useState, startTransition } from "react";
 import { useLocation } from "wouter";
@@ -579,6 +580,15 @@ export default function ProformaInvoicesIndex() {
       toast({
         title: "Error",
         description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
         variant: "destructive",
       });
       return;
@@ -1235,12 +1245,14 @@ export default function ProformaInvoicesIndex() {
                             <Label className="text-xs text-gray-600">Quantity</Label>
                             <Input
                               type="number"
-                              placeholder="e.g. 1"
+                              min="0"
+                              step={QUANTITY_STEP}
+                              placeholder="e.g. 1.5"
                               value={newItem.quantity}
                               onChange={(e) =>
                                 setNewItem((prev) => ({
                                   ...prev,
-                                  quantity: e.target.value === "" ? "" : parseInt(e.target.value),
+                                  quantity: e.target.value === "" ? "" : parseFloat(e.target.value),
                                 }))
                               }
                             />

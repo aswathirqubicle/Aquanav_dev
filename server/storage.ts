@@ -179,6 +179,7 @@ import type {
   CreatedGoodsReceipt,
   InvoicePaymentWithCustomerName,
   CreditNoteWithDetails,
+  EmployeeDocumentReportRow,
 } from "./storage/types";
 
 // The shared result types keep being exported from this module.
@@ -308,6 +309,9 @@ export interface IStorage {
       joiningReadinessDate: string;
     }>
   >;
+  getEmployeeDocumentsReport(options?: {
+    includeInactive?: boolean;
+  }): Promise<EmployeeDocumentReportRow[]>;
   createEmployee(employeeData: InsertEmployee): Promise<Employee>;
   updateEmployee(
     id: number,

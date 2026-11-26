@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, formatQuantity, hasValidQuantityPrecision, parseQuantity } from "@shared/quantity";
 import { formatDisplayDate } from "@/lib/utils";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -397,7 +398,7 @@ export default function PurchaseOrdersIndex() {
   // Auto-calculate total tax amount based on line items
   const calculateTotalTax = () => {
     return orderItems.reduce((total, item) => {
-      const quantity = parseInt(item.quantity) || 0;
+      const quantity = parseQuantity(item.quantity) || 0;
       const unitPrice = parseFloat(item.unitPrice) || 0;
       const taxRate = parseFloat(item.taxRate) || 0;
       const lineSubtotal = quantity * unitPrice;
@@ -662,7 +663,7 @@ export default function PurchaseOrdersIndex() {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId?.toString() || "",
         description: item.description || "",
-        quantity: item.quantity.toString(),
+        quantity: formatQuantity(item.quantity),
         unitPrice: item.unitPrice,
         taxRate: item.taxRate != null ? item.taxRate.toString() : "0",
         discount: item.discount != null ? item.discount.toString() : "0",
@@ -723,7 +724,7 @@ export default function PurchaseOrdersIndex() {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId?.toString() || "",
         description: item.description || "",
-        quantity: item.quantity.toString(),
+        quantity: formatQuantity(item.quantity),
         unitPrice: item.unitPrice,
         taxRate: item.taxRate != null ? item.taxRate.toString() : "0",
         discount: item.discount != null ? item.discount.toString() : "0",
@@ -788,7 +789,16 @@ export default function PurchaseOrdersIndex() {
       }
     }
 
-    const quantity = parseInt(newItem.quantity);
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const quantity = parseQuantity(newItem.quantity);
     const unitPrice = parseFloat(newItem.unitPrice);
     // A blank or non-numeric tax rate means zero, the same as discount.
     const taxRate = parseFloat(newItem.taxRate || "0") || 0;
@@ -908,7 +918,7 @@ export default function PurchaseOrdersIndex() {
 
     // Process and append items as a JSON string
     const items = orderItems.map(item => {
-      const quantity = parseInt(item.quantity);
+      const quantity = parseQuantity(item.quantity);
       const unitPrice = parseFloat(item.unitPrice);
       const taxRate = parseFloat(item.taxRate || "0") || 0;
       const lineSubtotal = quantity * unitPrice;
@@ -2024,7 +2034,8 @@ export default function PurchaseOrdersIndex() {
                         <Label>Quantity *</Label>
                         <Input
                           type="number"
-                          min="1"
+                          min="0.01"
+                          step={QUANTITY_STEP}
                           value={newItem.quantity}
                           onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
                           placeholder="e.g. 1"
@@ -2147,7 +2158,7 @@ export default function PurchaseOrdersIndex() {
                           </TableHeader>
                           <TableBody>
                             {orderItems.map((item, index) => {
-                              const quantity = parseInt(item.quantity) || 0;
+                              const quantity = parseQuantity(item.quantity) || 0;
                               const unitPrice = parseFloat(item.unitPrice) || 0;
                               const taxRate = parseFloat(item.taxRate) || 0;
                               const lineSubtotal = quantity * unitPrice;
@@ -2187,7 +2198,7 @@ export default function PurchaseOrdersIndex() {
                                     </div>
                                   </TableCell>
                                   <TableCell>
-                                    {item.quantity} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
+                                    {formatQuantity(item.quantity)} {item.itemType === "product" ? getItemUnit(item.inventoryItemId || "") : ""}
                                   </TableCell>
                                   <TableCell>{formatCurrency(item.unitPrice, formData.currency)}</TableCell>
                                   <TableCell>{item.taxRate || "0"}%</TableCell>
@@ -2259,7 +2270,7 @@ export default function PurchaseOrdersIndex() {
                               onChange={(e) => {
                               const val = e.target.value;
                               const pct = parseFloat(val) || 0;
-                                const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const subtotal = orderItems.reduce((sum, item) => sum + (parseQuantity(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
                               const calcDiscount = (subtotal * pct / 100);
                               setFormData(prev => ({ 
                                 ...prev, 
@@ -2281,7 +2292,7 @@ export default function PurchaseOrdersIndex() {
                               value={formData.discountAmount}
                               onChange={(e) => {
                               const val = e.target.value;
-                                const subtotal = orderItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const subtotal = orderItems.reduce((sum, item) => sum + (parseQuantity(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
                               const amount = parseFloat(val) || 0;
                               const calcPct = subtotal > 0 ? ((amount / subtotal) * 100) : 0;
                               setFormData(prev => ({ 
@@ -2954,7 +2965,7 @@ export default function PurchaseOrdersIndex() {
                                   </div>
                                 </TableCell>
                                 <TableCell className={tdNumCls}>
-                                  {item.quantity}{" "}
+                                  {formatQuantity(item.quantity)}{" "}
                                   {item.itemType === "product" ? item.inventoryItemUnit : ""}
                                 </TableCell>
                                 <TableCell className={tdNumCls}>{formatAmount(item.unitPrice)}</TableCell>
@@ -3431,8 +3442,8 @@ export default function PurchaseOrdersIndex() {
                         <TableCell className="text-right">
                           <Input
                             type="number"
-                            min="0.001"
-                            step="any"
+                            min="0.01"
+                            step={QUANTITY_STEP}
                             value={item.quantity}
                             onChange={(e) => recalcInvoiceItem(idx, "quantity", e.target.value)}
                             className="w-20 text-right ml-auto h-8 text-sm"

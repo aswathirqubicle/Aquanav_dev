@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, formatQuantity, hasValidQuantityPrecision, parseQuantity } from "@shared/quantity";
 import { formatDisplayDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -584,7 +585,7 @@ export default function PurchaseInvoicesIndex() {
           itemType: item.itemType || "product",
           inventoryItemId: item.inventoryItemId ? item.inventoryItemId.toString() : "",
           description: item.description || "",
-          quantity: item.quantity.toString(),
+          quantity: formatQuantity(item.quantity),
           unitPrice: parseFloat(item.unitPrice).toString(),
           taxRate: parseFloat(item.taxRate || "0").toString(),
           discount: item.discount != null ? item.discount.toString() : "0",
@@ -639,7 +640,7 @@ export default function PurchaseInvoicesIndex() {
         itemType: item.itemType || "product",
         inventoryItemId: item.inventoryItemId ? item.inventoryItemId.toString() : "",
         description: item.description || "",
-        quantity: item.quantity.toString(),
+        quantity: formatQuantity(item.quantity),
         unitPrice: parseFloat(item.unitPrice).toString(),
         taxRate: parseFloat(item.taxRate || "0").toString(),
         discount: item.discount != null ? item.discount.toString() : "0",
@@ -931,7 +932,16 @@ export default function PurchaseInvoicesIndex() {
       }
     }
 
-    const quantity = parseInt(newItem.quantity);
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const quantity = parseQuantity(newItem.quantity);
     const unitPrice = parseFloat(newItem.unitPrice);
 
     // Both fields start blank, so a non-number has to be rejected here rather
@@ -1038,7 +1048,7 @@ export default function PurchaseInvoicesIndex() {
     }
 
     const items = invoiceItems.map(item => {
-      const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
+      const lineSubtotal = parseQuantity(item.quantity) * parseFloat(item.unitPrice);
       const lineDiscountVal = parseFloat(item.discount || "0") || 0;
       const lineDiscount = item.discountType === "percentage"
         ? lineSubtotal * (lineDiscountVal / 100)
@@ -1050,7 +1060,7 @@ export default function PurchaseInvoicesIndex() {
         itemType: item.itemType,
         inventoryItemId: item.inventoryItemId ? parseInt(item.inventoryItemId) : null,
         description: item.description || null,
-        quantity: parseInt(item.quantity),
+        quantity: parseQuantity(item.quantity),
         unitPrice: parseFloat(item.unitPrice),
         taxRate: lineTaxRate,
         taxAmount: lineTaxAmount,
@@ -2167,7 +2177,8 @@ export default function PurchaseInvoicesIndex() {
                             <Label className="text-xs font-medium text-muted-foreground">QUANTITY</Label>
                             <Input
                               type="number"
-                              min="1"
+                              min="0.01"
+                              step={QUANTITY_STEP}
                               value={newItem.quantity}
                               onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
                               placeholder="e.g. 1"
@@ -2301,7 +2312,7 @@ export default function PurchaseInvoicesIndex() {
                         </div>
 
                         {invoiceItems.map((item, index) => {
-                          const lineSubtotal = parseInt(item.quantity) * parseFloat(item.unitPrice);
+                          const lineSubtotal = parseQuantity(item.quantity) * parseFloat(item.unitPrice);
                           const lineDiscVal = parseFloat(item.discount || "0") || 0;
                           const lineDiscount = item.discountType === "percentage"
                             ? lineSubtotal * (lineDiscVal / 100)
@@ -2346,7 +2357,7 @@ export default function PurchaseInvoicesIndex() {
                                 )}
                               </div>
                               <div className="col-span-1 text-center">
-                                <span className="font-medium">{item.quantity}</span>
+                                <span className="font-medium">{formatQuantity(item.quantity)}</span>
                               </div>
                               <div className="col-span-2 text-right">
                                 <span className="font-medium">{formatCurrency(item.unitPrice, formData.currency)}</span>
@@ -2420,7 +2431,7 @@ export default function PurchaseInvoicesIndex() {
                               onChange={(e) => {
                                 const val = e.target.value;
                                 const pct = parseFloat(val) || 0;
-                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseQuantity(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
                                 const calcDiscount = (subtotal * pct / 100);
                                 setFormData(prev => ({ 
                                   ...prev, 
@@ -2443,7 +2454,7 @@ export default function PurchaseInvoicesIndex() {
                               onChange={(e) => {
                                 const val = e.target.value;
                                 const amount = parseFloat(val) || 0;
-                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseInt(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
+                                const subtotal = invoiceItems.reduce((sum, item) => sum + (parseQuantity(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0), 0);
                                 const calcPct = subtotal > 0 ? ((amount / subtotal) * 100) : 0;
                                 setFormData(prev => ({ 
                                   ...prev, 
@@ -3109,7 +3120,7 @@ export default function PurchaseInvoicesIndex() {
                                     </div>
                                   </td>
                                   <td className={TDN}>
-                                    {item.quantity} {item.itemType === "product" ? item.inventoryItemUnit : ""}
+                                    {formatQuantity(item.quantity)} {item.itemType === "product" ? item.inventoryItemUnit : ""}
                                   </td>
                                   <td className={TDN}>{formatAmount(item.unitPrice)}</td>
                                   <td className={TDN}>{item.taxRate || "0"}%</td>

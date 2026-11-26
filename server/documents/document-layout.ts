@@ -1,3 +1,4 @@
+import { formatQuantity } from "@shared/quantity";
 import {
   getCommonStyles,
   generateCommonHeader,
@@ -107,10 +108,27 @@ export interface RenderDocumentOptions {
   extraTotalRows?: DocumentTotalRow[];
   /** Notes, Terms & Conditions, bank details … rendered in order, blanks skipped. */
   sections: DocumentSection[];
+  /**
+   * What the tax is called in the item table's tax column and the tax
+   * summary's amount column. "Tax" by default; the sales invoice passes "VAT",
+   * as the client asked its tax invoice to say. The other documents keep "Tax"
+   * until they ask for the same.
+   */
+  taxLabel?: string;
 }
 
 const val = (v: any) =>
   v === "null" || v === null || v === undefined ? "" : v;
+
+/**
+ * The Qty cell. A bare number — including numeric(10,2)'s "2.00" — prints
+ * without trailing zeros ("2", "1.5"). The purchase documents pass a ready-made
+ * "1.5 pcs" with the unit attached, which is printed as it came.
+ */
+const displayQuantity = (q: any): string =>
+  typeof q === "number" || /^\s*-?\d+(\.\d+)?\s*$/.test(String(q ?? ""))
+    ? formatQuantity(q)
+    : val(q);
 
 /**
  * Totals for a stored document, resolving the header discount the way the forms
@@ -180,6 +198,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
     items,
     totals,
     extraTotalRows = [],
+    taxLabel = "Tax",
     sections,
   } = opts;
 
@@ -395,7 +414,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                     <th>Rate (${currency})</th>
                     ${anyDiscount ? `<th>Discount (${currency})</th>` : ""}
                     <th>Taxable Amount (${currency})</th>
-                    <th>Tax (${currency})</th>
+                    <th>${taxLabel === "Tax" ? `Tax (${currency})` : `${taxLabel}(${currency})`}</th>
                     <th>Amount (${currency})</th>
                   </tr>
                 </thead>
@@ -418,7 +437,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                            into the PDF should not depend on a stylesheet rule
                            someone could edit from a distance. -->
                       <td class="l" style="white-space: pre-wrap;">${val(item.description)}</td>
-                      <td>${val(item.quantity)}</td>
+                      <td>${displayQuantity(item.quantity)}</td>
                       <td>${num(item.unitPrice)}</td>
                       ${anyDiscount ? `<td>${shownDiscount > 0.005 ? num(shownDiscount) : "-"}</td>` : ""}
                       <td>${num(line.taxable)}</td>
@@ -456,7 +475,7 @@ export function renderDocument(opts: RenderDocumentOptions): string {
                     <tr>
                       <th class="l">Tax Details</th>
                       <th>Taxable Amount (${taxCurrency})</th>
-                      <th>Tax Amount (${taxCurrency})</th>
+                      <th>${taxLabel} Amount (${taxCurrency})</th>
                     </tr>
                   </thead>
                   <tbody>

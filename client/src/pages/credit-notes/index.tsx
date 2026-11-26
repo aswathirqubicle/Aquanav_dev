@@ -1,3 +1,4 @@
+import { QUANTITY_STEP, hasValidQuantityPrecision } from "@shared/quantity";
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -243,6 +244,15 @@ const CreditNoteForm = ({
       toast({
         title: "Error",
         description: "Please enter a quantity greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!hasValidQuantityPrecision(newItem.quantity)) {
+      toast({
+        title: "Error",
+        description: "Quantity can have at most 2 decimal places",
         variant: "destructive",
       });
       return;
@@ -522,8 +532,8 @@ const CreditNoteForm = ({
                 <Input
                   type="number"
                   min="0"
-                  step="any"
-                  placeholder="e.g. 1"
+                  step={QUANTITY_STEP}
+                  placeholder="e.g. 1.5"
                   value={newItem.quantity}
                   onChange={(e) =>
                     setNewItem((prev) => ({

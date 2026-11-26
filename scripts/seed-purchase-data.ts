@@ -231,7 +231,7 @@ async function seedPurchaseRequests() {
       requestItems.push({
         requestId: request.id,
         inventoryItemId: item.id,
-        quantity: Math.floor(Math.random() * 50) + 10,
+        quantity: String(Math.floor(Math.random() * 50) + 10),
         notes: Math.random() > 0.7 ? 'Urgent requirement for project' : null,
       });
     }
